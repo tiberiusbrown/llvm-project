@@ -61,7 +61,9 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
   uint8_t rrSpec(const MCInst &MI, unsigned DstOp, unsigned SrcOp) const {
     unsigned D = regIndex(MI, MI.getOperand(DstOp).getReg());
     unsigned S = regIndex(MI, MI.getOperand(SrcOp).getReg());
-    return static_cast<uint8_t>((D << 4) | S);
+    // Nibbles are pre-scaled by two so the interpreter can form the native
+    // AVR low-byte address as 8+nibble without executing LSL.
+    return static_cast<uint8_t>((D << 5) | (S << 1));
   }
 
   int64_t getImm(const MCInst &MI, unsigned Op, int64_t Min, int64_t Max,
@@ -107,7 +109,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
   void emitF4Unary(const MCInst &MI, SmallVectorImpl<char> &Out,
                    uint8_t Base) const {
-    emit8(Out, 0xf4);
+    emit8(Out, 0xe0);
     emit8(Out, Base | regIndex(MI, MI.getOperand(0).getReg()));
   }
 
@@ -205,19 +207,19 @@ public:
     }
     case AVM::BEQ_SHORT:
     case AVM::BNE_SHORT: {
-      int64_t D = getImm(MI, 0, -8, 8, "short branch displacement");
-      if (D == 0)
-        error(MI, "short branch displacement cannot be zero");
-      unsigned Nibble = D < 0 ? static_cast<unsigned>(D + 8)
+      int64_t D = getImm(MI, 0, -9, 8, "short branch displacement");
+      if (D == -1 || D == 0)
+        error(MI, "short branch displacement must be -9..-2 or +1..+8");
+      unsigned Nibble = D < 0 ? static_cast<unsigned>(D + 9)
                               : static_cast<unsigned>(D + 7);
       emit8(Out, (MI.getOpcode() == AVM::BEQ_SHORT ? 0xc0 : 0xd0) |
                      (Nibble & 0xf));
       return;
     }
     case AVM::INC16:
-      emit8(Out, 0xe0 | regIndex(MI, MI.getOperand(0).getReg())); return;
+      emitF4Unary(MI, Out, 0x10); return;
     case AVM::DEC16:
-      emit8(Out, 0xe8 | regIndex(MI, MI.getOperand(0).getReg())); return;
+      emitF4Unary(MI, Out, 0x18); return;
     case AVM::LDI8C: {
       emit8(Out, 0xf0 | compactIndex(MI, MI.getOperand(0).getReg()));
       emit8(Out, getImm(MI, 1, 0, 255, "LDI8 immediate"));
@@ -237,16 +239,16 @@ public:
 
     case AVM::NOT16: emitF4Unary(MI, Out, 0x00); return;
     case AVM::NEG16: emitF4Unary(MI, Out, 0x08); return;
-    case AVM::LSL16: emitF4Unary(MI, Out, 0x10); return;
-    case AVM::LSR16: emitF4Unary(MI, Out, 0x18); return;
-    case AVM::ASR16: emitF4Unary(MI, Out, 0x20); return;
-    case AVM::LSR8: emitF4Unary(MI, Out, 0x28); return;
-    case AVM::ASR8: emitF4Unary(MI, Out, 0x30); return;
-    case AVM::ZEXT8: emitF4Unary(MI, Out, 0x38); return;
-    case AVM::SEXT8: emitF4Unary(MI, Out, 0x40); return;
-    case AVM::SWAP8: emitF4Unary(MI, Out, 0x48); return;
-    case AVM::GETSP: emitF4Unary(MI, Out, 0x50); return;
-    case AVM::SETSP: emitF4Unary(MI, Out, 0x58); return;
+    case AVM::LSL16: emitF4Unary(MI, Out, 0x20); return;
+    case AVM::LSR16: emitF4Unary(MI, Out, 0x28); return;
+    case AVM::ASR16: emitF4Unary(MI, Out, 0x30); return;
+    case AVM::LSR8: emitF4Unary(MI, Out, 0x38); return;
+    case AVM::ASR8: emitF4Unary(MI, Out, 0x40); return;
+    case AVM::ZEXT8: emitF4Unary(MI, Out, 0x48); return;
+    case AVM::SEXT8: emitF4Unary(MI, Out, 0x50); return;
+    case AVM::SWAP8: emitF4Unary(MI, Out, 0x58); return;
+    case AVM::GETSP: emitF4Unary(MI, Out, 0x60); return;
+    case AVM::SETSP: emitF4Unary(MI, Out, 0x68); return;
 
     case AVM::AND16: emitF4Binary(MI, Out, 0x60); return;
     case AVM::OR16: emitF4Binary(MI, Out, 0x61); return;
@@ -278,7 +280,7 @@ public:
     case AVM::SUB16: emitF4Binary(MI, Out, 0xba); return;
     case AVM::CMP16: emitF4Binary(MI, Out, 0xbb); return;
     case AVM::CMPI6: {
-      emit8(Out, 0xf4); emit8(Out, 0xbc);
+      emit8(Out, 0xe4);
       unsigned R = compactIndex(MI, MI.getOperand(0).getReg());
       int64_t V = getImm(MI, 1, -32, 31, "CMPI6 immediate");
       emit8(Out, ((static_cast<uint8_t>(V) & 0x3f) << 2) | R);
@@ -286,16 +288,15 @@ public:
     }
     case AVM::JMP_REL8:
     case AVM::CALL_REL8: {
-      emit8(Out, 0xf4);
-      emit8(Out, MI.getOpcode() == AVM::JMP_REL8 ? 0xbd : 0xbe);
-      uint64_t V = emitExprOrImm(MI, 0, 2, AVM::fixup_avm_pcrel8,
+      emit8(Out, MI.getOpcode() == AVM::JMP_REL8 ? 0xe5 : 0xe6);
+      uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_pcrel8,
                                  Fixups, true);
       if (MI.getOperand(0).isImm() && !isInt<8>(static_cast<int64_t>(V)))
         error(MI, "relative control displacement is out of range");
       emit8(Out, V); return;
     }
     case AVM::ADJSP:
-      emit8(Out, 0xf4); emit8(Out, 0xbf);
+      emit8(Out, 0xe7);
       emit8(Out, getImm(MI, 0, -128, 127, "ADJSP immediate")); return;
 
     case AVM::LDSP8C: case AVM::LDSP16C: {
@@ -322,21 +323,20 @@ public:
     case AVM::MTPB: emitF4Unary(MI, Out, 0xe0); return;
     case AVM::MFPB: emitF4Unary(MI, Out, 0xe8); return;
     case AVM::LDPBI:
-      emit8(Out, 0xf4); emit8(Out, 0xf0);
+      emit8(Out, 0xe8);
       emit8(Out, getImm(MI, 0, 0, 255, "PB immediate")); return;
     case AVM::JMP16:
     case AVM::CALL16: {
-      emit8(Out, 0xf4);
-      emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xf1 : 0xf2);
-      uint64_t V = emitExprOrImm(MI, 0, 2, AVM::fixup_avm_bank16, Fixups);
+      emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xea : 0xeb);
+      uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_bank16, Fixups);
       if (MI.getOperand(0).isImm() && !isUInt<16>(V))
         error(MI, "same-bank absolute target is out of range");
       emit16(Out, V); return;
     }
     case AVM::NOP:
-      emit8(Out, 0xf4); emit8(Out, 0xf3); return;
+      emit8(Out, 0xec); return;
     case AVM::SYS:
-      emit8(Out, 0xf4); emit8(Out, 0xf4);
+      emit8(Out, 0xe9);
       emit8(Out, getImm(MI, 0, 0, 255, "SYS service")); return;
 
     case AVM::LD8: emitFDReg(MI, Out, 0x00, 0, 1); return;

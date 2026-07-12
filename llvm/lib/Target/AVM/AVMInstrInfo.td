@@ -56,8 +56,8 @@ def CMP8C    : AVMFlagDefInst<"cmp8 $lhs, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rh
 def TST8     : AVMFlagDefInst<"tst8 $src", 1, (ins CGPR16:$src)>;
 def BEQ_SHORT : AVMBranchInst<"beq.s $target", 1>;
 def BNE_SHORT : AVMBranchInst<"bne.s $target", 1>;
-def INC16    : AVMFlagDefInst<"inc16 $dst", 1, (ins GPR16:$dst)>;
-def DEC16    : AVMFlagDefInst<"dec16 $dst", 1, (ins GPR16:$dst)>;
+def INC16    : AVMInst<"inc16 $dst", 2, (ins GPR16:$dst)>;
+def DEC16    : AVMInst<"dec16 $dst", 2, (ins GPR16:$dst)>;
 def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins CGPR16:$dst, AVMImm8:$imm)>;
 
 // General conditional branches.
@@ -116,10 +116,10 @@ def MOV16     : AVMInst<"mov $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def ADD16     : AVMFlagDefInst<"add $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def SUB16     : AVMFlagDefInst<"sub $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def CMP16     : AVMFlagDefInst<"cmp16 $lhs, $rhs", 3, (ins GPR16:$lhs, GPR16:$rhs)>;
-def CMPI6     : AVMFlagDefInst<"cmpi6 $src, $imm", 3, (ins CGPR16:$src, AVMImm8:$imm)>;
-def JMP_REL8  : AVMInst<"jmp $target", 3, (ins AVMDisp8:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
-def CALL_REL8 : AVMCallInst<"call $target", 3, (ins AVMDisp8:$target)>;
-def ADJSP     : AVMInst<"adjsp $amount", 3, (ins AVMDisp8:$amount)>;
+def CMPI6     : AVMFlagDefInst<"cmpi6 $src, $imm", 2, (ins CGPR16:$src, AVMImm8:$imm)>;
+def JMP_REL8  : AVMInst<"jmp $target", 2, (ins AVMDisp8:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
+def CALL_REL8 : AVMCallInst<"call $target", 2, (ins AVMDisp8:$target)>;
+def ADJSP     : AVMInst<"adjsp $amount", 2, (ins AVMDisp8:$amount)>;
 def LDSP8C    : AVMInst<"ldsp8 $dst, [sp+$off]", 3, (ins CGPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
 def LDSP16C   : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins CGPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
 def STSP8C    : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; }
@@ -132,11 +132,11 @@ def JMPP  : AVMInst<"jmpp $target", 2, (ins GPR16:$target)> { let isBranch = 1; 
 def CALLP : AVMCallInst<"callp $target", 2, (ins GPR16:$target)> { let Uses = [PB]; }
 def MTPB  : AVMInst<"mtpb $src", 2, (ins GPR16:$src)> { let Defs = [PB]; }
 def MFPB  : AVMInst<"mfpb $dst", 2, (ins GPR16:$dst)> { let Uses = [PB]; }
-def LDPBI : AVMInst<"ldpbi $imm", 3, (ins AVMImm8:$imm)> { let Defs = [PB]; }
-def JMP16 : AVMInst<"jmp16 $target", 4, (ins AVMImm16:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
-def CALL16 : AVMCallInst<"call16 $target", 4, (ins AVMImm16:$target)>;
-def NOP   : AVMInst<"nop", 2>;
-def SYS   : AVMInst<"sys $service", 3, (ins AVMImm8:$service)> { let Defs = [FLAGS, PB]; let hasSideEffects = 1; }
+def LDPBI : AVMInst<"ldpbi $imm", 2, (ins AVMImm8:$imm)> { let Defs = [PB]; }
+def JMP16 : AVMInst<"jmp16 $target", 3, (ins AVMImm16:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
+def CALL16 : AVMCallInst<"call16 $target", 3, (ins AVMImm16:$target)>;
+def NOP   : AVMInst<"nop", 1>;
+def SYS   : AVMInst<"sys $service", 2, (ins AVMImm8:$service)> { let hasSideEffects = 1; }
 
 // Generic data-space memory extension.
 def LD8       : AVMInst<"ld8 $dst, [$addr]", 3, (ins GPR16:$dst, GPR16:$addr)> { let mayLoad = 1; }

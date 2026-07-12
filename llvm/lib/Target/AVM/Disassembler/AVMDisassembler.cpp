@@ -28,10 +28,10 @@ class AVMDisassembler final : public MCDisassembler {
   }
 
   static bool decodeRR(MCInst &MI, uint8_t RR) {
-    if (RR & 0x88)
+    if (RR & 0x11)
       return false;
-    addReg(MI, reg((RR >> 4) & 7));
-    addReg(MI, reg(RR & 7));
+    addReg(MI, reg((RR >> 5) & 7));
+    addReg(MI, reg((RR >> 1) & 7));
     return true;
   }
 
@@ -70,7 +70,22 @@ public:
       MI.setOpcode(AVM::ST16C); addReg(MI, compact((Op >> 2) & 3));
       addReg(MI, compact(Op & 3)); Size = 1; return Success;
     }
-    if (Op <= 0x6f) { Size = 1; return Fail; }
+    if (Op <= 0x57) {
+      MI.setOpcode(AVM::AND16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      Size = 1; return Success;
+    }
+    if (Op <= 0x5f) {
+      MI.setOpcode(AVM::OR16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      Size = 1; return Success;
+    }
+    if (Op <= 0x67) {
+      MI.setOpcode(AVM::XOR16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      Size = 1; return Success;
+    }
+    if (Op <= 0x6f) {
+      MI.setOpcode(AVM::BIC16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      Size = 1; return Success;
+    }
     if (Op <= 0x77) {
       MI.setOpcode(AVM::PUSH16); addReg(MI, reg(Op & 7)); Size = 1; return Success;
     }
@@ -100,17 +115,31 @@ public:
     if (Op <= 0xcf || (Op >= 0xd0 && Op <= 0xdf)) {
       bool Eq = Op < 0xd0;
       unsigned N = Op & 0xf;
-      int64_t Disp = N < 8 ? static_cast<int64_t>(N) - 8
+      int64_t Disp = N < 8 ? static_cast<int64_t>(N) - 9
                             : static_cast<int64_t>(N) - 7;
       MI.setOpcode(Eq ? AVM::BEQ_SHORT : AVM::BNE_SHORT);
       addImm(MI, Disp); Size = 1; return Success;
     }
-    if (Op <= 0xe7) {
-      MI.setOpcode(AVM::INC16); addReg(MI, reg(Op & 7)); Size = 1; return Success;
+    if (Op == 0xe4) {
+      if (Bytes.size() < 2) return Fail;
+      uint8_t X = Bytes[1]; MI.setOpcode(AVM::CMPI6);
+      addReg(MI, compact(X & 3)); addImm(MI, static_cast<int8_t>(X) >> 2);
+      Size = 2; return Success;
     }
-    if (Op <= 0xef) {
-      MI.setOpcode(AVM::DEC16); addReg(MI, reg(Op & 7)); Size = 1; return Success;
+    if (Op >= 0xe5 && Op <= 0xe9) {
+      if (Bytes.size() < 2) return Fail;
+      unsigned O = Op == 0xe5 ? AVM::JMP_REL8 : Op == 0xe6 ? AVM::CALL_REL8
+                   : Op == 0xe7 ? AVM::ADJSP : Op == 0xe8 ? AVM::LDPBI : AVM::SYS;
+      MI.setOpcode(O); addImm(MI, Op >= 0xe8 ? Bytes[1] : static_cast<int8_t>(Bytes[1]));
+      Size = 2; return Success;
     }
+    if (Op == 0xea || Op == 0xeb) {
+      if (Bytes.size() < 3) return Fail;
+      MI.setOpcode(Op == 0xea ? AVM::JMP16 : AVM::CALL16);
+      addImm(MI, Bytes[1] | uint16_t(Bytes[2]) << 8); Size = 3; return Success;
+    }
+    if (Op == 0xec) { MI.setOpcode(AVM::NOP); Size = 1; return Success; }
+    if (Op <= 0xef) { Size = 1; return Fail; }
     if (Op <= 0xf3) {
       if (Bytes.size() < 2) return Fail;
       MI.setOpcode(AVM::LDI8C); addReg(MI, compact(Op & 3)); addImm(MI, Bytes[1]);
@@ -269,8 +298,8 @@ private:
           AVM::LD16_DISP, AVM::ST16_DISP};
       MI.setOpcode(Ops[S]);
       uint8_t RR = B[2];
-      if (RR & 0x88) { Size = 3; return Fail; }
-      MCRegister D = reg((RR >> 4) & 7), A = reg(RR & 7);
+      if (RR & 0x11) { Size = 3; return Fail; }
+      MCRegister D = reg((RR >> 5) & 7), A = reg((RR >> 1) & 7);
       bool Store = S == 1 || S == 3 || S == 5 || S == 7 || S == 10 || S == 12;
       bool Disp = S >= 8;
       if (Disp && B.size() < 4) return Fail;
