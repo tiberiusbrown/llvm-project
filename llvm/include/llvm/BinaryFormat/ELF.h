@@ -202,6 +202,7 @@ enum {
   EM_HUANY = 81,         // Harvard University machine-independent object files
   EM_PRISM = 82,         // SiTera Prism
   EM_AVR = 83,           // Atmel AVR 8-bit microcontroller
+  EM_AVM = 0x4156,       // Arduboy Virtual Machine (private development value)
   EM_FR30 = 84,          // Fujitsu FR30
   EM_D10V = 85,          // Mitsubishi D10V
   EM_D30V = 86,          // Mitsubishi D30V
@@ -516,6 +517,11 @@ enum : unsigned {
 // ELF Relocation types for AVR
 enum {
 #include "ELFRelocs/AVR.def"
+};
+
+// ELF relocations for the Arduboy Virtual Machine.
+enum {
+#include "ELFRelocs/AVM.def"
 };
 
 // Mips Specific e_flags

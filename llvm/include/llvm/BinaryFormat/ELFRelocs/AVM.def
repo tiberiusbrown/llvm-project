@@ -1,0 +1,14 @@
+// ELF relocations for the Arduboy Virtual Machine.
+//
+// This is a private development e_machine and relocation namespace.  The
+// values are deliberately kept small and stable so early objects remain
+// readable while the target is experimental.
+ELF_RELOC(R_AVM_NONE,       0)
+ELF_RELOC(R_AVM_DATA16,     1)
+ELF_RELOC(R_AVM_PROG24,     2)
+ELF_RELOC(R_AVM_PROG_LO16,  3)
+ELF_RELOC(R_AVM_PROG_HI8,   4)
+ELF_RELOC(R_AVM_PCREL8,     5)
+ELF_RELOC(R_AVM_BANK16,     6)
+ELF_RELOC(R_AVM_FAR24,      7)
+ELF_RELOC(R_AVM_RELAX,      8)

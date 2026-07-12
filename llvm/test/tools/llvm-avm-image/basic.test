@@ -1,0 +1,21 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm-unknown-arduboyfx -filetype=obj %t/program.s -o %t/program.o
+# RUN: llvm-avm-image create %t/program.o -o %t/program.bin
+# RUN: llvm-avm-image validate %t/program.bin | FileCheck %s --check-prefix=VALID
+# RUN: llvm-avm-image inspect %t/program.bin | FileCheck %s --check-prefix=INSPECT
+
+# VALID: valid AVM image
+# INSPECT: AVM image
+# INSPECT: runtimeVersion: 1
+# INSPECT: entryPoint: 0x000100
+# INSPECT: dataSize: 0
+# INSPECT: staticSize: 0
+# INSPECT: headerCrc32: 0x
+
+#--- program.s
+.text
+.globl _start
+_start:
+  ldi8 c0, 42
+  nop
+  sys 0

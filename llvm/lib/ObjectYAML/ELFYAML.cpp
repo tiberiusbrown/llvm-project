@@ -261,6 +261,7 @@ void ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(
   ECase(EM_HUANY);
   ECase(EM_PRISM);
   ECase(EM_AVR);
+  ECase(EM_AVM);
   ECase(EM_FR30);
   ECase(EM_D10V);
   ECase(EM_D30V);
@@ -985,6 +986,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
     break;
   case ELF::EM_XTENSA:
 #include "llvm/BinaryFormat/ELFRelocs/Xtensa.def"
+    break;
+  case ELF::EM_AVM:
+#include "llvm/BinaryFormat/ELFRelocs/AVM.def"
     break;
   default:
     // Nothing to do.
