@@ -256,6 +256,10 @@ private:
     auto Unary = [&](unsigned Opcode, unsigned Base) -> DecodeStatus {
       MI.setOpcode(Opcode); addReg(MI, reg(S - Base)); Size = 2; return Success;
     };
+    auto PairUnary = [&](unsigned Opcode, unsigned Base) -> DecodeStatus {
+      MI.setOpcode(Opcode); addReg(MI, pair(S - Base));
+      Size = 2; return Success;
+    };
     static const unsigned UnaryOps[] = {AVM::NOT16, AVM::NEG16, AVM::INC16,
       AVM::DEC16, AVM::LSL16, AVM::LSR16, AVM::ASR16, AVM::LSR8,
       AVM::ASR8, 0, 0, AVM::SWAP8, AVM::GETSP, AVM::SETSP,
@@ -291,8 +295,10 @@ private:
     if (S < 0xc8) return Imm8(AVM::CMPI8, 0xc0);
     if (S < 0xd0) return Unary(AVM::JMPR, 0xc8);
     if (S < 0xd8) return Unary(AVM::CALLR, 0xd0);
-    if (S < 0xe0) return Unary(AVM::JMPP, 0xd8);
-    if (S < 0xe8) return Unary(AVM::CALLP, 0xe0);
+    if (S < 0xdc) return PairUnary(AVM::JMPP, 0xd8);
+    if (S < 0xe0) { Size = 2; return Fail; }
+    if (S < 0xe4) return PairUnary(AVM::CALLP, 0xe0);
+    if (S < 0xe8) { Size = 2; return Fail; }
     if (S < 0xec) return Unary(AVM::TST16, 0xe8);
     if (S < 0xf0) { Size = 2; return Fail; }
     if (S < 0xf4) return Unary(AVM::TST8, 0xf0);

@@ -513,8 +513,14 @@ public:
 
     case AVM::JMPR: emitF4Unary(MI, Out, 0xc8); return;
     case AVM::CALLR: emitF4Unary(MI, Out, 0xd0); return;
-    case AVM::JMPP: emitF4Unary(MI, Out, 0xd8); return;
-    case AVM::CALLP: emitF4Unary(MI, Out, 0xe0); return;
+    case AVM::JMPP:
+      emit8(Out, 0xe0);
+      emit8(Out, 0xd8 | pairIndex(MI, MI.getOperand(0).getReg()));
+      return;
+    case AVM::CALLP:
+      emit8(Out, 0xe0);
+      emit8(Out, 0xe0 | pairIndex(MI, MI.getOperand(0).getReg()));
+      return;
     case AVM::MTPB: emitF4Unary(MI, Out, 0x70); return;
     case AVM::MFPB: emitF4Unary(MI, Out, 0x78); return;
     case AVM::LDPBI: {

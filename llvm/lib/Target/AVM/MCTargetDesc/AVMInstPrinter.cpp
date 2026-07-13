@@ -244,6 +244,9 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::TST16C:
   case AVM::TST8C:
     OS << '\t'; CompactReg(0); break;
+  case AVM::JMPP:
+  case AVM::CALLP:
+    OS << '\t'; PairReg(0); break;
   case AVM::MOVC:
   case AVM::ADDC:
   case AVM::SUBC:
@@ -379,8 +382,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::SETSP:
   case AVM::JMPR:
   case AVM::CALLR:
-  case AVM::JMPP:
-  case AVM::CALLP:
   case AVM::MTPB:
   case AVM::MFPB:
     OS << '\t'; FullReg(0); break;

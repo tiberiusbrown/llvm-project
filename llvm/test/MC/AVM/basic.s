@@ -40,6 +40,16 @@ _start:
   lsr16v c0, c3
   asr16v c3, c3
   ld8_post c0, [c1]+
+  jmpr r7
+  callr r0
+  jmpp q0
+  jmpp q1
+  jmpp q2
+  jmpp q3
+  callp q0
+  callp q1
+  callp q2
+  callp q3
   cset r3, uge
   breq done
   nop
@@ -86,6 +96,16 @@ done:
 # DIS: lsr16v r4, r7
 # DIS: asr16v r7, r7
 # DIS: ld8_post r4, [r5]+
+# DIS: jmpr r7
+# DIS: callr r0
+# DIS: jmpp q0
+# DIS: jmpp q1
+# DIS: jmpp q2
+# DIS: jmpp q3
+# DIS: callp q0
+# DIS: callp q1
+# DIS: callp q2
+# DIS: callp q3
 # DIS: cset r3, uge
 # DIS: breq
 # DIS: nop
@@ -122,4 +142,14 @@ done:
 # ENC: lsr16v r4, r7{{.*}}encoding: [0xf4,0xd3]
 # ENC: asr16v r7, r7{{.*}}encoding: [0xf4,0xef]
 # ENC: ld8_post r4, [r5]+{{.*}}encoding: [0xfd,0x04,0x8a]
+# ENC: jmpr r7{{.*}}encoding: [0xe0,0xcf]
+# ENC: callr r0{{.*}}encoding: [0xe0,0xd0]
+# ENC: jmpp q0{{.*}}encoding: [0xe0,0xd8]
+# ENC: jmpp q1{{.*}}encoding: [0xe0,0xd9]
+# ENC: jmpp q2{{.*}}encoding: [0xe0,0xda]
+# ENC: jmpp q3{{.*}}encoding: [0xe0,0xdb]
+# ENC: callp q0{{.*}}encoding: [0xe0,0xe0]
+# ENC: callp q1{{.*}}encoding: [0xe0,0xe1]
+# ENC: callp q2{{.*}}encoding: [0xe0,0xe2]
+# ENC: callp q3{{.*}}encoding: [0xe0,0xe3]
 # ENC: cset r3, uge{{.*}}encoding: [0xe3,0xdb]

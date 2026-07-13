@@ -168,11 +168,13 @@ def LDSP16C   : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins CGPR16:$dst, AVMOffset
 def STSP8C    : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; }
 def STSP16C   : AVMInst<"stsp16 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; }
 
-// Indirect control and PB transfers.
+// Indirect control and PB transfers. JMPP/CALLP consume a canonical 24-bit
+// code pointer in an aligned pair: low register = bits 15:0, low byte of the
+// high register = bits 23:16, and high byte of the high register = zero.
 def JMPR  : AVMInst<"jmpr $target", 2, (ins GPR16:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
 def CALLR : AVMCallInst<"callr $target", 2, (ins GPR16:$target)>;
-def JMPP  : AVMInst<"jmpp $target", 2, (ins GPR16:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; let Uses = [PB]; }
-def CALLP : AVMCallInst<"callp $target", 2, (ins GPR16:$target)> { let Uses = [PB]; }
+def JMPP  : AVMInst<"jmpp $target", 2, (ins GPR32:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
+def CALLP : AVMCallInst<"callp $target", 2, (ins GPR32:$target)>;
 def MTPB  : AVMInst<"mtpb $src", 2, (ins GPR16:$src)> { let Defs = [PB]; }
 def MFPB  : AVMInst<"mfpb $dst", 2, (ins GPR16:$dst)> { let Uses = [PB]; }
 def LDPBI : AVMInst<"ldpbi $imm", 2, (ins AVMImm8:$imm)> { let Defs = [PB]; }

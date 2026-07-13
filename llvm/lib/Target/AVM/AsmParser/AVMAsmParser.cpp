@@ -465,6 +465,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
   }
 
+  bool parseOnePair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                    OperandVector &Operands) {
+    MCRegister Reg;
+    SMLoc End;
+    if (parsePairReg(Reg, nullptr, &End))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
   bool parseLogical(unsigned AccumulatorOpcode, unsigned CompactOpcode,
                     StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Dst, Src;
@@ -685,6 +697,8 @@ public:
     if (M == "mov16") return parseRegReg(AVM::MOV16_E3, AVM::MOV16_E3, Name, NameLoc, Operands);
     if (M == "mov8z") return parseMov8(AVM::MOV8Z, Name, NameLoc, Operands);
     if (M == "mov8s") return parseMov8(AVM::MOV8S, Name, NameLoc, Operands);
+    if (M == "jmpp") return parseOnePair(AVM::JMPP, Name, NameLoc, Operands);
+    if (M == "callp") return parseOnePair(AVM::CALLP, Name, NameLoc, Operands);
     if (M == "cset") return parseCSet(Name, NameLoc, Operands);
     if (M == "add") return parseRegReg(AVM::ADDC, AVM::ADD16, Name, NameLoc, Operands);
     if (M == "sub") return parseRegReg(AVM::SUBC, AVM::SUB16, Name, NameLoc, Operands);
@@ -750,7 +764,6 @@ public:
       .Case("asr8", AVM::ASR8).Case("swap8", AVM::SWAP8)
       .Case("getsp", AVM::GETSP).Case("setsp", AVM::SETSP)
       .Case("jmpr", AVM::JMPR).Case("callr", AVM::CALLR)
-      .Case("jmpp", AVM::JMPP).Case("callp", AVM::CALLP)
       .Case("mtpb", AVM::MTPB).Case("mfpb", AVM::MFPB)
       .Default(0);
     if (Unary) return parseOneReg(Unary, Name, NameLoc, Operands);
