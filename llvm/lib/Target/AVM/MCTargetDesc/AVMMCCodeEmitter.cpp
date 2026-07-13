@@ -60,6 +60,18 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     return R - 4;
   }
 
+  unsigned pairIndex(const MCInst &MI, MCRegister Reg) const {
+    switch (Reg.id()) {
+    case AVM::R0R1: return 0;
+    case AVM::R2R3: return 1;
+    case AVM::R4R5: return 2;
+    case AVM::R6R7: return 3;
+    default:
+      error(MI, "instruction requires aligned register pair q0-q3");
+      return 0;
+    }
+  }
+
   uint8_t rrSpec(const MCInst &MI, unsigned DstOp, unsigned SrcOp) const {
     unsigned D = regIndex(MI, MI.getOperand(DstOp).getReg());
     unsigned S = regIndex(MI, MI.getOperand(SrcOp).getReg());
@@ -185,6 +197,31 @@ public:
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &) const override {
     switch (MI.getOpcode()) {
+    case AVM::MOV32:
+    case AVM::ADD32:
+    case AVM::SUB32:
+    case AVM::AND32:
+    case AVM::OR32:
+    case AVM::XOR32:
+    case AVM::CMP32:
+    case AVM::SHL32V:
+    case AVM::LSR32V:
+    case AVM::ASR32V: {
+      unsigned Op = MI.getOpcode() == AVM::MOV32 ? 0
+                    : MI.getOpcode() == AVM::ADD32 ? 1
+                    : MI.getOpcode() == AVM::SUB32 ? 2
+                    : MI.getOpcode() == AVM::AND32 ? 3
+                    : MI.getOpcode() == AVM::OR32 ? 4
+                    : MI.getOpcode() == AVM::XOR32 ? 5
+                    : MI.getOpcode() == AVM::CMP32 ? 6
+                    : MI.getOpcode() == AVM::SHL32V ? 7
+                    : MI.getOpcode() == AVM::LSR32V ? 8 : 9;
+      unsigned D = pairIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = pairIndex(MI, MI.getOperand(1).getReg());
+      emit8(Out, 0xe1);
+      emit8(Out, (Op << 4) | (D << 2) | S);
+      return;
+    }
     case AVM::CLR: {
       unsigned R = compactIndex(MI, MI.getOperand(0).getReg());
       emit8(Out, (R << 2) | R);

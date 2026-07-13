@@ -49,6 +49,16 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(LDI8C, "ldi8");
   AVM_MNEMONIC(ADDNF, "add.nf");
   AVM_MNEMONIC(SUBNF, "sub.nf");
+  AVM_MNEMONIC(MOV32, "mov32");
+  AVM_MNEMONIC(ADD32, "add32");
+  AVM_MNEMONIC(SUB32, "sub32");
+  AVM_MNEMONIC(AND32, "and32");
+  AVM_MNEMONIC(OR32, "or32");
+  AVM_MNEMONIC(XOR32, "xor32");
+  AVM_MNEMONIC(CMP32, "cmp32");
+  AVM_MNEMONIC(SHL32V, "shl32v");
+  AVM_MNEMONIC(LSR32V, "lsr32v");
+  AVM_MNEMONIC(ASR32V, "asr32v");
   AVM_MNEMONIC(BREQ, "breq");
   AVM_MNEMONIC(BRNE, "brne");
   AVM_MNEMONIC(BRULT, "brult");
@@ -158,6 +168,10 @@ void AVMInstPrinter::printFullReg(MCRegister Reg, raw_ostream &OS) const {
   case AVM::B5: OS << "b5"; return;
   case AVM::B6: OS << "b6"; return;
   case AVM::B7: OS << "b7"; return;
+  case AVM::R0R1: OS << "q0"; return;
+  case AVM::R2R3: OS << "q1"; return;
+  case AVM::R4R5: OS << "q2"; return;
+  case AVM::R6R7: OS << "q3"; return;
   case AVM::SP: OS << "sp"; return;
   case AVM::FLAGS: OS << "flags"; return;
   case AVM::PB: OS << "pb"; return;
@@ -173,6 +187,16 @@ void AVMInstPrinter::printCompactReg(MCRegister Reg, raw_ostream &OS) const {
   case AVM::R6: OS << "c2"; return;
   case AVM::R7: OS << "c3"; return;
   default: printFullReg(Reg, OS); return;
+  }
+}
+
+void AVMInstPrinter::printPairReg(MCRegister Reg, raw_ostream &OS) const {
+  switch (Reg.id()) {
+  case AVM::R0R1: OS << "q0"; return;
+  case AVM::R2R3: OS << "q1"; return;
+  case AVM::R4R5: OS << "q2"; return;
+  case AVM::R6R7: OS << "q3"; return;
+  default: OS << "<bad-pair-reg>"; return;
   }
 }
 
@@ -202,6 +226,7 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   auto Op = [&](unsigned I) { printOperand(MI->getOperand(I), OS); };
   auto FullReg = [&](unsigned I) { printFullReg(MI->getOperand(I).getReg(), OS); };
   auto CompactReg = [&](unsigned I) { printCompactReg(MI->getOperand(I).getReg(), OS); };
+  auto PairReg = [&](unsigned I) { printPairReg(MI->getOperand(I).getReg(), OS); };
   auto SignedSuffix = [&](unsigned I) {
     const MCOperand &O = MI->getOperand(I);
     if (O.isImm() && O.getImm() < 0) {
@@ -228,6 +253,17 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::ADDNF:
   case AVM::SUBNF:
     OS << '\t'; CompactReg(0); OS << ", "; CompactReg(1); break;
+  case AVM::MOV32:
+  case AVM::ADD32:
+  case AVM::SUB32:
+  case AVM::AND32:
+  case AVM::OR32:
+  case AVM::XOR32:
+  case AVM::CMP32:
+  case AVM::SHL32V:
+  case AVM::LSR32V:
+  case AVM::ASR32V:
+    OS << '\t'; PairReg(0); OS << ", "; PairReg(1); break;
   case AVM::AND16:
   case AVM::OR16:
   case AVM::XOR16:

@@ -61,6 +61,28 @@ def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins CGPR16:$dst, AVMImm8:$imm)>;
 def ADDNF    : AVMInst<"add.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 def SUBNF    : AVMInst<"sub.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 
+// 0xE1 aligned 32-bit register-pair operations.
+def MOV32  : AVMInst<"mov32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def ADD32  : AVMInst<"add32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def SUB32  : AVMInst<"sub32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def AND32  : AVMInst<"and32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def OR32   : AVMInst<"or32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def XOR32  : AVMInst<"xor32 $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def CMP32  : AVMFlagDefInst<"cmp32 $lhs, $rhs", 2,
+                             (ins GPR32:$lhs, GPR32:$rhs)>;
+def SHL32V : AVMInst<"shl32v $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def LSR32V : AVMInst<"lsr32v $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+def ASR32V : AVMInst<"asr32v $dst, $src", 2,
+                      (ins GPR32:$dst, GPR32:$src)>;
+
 // 0xE3 full-register transfers and condition materialization.
 def MOV16_E3 : AVMInst<"mov16 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;

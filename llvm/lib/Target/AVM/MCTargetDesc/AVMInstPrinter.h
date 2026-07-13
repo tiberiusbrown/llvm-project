@@ -21,6 +21,7 @@ private:
   void printOperand(const MCOperand &Op, raw_ostream &OS) const;
   void printFullReg(MCRegister Reg, raw_ostream &OS) const;
   void printCompactReg(MCRegister Reg, raw_ostream &OS) const;
+  void printPairReg(MCRegister Reg, raw_ostream &OS) const;
 };
 
 } // namespace llvm

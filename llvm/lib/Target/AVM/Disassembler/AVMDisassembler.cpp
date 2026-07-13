@@ -19,6 +19,11 @@ class AVMDisassembler final : public MCDisassembler {
     return Regs[N & 7];
   }
   static MCRegister compact(unsigned N) { return reg(4 + (N & 3)); }
+  static MCRegister pair(unsigned N) {
+    static const MCRegister Regs[] = {AVM::R0R1, AVM::R2R3,
+                                      AVM::R4R5, AVM::R6R7};
+    return Regs[N & 3];
+  }
 
   static void addReg(MCInst &MI, MCRegister R) {
     MI.addOperand(MCOperand::createReg(R));
@@ -122,11 +127,12 @@ public:
     }
     if (Op == 0xe0)
       return decodeE0(MI, Size, Bytes);
+    if (Op == 0xe1)
+      return decodeE1(MI, Size, Bytes);
     if (Op == 0xe2)
       return decodeE2(MI, Size, Bytes);
     if (Op == 0xe3)
       return decodeE3(MI, Size, Bytes);
-    if (Op == 0xe1) { Size = 1; return Fail; }
     if (Op == 0xe4) {
       if (Bytes.size() < 2) return Fail;
       uint8_t X = Bytes[1]; MI.setOpcode(AVM::CMPI6);
@@ -181,6 +187,26 @@ public:
   }
 
 private:
+  DecodeStatus decodeE1(MCInst &MI, uint64_t &Size,
+                        ArrayRef<uint8_t> B) const {
+    if (B.size() < 2)
+      return Fail;
+    uint8_t S = B[1];
+    unsigned Op = S >> 4;
+    if (Op >= 10) {
+      Size = 2;
+      return Fail;
+    }
+    static const unsigned Ops[] = {
+        AVM::MOV32, AVM::ADD32, AVM::SUB32, AVM::AND32, AVM::OR32,
+        AVM::XOR32, AVM::CMP32, AVM::SHL32V, AVM::LSR32V, AVM::ASR32V};
+    MI.setOpcode(Ops[Op]);
+    addReg(MI, pair((S >> 2) & 3));
+    addReg(MI, pair(S & 3));
+    Size = 2;
+    return Success;
+  }
+
   DecodeStatus decodeE3(MCInst &MI, uint64_t &Size,
                         ArrayRef<uint8_t> B) const {
     if (B.size() < 2) return Fail;

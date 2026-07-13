@@ -100,6 +100,26 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parsePairReg(MCRegister &Reg, SMLoc *Start = nullptr,
+                    SMLoc *End = nullptr) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return Parser.Error(Tok.getLoc(), "expected AVM register pair q0-q3");
+    StringRef Name = Tok.getIdentifier();
+    Reg = StringSwitch<MCRegister>(Name.lower())
+              .Case("q0", AVM::R0R1).Case("q1", AVM::R2R3)
+              .Case("q2", AVM::R4R5).Case("q3", AVM::R6R7)
+              .Default(MCRegister());
+    if (!Reg)
+      return Parser.Error(Tok.getLoc(), "expected AVM register pair q0-q3");
+    if (Start)
+      *Start = Tok.getLoc();
+    if (End)
+      *End = Tok.getEndLoc();
+    Parser.Lex();
+    return false;
+  }
+
   bool parseAVMExpression(const MCExpr *&Expr) {
     if (Parser.getTok().is(AsmToken::Identifier) &&
         Parser.getLexer().peekTok().is(AsmToken::LParen)) {
@@ -275,6 +295,20 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
   }
 
+  bool parsePairPair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                     OperandVector &Operands) {
+    MCRegister Dst, Src;
+    SMLoc End;
+    if (parsePairReg(Dst) || Parser.parseComma() ||
+        parsePairReg(Src, nullptr, &End))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Dst));
+    Inst.addOperand(MCOperand::createReg(Src));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
   bool parseLogical(unsigned AccumulatorOpcode, unsigned CompactOpcode,
                     StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Dst, Src;
@@ -435,6 +469,9 @@ public:
 
   bool parseRegister(MCRegister &Reg, SMLoc &StartLoc,
                      SMLoc &EndLoc) override {
+    if (Parser.getTok().is(AsmToken::Identifier) &&
+        Parser.getTok().getIdentifier().starts_with_insensitive("q"))
+      return parsePairReg(Reg, &StartLoc, &EndLoc);
     return parseGPR(Reg, &StartLoc, &EndLoc);
   }
 
@@ -443,6 +480,11 @@ public:
     if (!Parser.getTok().is(AsmToken::Identifier))
       return ParseStatus::NoMatch;
     StringRef Name = Parser.getTok().getIdentifier();
+    if (Name.starts_with_insensitive("q")) {
+      if (parsePairReg(Reg, &StartLoc, &EndLoc))
+        return ParseStatus::Failure;
+      return ParseStatus::Success;
+    }
     if (!Name.starts_with_insensitive("r") &&
         !Name.starts_with_insensitive("c") &&
         !Name.starts_with_insensitive("b"))
@@ -482,6 +524,16 @@ public:
     if (M == "sub.nf") return parseRegReg(AVM::SUBNF, AVM::SUBNF, Name, NameLoc, Operands);
     if (M == "cmp16") return parseRegReg(AVM::CMP16C, AVM::CMP16, Name, NameLoc, Operands, true);
     if (M == "cmp8") return parseRegReg(AVM::CMP8C, AVM::CMP8, Name, NameLoc, Operands, true);
+
+    unsigned PairBinary = StringSwitch<unsigned>(M)
+      .Case("mov32", AVM::MOV32).Case("add32", AVM::ADD32)
+      .Case("sub32", AVM::SUB32).Case("and32", AVM::AND32)
+      .Case("or32", AVM::OR32).Case("xor32", AVM::XOR32)
+      .Case("cmp32", AVM::CMP32).Case("shl32v", AVM::SHL32V)
+      .Case("lsr32v", AVM::LSR32V).Case("asr32v", AVM::ASR32V)
+      .Default(0);
+    if (PairBinary)
+      return parsePairPair(PairBinary, Name, NameLoc, Operands);
 
     if (M == "ld8") return parseLoadStore(Name, NameLoc, Operands, true, false, false);
     if (M == "st8") return parseLoadStore(Name, NameLoc, Operands, false, false, false);

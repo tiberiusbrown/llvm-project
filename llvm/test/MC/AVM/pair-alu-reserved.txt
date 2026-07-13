@@ -1,0 +1,10 @@
+# RUN: not llvm-mc -triple=avm-unknown-arduboyfx -disassemble %s 2>&1 | FileCheck %s
+
+[0xe1,0xa0]
+[0xe1,0xbf]
+[0xe1,0xc5]
+[0xe1,0xdf]
+[0xe1,0xe8]
+[0xe1,0xff]
+
+# CHECK-COUNT-6: warning: invalid instruction encoding
