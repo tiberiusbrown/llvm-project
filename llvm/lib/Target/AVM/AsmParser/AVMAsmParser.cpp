@@ -1,4 +1,5 @@
 #include "MCTargetDesc/AVMMCTargetDesc.h"
+#include "MCTargetDesc/AVMMCExpr.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCExpr.h"
@@ -99,9 +100,35 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parseAVMExpression(const MCExpr *&Expr) {
+    if (Parser.getTok().is(AsmToken::Identifier) &&
+        Parser.getLexer().peekTok().is(AsmToken::LParen)) {
+      StringRef Name = Parser.getTok().getIdentifier();
+      std::optional<AVMMCExpr::VariantKind> Kind;
+      if (Name.equals_insensitive("prog_lo16"))
+        Kind = AVMMCExpr::VK_ProgLo16;
+      else if (Name.equals_insensitive("prog_hi8"))
+        Kind = AVMMCExpr::VK_ProgHi8;
+
+      if (Kind) {
+        Parser.Lex();
+        Parser.Lex();
+        const MCExpr *Inner = nullptr;
+        if (Parser.parseExpression(Inner))
+          return true;
+        if (Parser.parseToken(AsmToken::RParen,
+                              "expected ')' after AVM program modifier"))
+          return true;
+        Expr = AVMMCExpr::create(*Kind, Inner, getContext());
+        return false;
+      }
+    }
+    return Parser.parseExpression(Expr);
+  }
+
   bool parseExpressionOperand(MCInst &Inst) {
     const MCExpr *Expr = nullptr;
-    if (Parser.parseExpression(Expr))
+    if (parseAVMExpression(Expr))
       return true;
     addExpr(Inst, Expr);
     return false;

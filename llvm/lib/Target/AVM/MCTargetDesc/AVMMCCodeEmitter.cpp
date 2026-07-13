@@ -1,4 +1,5 @@
 #include "AVMFixupKinds.h"
+#include "AVMMCExpr.h"
 #include "AVMMCTargetDesc.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -6,6 +7,7 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include <cstdint>
 
@@ -140,7 +142,30 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
                    SmallVectorImpl<MCFixup> &Fixups, uint8_t Base) const {
     emit8(Out, 0xe0);
     emit8(Out, Base | regIndex(MI, MI.getOperand(0).getReg()));
-    uint64_t V = emitExprOrImm(MI, 1, 2, AVM::fixup_avm_data16, Fixups);
+    AVM::Fixups Kind = AVM::fixup_avm_data16;
+    if (MI.getOperand(1).isExpr()) {
+      if (const auto *Expr = dyn_cast<AVMMCExpr>(MI.getOperand(1).getExpr())) {
+        if (MI.getOpcode() != AVM::LDI16) {
+          error(MI, "prog_lo16 is valid only as an LDI16 immediate");
+          emit16(Out, 0);
+          return;
+        }
+        if (Expr->getVariantKind() != AVMMCExpr::VK_ProgLo16) {
+          error(MI, "symbolic LDI16 immediate requires prog_lo16(expression)");
+          emit16(Out, 0);
+          return;
+        }
+        int64_t Absolute;
+        if (Expr->getSubExpr()->evaluateAsAbsolute(Absolute)) {
+          if (!isUInt<24>(Absolute))
+            error(MI, "program address is out of 24-bit range");
+          emit16(Out, static_cast<uint64_t>(Absolute) & 0xffff);
+          return;
+        }
+        Kind = AVM::fixup_avm_prog_lo16;
+      }
+    }
+    uint64_t V = emitExprOrImm(MI, 1, 2, Kind, Fixups);
     if (MI.getOperand(1).isImm() && !isUInt<16>(V))
       error(MI, "16-bit immediate is out of range");
     emit16(Out, V);
@@ -416,9 +441,31 @@ public:
     case AVM::CALLP: emitF4Unary(MI, Out, 0xe0); return;
     case AVM::MTPB: emitF4Unary(MI, Out, 0x70); return;
     case AVM::MFPB: emitF4Unary(MI, Out, 0x78); return;
-    case AVM::LDPBI:
+    case AVM::LDPBI: {
       emit8(Out, 0xe8);
-      emit8(Out, getImm(MI, 0, 0, 255, "PB immediate")); return;
+      const MCOperand &Operand = MI.getOperand(0);
+      if (Operand.isExpr()) {
+        const auto *Expr = dyn_cast<AVMMCExpr>(Operand.getExpr());
+        if (!Expr || Expr->getVariantKind() != AVMMCExpr::VK_ProgHi8) {
+          error(MI, "symbolic LDPBI immediate requires prog_hi8(expression)");
+          emit8(Out, 0);
+          return;
+        }
+        int64_t Absolute;
+        if (Expr->getSubExpr()->evaluateAsAbsolute(Absolute)) {
+          if (!isUInt<24>(Absolute))
+            error(MI, "program address is out of 24-bit range");
+          emit8(Out, static_cast<uint64_t>(Absolute) >> 16);
+          return;
+        }
+        uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_prog_hi8,
+                                   Fixups);
+        emit8(Out, V);
+        return;
+      }
+      emit8(Out, getImm(MI, 0, 0, 255, "PB immediate"));
+      return;
+    }
     case AVM::JMP16:
     case AVM::CALL16: {
       emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xea : 0xeb);
