@@ -16,6 +16,7 @@ AVMLegalizerInfo::AVMLegalizerInfo(const AVMSubtarget &) {
   getActionDefinitionsBuilder(G_CONSTANT)
       .legalFor({s16, p0})
       .clampScalar(0, s16, s16);
+  getActionDefinitionsBuilder(G_GLOBAL_VALUE).legalFor({p0});
   getActionDefinitionsBuilder(G_ICMP)
       .legalForCartesianProduct({s16}, {s16, p0})
       .clampScalar(0, s16, s16)
@@ -26,11 +27,15 @@ AVMLegalizerInfo::AVMLegalizerInfo(const AVMSubtarget &) {
                                                                      s16);
   getActionDefinitionsBuilder({G_LOAD, G_STORE})
       .legalForTypesWithMemDesc(
-          {{s16, p0, s16, 1}, {s16, p0, s8, 1}, {p0, p0, s16, 1}})
+          {{s16, p0, s16, 1},
+           {s16, p0, s8, 1},
+           {s16, p0, s1, 1},
+           {p0, p0, s16, 1}})
       .minScalar(0, s16);
   getActionDefinitionsBuilder(G_PTR_ADD).legalFor({{p0, s16}});
   getActionDefinitionsBuilder(G_FRAME_INDEX).legalFor({p0});
-  getActionDefinitionsBuilder(G_FREEZE).legalFor({s16, p0});
+  getActionDefinitionsBuilder(G_FREEZE).legalFor({s1, s8, s16, p0});
+  getActionDefinitionsBuilder(G_SELECT).lower();
   getActionDefinitionsBuilder({G_ZEXT, G_SEXT, G_ANYEXT})
       .legalFor({{s16, s1}, {s16, s8}});
   getActionDefinitionsBuilder(G_TRUNC).legalFor({{s8, s16}, {s1, s16}});

@@ -11,6 +11,14 @@
 
 using namespace llvm;
 
+static const MCExpr *withOffset(const MCExpr *Expr, int64_t Offset,
+                                MCContext &Ctx) {
+  if (!Offset)
+    return Expr;
+  return MCBinaryExpr::createAdd(Expr, MCConstantExpr::create(Offset, Ctx),
+                                 Ctx);
+}
+
 namespace {
 class AVMAsmPrinter final : public AsmPrinter {
 public:
@@ -48,8 +56,9 @@ void AVMAsmPrinter::emitInstruction(const MachineInstr *MI) {
           MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), OutContext)));
       break;
     case MachineOperand::MO_GlobalAddress:
-      Out.addOperand(MCOperand::createExpr(
-          MCSymbolRefExpr::create(getSymbol(MO.getGlobal()), OutContext)));
+      Out.addOperand(MCOperand::createExpr(withOffset(
+          MCSymbolRefExpr::create(getSymbol(MO.getGlobal()), OutContext),
+          MO.getOffset(), OutContext)));
       break;
     case MachineOperand::MO_ExternalSymbol:
       Out.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(

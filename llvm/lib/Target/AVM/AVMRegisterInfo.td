@@ -72,4 +72,9 @@ def CGPR8  : RegisterClass<"AVM", [i8], 8, (add B4, B5, B6, B7)>;
 def GPR32  : RegisterClass<"AVM", [i32], 8,
                             (add R4R5, R6R7, R0R1, R2R3)>;
 
-def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)>;
+// SP is restored by the callee and CB is restored by control flow.  Keeping
+// them in the mask (while they remain reserved and therefore never spilled)
+// makes calls model the complete ABI rather than just the allocatable subset.
+def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)> {
+  let OtherPreserved = (add SP, CB);
+}

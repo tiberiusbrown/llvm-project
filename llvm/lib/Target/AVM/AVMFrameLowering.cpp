@@ -38,3 +38,16 @@ void AVMFrameLowering::emitEpilogue(MachineFunction &MF,
   emitAdjustment(MF, MBB, Where, static_cast<int>(Size),
                  MachineInstr::FrameDestroy);
 }
+
+MachineBasicBlock::iterator AVMFrameLowering::eliminateCallFramePseudoInstr(
+    MachineFunction &MF, MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator MI) const {
+  int Amount = static_cast<int>(MI->getOperand(0).getImm());
+  bool IsSetup = MI->getOpcode() == AVM::ADJCALLSTACKDOWN;
+  auto Next = std::next(MI);
+  emitAdjustment(MF, MBB, MI, IsSetup ? -Amount : Amount,
+                 IsSetup ? MachineInstr::FrameSetup
+                         : MachineInstr::FrameDestroy);
+  MI->eraseFromParent();
+  return Next;
+}

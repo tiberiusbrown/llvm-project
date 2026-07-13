@@ -81,8 +81,13 @@ bool AVMInstructionSelector::select(MachineInstr &I) {
     return true;
   }
 
-  if (!isPreISelGenericOpcode(I.getOpcode()))
+  if (!isPreISelGenericOpcode(I.getOpcode())) {
+    if (I.getOpcode() == AVM::GETSP_G) {
+      I.setDesc(TII.get(AVM::GETSP));
+      return constrain(I);
+    }
     return true;
+  }
 
   switch (I.getOpcode()) {
   case G_CONSTANT: {
@@ -91,6 +96,9 @@ bool AVMInstructionSelector::select(MachineInstr &I) {
     I.setDesc(TII.get(AVM::LDI16));
     return constrain(I);
   }
+  case G_GLOBAL_VALUE:
+    I.setDesc(TII.get(AVM::LDI16));
+    return constrain(I);
   case G_ADD:
   case G_PTR_ADD:
     I.setDesc(TII.get(AVM::ADDC));
@@ -154,7 +162,8 @@ bool AVMInstructionSelector::select(MachineInstr &I) {
     return constrain(I);
   case G_LOAD: {
     const MachineMemOperand &MMO = **I.memoperands_begin();
-    I.setDesc(TII.get(MMO.getSizeInBits() == 8 ? AVM::LD8C : AVM::LD16C));
+    I.setDesc(TII.get(MMO.getMemoryType().getSizeInBits() <= 8 ? AVM::LD8C
+                                                               : AVM::LD16C));
     return constrain(I);
   }
   case G_STORE: {
@@ -162,7 +171,8 @@ bool AVMInstructionSelector::select(MachineInstr &I) {
     Register Address = I.getOperand(1).getReg();
     MachineMemOperand *MMO = *I.memoperands_begin();
     MachineInstr *Store =
-        MIB.buildInstr(MMO->getSizeInBits() == 8 ? AVM::ST8C : AVM::ST16C)
+        MIB.buildInstr(MMO->getMemoryType().getSizeInBits() <= 8 ? AVM::ST8C
+                                                                 : AVM::ST16C)
             .addUse(Address)
             .addUse(Value)
             .addMemOperand(MMO);

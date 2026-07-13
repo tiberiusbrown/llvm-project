@@ -21,6 +21,7 @@ AVMSubtarget::AVMSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
   StringRef EffectiveCPU = CPU.empty() ? "generic" : CPU;
   ParseSubtargetFeatures(EffectiveCPU, EffectiveCPU, FS);
   CallLoweringInfo = std::make_unique<AVMCallLowering>(TLInfo);
+  InlineAsmInfo = std::make_unique<InlineAsmLowering>(&TLInfo);
   Legalizer = std::make_unique<AVMLegalizerInfo>(*this);
   auto *RBI = new AVMRegisterBankInfo(*getRegisterInfo());
   RegBankInfo.reset(RBI);

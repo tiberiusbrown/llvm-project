@@ -45,9 +45,12 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
   MachineFrameInfo &MFI = MF.getFrameInfo();
   int FI = MI->getOperand(FIOperandNum).getIndex();
   int64_t Offset = MFI.getObjectOffset(FI) + MFI.getStackSize() + SPAdj;
-  if (Offset < 0 || Offset > 255)
-    report_fatal_error(
-        "AVM stack slot offset is outside the encodable 0..255 range");
+  // Ordinary stack instructions encode an unsigned byte displacement.  A
+  // materialized frame address uses ADDI16, which is also how incoming stack
+  // arguments beyond a nearly full local frame remain addressable.
+  const int64_t MaxOffset = MI->getOpcode() == AVM::ADDI16 ? 65535 : 255;
+  if (Offset < 0 || Offset > MaxOffset)
+    report_fatal_error("AVM stack slot offset is outside the encodable range");
   MI->getOperand(FIOperandNum).ChangeToImmediate(Offset);
   return false;
 }

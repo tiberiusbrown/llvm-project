@@ -10,7 +10,9 @@ using namespace llvm;
 #include "AVMGenInstrInfo.inc"
 
 AVMInstrInfo::AVMInstrInfo(const AVMSubtarget &STI)
-    : AVMGenInstrInfo(STI, RI), RI() {}
+    : AVMGenInstrInfo(STI, RI, AVM::ADJCALLSTACKDOWN,
+                      AVM::ADJCALLSTACKUP),
+      RI() {}
 
 void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator MI,
@@ -34,7 +36,7 @@ void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
       MachinePointerInfo::getFixedStack(MF, FI), MachineMemOperand::MOStore,
       MFI.getObjectSize(FI), MFI.getObjectAlign(FI));
   unsigned Opc =
-      RC->hasSubClassEq(&AVM::GPR8RegClass) ? AVM::STSP8 : AVM::STSP16;
+      AVM::GPR8RegClass.hasSubClassEq(RC) ? AVM::STSP8 : AVM::STSP16;
   BuildMI(MBB, MI, DebugLoc(), get(Opc))
       .addFrameIndex(FI)
       .addReg(SrcReg, getKillRegState(IsKill))
@@ -54,7 +56,7 @@ void AVMInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       MachinePointerInfo::getFixedStack(MF, FI), MachineMemOperand::MOLoad,
       MFI.getObjectSize(FI), MFI.getObjectAlign(FI));
   unsigned Opc =
-      RC->hasSubClassEq(&AVM::GPR8RegClass) ? AVM::LDSP8 : AVM::LDSP16;
+      AVM::GPR8RegClass.hasSubClassEq(RC) ? AVM::LDSP8 : AVM::LDSP16;
   BuildMI(MBB, MI, DebugLoc(), get(Opc), DestReg)
       .addFrameIndex(FI)
       .addMemOperand(MMO)

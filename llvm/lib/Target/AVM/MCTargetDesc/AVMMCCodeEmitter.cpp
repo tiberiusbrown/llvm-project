@@ -215,7 +215,8 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       }
     }
     uint64_t V = emitExprOrImm(MI, 1, 2, Kind, Fixups);
-    if (MI.getOperand(1).isImm() && !isUInt<16>(V))
+    if (MI.getOperand(1).isImm() &&
+        !isUInt<16>(V) && !isInt<16>(MI.getOperand(1).getImm()))
       error(MI, "16-bit immediate is out of range");
     emit16(Out, V);
   }

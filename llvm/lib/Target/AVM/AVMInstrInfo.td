@@ -9,6 +9,7 @@ def AVMImm16  : Operand<i16>;
 def AVMImm24  : Operand<i32>;
 def AVMDisp8  : Operand<i16>;
 def AVMOffset : Operand<i16>;
+def AVMCallFrameAmount : Operand<i16>;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -17,6 +18,11 @@ class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let AsmString = Asm;
   let Size = Bytes;
   let isCodeGenOnly = 0;
+}
+class AVMPseudo<string Asm, dag Operands = (ins)>
+    : AVMInst<Asm, 0, Operands> {
+  let isPseudo = 1;
+  let isCodeGenOnly = 1;
 }
 
 class AVMFlagDefInst<string Asm, int Bytes, dag Operands = (ins)>
@@ -38,6 +44,22 @@ class AVMCallInst<string Asm, int Bytes, dag Operands>
   let isCall = 1;
   let Uses = [SP];
   let Defs = [SP];
+}
+
+// Call-frame pseudos keep PEI's SP adjustment tracking accurate if register
+// allocation inserts a spill between argument setup and the call.
+let Defs = [SP], Uses = [SP] in {
+  def ADJCALLSTACKDOWN : AVMPseudo<"# ADJCALLSTACKDOWN $amount",
+      (ins AVMCallFrameAmount:$amount, AVMCallFrameAmount:$align)>;
+  def ADJCALLSTACKUP : AVMPseudo<"# ADJCALLSTACKUP $amount",
+      (ins AVMCallFrameAmount:$amount, AVMCallFrameAmount:$align)>;
+}
+
+// Pre-isel form used by call lowering.  Its unclassified generic result is
+// constrained when the selector replaces it with the architectural GETSP.
+def GETSP_G : AVMPseudo<"# GETSP_G", (ins)> {
+  let OutOperandList = (outs unknown:$dst);
+  let Uses = [SP];
 }
 
 // Primary compact operations.

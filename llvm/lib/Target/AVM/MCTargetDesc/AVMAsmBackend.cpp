@@ -143,15 +143,17 @@ public:
     }
   }
 
-  unsigned getMinimumNopSize() const override { return 2; }
+  unsigned getMinimumNopSize() const override { return 1; }
   unsigned getMaximumNopSize(const MCSubtargetInfo &) const override {
     return 2;
   }
 
   bool writeNopData(raw_ostream &OS, uint64_t Count,
                     const MCSubtargetInfo *) const override {
-    if (Count & 1)
-      return false;
+    if (Count & 1) {
+      OS.write("\xec", 1);
+      --Count;
+    }
     while (Count) {
       OS.write("\xf4\xf3", 2);
       Count -= 2;

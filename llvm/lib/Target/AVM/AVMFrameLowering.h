@@ -12,9 +12,15 @@ public:
 
   void emitPrologue(MachineFunction &, MachineBasicBlock &) const override;
   void emitEpilogue(MachineFunction &, MachineBasicBlock &) const override;
+  MachineBasicBlock::iterator eliminateCallFramePseudoInstr(
+      MachineFunction &, MachineBasicBlock &,
+      MachineBasicBlock::iterator) const override;
 
 private:
   bool hasFPImpl(const MachineFunction &) const override { return false; }
+  bool hasReservedCallFrame(const MachineFunction &) const override {
+    return false;
+  }
 };
 
 } // namespace llvm

@@ -6,6 +6,7 @@
 #include "AVMInstrInfo.h"
 #include "llvm/CodeGen/GlobalISel/CallLowering.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
+#include "llvm/CodeGen/GlobalISel/InlineAsmLowering.h"
 #include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "llvm/CodeGen/RegisterBankInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -26,6 +27,7 @@ class AVMSubtarget final : public AVMGenSubtargetInfo {
   std::unique_ptr<InstructionSelector> InstSelector;
   std::unique_ptr<LegalizerInfo> Legalizer;
   std::unique_ptr<RegisterBankInfo> RegBankInfo;
+  std::unique_ptr<InlineAsmLowering> InlineAsmInfo;
 
 public:
   AVMSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
@@ -47,6 +49,9 @@ public:
   InstructionSelector *getInstructionSelector() const override;
   const LegalizerInfo *getLegalizerInfo() const override;
   const RegisterBankInfo *getRegBankInfo() const override;
+  const InlineAsmLowering *getInlineAsmLowering() const override {
+    return InlineAsmInfo.get();
+  }
 };
 
 } // namespace llvm

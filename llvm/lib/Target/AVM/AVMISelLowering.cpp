@@ -11,6 +11,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i8, &AVM::CGPR8RegClass);
   setStackPointerRegisterToSaveRestore(AVM::SP);
   setBooleanContents(ZeroOrOneBooleanContent);
-  setMinFunctionAlignment(Align(1));
+  // Far-control relocations require bit zero for the link bit.  Function
+  // symbols therefore have to be even before final layout is known.
+  setMinFunctionAlignment(Align(2));
   computeRegisterProperties(STI.getRegisterInfo());
 }

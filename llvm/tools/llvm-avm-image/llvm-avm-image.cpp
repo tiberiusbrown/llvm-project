@@ -298,7 +298,8 @@ static Error checkObjectRestrictions(const ObjectFile &Obj) {
     if (Name->empty() || Name->starts_with(".rel") ||
         Name->starts_with(".symtab") || Name->starts_with(".strtab") ||
         Name->starts_with(".shstrtab") || Name->starts_with(".debug") ||
-        *Name == ".comment" || *Name == ".note.GNU-stack")
+        *Name == ".comment" || *Name == ".note.GNU-stack" ||
+        *Name == ".llvm_addrsig")
       continue;
     if (Section.getSize() != 0)
       return bad(Twine("unsupported input section '") + *Name + "'");
