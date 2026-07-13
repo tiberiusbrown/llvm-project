@@ -143,11 +143,146 @@ static Expected<InputSection> findSection(const ObjectFile &Obj,
         return Contents.takeError();
       Result.Data.append(Contents->bytes_begin(), Contents->bytes_end());
     }
-    if (Section.relocation_begin() != Section.relocation_end())
-      return bad(Twine("unresolved relocations in ") + Wanted +
-                 " are unsupported by early image mode");
   }
   return Result;
+}
+
+struct SectionLayout {
+  StringRef Name;
+  uint64_t Address;
+  uint64_t Size;
+};
+
+static Expected<uint64_t>
+getSymbolAddress(const ObjectFile &Obj, const SymbolRef &Symbol,
+                 ArrayRef<SectionLayout> Layout) {
+  Expected<section_iterator> SI = Symbol.getSection();
+  if (!SI)
+    return SI.takeError();
+  if (*SI == Obj.section_end())
+    return bad("relocation refers to an undefined or absolute symbol");
+  Expected<StringRef> Name = (**SI).getName();
+  if (!Name)
+    return Name.takeError();
+  Expected<uint64_t> Offset = Symbol.getAddress();
+  if (!Offset)
+    return Offset.takeError();
+  for (const SectionLayout &Section : Layout)
+    if (Section.Name == *Name) {
+      if (*Offset > Section.Size)
+        return bad(Twine("symbol lies outside section '") + *Name + "'");
+      return Section.Address + *Offset;
+    }
+  return bad(Twine("relocation refers to unsupported section '") + *Name +
+             "'");
+}
+
+static Error applyRelocations(const ObjectFile &Obj, StringRef SectionName,
+                              MutableArrayRef<uint8_t> Data,
+                              ArrayRef<SectionLayout> Layout) {
+  for (SectionRef Section : Obj.sections()) {
+    if (Section.relocation_begin() == Section.relocation_end())
+      continue;
+    Expected<section_iterator> Relocated = Section.getRelocatedSection();
+    if (!Relocated)
+      return Relocated.takeError();
+    if (*Relocated == Obj.section_end())
+      return bad("relocation section has no relocated section");
+    Expected<StringRef> Name = (**Relocated).getName();
+    if (!Name)
+      return Name.takeError();
+    if (*Name != SectionName)
+      continue;
+
+    uint64_t SectionAddress = 0;
+    for (const SectionLayout &Entry : Layout)
+      if (Entry.Name == SectionName)
+        SectionAddress = Entry.Address;
+
+    for (RelocationRef Reloc : Section.relocations()) {
+      uint64_t Type = Reloc.getType();
+      uint64_t Offset = Reloc.getOffset();
+      unsigned Width = Type == ELF::R_AVM_PCREL8 ||
+                               Type == ELF::R_AVM_PROG_HI8
+                           ? 1
+                           : Type == ELF::R_AVM_DATA16 ||
+                                     Type == ELF::R_AVM_PROG_LO16 ||
+                                     Type == ELF::R_AVM_BANK16
+                                 ? 2
+                                 : 3;
+      if (Type == ELF::R_AVM_NONE || Type == ELF::R_AVM_RELAX)
+        continue;
+      if (Offset > Data.size() || Width > Data.size() - Offset)
+        return bad("relocation field extends beyond its input section");
+
+      symbol_iterator SymI = Reloc.getSymbol();
+      if (SymI == Obj.symbol_end())
+        return bad("relocation has no symbol");
+      Expected<uint64_t> SymbolAddress =
+          getSymbolAddress(Obj, *SymI, Layout);
+      if (!SymbolAddress)
+        return SymbolAddress.takeError();
+      Expected<int64_t> Addend = ELFRelocationRef(Reloc).getAddend();
+      if (!Addend)
+        return Addend.takeError();
+      int64_t SignedValue = static_cast<int64_t>(*SymbolAddress) + *Addend;
+      if (Type == ELF::R_AVM_PCREL8)
+        SignedValue -= static_cast<int64_t>(SectionAddress + Offset);
+      if (Type != ELF::R_AVM_PCREL8 && SignedValue < 0)
+        return bad("AVM relocation result is negative");
+      uint64_t Value = static_cast<uint64_t>(SignedValue);
+      uint8_t *Loc = Data.data() + Offset;
+
+      switch (Type) {
+      case ELF::R_AVM_DATA16:
+        if (!isUInt<16>(Value))
+          return bad("AVM data-space relocation is out of 16-bit range");
+        write16le(Loc, Value);
+        break;
+      case ELF::R_AVM_PROG24:
+        if (!isUInt<24>(Value))
+          return bad("AVM program-space relocation is out of 24-bit range");
+        Loc[0] = Value;
+        Loc[1] = Value >> 8;
+        Loc[2] = Value >> 16;
+        break;
+      case ELF::R_AVM_PROG_LO16:
+        if (!isUInt<24>(Value))
+          return bad("AVM program-space relocation is out of 24-bit range");
+        write16le(Loc, Value);
+        break;
+      case ELF::R_AVM_PROG_HI8:
+        if (!isUInt<24>(Value))
+          return bad("AVM program-space relocation is out of 24-bit range");
+        Loc[0] = Value >> 16;
+        break;
+      case ELF::R_AVM_BANK16:
+        if (!isUInt<16>(Value))
+          return bad("AVM same-bank target is out of 16-bit range");
+        write16le(Loc, Value);
+        break;
+      case ELF::R_AVM_FAR24: {
+        if (!isUInt<24>(Value))
+          return bad("AVM far target is out of 24-bit range");
+        if (Value & 1)
+          return bad("AVM far target must be two-byte aligned");
+        uint8_t Link = Loc[0] & 1;
+        Loc[0] = static_cast<uint8_t>(Value & 0xfe) | Link;
+        Loc[1] = Value >> 8;
+        Loc[2] = Value >> 16;
+        break;
+      }
+      case ELF::R_AVM_PCREL8:
+        if (!isInt<8>(SignedValue))
+          return bad("AVM relative displacement is out of signed 8-bit range");
+        Loc[0] = static_cast<uint8_t>(SignedValue);
+        break;
+      default:
+        return bad(Twine("unsupported AVM relocation type ") + Twine(Type));
+      }
+    }
+  }
+  return Error::success();
 }
 
 static Error checkObjectRestrictions(const ObjectFile &Obj) {
@@ -251,6 +386,19 @@ static Error createImage() {
   uint64_t FileSize = alignTo(PayloadEnd + 8, 0x100ull);
   if (FileSize / 256 > 0xffff)
     return bad("image exceeds tail page-count range");
+
+  const SectionLayout Layout[] = {
+      {".data", 0x100, Data->Size},
+      {".bss", 0x100 + Data->Size, Bss->Size},
+      {".text", ProgramStart, Text->Size},
+      {".rodata", ProgramStart + Text->Size, Rodata->Size},
+  };
+  if (Error E = applyRelocations(Obj, ".data", Data->Data, Layout))
+    return E;
+  if (Error E = applyRelocations(Obj, ".text", Text->Data, Layout))
+    return E;
+  if (Error E = applyRelocations(Obj, ".rodata", Rodata->Data, Layout))
+    return E;
 
   SmallVector<uint8_t> Image(FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + 256, 0);

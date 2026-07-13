@@ -73,6 +73,12 @@ public:
   void applyFixup(const MCFragment &F, const MCFixup &Fixup,
                   const MCValue &Target, uint8_t *Data, uint64_t Value,
                   bool IsResolved) override {
+    // Program addresses are not known until the image builder assigns logical
+    // addresses to the input sections.  Keep these fixups as relocations even
+    // when MC can resolve a local symbol to an input-section offset.
+    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_bank16 ||
+                       Fixup.getKind() == AVM::fixup_avm_far24))
+      IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)
       return;
