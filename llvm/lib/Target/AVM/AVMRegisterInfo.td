@@ -57,6 +57,9 @@ def CB    : AVMReg<11, "cb">;
 def GPR16  : RegisterClass<"AVM", [i16], 8,
                             (add R4, R5, R6, R7, R0, R1, R2, R3)>;
 def CGPR16 : RegisterClass<"AVM", [i16], 8, (add R4, R5, R6, R7)>;
+// Registers with dedicated E0 encodings after compact-register redundancies
+// have been removed.
+def NGPR16 : RegisterClass<"AVM", [i16], 8, (add R0, R1, R2, R3)>;
 // Operand classes for the split logical encodings.  The accumulator form has
 // a fixed c0/A destination, while the F4 form reserves destination c0/A.
 def AGPR16 : RegisterClass<"AVM", [i16], 8, (add R4)>;

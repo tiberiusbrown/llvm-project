@@ -38,9 +38,11 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(SUB16, "sub");
   AVM_MNEMONIC(CMP16C, "cmp16");
   AVM_MNEMONIC(CMP16, "cmp16");
+  AVM_MNEMONIC(TST16C, "tst16");
   AVM_MNEMONIC(TST16, "tst16");
   AVM_MNEMONIC(CMP8C, "cmp8");
   AVM_MNEMONIC(CMP8, "cmp8");
+  AVM_MNEMONIC(TST8C, "tst8");
   AVM_MNEMONIC(TST8, "tst8");
   AVM_MNEMONIC(BEQ_SHORT, "beq.s");
   AVM_MNEMONIC(BNE_SHORT, "bne.s");
@@ -74,8 +76,6 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(ASR16, "asr16");
   AVM_MNEMONIC(LSR8, "lsr8");
   AVM_MNEMONIC(ASR8, "asr8");
-  AVM_MNEMONIC(ZEXT8, "zext8");
-  AVM_MNEMONIC(SEXT8, "sext8");
   AVM_MNEMONIC(SWAP8, "swap8");
   AVM_MNEMONIC(GETSP, "getsp");
   AVM_MNEMONIC(SETSP, "setsp");
@@ -242,8 +242,8 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::RET:
     break;
   case AVM::CLR:
-  case AVM::TST16:
-  case AVM::TST8:
+  case AVM::TST16C:
+  case AVM::TST8C:
     OS << '\t'; CompactReg(0); break;
   case AVM::MOVC:
   case AVM::ADDC:
@@ -327,8 +327,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     OS << '\t'; FullReg(0); OS << ", [pb:"; FullReg(1); SignedSuffix(2); OS << ']'; break;
   case AVM::MOV16:
   case AVM::MOV16_E3:
-  case AVM::MOV8Z:
-  case AVM::MOV8S:
   case AVM::ADD16:
   case AVM::SUB16:
   case AVM::CMP16:
@@ -342,6 +340,9 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::SHL16V:
   case AVM::LSR16V:
   case AVM::ASR16V:
+    OS << '\t'; FullReg(0); OS << ", "; FullReg(1); break;
+  case AVM::MOV8Z:
+  case AVM::MOV8S:
     OS << '\t'; FullReg(0); OS << ", "; FullReg(1); break;
   case AVM::CSET: {
     static const char *Conditions[] = {"eq", "ne", "ult", "uge",
@@ -375,8 +376,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::ASR16:
   case AVM::LSR8:
   case AVM::ASR8:
-  case AVM::ZEXT8:
-  case AVM::SEXT8:
   case AVM::SWAP8:
   case AVM::GETSP:
   case AVM::SETSP:

@@ -19,6 +19,11 @@ class AVMDisassembler final : public MCDisassembler {
     return Regs[N & 7];
   }
   static MCRegister compact(unsigned N) { return reg(4 + (N & 3)); }
+  static MCRegister byteReg(unsigned N) {
+    static const MCRegister Regs[] = {AVM::B0, AVM::B1, AVM::B2, AVM::B3,
+                                      AVM::B4, AVM::B5, AVM::B6, AVM::B7};
+    return Regs[N & 7];
+  }
   static MCRegister pair(unsigned N) {
     static const MCRegister Regs[] = {AVM::R0R1, AVM::R2R3,
                                       AVM::R4R5, AVM::R6R7};
@@ -107,13 +112,13 @@ public:
     }
     if (Op <= 0xaf) {
       unsigned D = (Op >> 2) & 3, S = Op & 3;
-      MI.setOpcode(D == S ? AVM::TST16 : AVM::CMP16C);
+      MI.setOpcode(D == S ? AVM::TST16C : AVM::CMP16C);
       addReg(MI, compact(D)); if (D != S) addReg(MI, compact(S));
       Size = 1; return Success;
     }
     if (Op <= 0xbf) {
       unsigned D = (Op >> 2) & 3, S = Op & 3;
-      MI.setOpcode(D == S ? AVM::TST8 : AVM::CMP8C);
+      MI.setOpcode(D == S ? AVM::TST8C : AVM::CMP8C);
       addReg(MI, compact(D)); if (D != S) addReg(MI, compact(S));
       Size = 1; return Success;
     }
@@ -220,7 +225,7 @@ private:
       static const unsigned Ops[] = {AVM::MOV16_E3, AVM::MOV8Z, AVM::MOV8S};
       MI.setOpcode(Ops[Kind]);
       addReg(MI, reg((S >> 3) & 7));
-      addReg(MI, reg(S & 7));
+      addReg(MI, Kind == 0 ? reg(S & 7) : byteReg(S & 7));
     }
     Size = 2;
     return Success;
@@ -248,9 +253,18 @@ private:
     };
     static const unsigned UnaryOps[] = {AVM::NOT16, AVM::NEG16, AVM::INC16,
       AVM::DEC16, AVM::LSL16, AVM::LSR16, AVM::ASR16, AVM::LSR8,
-      AVM::ASR8, AVM::ZEXT8, AVM::SEXT8, AVM::SWAP8, AVM::GETSP,
-      AVM::SETSP, AVM::MTPB, AVM::MFPB};
-    if (S < 0x80) return Unary(UnaryOps[S >> 3], S & 0xf8);
+      AVM::ASR8, 0, 0, AVM::SWAP8, AVM::GETSP, AVM::SETSP,
+      AVM::MTPB, AVM::MFPB};
+    if (S < 0x20)
+      return Unary(UnaryOps[S >> 3], S & 0xf8);
+    if (S < 0x24)
+      return Unary(AVM::LSL16, 0x20);
+    if (S < 0x28) { Size = 2; return Fail; }
+    if (S < 0x48)
+      return Unary(UnaryOps[S >> 3], S & 0xf8);
+    if (S < 0x58) { Size = 2; return Fail; }
+    if (S < 0x80)
+      return Unary(UnaryOps[S >> 3], S & 0xf8);
     auto Imm16 = [&](unsigned Opcode, unsigned Base) -> DecodeStatus {
       if (B.size() < 4) return Fail; MI.setOpcode(Opcode);
       addReg(MI, reg(S - Base)); addImm(MI, B[2] | uint16_t(B[3]) << 8);
@@ -261,7 +275,8 @@ private:
       addReg(MI, reg(S - Base)); addImm(MI, B[2]); Size = 3; return Success;
     };
     if (S < 0x88) return Imm16(AVM::LDI16, 0x80);
-    if (S < 0x90) return Imm8(AVM::LDI8, 0x88);
+    if (S < 0x8c) return Imm8(AVM::LDI8, 0x88);
+    if (S < 0x90) { Size = 2; return Fail; }
     if (S < 0x98) return Imm16(AVM::ADDI16, 0x90);
     if (S < 0xa0) return Imm16(AVM::SUBI16, 0x98);
     if (S < 0xa8) return Imm16(AVM::ANDI16, 0xa0);
@@ -273,8 +288,10 @@ private:
     if (S < 0xd8) return Unary(AVM::CALLR, 0xd0);
     if (S < 0xe0) return Unary(AVM::JMPP, 0xd8);
     if (S < 0xe8) return Unary(AVM::CALLP, 0xe0);
-    if (S < 0xf0) return Unary(AVM::TST16, 0xe8);
-    if (S < 0xf8) return Unary(AVM::TST8, 0xf0);
+    if (S < 0xec) return Unary(AVM::TST16, 0xe8);
+    if (S < 0xf0) { Size = 2; return Fail; }
+    if (S < 0xf4) return Unary(AVM::TST8, 0xf0);
+    if (S < 0xf8) { Size = 2; return Fail; }
     Size = 2; return Fail;
   }
 

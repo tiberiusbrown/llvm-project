@@ -50,9 +50,9 @@ def POP16    : AVMInst<"pop16 $dst", 1, (ins GPR16:$dst)> { let mayLoad = 1; }
 def ADDC     : AVMFlagDefInst<"add $dst, $src", 1, (ins CGPR16:$dst, CGPR16:$src)>;
 def SUBC     : AVMFlagDefInst<"sub $dst, $src", 1, (ins CGPR16:$dst, CGPR16:$src)>;
 def CMP16C   : AVMFlagDefInst<"cmp16 $lhs, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)>;
-def TST16    : AVMFlagDefInst<"tst16 $src", 1, (ins CGPR16:$src)>;
+def TST16C   : AVMFlagDefInst<"tst16 $src", 1, (ins CGPR16:$src)>;
 def CMP8C    : AVMFlagDefInst<"cmp8 $lhs, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)>;
-def TST8     : AVMFlagDefInst<"tst8 $src", 1, (ins CGPR16:$src)>;
+def TST8C    : AVMFlagDefInst<"tst8 $src", 1, (ins CGPR16:$src)>;
 def BEQ_SHORT : AVMBranchInst<"beq.s $target", 1>;
 def BNE_SHORT : AVMBranchInst<"bne.s $target", 1>;
 def INC16    : AVMInst<"inc16 $dst", 2, (ins GPR16:$dst)>;
@@ -85,8 +85,8 @@ def ASR32V : AVMInst<"asr32v $dst, $src", 2,
 
 // 0xE3 full-register transfers and condition materialization.
 def MOV16_E3 : AVMInst<"mov16 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def MOV8S    : AVMInst<"mov8s $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR16:$dst, GPR8:$src)>;
+def MOV8S    : AVMInst<"mov8s $dst, $src", 2, (ins GPR16:$dst, GPR8:$src)>;
 def CSET     : AVMInst<"cset $dst, $cc", 2,
                         (ins GPR16:$dst, AVMImm8:$cc)> { let Uses = [FLAGS]; }
 
@@ -100,16 +100,14 @@ def BRSGE : AVMBranchInst<"brsge $target", 2>;
 def BRULE : AVMBranchInst<"brule $target", 2>;
 def BRUGT : AVMBranchInst<"brugt $target", 2>;
 
-// 0xF4 unary operations.
+// 0xE0 unary operations.
 def NOT16 : AVMInst<"not16 $dst", 2, (ins GPR16:$dst)>;
 def NEG16 : AVMInst<"neg16 $dst", 2, (ins GPR16:$dst)>;
-def LSL16 : AVMInst<"lsl16 $dst", 2, (ins GPR16:$dst)>;
+def LSL16 : AVMInst<"lsl16 $dst", 2, (ins NGPR16:$dst)>;
 def LSR16 : AVMInst<"lsr16 $dst", 2, (ins GPR16:$dst)>;
 def ASR16 : AVMInst<"asr16 $dst", 2, (ins GPR16:$dst)>;
 def LSR8  : AVMInst<"lsr8 $dst", 2, (ins GPR16:$dst)>;
 def ASR8  : AVMInst<"asr8 $dst", 2, (ins GPR16:$dst)>;
-def ZEXT8 : AVMInst<"zext8 $dst", 2, (ins GPR16:$dst)>;
-def SEXT8 : AVMInst<"sext8 $dst", 2, (ins GPR16:$dst)>;
 def SWAP8 : AVMInst<"swap8 $dst", 2, (ins GPR16:$dst)>;
 def GETSP : AVMInst<"getsp $dst", 2, (ins GPR16:$dst)>;
 def SETSP : AVMInst<"setsp $src", 2, (ins GPR16:$src)>;
@@ -141,9 +139,9 @@ def SHL16V : AVMInst<"shl16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 def LSR16V : AVMInst<"lsr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 def ASR16V : AVMInst<"asr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 
-// 0xF4 immediate operations.
+// 0xE0 immediate operations.
 def LDI16  : AVMInst<"ldi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
-def LDI8   : AVMInst<"ldi8 $dst, $imm", 3, (ins GPR16:$dst, AVMImm8:$imm)>;
+def LDI8   : AVMInst<"ldi8 $dst, $imm", 3, (ins NGPR16:$dst, AVMImm8:$imm)>;
 def ADDI16 : AVMInst<"addi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def SUBI16 : AVMInst<"subi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def ANDI16 : AVMInst<"andi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
@@ -151,6 +149,11 @@ def ORI16  : AVMInst<"ori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def XORI16 : AVMInst<"xori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def CMPI16 : AVMFlagDefInst<"cmpi16 $src, $imm", 4, (ins GPR16:$src, AVMImm16:$imm)>;
 def CMPI8  : AVMFlagDefInst<"cmpi8 $src, $imm", 3, (ins GPR16:$src, AVMImm8:$imm)>;
+
+// E0 tests exist only for r0-r3. Compact tests use the diagonal primary
+// compare encodings represented by TST16C/TST8C above.
+def TST16 : AVMFlagDefInst<"tst16 $src", 2, (ins NGPR16:$src)>;
+def TST8  : AVMFlagDefInst<"tst8 $src", 2, (ins NGPR16:$src)>;
 
 // Relocated core operations and compact stack forms.
 def MOV16     : AVMInst<"mov $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;

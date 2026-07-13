@@ -252,10 +252,18 @@ public:
         error(MI, "compact self-compare encodes TST16; use full CMP16");
       emit8(Out, 0xa0 | (D << 2) | S); return;
     }
+    case AVM::TST16C: {
+      unsigned C = compactIndex(MI, MI.getOperand(0).getReg());
+      emit8(Out, 0xa0 | (C << 2) | C);
+      return;
+    }
     case AVM::TST16: {
       unsigned R = regIndex(MI, MI.getOperand(0).getReg());
-      if (R >= 4) { unsigned C = R - 4; emit8(Out, 0xa0 | (C << 2) | C); }
-      else { emit8(Out, 0xe0); emit8(Out, 0xe8 | R); }
+      if (R >= 4) {
+        error(MI, "E0 TST16 requires r0-r3");
+        return;
+      }
+      emit8(Out, 0xe0); emit8(Out, 0xe8 | R);
       return;
     }
     case AVM::CMP8C: {
@@ -265,10 +273,18 @@ public:
         error(MI, "compact self-compare encodes TST8; use full CMP8");
       emit8(Out, 0xb0 | (D << 2) | S); return;
     }
+    case AVM::TST8C: {
+      unsigned C = compactIndex(MI, MI.getOperand(0).getReg());
+      emit8(Out, 0xb0 | (C << 2) | C);
+      return;
+    }
     case AVM::TST8: {
       unsigned R = regIndex(MI, MI.getOperand(0).getReg());
-      if (R >= 4) { unsigned C = R - 4; emit8(Out, 0xb0 | (C << 2) | C); }
-      else { emit8(Out, 0xe0); emit8(Out, 0xf0 | R); }
+      if (R >= 4) {
+        error(MI, "E0 TST8 requires r0-r3");
+        return;
+      }
+      emit8(Out, 0xe0); emit8(Out, 0xf0 | R);
       return;
     }
     case AVM::BEQ_SHORT:
@@ -349,13 +365,18 @@ public:
 
     case AVM::NOT16: emitF4Unary(MI, Out, 0x00); return;
     case AVM::NEG16: emitF4Unary(MI, Out, 0x08); return;
-    case AVM::LSL16: emitF4Unary(MI, Out, 0x20); return;
+    case AVM::LSL16: {
+      unsigned R = regIndex(MI, MI.getOperand(0).getReg());
+      if (R >= 4) {
+        error(MI, "E0 LSL16 requires r0-r3; use ADD.NF cN,cN");
+        return;
+      }
+      emit8(Out, 0xe0); emit8(Out, 0x20 | R); return;
+    }
     case AVM::LSR16: emitF4Unary(MI, Out, 0x28); return;
     case AVM::ASR16: emitF4Unary(MI, Out, 0x30); return;
     case AVM::LSR8: emitF4Unary(MI, Out, 0x38); return;
     case AVM::ASR8: emitF4Unary(MI, Out, 0x40); return;
-    case AVM::ZEXT8: emitF4Unary(MI, Out, 0x48); return;
-    case AVM::SEXT8: emitF4Unary(MI, Out, 0x50); return;
     case AVM::SWAP8: emitF4Unary(MI, Out, 0x58); return;
     case AVM::GETSP: emitF4Unary(MI, Out, 0x60); return;
     case AVM::SETSP: emitF4Unary(MI, Out, 0x68); return;
@@ -407,7 +428,13 @@ public:
     }
 
     case AVM::LDI16: emitF4Imm16(MI, Out, Fixups, 0x80); return;
-    case AVM::LDI8: emitF4Imm8(MI, Out, Fixups, 0x88); return;
+    case AVM::LDI8: {
+      if (regIndex(MI, MI.getOperand(0).getReg()) >= 4) {
+        error(MI, "E0 LDI8 requires r0-r3; use the compact primary form");
+        return;
+      }
+      emitF4Imm8(MI, Out, Fixups, 0x88); return;
+    }
     case AVM::ADDI16: emitF4Imm16(MI, Out, Fixups, 0x90); return;
     case AVM::SUBI16: emitF4Imm16(MI, Out, Fixups, 0x98); return;
     case AVM::ANDI16: emitF4Imm16(MI, Out, Fixups, 0xa0); return;

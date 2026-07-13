@@ -100,6 +100,28 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  static bool isWord(MCRegister Reg) {
+    return Reg == AVM::R0 || Reg == AVM::R1 || Reg == AVM::R2 ||
+           Reg == AVM::R3 || Reg == AVM::R4 || Reg == AVM::R5 ||
+           Reg == AVM::R6 || Reg == AVM::R7;
+  }
+
+  static bool isByte(MCRegister Reg) {
+    return Reg == AVM::B0 || Reg == AVM::B1 || Reg == AVM::B2 ||
+           Reg == AVM::B3 || Reg == AVM::B4 || Reg == AVM::B5 ||
+           Reg == AVM::B6 || Reg == AVM::B7;
+  }
+
+  static MCRegister lowByte(MCRegister Reg) {
+    static const MCRegister Bytes[] = {AVM::B0, AVM::B1, AVM::B2, AVM::B3,
+                                       AVM::B4, AVM::B5, AVM::B6, AVM::B7};
+    unsigned Index = Reg == AVM::R0 ? 0 : Reg == AVM::R1 ? 1
+                     : Reg == AVM::R2 ? 2 : Reg == AVM::R3 ? 3
+                     : Reg == AVM::R4 ? 4 : Reg == AVM::R5 ? 5
+                     : Reg == AVM::R6 ? 6 : 7;
+    return Bytes[Index];
+  }
+
   bool parsePairReg(MCRegister &Reg, SMLoc *Start = nullptr,
                     SMLoc *End = nullptr) {
     const AsmToken &Tok = Parser.getTok();
@@ -231,6 +253,65 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
   }
 
+  bool parseTest(unsigned CompactOpcode, unsigned FullOpcode, StringRef Name,
+                 SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Reg;
+    SMLoc End;
+    if (parseGPR(Reg, nullptr, &End))
+      return true;
+    if (!isWord(Reg))
+      return error(NameLoc, "test requires a 16-bit register");
+    MCInst Inst;
+    Inst.setOpcode(isCompact(Reg) ? CompactOpcode : FullOpcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseLSL16(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Reg;
+    SMLoc End;
+    if (parseGPR(Reg, nullptr, &End))
+      return true;
+    if (!isWord(Reg))
+      return error(NameLoc, "LSL16 requires a 16-bit register");
+    MCInst Inst;
+    Inst.setOpcode(isCompact(Reg) ? AVM::ADDNF : AVM::LSL16);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    if (isCompact(Reg))
+      Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseExtendAlias(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Reg;
+    SMLoc End;
+    if (parseGPR(Reg, nullptr, &End))
+      return true;
+    if (!isWord(Reg))
+      return error(NameLoc, "extension alias requires a 16-bit register");
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createReg(lowByte(Reg)));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseMov8(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                 OperandVector &Operands) {
+    MCRegister Dst, Src;
+    SMLoc End;
+    if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
+      return true;
+    if (!isWord(Dst) || !isByte(Src))
+      return error(NameLoc, "MOV8Z/MOV8S require 'rD, bS' operands");
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Dst));
+    Inst.addOperand(MCOperand::createReg(Src));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
   bool parseRegReg(unsigned CompactOpcode, unsigned FullOpcode, StringRef Name,
                    SMLoc NameLoc, OperandVector &Operands,
                    bool DiagonalUsesFull = false) {
@@ -249,10 +330,12 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseRegImm(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                    OperandVector &Operands, bool CompactPreferred = false,
-                   unsigned CompactOpcode = 0) {
+                   unsigned CompactOpcode = 0, bool RequireWord = false) {
     MCRegister Reg;
     if (parseGPR(Reg) || Parser.parseComma())
       return true;
+    if (RequireWord && !isWord(Reg))
+      return error(NameLoc, "instruction requires a 16-bit register");
     MCInst Inst;
     Inst.setOpcode(CompactPreferred && isCompact(Reg) ? CompactOpcode : Opcode);
     Inst.addOperand(MCOperand::createReg(Reg));
@@ -510,13 +593,15 @@ public:
     if (M == "ret") return parseNoOperand(AVM::RET, Name, NameLoc, Operands);
     if (M == "nop") return parseNoOperand(AVM::NOP, Name, NameLoc, Operands);
     if (M == "clr") return parseOneReg(AVM::CLR, Name, NameLoc, Operands, true);
-    if (M == "tst16") return parseOneReg(AVM::TST16, Name, NameLoc, Operands);
-    if (M == "tst8") return parseOneReg(AVM::TST8, Name, NameLoc, Operands);
+    if (M == "tst16")
+      return parseTest(AVM::TST16C, AVM::TST16, Name, NameLoc, Operands);
+    if (M == "tst8")
+      return parseTest(AVM::TST8C, AVM::TST8, Name, NameLoc, Operands);
 
     if (M == "mov") return parseRegReg(AVM::MOVC, AVM::MOV16, Name, NameLoc, Operands, true);
     if (M == "mov16") return parseRegReg(AVM::MOV16_E3, AVM::MOV16_E3, Name, NameLoc, Operands);
-    if (M == "mov8z") return parseRegReg(AVM::MOV8Z, AVM::MOV8Z, Name, NameLoc, Operands);
-    if (M == "mov8s") return parseRegReg(AVM::MOV8S, AVM::MOV8S, Name, NameLoc, Operands);
+    if (M == "mov8z") return parseMov8(AVM::MOV8Z, Name, NameLoc, Operands);
+    if (M == "mov8s") return parseMov8(AVM::MOV8S, Name, NameLoc, Operands);
     if (M == "cset") return parseCSet(Name, NameLoc, Operands);
     if (M == "add") return parseRegReg(AVM::ADDC, AVM::ADD16, Name, NameLoc, Operands);
     if (M == "sub") return parseRegReg(AVM::SUBC, AVM::SUB16, Name, NameLoc, Operands);
@@ -575,16 +660,18 @@ public:
 
     unsigned Unary = StringSwitch<unsigned>(M)
       .Case("not16", AVM::NOT16).Case("neg16", AVM::NEG16)
-      .Case("lsl16", AVM::LSL16).Case("lsr16", AVM::LSR16)
+      .Case("lsr16", AVM::LSR16)
       .Case("asr16", AVM::ASR16).Case("lsr8", AVM::LSR8)
-      .Case("asr8", AVM::ASR8).Case("zext8", AVM::ZEXT8)
-      .Case("sext8", AVM::SEXT8).Case("swap8", AVM::SWAP8)
+      .Case("asr8", AVM::ASR8).Case("swap8", AVM::SWAP8)
       .Case("getsp", AVM::GETSP).Case("setsp", AVM::SETSP)
       .Case("jmpr", AVM::JMPR).Case("callr", AVM::CALLR)
       .Case("jmpp", AVM::JMPP).Case("callp", AVM::CALLP)
       .Case("mtpb", AVM::MTPB).Case("mfpb", AVM::MFPB)
       .Default(0);
     if (Unary) return parseOneReg(Unary, Name, NameLoc, Operands);
+    if (M == "lsl16") return parseLSL16(Name, NameLoc, Operands);
+    if (M == "zext8") return parseExtendAlias(AVM::MOV8Z, Name, NameLoc, Operands);
+    if (M == "sext8") return parseExtendAlias(AVM::MOV8S, Name, NameLoc, Operands);
 
     if (M == "and")
       return parseLogical(AVM::ANDA, AVM::AND16, Name, NameLoc, Operands);
@@ -602,7 +689,9 @@ public:
       .Case("asr16v", AVM::ASR16V).Default(0);
     if (Binary) return parseRegReg(Binary, Binary, Name, NameLoc, Operands);
 
-    if (M == "ldi8") return parseRegImm(AVM::LDI8, Name, NameLoc, Operands, true, AVM::LDI8C);
+    if (M == "ldi8")
+      return parseRegImm(AVM::LDI8, Name, NameLoc, Operands, true,
+                         AVM::LDI8C, true);
     unsigned RegImm = StringSwitch<unsigned>(M)
       .Case("ldi16", AVM::LDI16).Case("addi16", AVM::ADDI16)
       .Case("subi16", AVM::SUBI16).Case("andi16", AVM::ANDI16)
