@@ -295,17 +295,10 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (Mem.Kind != MemoryKind::Stack || !Mem.Disp || Mem.PostIncrement)
       return error(NameLoc, "expected stack-relative operand '[sp+offset]'");
 
-    bool Compact = false;
-    if (isCompact(Reg))
-      if (const auto *CE = dyn_cast<MCConstantExpr>(Mem.Disp))
-        Compact = CE->getValue() >= 0 && CE->getValue() <= 31;
-
     if (IsLoad)
-      Inst.setOpcode(Compact ? (IsWord ? AVM::LDSP16C : AVM::LDSP8C)
-                             : (IsWord ? AVM::LDSP16 : AVM::LDSP8));
+      Inst.setOpcode(IsWord ? AVM::LDSP16 : AVM::LDSP8);
     else
-      Inst.setOpcode(Compact ? (IsWord ? AVM::STSP16C : AVM::STSP8C)
-                             : (IsWord ? AVM::STSP16 : AVM::STSP8));
+      Inst.setOpcode(IsWord ? AVM::STSP16 : AVM::STSP8);
 
     if (IsLoad) {
       Inst.addOperand(MCOperand::createReg(Reg));

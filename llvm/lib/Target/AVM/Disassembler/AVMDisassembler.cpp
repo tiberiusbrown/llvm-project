@@ -304,9 +304,9 @@ private:
       bool Disp = S >= 8;
       if (Disp && B.size() < 4) return Fail;
       if (Store) {
-        addReg(MI, A);
-        if (Disp) addImm(MI, static_cast<int8_t>(B[3]));
         addReg(MI, D);
+        if (Disp) addImm(MI, static_cast<int8_t>(B[3]));
+        addReg(MI, A);
       } else {
         addReg(MI, D); addReg(MI, A);
         if (Disp) addImm(MI, static_cast<int8_t>(B[3]));

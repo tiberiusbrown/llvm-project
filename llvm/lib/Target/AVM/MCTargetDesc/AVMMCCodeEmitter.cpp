@@ -340,19 +340,19 @@ public:
       emit8(Out, getImm(MI, 0, 0, 255, "SYS service")); return;
 
     case AVM::LD8: emitFDReg(MI, Out, 0x00, 0, 1); return;
-    case AVM::ST8: emitFDReg(MI, Out, 0x01, 1, 0); return;
+    case AVM::ST8: emitFDReg(MI, Out, 0x01, 0, 1); return;
     case AVM::LD16: emitFDReg(MI, Out, 0x02, 0, 1); return;
-    case AVM::ST16: emitFDReg(MI, Out, 0x03, 1, 0); return;
+    case AVM::ST16: emitFDReg(MI, Out, 0x03, 0, 1); return;
     case AVM::LD8_POST:
       if (MI.getOperand(0).getReg() == MI.getOperand(1).getReg())
         error(MI, "postincrement load destination must differ from address");
       emitFDReg(MI, Out, 0x04, 0, 1); return;
-    case AVM::ST8_POST: emitFDReg(MI, Out, 0x05, 1, 0); return;
+    case AVM::ST8_POST: emitFDReg(MI, Out, 0x05, 0, 1); return;
     case AVM::LD16_POST:
       if (MI.getOperand(0).getReg() == MI.getOperand(1).getReg())
         error(MI, "postincrement load destination must differ from address");
       emitFDReg(MI, Out, 0x06, 0, 1); return;
-    case AVM::ST16_POST: emitFDReg(MI, Out, 0x07, 1, 0); return;
+    case AVM::ST16_POST: emitFDReg(MI, Out, 0x07, 0, 1); return;
     case AVM::LEA:
     case AVM::LD8_DISP:
     case AVM::LD16_DISP: {
@@ -366,7 +366,7 @@ public:
     case AVM::ST16_DISP: {
       uint8_t Sec = MI.getOpcode() == AVM::ST8_DISP ? 0x0a : 0x0c;
       emit8(Out, 0xfd); emit8(Out, Sec);
-      emit8(Out, rrSpec(MI, 2, 0));
+      emit8(Out, rrSpec(MI, 0, 2));
       emit8(Out, getImm(MI, 1, -128, 127, "memory displacement"));
       return;
     }
