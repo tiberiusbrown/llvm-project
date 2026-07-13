@@ -244,6 +244,24 @@ public:
       emit8(Out, ((MI.getOpcode() == AVM::ADDNF ? 1 : 2) << 4) | (D << 2) | S);
       return;
     }
+    case AVM::MOV16_E3:
+    case AVM::MOV8Z:
+    case AVM::MOV8S: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      unsigned Kind = MI.getOpcode() == AVM::MOV16_E3 ? 0
+                      : MI.getOpcode() == AVM::MOV8Z ? 1 : 2;
+      emit8(Out, 0xe3);
+      emit8(Out, (Kind << 6) | (D << 3) | S);
+      return;
+    }
+    case AVM::CSET: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned CC = getImm(MI, 1, 0, 7, "CSET condition code");
+      emit8(Out, 0xe3);
+      emit8(Out, 0xc0 | (CC << 3) | D);
+      return;
+    }
     case AVM::BREQ: case AVM::BRNE: case AVM::BRULT: case AVM::BRUGE:
     case AVM::BRSLT: case AVM::BRSGE: case AVM::BRULE: case AVM::BRUGT: {
       uint8_t Opcode = 0xf5 + (MI.getOpcode() - AVM::BREQ);

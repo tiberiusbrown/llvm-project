@@ -14,6 +14,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(CLR, "clr");
   AVM_MNEMONIC(MOVC, "mov");
   AVM_MNEMONIC(MOV16, "mov");
+  AVM_MNEMONIC(MOV16_E3, "mov16");
+  AVM_MNEMONIC(MOV8Z, "mov8z");
+  AVM_MNEMONIC(MOV8S, "mov8s");
+  AVM_MNEMONIC(CSET, "cset");
   AVM_MNEMONIC(LD8C, "ld8");
   AVM_MNEMONIC(LD8, "ld8");
   AVM_MNEMONIC(LD8_DISP, "ld8");
@@ -272,6 +276,9 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LDP16_DISP:
     OS << '\t'; FullReg(0); OS << ", [pb:"; FullReg(1); SignedSuffix(2); OS << ']'; break;
   case AVM::MOV16:
+  case AVM::MOV16_E3:
+  case AVM::MOV8Z:
+  case AVM::MOV8S:
   case AVM::ADD16:
   case AVM::SUB16:
   case AVM::CMP16:
@@ -290,6 +297,15 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LSR16V:
   case AVM::ASR16V:
     OS << '\t'; FullReg(0); OS << ", "; FullReg(1); break;
+  case AVM::CSET: {
+    static const char *Conditions[] = {"eq", "ne", "ult", "uge",
+                                       "slt", "sge", "ule", "ugt"};
+    OS << '\t'; FullReg(0); OS << ", ";
+    int64_t CC = MI->getOperand(1).getImm();
+    if (CC >= 0 && CC < 8) OS << Conditions[CC];
+    else Op(1);
+    break;
+  }
   case AVM::LDI16:
   case AVM::LDI8:
   case AVM::ADDI16:

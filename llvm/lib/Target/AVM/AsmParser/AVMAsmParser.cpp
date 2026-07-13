@@ -225,6 +225,29 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Name, NameLoc);
   }
 
+  bool parseCSet(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Dst;
+    if (parseGPR(Dst) || Parser.parseComma())
+      return true;
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected condition code");
+    std::string Lower = Tok.getIdentifier().lower();
+    int CC = StringSwitch<int>(Lower)
+      .Case("eq", 0).Case("ne", 1).Case("ult", 2).Case("uge", 3)
+      .Case("slt", 4).Case("sge", 5).Case("ule", 6).Case("ugt", 7)
+      .Default(-1);
+    if (CC < 0)
+      return error(Tok.getLoc(), "unknown AVM condition code");
+    SMLoc End = Tok.getEndLoc();
+    Parser.Lex();
+    MCInst Inst;
+    Inst.setOpcode(AVM::CSET);
+    Inst.addOperand(MCOperand::createReg(Dst));
+    Inst.addOperand(MCOperand::createImm(CC));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
   bool parseLoadStore(StringRef Name, SMLoc NameLoc, OperandVector &Operands,
                       bool IsLoad, bool IsWord, bool ExplicitPost) {
     MCInst Inst;
@@ -398,6 +421,10 @@ public:
     if (M == "tst8") return parseOneReg(AVM::TST8, Name, NameLoc, Operands);
 
     if (M == "mov") return parseRegReg(AVM::MOVC, AVM::MOV16, Name, NameLoc, Operands, true);
+    if (M == "mov16") return parseRegReg(AVM::MOV16_E3, AVM::MOV16_E3, Name, NameLoc, Operands);
+    if (M == "mov8z") return parseRegReg(AVM::MOV8Z, AVM::MOV8Z, Name, NameLoc, Operands);
+    if (M == "mov8s") return parseRegReg(AVM::MOV8S, AVM::MOV8S, Name, NameLoc, Operands);
+    if (M == "cset") return parseCSet(Name, NameLoc, Operands);
     if (M == "add") return parseRegReg(AVM::ADDC, AVM::ADD16, Name, NameLoc, Operands);
     if (M == "sub") return parseRegReg(AVM::SUBC, AVM::SUB16, Name, NameLoc, Operands);
     if (M == "add.nf") return parseRegReg(AVM::ADDNF, AVM::ADDNF, Name, NameLoc, Operands);

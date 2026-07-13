@@ -61,6 +61,13 @@ def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins CGPR16:$dst, AVMImm8:$imm)>;
 def ADDNF    : AVMInst<"add.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 def SUBNF    : AVMInst<"sub.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 
+// 0xE3 full-register transfers and condition materialization.
+def MOV16_E3 : AVMInst<"mov16 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def MOV8S    : AVMInst<"mov8s $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def CSET     : AVMInst<"cset $dst, $cc", 2,
+                        (ins GPR16:$dst, AVMImm8:$cc)> { let Uses = [FLAGS]; }
+
 // General conditional branches.
 def BREQ  : AVMBranchInst<"breq $target", 2>;
 def BRNE  : AVMBranchInst<"brne $target", 2>;
