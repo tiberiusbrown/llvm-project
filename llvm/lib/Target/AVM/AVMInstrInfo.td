@@ -36,7 +36,6 @@ class AVMBranchInst<string Asm, int Bytes>
 class AVMCallInst<string Asm, int Bytes, dag Operands>
     : AVMInst<Asm, Bytes, Operands> {
   let isCall = 1;
-  let Defs = [FLAGS, PB];
 }
 
 // Primary compact operations.
@@ -59,6 +58,8 @@ def BNE_SHORT : AVMBranchInst<"bne.s $target", 1>;
 def INC16    : AVMInst<"inc16 $dst", 2, (ins GPR16:$dst)>;
 def DEC16    : AVMInst<"dec16 $dst", 2, (ins GPR16:$dst)>;
 def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins CGPR16:$dst, AVMImm8:$imm)>;
+def ADDNF    : AVMInst<"add.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
+def SUBNF    : AVMInst<"sub.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 
 // General conditional branches.
 def BREQ  : AVMBranchInst<"breq $target", 2>;
@@ -71,13 +72,13 @@ def BRULE : AVMBranchInst<"brule $target", 2>;
 def BRUGT : AVMBranchInst<"brugt $target", 2>;
 
 // 0xF4 unary operations.
-def NOT16 : AVMFlagDefInst<"not16 $dst", 2, (ins GPR16:$dst)>;
-def NEG16 : AVMFlagDefInst<"neg16 $dst", 2, (ins GPR16:$dst)>;
-def LSL16 : AVMFlagDefInst<"lsl16 $dst", 2, (ins GPR16:$dst)>;
-def LSR16 : AVMFlagDefInst<"lsr16 $dst", 2, (ins GPR16:$dst)>;
-def ASR16 : AVMFlagDefInst<"asr16 $dst", 2, (ins GPR16:$dst)>;
-def LSR8  : AVMFlagDefInst<"lsr8 $dst", 2, (ins GPR16:$dst)>;
-def ASR8  : AVMFlagDefInst<"asr8 $dst", 2, (ins GPR16:$dst)>;
+def NOT16 : AVMInst<"not16 $dst", 2, (ins GPR16:$dst)>;
+def NEG16 : AVMInst<"neg16 $dst", 2, (ins GPR16:$dst)>;
+def LSL16 : AVMInst<"lsl16 $dst", 2, (ins GPR16:$dst)>;
+def LSR16 : AVMInst<"lsr16 $dst", 2, (ins GPR16:$dst)>;
+def ASR16 : AVMInst<"asr16 $dst", 2, (ins GPR16:$dst)>;
+def LSR8  : AVMInst<"lsr8 $dst", 2, (ins GPR16:$dst)>;
+def ASR8  : AVMInst<"asr8 $dst", 2, (ins GPR16:$dst)>;
 def ZEXT8 : AVMInst<"zext8 $dst", 2, (ins GPR16:$dst)>;
 def SEXT8 : AVMInst<"sext8 $dst", 2, (ins GPR16:$dst)>;
 def SWAP8 : AVMInst<"swap8 $dst", 2, (ins GPR16:$dst)>;
@@ -85,29 +86,29 @@ def GETSP : AVMInst<"getsp $dst", 2, (ins GPR16:$dst)>;
 def SETSP : AVMInst<"setsp $src", 2, (ins GPR16:$src)>;
 
 // 0xF4 binary operations.
-def AND16  : AVMFlagDefInst<"and $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def OR16   : AVMFlagDefInst<"or $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def XOR16  : AVMFlagDefInst<"xor $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def BIC16  : AVMFlagDefInst<"bic $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
+def AND16  : AVMInst<"and $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def OR16   : AVMInst<"or $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def XOR16  : AVMInst<"xor $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def BIC16  : AVMInst<"bic $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 def ADC16  : AVMFlagUseDefInst<"adc $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def SBC16  : AVMFlagUseDefInst<"sbc $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def CMP8   : AVMFlagDefInst<"cmp8 $lhs, $rhs", 3, (ins GPR16:$lhs, GPR16:$rhs)>;
 def CPC16  : AVMFlagUseDefInst<"cpc16 $lhs, $rhs", 3, (ins GPR16:$lhs, GPR16:$rhs)>;
-def MULU8  : AVMFlagDefInst<"mulu8 $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def MULS8  : AVMFlagDefInst<"muls8 $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def MULSU8 : AVMFlagDefInst<"mulsu8 $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def SHL16V : AVMFlagDefInst<"shl16v $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def LSR16V : AVMFlagDefInst<"lsr16v $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
-def ASR16V : AVMFlagDefInst<"asr16v $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
+def MULU8  : AVMInst<"mulu8 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def MULS8  : AVMInst<"muls8 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def MULSU8 : AVMInst<"mulsu8 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def SHL16V : AVMInst<"shl16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def LSR16V : AVMInst<"lsr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+def ASR16V : AVMInst<"asr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 
 // 0xF4 immediate operations.
 def LDI16  : AVMInst<"ldi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def LDI8   : AVMInst<"ldi8 $dst, $imm", 3, (ins GPR16:$dst, AVMImm8:$imm)>;
-def ADDI16 : AVMFlagDefInst<"addi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
-def SUBI16 : AVMFlagDefInst<"subi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
-def ANDI16 : AVMFlagDefInst<"andi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
-def ORI16  : AVMFlagDefInst<"ori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
-def XORI16 : AVMFlagDefInst<"xori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def ADDI16 : AVMInst<"addi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def SUBI16 : AVMInst<"subi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def ANDI16 : AVMInst<"andi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def ORI16  : AVMInst<"ori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def XORI16 : AVMInst<"xori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def CMPI16 : AVMFlagDefInst<"cmpi16 $src, $imm", 4, (ins GPR16:$src, AVMImm16:$imm)>;
 def CMPI8  : AVMFlagDefInst<"cmpi8 $src, $imm", 3, (ins GPR16:$src, AVMImm8:$imm)>;
 

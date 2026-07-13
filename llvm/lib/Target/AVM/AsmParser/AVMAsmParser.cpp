@@ -83,6 +83,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
               .Case("r6", AVM::R6).Case("r7", AVM::R7)
               .Case("c0", AVM::R4).Case("c1", AVM::R5)
               .Case("c2", AVM::R6).Case("c3", AVM::R7)
+              .Case("a", AVM::R4)
               .Case("b0", AVM::B0).Case("b1", AVM::B1)
               .Case("b2", AVM::B2).Case("b3", AVM::B3)
               .Case("b4", AVM::B4).Case("b5", AVM::B5)
@@ -393,12 +394,14 @@ public:
     if (M == "ret") return parseNoOperand(AVM::RET, Name, NameLoc, Operands);
     if (M == "nop") return parseNoOperand(AVM::NOP, Name, NameLoc, Operands);
     if (M == "clr") return parseOneReg(AVM::CLR, Name, NameLoc, Operands, true);
-    if (M == "tst16") return parseOneReg(AVM::TST16, Name, NameLoc, Operands, true);
-    if (M == "tst8") return parseOneReg(AVM::TST8, Name, NameLoc, Operands, true);
+    if (M == "tst16") return parseOneReg(AVM::TST16, Name, NameLoc, Operands);
+    if (M == "tst8") return parseOneReg(AVM::TST8, Name, NameLoc, Operands);
 
     if (M == "mov") return parseRegReg(AVM::MOVC, AVM::MOV16, Name, NameLoc, Operands, true);
     if (M == "add") return parseRegReg(AVM::ADDC, AVM::ADD16, Name, NameLoc, Operands);
     if (M == "sub") return parseRegReg(AVM::SUBC, AVM::SUB16, Name, NameLoc, Operands);
+    if (M == "add.nf") return parseRegReg(AVM::ADDNF, AVM::ADDNF, Name, NameLoc, Operands);
+    if (M == "sub.nf") return parseRegReg(AVM::SUBNF, AVM::SUBNF, Name, NameLoc, Operands);
     if (M == "cmp16") return parseRegReg(AVM::CMP16C, AVM::CMP16, Name, NameLoc, Operands, true);
     if (M == "cmp8") return parseRegReg(AVM::CMP8C, AVM::CMP8, Name, NameLoc, Operands, true);
 
@@ -456,8 +459,7 @@ public:
     unsigned Binary = StringSwitch<unsigned>(M)
       .Case("and", AVM::AND16).Case("or", AVM::OR16)
       .Case("xor", AVM::XOR16).Case("bic", AVM::BIC16)
-      .Case("adc", AVM::ADC16).Case("sbc", AVM::SBC16)
-      .Case("cpc16", AVM::CPC16).Case("mulu8", AVM::MULU8)
+      .Case("mulu8", AVM::MULU8)
       .Case("muls8", AVM::MULS8).Case("mulsu8", AVM::MULSU8)
       .Case("shl16v", AVM::SHL16V).Case("lsr16v", AVM::LSR16V)
       .Case("asr16v", AVM::ASR16V).Default(0);

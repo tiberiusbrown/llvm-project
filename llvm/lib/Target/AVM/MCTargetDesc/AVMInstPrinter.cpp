@@ -43,6 +43,8 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(INC16, "inc16");
   AVM_MNEMONIC(DEC16, "dec16");
   AVM_MNEMONIC(LDI8C, "ldi8");
+  AVM_MNEMONIC(ADDNF, "add.nf");
+  AVM_MNEMONIC(SUBNF, "sub.nf");
   AVM_MNEMONIC(BREQ, "breq");
   AVM_MNEMONIC(BRNE, "brne");
   AVM_MNEMONIC(BRULT, "brult");
@@ -215,6 +217,8 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::SUBC:
   case AVM::CMP16C:
   case AVM::CMP8C:
+  case AVM::ADDNF:
+  case AVM::SUBNF:
     OS << '\t'; CompactReg(0); OS << ", "; CompactReg(1); break;
   case AVM::LD8C:
   case AVM::LD16C:

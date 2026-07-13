@@ -123,7 +123,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
   void emitF4Imm8(const MCInst &MI, SmallVectorImpl<char> &Out,
                   SmallVectorImpl<MCFixup> &Fixups, uint8_t Base,
                   bool Signed = false) const {
-    emit8(Out, 0xf4);
+    emit8(Out, 0xe0);
     emit8(Out, Base | regIndex(MI, MI.getOperand(0).getReg()));
     const MCOperand &MO = MI.getOperand(1);
     if (MO.isExpr()) {
@@ -138,7 +138,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
   void emitF4Imm16(const MCInst &MI, SmallVectorImpl<char> &Out,
                    SmallVectorImpl<MCFixup> &Fixups, uint8_t Base) const {
-    emit8(Out, 0xf4);
+    emit8(Out, 0xe0);
     emit8(Out, Base | regIndex(MI, MI.getOperand(0).getReg()));
     uint64_t V = emitExprOrImm(MI, 1, 2, AVM::fixup_avm_data16, Fixups);
     if (MI.getOperand(1).isImm() && !isUInt<16>(V))
@@ -191,8 +191,10 @@ public:
       emit8(Out, 0xa0 | (D << 2) | S); return;
     }
     case AVM::TST16: {
-      unsigned R = compactIndex(MI, MI.getOperand(0).getReg());
-      emit8(Out, 0xa0 | (R << 2) | R); return;
+      unsigned R = regIndex(MI, MI.getOperand(0).getReg());
+      if (R >= 4) { unsigned C = R - 4; emit8(Out, 0xa0 | (C << 2) | C); }
+      else { emit8(Out, 0xe0); emit8(Out, 0xe8 | R); }
+      return;
     }
     case AVM::CMP8C: {
       unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
@@ -202,8 +204,10 @@ public:
       emit8(Out, 0xb0 | (D << 2) | S); return;
     }
     case AVM::TST8: {
-      unsigned R = compactIndex(MI, MI.getOperand(0).getReg());
-      emit8(Out, 0xb0 | (R << 2) | R); return;
+      unsigned R = regIndex(MI, MI.getOperand(0).getReg());
+      if (R >= 4) { unsigned C = R - 4; emit8(Out, 0xb0 | (C << 2) | C); }
+      else { emit8(Out, 0xe0); emit8(Out, 0xf0 | R); }
+      return;
     }
     case AVM::BEQ_SHORT:
     case AVM::BNE_SHORT: {
@@ -223,6 +227,14 @@ public:
     case AVM::LDI8C: {
       emit8(Out, 0xf0 | compactIndex(MI, MI.getOperand(0).getReg()));
       emit8(Out, getImm(MI, 1, 0, 255, "LDI8 immediate"));
+      return;
+    }
+    case AVM::ADDNF:
+    case AVM::SUBNF: {
+      unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = compactIndex(MI, MI.getOperand(1).getReg());
+      emit8(Out, 0xf4);
+      emit8(Out, ((MI.getOpcode() == AVM::ADDNF ? 1 : 2) << 4) | (D << 2) | S);
       return;
     }
     case AVM::BREQ: case AVM::BRNE: case AVM::BRULT: case AVM::BRUGE:
@@ -250,10 +262,25 @@ public:
     case AVM::GETSP: emitF4Unary(MI, Out, 0x60); return;
     case AVM::SETSP: emitF4Unary(MI, Out, 0x68); return;
 
-    case AVM::AND16: emitF4Binary(MI, Out, 0x60); return;
-    case AVM::OR16: emitF4Binary(MI, Out, 0x61); return;
-    case AVM::XOR16: emitF4Binary(MI, Out, 0x62); return;
-    case AVM::BIC16: emitF4Binary(MI, Out, 0x63); return;
+    case AVM::AND16:
+    case AVM::OR16:
+    case AVM::XOR16:
+    case AVM::BIC16: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      if (D == 4) {
+        uint8_t Base = MI.getOpcode() == AVM::AND16 ? 0x50
+                       : MI.getOpcode() == AVM::OR16 ? 0x58
+                       : MI.getOpcode() == AVM::XOR16 ? 0x60 : 0x68;
+        emit8(Out, Base | S); return;
+      }
+      unsigned CD = compactIndex(MI, MI.getOperand(0).getReg());
+      unsigned CS = compactIndex(MI, MI.getOperand(1).getReg());
+      uint8_t Op = MI.getOpcode() == AVM::AND16 ? 3
+                   : MI.getOpcode() == AVM::OR16 ? 4
+                   : MI.getOpcode() == AVM::XOR16 ? 5 : 6;
+      emit8(Out, 0xf4); emit8(Out, (Op << 4) | (CD << 2) | CS); return;
+    }
     case AVM::ADC16: emitF4Binary(MI, Out, 0x64); return;
     case AVM::SBC16: emitF4Binary(MI, Out, 0x65); return;
     case AVM::CMP8: emitF4Binary(MI, Out, 0x66); return;
@@ -265,15 +292,15 @@ public:
     case AVM::LSR16V: emitF4Binary(MI, Out, 0x6c); return;
     case AVM::ASR16V: emitF4Binary(MI, Out, 0x6d); return;
 
-    case AVM::LDI16: emitF4Imm16(MI, Out, Fixups, 0x70); return;
-    case AVM::LDI8: emitF4Imm8(MI, Out, Fixups, 0x78); return;
-    case AVM::ADDI16: emitF4Imm16(MI, Out, Fixups, 0x80); return;
-    case AVM::SUBI16: emitF4Imm16(MI, Out, Fixups, 0x88); return;
-    case AVM::ANDI16: emitF4Imm16(MI, Out, Fixups, 0x90); return;
-    case AVM::ORI16: emitF4Imm16(MI, Out, Fixups, 0x98); return;
-    case AVM::XORI16: emitF4Imm16(MI, Out, Fixups, 0xa0); return;
-    case AVM::CMPI16: emitF4Imm16(MI, Out, Fixups, 0xa8); return;
-    case AVM::CMPI8: emitF4Imm8(MI, Out, Fixups, 0xb0); return;
+    case AVM::LDI16: emitF4Imm16(MI, Out, Fixups, 0x80); return;
+    case AVM::LDI8: emitF4Imm8(MI, Out, Fixups, 0x88); return;
+    case AVM::ADDI16: emitF4Imm16(MI, Out, Fixups, 0x90); return;
+    case AVM::SUBI16: emitF4Imm16(MI, Out, Fixups, 0x98); return;
+    case AVM::ANDI16: emitF4Imm16(MI, Out, Fixups, 0xa0); return;
+    case AVM::ORI16: emitF4Imm16(MI, Out, Fixups, 0xa8); return;
+    case AVM::XORI16: emitF4Imm16(MI, Out, Fixups, 0xb0); return;
+    case AVM::CMPI16: emitF4Imm16(MI, Out, Fixups, 0xb8); return;
+    case AVM::CMPI8: emitF4Imm8(MI, Out, Fixups, 0xc0); return;
 
     case AVM::MOV16: emitF4Binary(MI, Out, 0xb8); return;
     case AVM::ADD16: emitF4Binary(MI, Out, 0xb9); return;
@@ -316,12 +343,12 @@ public:
       return;
     }
 
-    case AVM::JMPR: emitF4Unary(MI, Out, 0xc0); return;
-    case AVM::CALLR: emitF4Unary(MI, Out, 0xc8); return;
-    case AVM::JMPP: emitF4Unary(MI, Out, 0xd0); return;
-    case AVM::CALLP: emitF4Unary(MI, Out, 0xd8); return;
-    case AVM::MTPB: emitF4Unary(MI, Out, 0xe0); return;
-    case AVM::MFPB: emitF4Unary(MI, Out, 0xe8); return;
+    case AVM::JMPR: emitF4Unary(MI, Out, 0xc8); return;
+    case AVM::CALLR: emitF4Unary(MI, Out, 0xd0); return;
+    case AVM::JMPP: emitF4Unary(MI, Out, 0xd8); return;
+    case AVM::CALLP: emitF4Unary(MI, Out, 0xe0); return;
+    case AVM::MTPB: emitF4Unary(MI, Out, 0x70); return;
+    case AVM::MFPB: emitF4Unary(MI, Out, 0x78); return;
     case AVM::LDPBI:
       emit8(Out, 0xe8);
       emit8(Out, getImm(MI, 0, 0, 255, "PB immediate")); return;
