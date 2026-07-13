@@ -264,7 +264,18 @@ public:
     }
     case AVM::BREQ: case AVM::BRNE: case AVM::BRULT: case AVM::BRUGE:
     case AVM::BRSLT: case AVM::BRSGE: case AVM::BRULE: case AVM::BRUGT: {
-      uint8_t Opcode = 0xf5 + (MI.getOpcode() - AVM::BREQ);
+      uint8_t Opcode;
+      switch (MI.getOpcode()) {
+      case AVM::BREQ:  Opcode = 0xf5; break;
+      case AVM::BRNE:  Opcode = 0xf6; break;
+      case AVM::BRULT: Opcode = 0xf7; break;
+      case AVM::BRUGE: Opcode = 0xf8; break;
+      case AVM::BRSLT: Opcode = 0xf9; break;
+      case AVM::BRSGE: Opcode = 0xfa; break;
+      case AVM::BRULE: Opcode = 0xfb; break;
+      case AVM::BRUGT: Opcode = 0xfc; break;
+      default: llvm_unreachable("unexpected AVM branch opcode");
+      }
       emit8(Out, Opcode);
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_pcrel8,
                                  Fixups, true);
