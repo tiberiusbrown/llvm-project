@@ -13,8 +13,12 @@ const AVMMCExpr *AVMMCExpr::create(VariantKind Kind, const MCExpr *Expr,
   return new (Ctx) AVMMCExpr(Kind, Expr);
 }
 
+StringRef AVMMCExpr::getVariantName() const {
+  return Kind == VK_ProgHi8 ? "prog_hi8" : "prog_lo16";
+}
+
 void AVMMCExpr::printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const {
-  OS << (Kind == VK_ProgHi8 ? "prog_hi8(" : "prog_lo16(");
+  OS << getVariantName() << '(';
   MAI->printExpr(OS, *Expr);
   OS << ')';
 }

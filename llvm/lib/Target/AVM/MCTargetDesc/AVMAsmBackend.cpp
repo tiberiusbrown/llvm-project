@@ -76,8 +76,13 @@ public:
     // Program addresses are not known until the image builder assigns logical
     // addresses to the input sections.  Keep these fixups as relocations even
     // when MC can resolve a local symbol to an input-section offset.
-    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_bank16 ||
-                       Fixup.getKind() == AVM::fixup_avm_far24))
+    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_data16 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog24 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog_lo16 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog_hi8 ||
+                       Fixup.getKind() == AVM::fixup_avm_bank16 ||
+                       Fixup.getKind() == AVM::fixup_avm_far24 ||
+                       Fixup.getKind() == AVM::fixup_avm_relax))
       IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)

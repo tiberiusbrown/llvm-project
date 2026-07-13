@@ -257,9 +257,9 @@ static Error applyRelocations(const ObjectFile &Obj, StringRef SectionName,
         Loc[0] = Value >> 16;
         break;
       case ELF::R_AVM_BANK16:
-        if (!isUInt<16>(Value))
-          return bad("AVM same-bank target is out of 16-bit range");
-        write16le(Loc, Value);
+        if (!isUInt<24>(Value))
+          return bad("AVM same-bank target is out of 24-bit range");
+        write16le(Loc, Value & 0xffff);
         break;
       case ELF::R_AVM_FAR24: {
         if (!isUInt<24>(Value))

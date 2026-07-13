@@ -114,6 +114,55 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     return 0;
   }
 
+  const AVMMCExpr *getTargetExpr(const MCInst &MI, unsigned Op,
+                                 StringRef What) const {
+    const MCOperand &MO = MI.getOperand(Op);
+    if (!MO.isExpr())
+      return nullptr;
+    const auto *Expr = dyn_cast<AVMMCExpr>(MO.getExpr());
+    if (!Expr)
+      error(MI, Twine("symbolic ") + What +
+                    " requires an AVM address modifier");
+    return Expr;
+  }
+
+  bool rejectTargetExpr(const MCInst &MI, unsigned Op, StringRef What) const {
+    if (!MI.getOperand(Op).isExpr() ||
+        !isa<AVMMCExpr>(MI.getOperand(Op).getExpr()))
+      return false;
+    error(MI, Twine("AVM address modifiers are not valid for ") + What);
+    return true;
+  }
+
+  uint64_t emitProgHi8(const MCInst &MI, unsigned Op, unsigned Offset,
+                       SmallVectorImpl<MCFixup> &Fixups,
+                       StringRef What) const {
+    const MCOperand &MO = MI.getOperand(Op);
+    if (MO.isImm()) {
+      int64_t Value = MO.getImm();
+      if (!isUInt<8>(Value))
+        error(MI, Twine(What) + " is out of unsigned 8-bit range");
+      return static_cast<uint64_t>(Value);
+    }
+
+    const AVMMCExpr *Expr = getTargetExpr(MI, Op, What);
+    if (!Expr)
+      return 0;
+    if (Expr->getVariantKind() != AVMMCExpr::VK_ProgHi8) {
+      error(MI, Twine(What) + " requires prog_hi8(expression), not " +
+                    Expr->getVariantName());
+      return 0;
+    }
+
+    int64_t Absolute;
+    if (Expr->getSubExpr()->evaluateAsAbsolute(Absolute)) {
+      if (!isUInt<24>(Absolute))
+        error(MI, "program address is out of unsigned 24-bit range");
+      return static_cast<uint64_t>(Absolute) >> 16;
+    }
+    return emitExprOrImm(MI, Op, Offset, AVM::fixup_avm_prog_hi8, Fixups);
+  }
+
   void emitCompactBinary(const MCInst &MI, SmallVectorImpl<char> &Out,
                          uint8_t Base) const {
     unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
@@ -136,18 +185,10 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
   void emitF4Imm8(const MCInst &MI, SmallVectorImpl<char> &Out,
                   SmallVectorImpl<MCFixup> &Fixups, uint8_t Base,
-                  bool Signed = false) const {
+                  StringRef What) const {
     emit8(Out, 0xe0);
     emit8(Out, Base | regIndex(MI, MI.getOperand(0).getReg()));
-    const MCOperand &MO = MI.getOperand(1);
-    if (MO.isExpr()) {
-      error(MI, "8-bit instruction immediate must be absolute");
-      emit8(Out, 0);
-      return;
-    }
-    int64_t V = getImm(MI, 1, Signed ? -128 : 0, Signed ? 127 : 255,
-                       "8-bit immediate");
-    emit8(Out, V);
+    emit8(Out, emitProgHi8(MI, 1, 2, Fixups, What));
   }
 
   void emitF4Imm16(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -157,20 +198,16 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     AVM::Fixups Kind = AVM::fixup_avm_data16;
     if (MI.getOperand(1).isExpr()) {
       if (const auto *Expr = dyn_cast<AVMMCExpr>(MI.getOperand(1).getExpr())) {
-        if (MI.getOpcode() != AVM::LDI16) {
-          error(MI, "prog_lo16 is valid only as an LDI16 immediate");
-          emit16(Out, 0);
-          return;
-        }
         if (Expr->getVariantKind() != AVMMCExpr::VK_ProgLo16) {
-          error(MI, "symbolic LDI16 immediate requires prog_lo16(expression)");
+          error(MI, "16-bit instruction immediate requires "
+                    "prog_lo16(expression), not prog_hi8(expression)");
           emit16(Out, 0);
           return;
         }
         int64_t Absolute;
         if (Expr->getSubExpr()->evaluateAsAbsolute(Absolute)) {
           if (!isUInt<24>(Absolute))
-            error(MI, "program address is out of 24-bit range");
+            error(MI, "program address is out of unsigned 24-bit range");
           emit16(Out, static_cast<uint64_t>(Absolute) & 0xffff);
           return;
         }
@@ -306,7 +343,7 @@ public:
       emitF4Unary(MI, Out, 0x18); return;
     case AVM::LDI8C: {
       emit8(Out, 0xf0 | compactIndex(MI, MI.getOperand(0).getReg()));
-      emit8(Out, getImm(MI, 1, 0, 255, "LDI8 immediate"));
+      emit8(Out, emitProgHi8(MI, 1, 1, Fixups, "LDI8 immediate"));
       return;
     }
     case AVM::ADDNF:
@@ -361,6 +398,10 @@ public:
       default: llvm_unreachable("unexpected AVM branch opcode");
       }
       emit8(Out, Opcode);
+      if (rejectTargetExpr(MI, 0, "PC-relative branch target")) {
+        emit8(Out, 0);
+        return;
+      }
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_pcrel8,
                                  Fixups, true);
       if (MI.getOperand(0).isImm() && !isInt<8>(static_cast<int64_t>(V)))
@@ -451,7 +492,7 @@ public:
         error(MI, "E0 LDI8 requires r0-r3; use the compact primary form");
         return;
       }
-      emitF4Imm8(MI, Out, Fixups, 0x88); return;
+      emitF4Imm8(MI, Out, Fixups, 0x88, "LDI8 immediate"); return;
     }
     case AVM::ADDI16: emitF4Imm16(MI, Out, Fixups, 0x90); return;
     case AVM::SUBI16: emitF4Imm16(MI, Out, Fixups, 0x98); return;
@@ -459,7 +500,8 @@ public:
     case AVM::ORI16: emitF4Imm16(MI, Out, Fixups, 0xa8); return;
     case AVM::XORI16: emitF4Imm16(MI, Out, Fixups, 0xb0); return;
     case AVM::CMPI16: emitF4Imm16(MI, Out, Fixups, 0xb8); return;
-    case AVM::CMPI8: emitF4Imm8(MI, Out, Fixups, 0xc0); return;
+    case AVM::CMPI8:
+      emitF4Imm8(MI, Out, Fixups, 0xc0, "CMPI8 immediate"); return;
 
     case AVM::ADD16: emitF4Binary(MI, Out, 0xb9); return;
     case AVM::SUB16: emitF4Binary(MI, Out, 0xba); return;
@@ -484,6 +526,10 @@ public:
     case AVM::JMP_REL8:
     case AVM::CALL_REL8: {
       emit8(Out, MI.getOpcode() == AVM::JMP_REL8 ? 0xe5 : 0xe6);
+      if (rejectTargetExpr(MI, 0, "PC-relative control target")) {
+        emit8(Out, 0);
+        return;
+      }
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_pcrel8,
                                  Fixups, true);
       if (MI.getOperand(0).isImm() && !isInt<8>(static_cast<int64_t>(V)))
@@ -525,32 +571,16 @@ public:
     case AVM::MFPB: emitF4Unary(MI, Out, 0x78); return;
     case AVM::LDPBI: {
       emit8(Out, 0xe8);
-      const MCOperand &Operand = MI.getOperand(0);
-      if (Operand.isExpr()) {
-        const auto *Expr = dyn_cast<AVMMCExpr>(Operand.getExpr());
-        if (!Expr || Expr->getVariantKind() != AVMMCExpr::VK_ProgHi8) {
-          error(MI, "symbolic LDPBI immediate requires prog_hi8(expression)");
-          emit8(Out, 0);
-          return;
-        }
-        int64_t Absolute;
-        if (Expr->getSubExpr()->evaluateAsAbsolute(Absolute)) {
-          if (!isUInt<24>(Absolute))
-            error(MI, "program address is out of 24-bit range");
-          emit8(Out, static_cast<uint64_t>(Absolute) >> 16);
-          return;
-        }
-        uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_prog_hi8,
-                                   Fixups);
-        emit8(Out, V);
-        return;
-      }
-      emit8(Out, getImm(MI, 0, 0, 255, "PB immediate"));
+      emit8(Out, emitProgHi8(MI, 0, 1, Fixups, "LDPBI immediate"));
       return;
     }
     case AVM::JMP16:
     case AVM::CALL16: {
       emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xea : 0xeb);
+      if (rejectTargetExpr(MI, 0, "same-bank program target")) {
+        emit16(Out, 0);
+        return;
+      }
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_bank16, Fixups);
       if (MI.getOperand(0).isImm() && !isUInt<16>(V))
         error(MI, "same-bank absolute target is out of range");
@@ -620,6 +650,10 @@ public:
                           : (Store ? 0x38 : 0x30);
       emit8(Out, 0xfd);
       emit8(Out, Base | regIndex(MI, MI.getOperand(RegOp).getReg()));
+      if (rejectTargetExpr(MI, AddrOp, "direct data-space address")) {
+        emit16(Out, 0);
+        return;
+      }
       uint64_t V = emitExprOrImm(MI, AddrOp, 2, AVM::fixup_avm_data16,
                                  Fixups);
       if (MI.getOperand(AddrOp).isImm() && !isUInt<16>(V))
@@ -640,7 +674,14 @@ public:
     case AVM::JMPF:
     case AVM::CALLF: {
       emit8(Out, 0xfe);
+      if (rejectTargetExpr(MI, 0, "far program target")) {
+        emit24(Out, MI.getOpcode() == AVM::CALLF ? 1 : 0);
+        return;
+      }
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_far24, Fixups);
+      if (MI.getOperand(0).isExpr())
+        Fixups.push_back(MCFixup::create(1, MI.getOperand(0).getExpr(),
+                                        AVM::fixup_avm_relax));
       if (MI.getOperand(0).isImm()) {
         if (!isUInt<24>(V)) error(MI, "far target is out of 24-bit range");
         if (V & 1) error(MI, "far target must be even-aligned");

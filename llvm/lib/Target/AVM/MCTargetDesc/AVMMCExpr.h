@@ -15,6 +15,7 @@ public:
                                  MCContext &Ctx);
 
   VariantKind getVariantKind() const { return Kind; }
+  StringRef getVariantName() const;
   const MCExpr *getSubExpr() const { return Expr; }
 
   void printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const override;
