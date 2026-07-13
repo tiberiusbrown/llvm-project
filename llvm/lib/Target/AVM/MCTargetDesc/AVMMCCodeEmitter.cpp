@@ -231,6 +231,13 @@ public:
     }
     case AVM::ADDNF:
     case AVM::SUBNF: {
+      unsigned FullD = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned FullS = regIndex(MI, MI.getOperand(1).getReg());
+      if (FullD == 4 && FullS < 4) {
+        emit8(Out, 0xe2);
+        emit8(Out, (MI.getOpcode() == AVM::ADDNF ? 0x04 : 0x08) | FullS);
+        return;
+      }
       unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
       unsigned S = compactIndex(MI, MI.getOperand(1).getReg());
       emit8(Out, 0xf4);
@@ -283,14 +290,24 @@ public:
     }
     case AVM::ADC16: emitF4Binary(MI, Out, 0x64); return;
     case AVM::SBC16: emitF4Binary(MI, Out, 0x65); return;
-    case AVM::CMP8: emitF4Binary(MI, Out, 0x66); return;
     case AVM::CPC16: emitF4Binary(MI, Out, 0x67); return;
-    case AVM::MULU8: emitF4Binary(MI, Out, 0x68); return;
-    case AVM::MULS8: emitF4Binary(MI, Out, 0x69); return;
-    case AVM::MULSU8: emitF4Binary(MI, Out, 0x6a); return;
-    case AVM::SHL16V: emitF4Binary(MI, Out, 0x6b); return;
-    case AVM::LSR16V: emitF4Binary(MI, Out, 0x6c); return;
-    case AVM::ASR16V: emitF4Binary(MI, Out, 0x6d); return;
+    case AVM::MULU8: case AVM::MULS8: case AVM::MULSU8:
+    case AVM::SHL16V: case AVM::LSR16V: case AVM::ASR16V: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      unsigned Op = MI.getOpcode() == AVM::MULU8 ? 9
+                    : MI.getOpcode() == AVM::MULS8 ? 10
+                    : MI.getOpcode() == AVM::MULSU8 ? 11
+                    : MI.getOpcode() == AVM::SHL16V ? 12
+                    : MI.getOpcode() == AVM::LSR16V ? 13 : 14;
+      if (D == 4 && S < 4) {
+        static const uint8_t Bases[] = {0x14, 0x18, 0x1c, 0x20, 0x24, 0x28};
+        emit8(Out, 0xe2); emit8(Out, Bases[Op - 9] | S); return;
+      }
+      unsigned CD = compactIndex(MI, MI.getOperand(0).getReg());
+      unsigned CS = compactIndex(MI, MI.getOperand(1).getReg());
+      emit8(Out, 0xf4); emit8(Out, (Op << 4) | (CD << 2) | CS); return;
+    }
 
     case AVM::LDI16: emitF4Imm16(MI, Out, Fixups, 0x80); return;
     case AVM::LDI8: emitF4Imm8(MI, Out, Fixups, 0x88); return;
@@ -302,10 +319,25 @@ public:
     case AVM::CMPI16: emitF4Imm16(MI, Out, Fixups, 0xb8); return;
     case AVM::CMPI8: emitF4Imm8(MI, Out, Fixups, 0xc0); return;
 
-    case AVM::MOV16: emitF4Binary(MI, Out, 0xb8); return;
+    case AVM::MOV16: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      if (D == 4 && S < 4) { emit8(Out, 0xe2); emit8(Out, S); return; }
+      error(MI, "MOV operands require a compact form or MOV A,r0-r3"); return;
+    }
     case AVM::ADD16: emitF4Binary(MI, Out, 0xb9); return;
     case AVM::SUB16: emitF4Binary(MI, Out, 0xba); return;
-    case AVM::CMP16: emitF4Binary(MI, Out, 0xbb); return;
+    case AVM::CMP16:
+    case AVM::CMP8: {
+      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      if (D == 4 && S < 4) {
+        emit8(Out, 0xe2);
+        emit8(Out, (MI.getOpcode() == AVM::CMP16 ? 0x0c : 0x10) | S);
+        return;
+      }
+      error(MI, "comparison requires compact operands or A,r0-r3"); return;
+    }
     case AVM::CMPI6: {
       emit8(Out, 0xe4);
       unsigned R = compactIndex(MI, MI.getOperand(0).getReg());

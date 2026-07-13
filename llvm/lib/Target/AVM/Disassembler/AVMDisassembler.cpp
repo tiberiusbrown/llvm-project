@@ -122,7 +122,9 @@ public:
     }
     if (Op == 0xe0)
       return decodeE0(MI, Size, Bytes);
-    if (Op >= 0xe1 && Op <= 0xe3) { Size = 1; return Fail; }
+    if (Op == 0xe2)
+      return decodeE2(MI, Size, Bytes);
+    if (Op == 0xe1 || Op == 0xe3) { Size = 1; return Fail; }
     if (Op == 0xe4) {
       if (Bytes.size() < 2) return Fail;
       uint8_t X = Bytes[1]; MI.setOpcode(AVM::CMPI6);
@@ -177,6 +179,19 @@ public:
   }
 
 private:
+  DecodeStatus decodeE2(MCInst &MI, uint64_t &Size,
+                        ArrayRef<uint8_t> B) const {
+    if (B.size() < 2) return Fail;
+    uint8_t S = B[1];
+    if (S >= 0x2c) { Size = 2; return Fail; }
+    unsigned Group = S >> 2;
+    static const unsigned Ops[] = {AVM::MOV16, AVM::ADDNF, AVM::SUBNF,
+      AVM::CMP16, AVM::CMP8, AVM::MULU8, AVM::MULS8, AVM::MULSU8,
+      AVM::SHL16V, AVM::LSR16V, AVM::ASR16V};
+    MI.setOpcode(Ops[Group]); addReg(MI, AVM::R4); addReg(MI, reg(S & 3));
+    Size = 2; return Success;
+  }
+
   DecodeStatus decodeE0(MCInst &MI, uint64_t &Size,
                         ArrayRef<uint8_t> B) const {
     if (B.size() < 2) return Fail;
