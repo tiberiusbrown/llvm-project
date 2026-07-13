@@ -10,6 +10,14 @@ and c1, c0
 or c2, c3
 xor c1, c0
 bic c3, c2
+and a, a
+or a, a
+xor a, a
+bic a, a
+and c1, c1
+or c2, c2
+xor c3, c3
+bic c1, c1
 
 # ENC: and c0, r0{{.*}}encoding: [0x50]
 # ENC: or c0, r7{{.*}}encoding: [0x5f]
@@ -19,6 +27,14 @@ bic c3, c2
 # ENC: or c2, c3{{.*}}encoding: [0xf4,0x4b]
 # ENC: xor c1, c0{{.*}}encoding: [0xf4,0x54]
 # ENC: bic c3, c2{{.*}}encoding: [0xf4,0x6e]
+# ENC: nop{{.*}}encoding: [0xec]
+# ENC: nop{{.*}}encoding: [0xec]
+# ENC: clr c0{{.*}}encoding: [0x00]
+# ENC: clr c0{{.*}}encoding: [0x00]
+# ENC: nop{{.*}}encoding: [0xec]
+# ENC: nop{{.*}}encoding: [0xec]
+# ENC: clr c3{{.*}}encoding: [0x0f]
+# ENC: clr c1{{.*}}encoding: [0x05]
 
 # DIS: and c0, r0
 # DIS: or c0, r7
@@ -28,3 +44,11 @@ bic c3, c2
 # DIS: or c2, c3
 # DIS: xor c1, c0
 # DIS: bic c3, c2
+# DIS: nop
+# DIS: nop
+# DIS: clr c0
+# DIS: clr c0
+# DIS: nop
+# DIS: nop
+# DIS: clr c3
+# DIS: clr c1

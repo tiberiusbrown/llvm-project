@@ -13,7 +13,6 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   switch (MI.getOpcode()) {
   AVM_MNEMONIC(CLR, "clr");
   AVM_MNEMONIC(MOVC, "mov");
-  AVM_MNEMONIC(MOV16, "mov");
   AVM_MNEMONIC(MOV16_E3, "mov16");
   AVM_MNEMONIC(MOV8Z, "mov8z");
   AVM_MNEMONIC(MOV8S, "mov8s");
@@ -325,7 +324,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LDP8_DISP:
   case AVM::LDP16_DISP:
     OS << '\t'; FullReg(0); OS << ", [pb:"; FullReg(1); SignedSuffix(2); OS << ']'; break;
-  case AVM::MOV16:
   case AVM::MOV16_E3:
   case AVM::ADD16:
   case AVM::SUB16:

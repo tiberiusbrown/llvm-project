@@ -81,18 +81,22 @@ public:
       addReg(MI, compact(Op & 3)); Size = 1; return Success;
     }
     if (Op <= 0x57) {
+      if (Op == 0x54) { Size = 1; return Fail; }
       MI.setOpcode(AVM::ANDA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x5f) {
+      if (Op == 0x5c) { Size = 1; return Fail; }
       MI.setOpcode(AVM::ORA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x67) {
+      if (Op == 0x64) { Size = 1; return Fail; }
       MI.setOpcode(AVM::XORA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x6f) {
+      if (Op == 0x6c) { Size = 1; return Fail; }
       MI.setOpcode(AVM::BICA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
@@ -235,9 +239,10 @@ private:
                         ArrayRef<uint8_t> B) const {
     if (B.size() < 2) return Fail;
     uint8_t S = B[1];
+    if (S < 0x04) { Size = 2; return Fail; }
     if (S >= 0x2c) { Size = 2; return Fail; }
     unsigned Group = S >> 2;
-    static const unsigned Ops[] = {AVM::MOV16, AVM::ADDNF, AVM::SUBNF,
+    static const unsigned Ops[] = {0, AVM::ADDNF, AVM::SUBNF,
       AVM::CMP16, AVM::CMP8, AVM::MULU8, AVM::MULS8, AVM::MULSU8,
       AVM::SHL16V, AVM::LSR16V, AVM::ASR16V};
     MI.setOpcode(Ops[Group]); addReg(MI, AVM::R4); addReg(MI, reg(S & 3));
@@ -300,9 +305,14 @@ private:
     if (B.size() < 2) return Fail;
     uint8_t S = B[1];
     unsigned Op = S >> 4, D = (S >> 2) & 3, Src = S & 3;
-    if (Op == 0xf) { Size = 2; return Fail; }
-    if (Op >= 3 && Op <= 6 && D == 0) { Size = 2; return Fail; }
-    static const unsigned Ops[] = {AVM::MOVC, AVM::ADDNF, AVM::SUBNF,
+    if (Op == 0 || Op == 7 || Op == 8 || Op == 0xf) {
+      Size = 2; return Fail;
+    }
+    if (Op == 2 && D == Src) { Size = 2; return Fail; }
+    if (Op >= 3 && Op <= 6 && (D == 0 || D == Src)) {
+      Size = 2; return Fail;
+    }
+    static const unsigned Ops[] = {0, AVM::ADDNF, AVM::SUBNF,
       AVM::AND16, AVM::OR16, AVM::XOR16, AVM::BIC16, AVM::CMP16C,
       AVM::CMP8C, AVM::MULU8, AVM::MULS8, AVM::MULSU8, AVM::SHL16V,
       AVM::LSR16V, AVM::ASR16V};

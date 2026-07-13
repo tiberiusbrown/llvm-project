@@ -230,8 +230,10 @@ public:
     case AVM::MOVC: {
       unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
       unsigned S = compactIndex(MI, MI.getOperand(1).getReg());
-      if (D == S)
-        error(MI, "compact self-move encodes CLR; use the full MOV form");
+      if (D == S) {
+        error(MI, "compact self-move has no encoding; use NOP");
+        return;
+      }
       emit8(Out, (D << 2) | S);
       return;
     }
@@ -318,6 +320,10 @@ public:
       }
       unsigned D = compactIndex(MI, MI.getOperand(0).getReg());
       unsigned S = compactIndex(MI, MI.getOperand(1).getReg());
+      if (MI.getOpcode() == AVM::SUBNF && D == S) {
+        error(MI, "diagonal F4 SUB.NF is reserved; use CLR cN");
+        return;
+      }
       emit8(Out, 0xf4);
       emit8(Out, ((MI.getOpcode() == AVM::ADDNF ? 1 : 2) << 4) | (D << 2) | S);
       return;
@@ -385,9 +391,15 @@ public:
     case AVM::ORA:
     case AVM::XORA:
     case AVM::BICA: {
-      if (MI.getOperand(0).getReg() != AVM::R4)
+      if (MI.getOperand(0).getReg() != AVM::R4) {
         error(MI, "accumulator logical operation requires destination c0/A");
+        return;
+      }
       unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      if (S == 4) {
+        error(MI, "primary accumulator self-logical encoding is reserved");
+        return;
+      }
       uint8_t Base = MI.getOpcode() == AVM::ANDA ? 0x50
                      : MI.getOpcode() == AVM::ORA ? 0x58
                      : MI.getOpcode() == AVM::XORA ? 0x60 : 0x68;
@@ -399,8 +411,14 @@ public:
     case AVM::BIC16: {
       unsigned CD = compactIndex(MI, MI.getOperand(0).getReg());
       unsigned CS = compactIndex(MI, MI.getOperand(1).getReg());
-      if (CD == 0)
+      if (CD == 0) {
         error(MI, "compact logical operation reserves destination c0/A");
+        return;
+      }
+      if (CD == CS) {
+        error(MI, "compact logical self-operation encoding is reserved");
+        return;
+      }
       uint8_t Op = MI.getOpcode() == AVM::AND16 ? 3
                    : MI.getOpcode() == AVM::OR16 ? 4
                    : MI.getOpcode() == AVM::XOR16 ? 5 : 6;
@@ -443,12 +461,6 @@ public:
     case AVM::CMPI16: emitF4Imm16(MI, Out, Fixups, 0xb8); return;
     case AVM::CMPI8: emitF4Imm8(MI, Out, Fixups, 0xc0); return;
 
-    case AVM::MOV16: {
-      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
-      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
-      if (D == 4 && S < 4) { emit8(Out, 0xe2); emit8(Out, S); return; }
-      error(MI, "MOV operands require a compact form or MOV A,r0-r3"); return;
-    }
     case AVM::ADD16: emitF4Binary(MI, Out, 0xb9); return;
     case AVM::SUB16: emitF4Binary(MI, Out, 0xba); return;
     case AVM::CMP16:

@@ -312,15 +312,88 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
   }
 
-  bool parseRegReg(unsigned CompactOpcode, unsigned FullOpcode, StringRef Name,
-                   SMLoc NameLoc, OperandVector &Operands,
-                   bool DiagonalUsesFull = false) {
+  bool parseMove(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Dst, Src;
     SMLoc End;
     if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
       return true;
-    bool Compact = isCompact(Dst) && isCompact(Src) &&
-                   (!DiagonalUsesFull || Dst != Src);
+    if (!isWord(Dst) || !isWord(Src))
+      return error(NameLoc, "MOV requires 16-bit registers");
+
+    MCInst Inst;
+    if (isCompact(Dst) && isCompact(Src)) {
+      if (Dst == Src) {
+        Inst.setOpcode(AVM::NOP);
+      } else {
+        Inst.setOpcode(AVM::MOVC);
+        Inst.addOperand(MCOperand::createReg(Dst));
+        Inst.addOperand(MCOperand::createReg(Src));
+      }
+    } else {
+      Inst.setOpcode(AVM::MOV16_E3);
+      Inst.addOperand(MCOperand::createReg(Dst));
+      Inst.addOperand(MCOperand::createReg(Src));
+    }
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseSubNF(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Dst, Src;
+    SMLoc End;
+    if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
+      return true;
+    if (!isWord(Dst) || !isWord(Src))
+      return error(NameLoc, "SUB.NF requires 16-bit registers");
+
+    MCInst Inst;
+    if (isCompact(Dst) && isCompact(Src) && Dst == Src) {
+      Inst.setOpcode(AVM::CLR);
+      Inst.addOperand(MCOperand::createReg(Dst));
+    } else if ((isCompact(Dst) && isCompact(Src)) ||
+               (Dst == AVM::R4 && !isCompact(Src))) {
+      Inst.setOpcode(AVM::SUBNF);
+      Inst.addOperand(MCOperand::createReg(Dst));
+      Inst.addOperand(MCOperand::createReg(Src));
+    } else {
+      return error(NameLoc,
+                   "SUB.NF requires compact operands or destination A and "
+                   "source r0-r3");
+    }
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseCompare(unsigned CompactOpcode, unsigned FullOpcode,
+                    StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister LHS, RHS;
+    SMLoc End;
+    if (parseGPR(LHS) || Parser.parseComma() || parseGPR(RHS, nullptr, &End))
+      return true;
+    if (!isWord(LHS) || !isWord(RHS))
+      return error(NameLoc, "comparison requires 16-bit registers");
+    if (isCompact(LHS) && isCompact(RHS) && LHS == RHS)
+      return error(NameLoc, "compact self-compare has no encoding");
+
+    MCInst Inst;
+    if (isCompact(LHS) && isCompact(RHS))
+      Inst.setOpcode(CompactOpcode);
+    else if (LHS == AVM::R4 && !isCompact(RHS))
+      Inst.setOpcode(FullOpcode);
+    else
+      return error(NameLoc,
+                   "comparison requires distinct compact operands or "
+                   "left operand A and right operand r0-r3");
+    Inst.addOperand(MCOperand::createReg(LHS));
+    Inst.addOperand(MCOperand::createReg(RHS));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
+  bool parseRegReg(unsigned CompactOpcode, unsigned FullOpcode, StringRef Name,
+                   SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Dst, Src;
+    SMLoc End;
+    if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
+      return true;
+    bool Compact = isCompact(Dst) && isCompact(Src);
     MCInst Inst;
     Inst.setOpcode(Compact ? CompactOpcode : FullOpcode);
     Inst.addOperand(MCOperand::createReg(Dst));
@@ -398,19 +471,29 @@ class AVMAsmParser final : public MCTargetAsmParser {
     SMLoc End;
     if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
       return true;
+    if (!isWord(Dst) || !isWord(Src))
+      return error(NameLoc, "logical operation requires 16-bit registers");
 
-    unsigned Opcode;
+    MCInst Inst;
+    if (Dst == Src && isCompact(Dst)) {
+      if (AccumulatorOpcode == AVM::ANDA || AccumulatorOpcode == AVM::ORA) {
+        Inst.setOpcode(AVM::NOP);
+      } else {
+        Inst.setOpcode(AVM::CLR);
+        Inst.addOperand(MCOperand::createReg(Dst));
+      }
+      return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+    }
+
     if (Dst == AVM::R4)
-      Opcode = AccumulatorOpcode;
+      Inst.setOpcode(AccumulatorOpcode);
     else if (isCompact(Dst) && isCompact(Src))
-      Opcode = CompactOpcode;
+      Inst.setOpcode(CompactOpcode);
     else
       return error(NameLoc,
                    "logical operation requires destination c0/A, or compact "
                    "destination c1-c3 and compact source c0-c3");
 
-    MCInst Inst;
-    Inst.setOpcode(Opcode);
     Inst.addOperand(MCOperand::createReg(Dst));
     Inst.addOperand(MCOperand::createReg(Src));
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
@@ -598,7 +681,7 @@ public:
     if (M == "tst8")
       return parseTest(AVM::TST8C, AVM::TST8, Name, NameLoc, Operands);
 
-    if (M == "mov") return parseRegReg(AVM::MOVC, AVM::MOV16, Name, NameLoc, Operands, true);
+    if (M == "mov") return parseMove(Name, NameLoc, Operands);
     if (M == "mov16") return parseRegReg(AVM::MOV16_E3, AVM::MOV16_E3, Name, NameLoc, Operands);
     if (M == "mov8z") return parseMov8(AVM::MOV8Z, Name, NameLoc, Operands);
     if (M == "mov8s") return parseMov8(AVM::MOV8S, Name, NameLoc, Operands);
@@ -606,9 +689,11 @@ public:
     if (M == "add") return parseRegReg(AVM::ADDC, AVM::ADD16, Name, NameLoc, Operands);
     if (M == "sub") return parseRegReg(AVM::SUBC, AVM::SUB16, Name, NameLoc, Operands);
     if (M == "add.nf") return parseRegReg(AVM::ADDNF, AVM::ADDNF, Name, NameLoc, Operands);
-    if (M == "sub.nf") return parseRegReg(AVM::SUBNF, AVM::SUBNF, Name, NameLoc, Operands);
-    if (M == "cmp16") return parseRegReg(AVM::CMP16C, AVM::CMP16, Name, NameLoc, Operands, true);
-    if (M == "cmp8") return parseRegReg(AVM::CMP8C, AVM::CMP8, Name, NameLoc, Operands, true);
+    if (M == "sub.nf") return parseSubNF(Name, NameLoc, Operands);
+    if (M == "cmp16")
+      return parseCompare(AVM::CMP16C, AVM::CMP16, Name, NameLoc, Operands);
+    if (M == "cmp8")
+      return parseCompare(AVM::CMP8C, AVM::CMP8, Name, NameLoc, Operands);
 
     unsigned PairBinary = StringSwitch<unsigned>(M)
       .Case("mov32", AVM::MOV32).Case("add32", AVM::ADD32)
