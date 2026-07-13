@@ -71,19 +71,19 @@ public:
       addReg(MI, compact(Op & 3)); Size = 1; return Success;
     }
     if (Op <= 0x57) {
-      MI.setOpcode(AVM::AND16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      MI.setOpcode(AVM::ANDA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x5f) {
-      MI.setOpcode(AVM::OR16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      MI.setOpcode(AVM::ORA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x67) {
-      MI.setOpcode(AVM::XOR16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      MI.setOpcode(AVM::XORA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x6f) {
-      MI.setOpcode(AVM::BIC16); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
+      MI.setOpcode(AVM::BICA); addReg(MI, AVM::R4); addReg(MI, reg(Op & 7));
       Size = 1; return Success;
     }
     if (Op <= 0x77) {
@@ -258,6 +258,7 @@ private:
     uint8_t S = B[1];
     unsigned Op = S >> 4, D = (S >> 2) & 3, Src = S & 3;
     if (Op == 0xf) { Size = 2; return Fail; }
+    if (Op >= 3 && Op <= 6 && D == 0) { Size = 2; return Fail; }
     static const unsigned Ops[] = {AVM::MOVC, AVM::ADDNF, AVM::SUBNF,
       AVM::AND16, AVM::OR16, AVM::XOR16, AVM::BIC16, AVM::CMP16C,
       AVM::CMP8C, AVM::MULU8, AVM::MULS8, AVM::MULSU8, AVM::SHL16V,

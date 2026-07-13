@@ -298,20 +298,26 @@ public:
     case AVM::GETSP: emitF4Unary(MI, Out, 0x60); return;
     case AVM::SETSP: emitF4Unary(MI, Out, 0x68); return;
 
+    case AVM::ANDA:
+    case AVM::ORA:
+    case AVM::XORA:
+    case AVM::BICA: {
+      if (MI.getOperand(0).getReg() != AVM::R4)
+        error(MI, "accumulator logical operation requires destination c0/A");
+      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
+      uint8_t Base = MI.getOpcode() == AVM::ANDA ? 0x50
+                     : MI.getOpcode() == AVM::ORA ? 0x58
+                     : MI.getOpcode() == AVM::XORA ? 0x60 : 0x68;
+      emit8(Out, Base | S); return;
+    }
     case AVM::AND16:
     case AVM::OR16:
     case AVM::XOR16:
     case AVM::BIC16: {
-      unsigned D = regIndex(MI, MI.getOperand(0).getReg());
-      unsigned S = regIndex(MI, MI.getOperand(1).getReg());
-      if (D == 4) {
-        uint8_t Base = MI.getOpcode() == AVM::AND16 ? 0x50
-                       : MI.getOpcode() == AVM::OR16 ? 0x58
-                       : MI.getOpcode() == AVM::XOR16 ? 0x60 : 0x68;
-        emit8(Out, Base | S); return;
-      }
       unsigned CD = compactIndex(MI, MI.getOperand(0).getReg());
       unsigned CS = compactIndex(MI, MI.getOperand(1).getReg());
+      if (CD == 0)
+        error(MI, "compact logical operation reserves destination c0/A");
       uint8_t Op = MI.getOpcode() == AVM::AND16 ? 3
                    : MI.getOpcode() == AVM::OR16 ? 4
                    : MI.getOpcode() == AVM::XOR16 ? 5 : 6;

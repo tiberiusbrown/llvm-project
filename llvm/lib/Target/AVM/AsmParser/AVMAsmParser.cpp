@@ -248,6 +248,30 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
   }
 
+  bool parseLogical(unsigned AccumulatorOpcode, unsigned CompactOpcode,
+                    StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Dst, Src;
+    SMLoc End;
+    if (parseGPR(Dst) || Parser.parseComma() || parseGPR(Src, nullptr, &End))
+      return true;
+
+    unsigned Opcode;
+    if (Dst == AVM::R4)
+      Opcode = AccumulatorOpcode;
+    else if (isCompact(Dst) && isCompact(Src))
+      Opcode = CompactOpcode;
+    else
+      return error(NameLoc,
+                   "logical operation requires destination c0/A, or compact "
+                   "destination c1-c3 and compact source c0-c3");
+
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Dst));
+    Inst.addOperand(MCOperand::createReg(Src));
+    return finishInstruction(std::move(Inst), End, Operands, Name, NameLoc);
+  }
+
   bool parseLoadStore(StringRef Name, SMLoc NameLoc, OperandVector &Operands,
                       bool IsLoad, bool IsWord, bool ExplicitPost) {
     MCInst Inst;
@@ -483,9 +507,16 @@ public:
       .Default(0);
     if (Unary) return parseOneReg(Unary, Name, NameLoc, Operands);
 
+    if (M == "and")
+      return parseLogical(AVM::ANDA, AVM::AND16, Name, NameLoc, Operands);
+    if (M == "or")
+      return parseLogical(AVM::ORA, AVM::OR16, Name, NameLoc, Operands);
+    if (M == "xor")
+      return parseLogical(AVM::XORA, AVM::XOR16, Name, NameLoc, Operands);
+    if (M == "bic")
+      return parseLogical(AVM::BICA, AVM::BIC16, Name, NameLoc, Operands);
+
     unsigned Binary = StringSwitch<unsigned>(M)
-      .Case("and", AVM::AND16).Case("or", AVM::OR16)
-      .Case("xor", AVM::XOR16).Case("bic", AVM::BIC16)
       .Case("mulu8", AVM::MULU8)
       .Case("muls8", AVM::MULS8).Case("mulsu8", AVM::MULSU8)
       .Case("shl16v", AVM::SHL16V).Case("lsr16v", AVM::LSR16V)

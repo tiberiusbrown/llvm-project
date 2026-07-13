@@ -92,11 +92,22 @@ def SWAP8 : AVMInst<"swap8 $dst", 2, (ins GPR16:$dst)>;
 def GETSP : AVMInst<"getsp $dst", 2, (ins GPR16:$dst)>;
 def SETSP : AVMInst<"setsp $src", 2, (ins GPR16:$src)>;
 
-// 0xF4 binary operations.
-def AND16  : AVMInst<"and $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def OR16   : AVMInst<"or $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def XOR16  : AVMInst<"xor $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def BIC16  : AVMInst<"bic $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
+// One-byte accumulator logical operations.  These accept any source register.
+def ANDA : AVMInst<"and $dst, $src", 1, (ins AGPR16:$dst, GPR16:$src)>;
+def ORA  : AVMInst<"or $dst, $src", 1, (ins AGPR16:$dst, GPR16:$src)>;
+def XORA : AVMInst<"xor $dst, $src", 1, (ins AGPR16:$dst, GPR16:$src)>;
+def BICA : AVMInst<"bic $dst, $src", 1, (ins AGPR16:$dst, GPR16:$src)>;
+
+// 0xF4 binary operations.  Logical destination c0/A is reserved because the
+// one-byte accumulator forms above cover the same operations.
+def AND16 : AVMInst<"and $dst, $src", 2,
+                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+def OR16  : AVMInst<"or $dst, $src", 2,
+                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+def XOR16 : AVMInst<"xor $dst, $src", 2,
+                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+def BIC16 : AVMInst<"bic $dst, $src", 2,
+                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
 def ADC16  : AVMFlagUseDefInst<"adc $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def SBC16  : AVMFlagUseDefInst<"sbc $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
 def CMP8   : AVMFlagDefInst<"cmp8 $lhs, $rhs", 3, (ins GPR16:$lhs, GPR16:$rhs)>;

@@ -69,6 +69,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(SWAP8, "swap8");
   AVM_MNEMONIC(GETSP, "getsp");
   AVM_MNEMONIC(SETSP, "setsp");
+  AVM_MNEMONIC(ANDA, "and");
+  AVM_MNEMONIC(ORA, "or");
+  AVM_MNEMONIC(XORA, "xor");
+  AVM_MNEMONIC(BICA, "bic");
   AVM_MNEMONIC(AND16, "and");
   AVM_MNEMONIC(OR16, "or");
   AVM_MNEMONIC(XOR16, "xor");
@@ -224,6 +228,16 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::ADDNF:
   case AVM::SUBNF:
     OS << '\t'; CompactReg(0); OS << ", "; CompactReg(1); break;
+  case AVM::AND16:
+  case AVM::OR16:
+  case AVM::XOR16:
+  case AVM::BIC16:
+    OS << '\t'; CompactReg(0); OS << ", "; CompactReg(1); break;
+  case AVM::ANDA:
+  case AVM::ORA:
+  case AVM::XORA:
+  case AVM::BICA:
+    OS << '\t'; CompactReg(0); OS << ", "; FullReg(1); break;
   case AVM::LD8C:
   case AVM::LD16C:
     OS << '\t'; CompactReg(0); OS << ", ["; CompactReg(1); OS << ']'; break;
@@ -282,10 +296,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::ADD16:
   case AVM::SUB16:
   case AVM::CMP16:
-  case AVM::AND16:
-  case AVM::OR16:
-  case AVM::XOR16:
-  case AVM::BIC16:
   case AVM::ADC16:
   case AVM::SBC16:
   case AVM::CMP8:
