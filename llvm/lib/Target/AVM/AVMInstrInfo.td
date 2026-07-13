@@ -36,19 +36,27 @@ class AVMBranchInst<string Asm, int Bytes>
 class AVMCallInst<string Asm, int Bytes, dag Operands>
     : AVMInst<Asm, Bytes, Operands> {
   let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
 }
 
 // Primary compact operations.
-def CLR      : AVMInst<"clr $dst", 1, (ins CGPR16:$dst)>;
-def MOVC     : AVMInst<"mov $dst, $src", 1, (ins CGPR16:$dst, CGPR16:$src)>;
-def LD8C     : AVMInst<"ld8 $dst, [$addr]", 1, (ins CGPR16:$dst, CGPR16:$addr)> { let mayLoad = 1; }
+def CLR      : AVMInst<"clr $dst", 1> { let OutOperandList = (outs CGPR16:$dst); }
+def MOVC     : AVMInst<"mov $dst, $src", 1, (ins CGPR16:$src)> { let OutOperandList = (outs CGPR16:$dst); }
+def LD8C     : AVMInst<"ld8 $dst, [$addr]", 1, (ins CGPR16:$addr)> { let OutOperandList = (outs CGPR16:$dst); let mayLoad = 1; }
 def ST8C     : AVMInst<"st8 [$addr], $src", 1, (ins CGPR16:$addr, CGPR16:$src)> { let mayStore = 1; }
-def LD16C    : AVMInst<"ld16 $dst, [$addr]", 1, (ins CGPR16:$dst, CGPR16:$addr)> { let mayLoad = 1; }
+def LD16C    : AVMInst<"ld16 $dst, [$addr]", 1, (ins CGPR16:$addr)> { let OutOperandList = (outs CGPR16:$dst); let mayLoad = 1; }
 def ST16C    : AVMInst<"st16 [$addr], $src", 1, (ins CGPR16:$addr, CGPR16:$src)> { let mayStore = 1; }
-def PUSH16   : AVMInst<"push16 $src", 1, (ins GPR16:$src)> { let mayStore = 1; }
-def POP16    : AVMInst<"pop16 $dst", 1, (ins GPR16:$dst)> { let mayLoad = 1; }
-def ADDC     : AVMFlagDefInst<"add $dst, $src", 1, (ins CGPR16:$dst, CGPR16:$src)>;
-def SUBC     : AVMFlagDefInst<"sub $dst, $src", 1, (ins CGPR16:$dst, CGPR16:$src)>;
+def PUSH16   : AVMInst<"push16 $src", 1, (ins GPR16:$src)> { let mayStore = 1; let Uses = [SP]; let Defs = [SP]; }
+def POP16    : AVMInst<"pop16 $dst", 1> { let OutOperandList = (outs GPR16:$dst); let mayLoad = 1; let Uses = [SP]; let Defs = [SP]; }
+def ADDC     : AVMFlagDefInst<"add $dst, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)> {
+  let OutOperandList = (outs CGPR16:$dst);
+  let Constraints = "$dst = $lhs";
+}
+def SUBC     : AVMFlagDefInst<"sub $dst, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)> {
+  let OutOperandList = (outs CGPR16:$dst);
+  let Constraints = "$dst = $lhs";
+}
 def CMP16C   : AVMFlagDefInst<"cmp16 $lhs, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)>;
 def TST16C   : AVMFlagDefInst<"tst16 $src", 1, (ins CGPR16:$src)>;
 def CMP8C    : AVMFlagDefInst<"cmp8 $lhs, $rhs", 1, (ins CGPR16:$lhs, CGPR16:$rhs)>;
@@ -57,7 +65,7 @@ def BEQ_SHORT : AVMBranchInst<"beq.s $target", 1>;
 def BNE_SHORT : AVMBranchInst<"bne.s $target", 1>;
 def INC16    : AVMInst<"inc16 $dst", 2, (ins GPR16:$dst)>;
 def DEC16    : AVMInst<"dec16 $dst", 2, (ins GPR16:$dst)>;
-def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins CGPR16:$dst, AVMImm8:$imm)>;
+def LDI8C    : AVMInst<"ldi8 $dst, $imm", 2, (ins AVMImm8:$imm)> { let OutOperandList = (outs CGPR16:$dst); }
 def ADDNF    : AVMInst<"add.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 def SUBNF    : AVMInst<"sub.nf $dst, $src", 2, (ins CGPR16:$dst, CGPR16:$src)>;
 
@@ -84,11 +92,11 @@ def ASR32V : AVMInst<"asr32v $dst, $src", 2,
                       (ins GPR32:$dst, GPR32:$src)>;
 
 // 0xE3 full-register transfers and condition materialization.
-def MOV16_E3 : AVMInst<"mov16 $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
-def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR16:$dst, GPR8:$src)>;
-def MOV8S    : AVMInst<"mov8s $dst, $src", 2, (ins GPR16:$dst, GPR8:$src)>;
+def MOV16_E3 : AVMInst<"mov16 $dst, $src", 2, (ins GPR16:$src)> { let OutOperandList = (outs GPR16:$dst); }
+def MOV8Z    : AVMInst<"mov8z $dst, $src", 2, (ins GPR8:$src)> { let OutOperandList = (outs GPR16:$dst); }
+def MOV8S    : AVMInst<"mov8s $dst, $src", 2, (ins GPR8:$src)> { let OutOperandList = (outs GPR16:$dst); }
 def CSET     : AVMInst<"cset $dst, $cc", 2,
-                        (ins GPR16:$dst, AVMImm8:$cc)> { let Uses = [FLAGS]; }
+                        (ins AVMImm8:$cc)> { let OutOperandList = (outs GPR16:$dst); let Uses = [FLAGS]; }
 
 // General conditional branches.
 def BREQ  : AVMBranchInst<"breq $target", 2>;
@@ -109,8 +117,8 @@ def ASR16 : AVMInst<"asr16 $dst", 2, (ins GPR16:$dst)>;
 def LSR8  : AVMInst<"lsr8 $dst", 2, (ins GPR16:$dst)>;
 def ASR8  : AVMInst<"asr8 $dst", 2, (ins GPR16:$dst)>;
 def SWAP8 : AVMInst<"swap8 $dst", 2, (ins GPR16:$dst)>;
-def GETSP : AVMInst<"getsp $dst", 2, (ins GPR16:$dst)>;
-def SETSP : AVMInst<"setsp $src", 2, (ins GPR16:$src)>;
+def GETSP : AVMInst<"getsp $dst", 2> { let OutOperandList = (outs GPR16:$dst); let Uses = [SP]; }
+def SETSP : AVMInst<"setsp $src", 2, (ins GPR16:$src)> { let Defs = [SP]; }
 
 // One-byte accumulator logical operations. These accept any non-A source.
 def ANDA : AVMInst<"and $dst, $src", 1, (ins AGPR16:$dst, GPR16NoA:$src)>;
@@ -121,11 +129,20 @@ def BICA : AVMInst<"bic $dst, $src", 1, (ins AGPR16:$dst, GPR16NoA:$src)>;
 // 0xF4 binary operations.  Logical destination c0/A is reserved because the
 // one-byte accumulator forms above cover the same operations.
 def AND16 : AVMInst<"and $dst, $src", 2,
-                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+                     (ins CGPR16NoA:$lhs, CGPR16:$src)> {
+  let OutOperandList = (outs CGPR16NoA:$dst);
+  let Constraints = "$dst = $lhs";
+}
 def OR16  : AVMInst<"or $dst, $src", 2,
-                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+                     (ins CGPR16NoA:$lhs, CGPR16:$src)> {
+  let OutOperandList = (outs CGPR16NoA:$dst);
+  let Constraints = "$dst = $lhs";
+}
 def XOR16 : AVMInst<"xor $dst, $src", 2,
-                     (ins CGPR16NoA:$dst, CGPR16:$src)>;
+                     (ins CGPR16NoA:$lhs, CGPR16:$src)> {
+  let OutOperandList = (outs CGPR16NoA:$dst);
+  let Constraints = "$dst = $lhs";
+}
 def BIC16 : AVMInst<"bic $dst, $src", 2,
                      (ins CGPR16NoA:$dst, CGPR16:$src)>;
 def ADC16  : AVMFlagUseDefInst<"adc $dst, $src", 3, (ins GPR16:$dst, GPR16:$src)>;
@@ -140,9 +157,13 @@ def LSR16V : AVMInst<"lsr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 def ASR16V : AVMInst<"asr16v $dst, $src", 2, (ins GPR16:$dst, GPR16:$src)>;
 
 // 0xE0 immediate operations.
-def LDI16  : AVMInst<"ldi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def LDI16  : AVMInst<"ldi16 $dst, $imm", 4, (ins AVMImm16:$imm)> { let OutOperandList = (outs GPR16:$dst); }
 def LDI8   : AVMInst<"ldi8 $dst, $imm", 3, (ins NGPR16:$dst, AVMImm8:$imm)>;
-def ADDI16 : AVMInst<"addi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
+def ADDI16 : AVMInst<"addi16 $dst, $imm", 4,
+                      (ins GPR16:$lhs, AVMImm16:$imm)> {
+  let OutOperandList = (outs GPR16:$dst);
+  let Constraints = "$dst = $lhs";
+}
 def SUBI16 : AVMInst<"subi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def ANDI16 : AVMInst<"andi16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
 def ORI16  : AVMInst<"ori16 $dst, $imm", 4, (ins GPR16:$dst, AVMImm16:$imm)>;
@@ -162,11 +183,11 @@ def CMP16     : AVMFlagDefInst<"cmp16 $lhs, $rhs", 3, (ins GPR16:$lhs, GPR16:$rh
 def CMPI6     : AVMFlagDefInst<"cmpi6 $src, $imm", 2, (ins CGPR16:$src, AVMImm8:$imm)>;
 def JMP_REL8  : AVMInst<"jmp $target", 2, (ins AVMDisp8:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
 def CALL_REL8 : AVMCallInst<"call $target", 2, (ins AVMDisp8:$target)>;
-def ADJSP     : AVMInst<"adjsp $amount", 2, (ins AVMDisp8:$amount)>;
-def LDSP8C    : AVMInst<"ldsp8 $dst, [sp+$off]", 3, (ins CGPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
-def LDSP16C   : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins CGPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
-def STSP8C    : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; }
-def STSP16C   : AVMInst<"stsp16 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; }
+def ADJSP     : AVMInst<"adjsp $amount", 2, (ins AVMDisp8:$amount)> { let Uses = [SP]; let Defs = [SP]; }
+def LDSP8C    : AVMInst<"ldsp8 $dst, [sp+$off]", 3, (ins AVMOffset:$off)> { let OutOperandList = (outs CGPR16:$dst); let mayLoad = 1; let Uses = [SP]; }
+def LDSP16C   : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins AVMOffset:$off)> { let OutOperandList = (outs CGPR16:$dst); let mayLoad = 1; let Uses = [SP]; }
+def STSP8C    : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; let Uses = [SP]; }
+def STSP16C   : AVMInst<"stsp16 [sp+$off], $src", 3, (ins AVMOffset:$off, CGPR16:$src)> { let mayStore = 1; let Uses = [SP]; }
 
 // Indirect control and PB transfers. JMPP/CALLP consume a canonical 24-bit
 // code pointer in an aligned pair: low register = bits 15:0, low byte of the
@@ -199,10 +220,10 @@ def LD16_DISP : AVMInst<"ld16 $dst, [$addr+$disp]", 4, (ins GPR16:$dst, GPR16:$a
 def ST16_DISP : AVMInst<"st16 [$addr+$disp], $src", 4, (ins GPR16:$addr, AVMDisp8:$disp, GPR16:$src)> { let mayStore = 1; }
 
 // Extended stack-relative forms.
-def LDSP8  : AVMInst<"ldsp8 $dst, [sp+$off]", 3, (ins GPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
-def STSP8  : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, GPR16:$src)> { let mayStore = 1; }
-def LDSP16 : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins GPR16:$dst, AVMOffset:$off)> { let mayLoad = 1; }
-def STSP16 : AVMInst<"stsp16 [sp+$off], $src", 3, (ins AVMOffset:$off, GPR16:$src)> { let mayStore = 1; }
+def LDSP8  : AVMInst<"ldsp8 $dst, [sp+$off]", 3, (ins AVMOffset:$off)> { let OutOperandList = (outs GPR16:$dst); let mayLoad = 1; let Uses = [SP]; }
+def STSP8  : AVMInst<"stsp8 [sp+$off], $src", 3, (ins AVMOffset:$off, GPR16:$src)> { let mayStore = 1; let Uses = [SP]; }
+def LDSP16 : AVMInst<"ldsp16 $dst, [sp+$off]", 3, (ins AVMOffset:$off)> { let OutOperandList = (outs GPR16:$dst); let mayLoad = 1; let Uses = [SP]; }
+def STSP16 : AVMInst<"stsp16 [sp+$off], $src", 3, (ins AVMOffset:$off, GPR16:$src)> { let mayStore = 1; let Uses = [SP]; }
 
 // Direct data-space forms.
 def LDM8  : AVMInst<"ldm8 $dst, $addr", 4, (ins GPR16:$dst, AVMImm16:$addr)> { let mayLoad = 1; }
@@ -219,7 +240,7 @@ def LDP16_DISP : AVMInst<"ldp16 $dst, [pb:$addr+$disp]", 4, (ins GPR16:$dst, GPR
 // Direct far control and return.
 def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> { let isBranch = 1; let isTerminator = 1; let isBarrier = 1; }
 def CALLF : AVMCallInst<"callf $target", 4, (ins AVMImm24:$target)>;
-def RET : AVMInst<"ret", 1> { let isReturn = 1; let isTerminator = 1; let isBarrier = 1; }
+def RET : AVMInst<"ret", 1> { let isReturn = 1; let isTerminator = 1; let isBarrier = 1; let Uses = [SP]; let Defs = [SP]; }
 
 // The only placeholder needed before GlobalISel begins.
 def AVM_BACKEND_NOT_IMPLEMENTED : AVMInst<"<avm-backend-not-implemented>", 0> {

@@ -3,6 +3,7 @@
 include "llvm/Target/Target.td"
 include "AVMRegisterInfo.td"
 include "AVMInstrInfo.td"
+include "GISel/AVMRegisterBanks.td"
 
 defm : RemapAllTargetPseudoPointerOperands<GPR16>;
 

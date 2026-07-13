@@ -3368,4 +3368,12 @@ TEST(DataLayoutTest, UEFI) {
   EXPECT_THAT(TT.computeDataLayout(), testing::HasSubstr("-m:w-"));
 }
 
+TEST(DataLayoutTest, AVM) {
+  Triple TT = Triple("avm-unknown-arduboyfx");
+
+  EXPECT_EQ(TT.computeDataLayout(),
+            "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-"
+            "n8:16-S8");
+}
+
 } // end anonymous namespace

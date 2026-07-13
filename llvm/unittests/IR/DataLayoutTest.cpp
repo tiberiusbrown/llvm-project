@@ -31,6 +31,24 @@ TEST(DataLayout, LayoutStringFormat) {
         FailedWithMessage("empty specification is not allowed"));
 }
 
+TEST(DataLayoutTest, AVMScalarABIAlignments) {
+  LLVMContext Context;
+  DataLayout DL(Triple("avm-unknown-arduboyfx").computeDataLayout());
+
+  EXPECT_EQ(DL.getABITypeAlign(Type::getInt1Ty(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getInt8Ty(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getInt16Ty(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getInt32Ty(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getInt64Ty(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getHalfTy(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(Type::getFloatTy(Context)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(PointerType::get(Context, 0)), Align(1));
+  EXPECT_EQ(DL.getABITypeAlign(PointerType::get(Context, 1)), Align(1));
+  EXPECT_EQ(DL.getPointerSize(0), 2u);
+  EXPECT_EQ(DL.getPointerSize(1), 3u);
+  EXPECT_EQ(DL.getStackAlignment(), Align(1));
+}
+
 TEST(DataLayoutTest, InvalidSpecifier) {
   EXPECT_THAT_EXPECTED(DataLayout::parse("^"),
                        FailedWithMessage("unknown specifier '^'"));
