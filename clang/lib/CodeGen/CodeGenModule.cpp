@@ -5248,9 +5248,10 @@ llvm::Constant *
 CodeGenModule::GetAddrOfFunction(GlobalDecl GD, llvm::Type *Ty, bool ForVTable,
                                  bool DontDefer,
                                  ForDefinition_t IsForDefinition) {
+  const auto *FD = cast<FunctionDecl>(GD.getDecl());
+
   // If there was no specific requested type, just convert it now.
   if (!Ty) {
-    const auto *FD = cast<FunctionDecl>(GD.getDecl());
     Ty = getTypes().ConvertType(FD->getType());
     if (DeviceKernelAttr::isOpenCLSpelling(FD->getAttr<DeviceKernelAttr>()) &&
         GD.getKernelReferenceKind() == KernelReferenceKind::Stub) {

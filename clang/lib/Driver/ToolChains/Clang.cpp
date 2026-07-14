@@ -5982,7 +5982,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // use Freestanding.
   bool Freestanding =
       Args.hasFlag(options::OPT_ffreestanding, options::OPT_fhosted, false) ||
-      KernelOrKext;
+      KernelOrKext || Triple.getArch() == llvm::Triple::abc;
   if (Freestanding)
     CmdArgs.push_back("-ffreestanding");
 

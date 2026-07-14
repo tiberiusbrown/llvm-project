@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/Object/ABCVMBinary.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
@@ -27,6 +28,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/LLVMDriver.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -97,6 +99,65 @@ static uint64_t TotalObjectTotal = 0;
 // Darwin-specific totals
 static uint64_t TotalObjectObjc = 0;
 static uint64_t TotalObjectOthers = 0;
+static uint64_t TotalABCBinaryHeader = 0;
+static uint64_t TotalABCBinaryProgram = 0;
+static uint64_t TotalABCBinaryCode = 0;
+static uint64_t TotalABCBinaryDebug = 0;
+static uint64_t TotalABCBinaryPadding = 0;
+static uint64_t TotalABCBinaryTrailer = 0;
+
+static void error(const Twine &Message, StringRef File);
+static void error(llvm::Error E, StringRef FileName,
+                  StringRef ArchitectureName);
+
+static bool isABCSizeMode() {
+  return sys::path::stem(ToolName).contains_insensitive("abc-size");
+}
+
+static void printABCBinaryHeader() {
+  if (BerkeleyHeaderPrinted)
+    return;
+  outs() << "header\tprogram\tcode\tdebug\tpadding\ttrailer\tdec\thex\tfilename\n";
+  BerkeleyHeaderPrinted = true;
+}
+
+static bool printABCVMBinarySectionSizes(StringRef File) {
+  ErrorOr<std::unique_ptr<MemoryBuffer>> FileOrErr =
+      MemoryBuffer::getFileOrSTDIN(File, /*IsText=*/false,
+                                   /*RequiresNullTerminator=*/false);
+  if (std::error_code EC = FileOrErr.getError()) {
+    error(EC.message(), File);
+    return true;
+  }
+
+  StringRef Buffer = FileOrErr.get()->getBuffer();
+  if (!isABCVMBinary(Buffer))
+    return false;
+
+  Expected<ABCVMBinaryInfo> InfoOrErr = parseABCVMBinary(Buffer);
+  if (!InfoOrErr) {
+    error(InfoOrErr.takeError(), File, StringRef());
+    return true;
+  }
+
+  const ABCVMBinaryInfo &Info = *InfoOrErr;
+  uint64_t DebugSize = Info.FileTableSize + Info.LineTableSize;
+  uint64_t Total = Info.FileSize;
+
+  printABCBinaryHeader();
+  outs() << Info.HeaderSize << "\t" << Info.ProgramDataSize << "\t"
+         << Info.CodeSize << "\t" << DebugSize << "\t" << Info.PaddingSize
+         << "\t" << Info.TrailerSize << "\t" << Total << "\t"
+         << format("%" PRIx64, Total) << "\t" << File << "\n";
+
+  TotalABCBinaryHeader += Info.HeaderSize;
+  TotalABCBinaryProgram += Info.ProgramDataSize;
+  TotalABCBinaryCode += Info.CodeSize;
+  TotalABCBinaryDebug += DebugSize;
+  TotalABCBinaryPadding += Info.PaddingSize;
+  TotalABCBinaryTrailer += Info.TrailerSize;
+  return true;
+}
 
 static void error(const Twine &Message, StringRef File = "") {
   HadError = true;
@@ -555,6 +616,8 @@ static bool checkMachOAndArchFlags(ObjectFile *O, StringRef Filename) {
 /// Print the section sizes for @p file. If @p file is an archive, print the
 /// section sizes for each archive member.
 static void printFileSectionSizes(StringRef file) {
+  if (isABCSizeMode() && printABCVMBinarySectionSizes(file))
+    return;
 
   // Attempt to open the binary.
   Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
@@ -888,6 +951,17 @@ static void printBerkeleyTotals() {
   }
 }
 
+static void printABCBinaryTotals() {
+  uint64_t Total = TotalABCBinaryHeader + TotalABCBinaryProgram +
+                   TotalABCBinaryCode + TotalABCBinaryDebug +
+                   TotalABCBinaryPadding + TotalABCBinaryTrailer;
+  printABCBinaryHeader();
+  outs() << TotalABCBinaryHeader << "\t" << TotalABCBinaryProgram << "\t"
+         << TotalABCBinaryCode << "\t" << TotalABCBinaryDebug << "\t"
+         << TotalABCBinaryPadding << "\t" << TotalABCBinaryTrailer << "\t"
+         << Total << "\t" << format("%" PRIx64, Total) << "\t(TOTALS)\n";
+}
+
 int llvm_size_main(int argc, char **argv, const llvm::ToolContext &) {
   BumpPtrAllocator A;
   StringSaver Saver(A);
@@ -954,11 +1028,15 @@ int llvm_size_main(int argc, char **argv, const llvm::ToolContext &) {
 
   InputFilenames = Args.getAllArgValues(OPT_INPUT);
   if (InputFilenames.empty())
-    InputFilenames.push_back("a.out");
+    InputFilenames.push_back(isABCSizeMode() ? "a.bin" : "a.out");
 
   MoreThanOneFile = InputFilenames.size() > 1;
   llvm::for_each(InputFilenames, printFileSectionSizes);
-  if (OutputFormat == berkeley && TotalSizes)
+  if (OutputFormat == berkeley && TotalSizes &&
+      (TotalABCBinaryHeader || TotalABCBinaryProgram || TotalABCBinaryCode ||
+       TotalABCBinaryDebug || TotalABCBinaryPadding || TotalABCBinaryTrailer))
+    printABCBinaryTotals();
+  else if (OutputFormat == berkeley && TotalSizes)
     printBerkeleyTotals();
 
   if (HadError)

@@ -25,6 +25,7 @@
 #include "llvm/DebugInfo/CodeView/MergingTypeTableBuilder.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Object/ABCVMBinary.h"
 #include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachOUniversal.h"
@@ -176,6 +177,10 @@ static std::vector<std::string> InputFilenames;
 } // namespace opts
 
 static StringRef ToolName;
+
+static bool isABCReadobjMode() {
+  return sys::path::stem(ToolName).contains_insensitive("abc-readobj");
+}
 
 namespace llvm {
 
@@ -617,6 +622,40 @@ static void dumpWindowsResourceFile(WindowsResource *WinRes,
     reportError(std::move(Err), WinRes->getFileName());
 }
 
+static void dumpABCVMBinary(StringRef File, MemoryBufferRef Buffer,
+                            ScopedPrinter &Writer) {
+  Expected<ABCVMBinaryInfo> InfoOrErr = parseABCVMBinary(Buffer.getBuffer());
+  if (!InfoOrErr)
+    reportError(InfoOrErr.takeError(), File);
+
+  const ABCVMBinaryInfo &Info = *InfoOrErr;
+  DictScope Scope(Writer, "ABCVMBinary");
+  Writer.printString("File", File);
+  Writer.printString("Format", "abc-vm-bin");
+  Writer.printNumber("FileSize", Info.FileSize);
+  Writer.printBoolean("HeaderSignatureValid", true);
+  Writer.printNumber("SaveSize", Info.SaveSize);
+  Writer.printNumber("FileTableLength", Info.FileTableLength);
+  Writer.printHex("FileTableOffset", Info.FileTableOffset);
+  Writer.printHex("LineTableOffset", Info.LineTableOffset);
+  Writer.printNumber("Shades", Info.Shades);
+  Writer.printHex("ProgramDataOffset", Info.ProgramDataOffset);
+  Writer.printHex("CodeOffset", Info.CodeOffset);
+  Writer.printHex("GlobInitAddress", Info.GlobInitAddress);
+  Writer.printNumber("StartupReturnSlotSize", Info.StartupReturnSlotSize);
+  Writer.printHex("MainAddress", Info.MainAddress);
+  Writer.printHex("PayloadEndOffset", Info.PayloadEndOffset);
+  Writer.printHex("TrailerOffset", Info.TrailerOffset);
+  Writer.printHex("DevDataPage", Info.DevDataPage);
+  Writer.printBoolean("TrailerSignatureValid", true);
+  Writer.printNumber("ProgramDataSize", Info.ProgramDataSize);
+  Writer.printNumber("CodeSize", Info.CodeSize);
+  Writer.printNumber("FileTableSize", Info.FileTableSize);
+  Writer.printNumber("LineTableSize", Info.LineTableSize);
+  Writer.printNumber("PaddingSize", Info.PaddingSize);
+  Writer.printNumber("TrailerSize", ABCVMBinaryInfo::TrailerSize);
+}
+
 
 /// Opens \a File and dumps it.
 static void dumpInput(StringRef File, ScopedPrinter &Writer) {
@@ -632,6 +671,11 @@ static void dumpInput(StringRef File, ScopedPrinter &Writer) {
     reportWarning(createStringError(errc::invalid_argument,
                                     "bitcode files are not supported"),
                   File);
+    return;
+  }
+
+  if (isABCReadobjMode() && isABCVMBinary(Buffer->getBuffer())) {
+    dumpABCVMBinary(File, Buffer->getMemBufferRef(), Writer);
     return;
   }
 

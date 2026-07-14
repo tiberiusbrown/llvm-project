@@ -20,6 +20,7 @@ enum Flavor {
   WinLink, // -flavor link
   Darwin,  // -flavor darwin
   Wasm,    // -flavor wasm
+  ABC,     // -flavor abc
 };
 
 using Driver = bool (*)(llvm::ArrayRef<const char *>, llvm::raw_ostream &,
@@ -63,6 +64,8 @@ Result lldMain(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
     {lld::WinLink, &lld::coff::link}, {lld::Gnu, &lld::elf::link},             \
         {lld::MinGW, &lld::mingw::link}, {lld::Darwin, &lld::macho::link}, {   \
       lld::Wasm, &lld::wasm::link                                              \
+    }, {                                                                       \
+      lld::ABC, &lld::abc::link                                                \
     }                                                                          \
   }
 

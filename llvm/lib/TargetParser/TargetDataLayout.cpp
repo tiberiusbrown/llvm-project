@@ -609,6 +609,8 @@ std::string Triple::computeDataLayout(StringRef ABIName) const {
     return "e-m:e-p:32:32-i1:8:32-i8:8:32-i16:16:32-i64:32-f64:32-a:0:32-n32";
   case Triple::xtensa:
     return "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32";
+  case Triple::abc:
+    return "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f32:8-n8:16-S8";
   case Triple::nvptx:
   case Triple::nvptx64:
     return computeNVPTXDataLayout(*this, ABIName);

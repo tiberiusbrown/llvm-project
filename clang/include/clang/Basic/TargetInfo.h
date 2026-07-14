@@ -1828,6 +1828,11 @@ public:
   /// Whether target allows to overalign ABI-specified preferred alignment
   virtual bool allowsLargerPreferedTypeAlignment() const { return true; }
 
+  /// Whether calls should evaluate their explicit argument expressions from
+  /// right to left by default.  The arguments are still placed in their
+  /// source-level parameter positions in the emitted LLVM call.
+  virtual bool evaluateCallArgsRightToLeft() const { return false; }
+
   /// Whether target defaults to the `power` alignment rules of AIX.
   virtual bool defaultsToAIXPowerAlignment() const { return false; }
 

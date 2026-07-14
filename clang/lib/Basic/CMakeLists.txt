@@ -95,6 +95,7 @@ add_clang_library(clangBasic
   TargetID.cpp
   TargetInfo.cpp
   Targets.cpp
+  Targets/ABC.cpp
   Targets/AArch64.cpp
   Targets/AMDGPU.cpp
   Targets/ARC.cpp

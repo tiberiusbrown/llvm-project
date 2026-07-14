@@ -541,11 +541,10 @@ CodeGenTypes::arrangeFunctionDeclaration(const GlobalDecl GD) {
 
   // When declaring a function without a prototype, always use a
   // non-variadic type.
-  if (CanQual<FunctionNoProtoType> noProto = FTy.getAs<FunctionNoProtoType>()) {
+  if (CanQual<FunctionNoProtoType> noProto = FTy.getAs<FunctionNoProtoType>())
     return arrangeLLVMFunctionInfo(noProto->getReturnType(), FnInfoOpts::None,
                                    {}, noProto->getExtInfo(), {},
                                    RequiredArgs::All);
-  }
 
   return arrangeFreeFunctionType(FTy.castAs<FunctionProtoType>());
 }
@@ -4765,10 +4764,12 @@ void CodeGenFunction::EmitCallArgs(
   // case, there are certain language constructs that require left-to-right
   // evaluation, and in those cases we consider the evaluation order requirement
   // to trump the "destruction order is reverse construction order" guarantee.
-  bool LeftToRight =
-      CGM.getTarget().getCXXABI().areArgsDestroyedLeftToRightInCallee()
-          ? Order == EvaluationOrder::ForceLeftToRight
-          : Order != EvaluationOrder::ForceRightToLeft;
+  bool DefaultRightToLeft =
+      CGM.getTarget().getCXXABI().areArgsDestroyedLeftToRightInCallee() ||
+      CGM.getTarget().evaluateCallArgsRightToLeft();
+  bool LeftToRight = DefaultRightToLeft
+                         ? Order == EvaluationOrder::ForceLeftToRight
+                         : Order != EvaluationOrder::ForceRightToLeft;
 
   auto MaybeEmitImplicitObjectSize = [&](unsigned I, const Expr *Arg,
                                          RValue EmittedArg) {

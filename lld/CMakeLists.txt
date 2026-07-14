@@ -200,6 +200,7 @@ if (LLVM_INCLUDE_TESTS)
 endif()
 
 add_subdirectory(docs)
+add_subdirectory(ABC)
 add_subdirectory(COFF)
 add_subdirectory(ELF)
 add_subdirectory(MachO)

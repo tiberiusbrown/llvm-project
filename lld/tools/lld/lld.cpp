@@ -67,6 +67,7 @@ static unsigned inTestVerbosity() {
 }
 
 LLD_HAS_DRIVER(coff)
+LLD_HAS_DRIVER(abc)
 LLD_HAS_DRIVER(elf)
 LLD_HAS_DRIVER(mingw)
 LLD_HAS_DRIVER(macho)

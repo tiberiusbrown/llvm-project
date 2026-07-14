@@ -33,6 +33,7 @@ add_llvm_tool(llvm-readobj
 setup_host_tool(llvm-readobj LLVM_READOBJ llvm_readobj_exe llvm_readobj_target)
 
 add_llvm_tool_symlink(llvm-readelf llvm-readobj)
+add_llvm_tool_symlink(abc-readobj llvm-readobj)
 
 if(LLVM_INSTALL_BINUTILS_SYMLINKS)
   add_llvm_tool_symlink(readelf llvm-readobj)

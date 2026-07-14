@@ -325,6 +325,7 @@ enum {
   EM_VE = 251,            // NEC SX-Aurora VE
   EM_CSKY = 252,          // C-SKY 32-bit processor
   EM_LOONGARCH = 258,     // LoongArch
+  EM_ABC = 0x0ABC,        // ABC VM bytecode (private LLVM fork value)
 };
 
 // Object file classes.
@@ -516,6 +517,11 @@ enum : unsigned {
 // ELF Relocation types for AVR
 enum {
 #include "ELFRelocs/AVR.def"
+};
+
+// ELF Relocation types for ABC
+enum {
+#include "ELFRelocs/ABC.def"
 };
 
 // Mips Specific e_flags

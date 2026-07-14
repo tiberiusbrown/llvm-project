@@ -23,6 +23,7 @@ using namespace llvm;
 
 StringRef Triple::getArchTypeName(ArchType Kind) {
   switch (Kind) {
+<<<<<<< ours
   case UnknownArch:    return "unknown";
 
   case aarch64:        return "aarch64";
@@ -63,6 +64,89 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
   case renderscript64: return "renderscript64";
   case riscv32:        return "riscv32";
   case riscv64:        return "riscv64";
+=======
+  case UnknownArch:
+    return "unknown";
+
+  case abc:
+    return "abc";
+  case aarch64:
+    return "aarch64";
+  case aarch64_32:
+    return "aarch64_32";
+  case aarch64_be:
+    return "aarch64_be";
+  case amdgcn:
+    return "amdgcn";
+  case amdil64:
+    return "amdil64";
+  case amdil:
+    return "amdil";
+  case arc:
+    return "arc";
+  case arm:
+    return "arm";
+  case armeb:
+    return "armeb";
+  case avr:
+    return "avr";
+  case bpfeb:
+    return "bpfeb";
+  case bpfel:
+    return "bpfel";
+  case csky:
+    return "csky";
+  case dxil:
+    return "dxil";
+  case hexagon:
+    return "hexagon";
+  case hsail64:
+    return "hsail64";
+  case hsail:
+    return "hsail";
+  case kalimba:
+    return "kalimba";
+  case lanai:
+    return "lanai";
+  case loongarch32:
+    return "loongarch32";
+  case loongarch64:
+    return "loongarch64";
+  case m68k:
+    return "m68k";
+  case mips64:
+    return "mips64";
+  case mips64el:
+    return "mips64el";
+  case mips:
+    return "mips";
+  case mipsel:
+    return "mipsel";
+  case msp430:
+    return "msp430";
+  case nvptx64:
+    return "nvptx64";
+  case nvptx:
+    return "nvptx";
+  case ppc64:
+    return "powerpc64";
+  case ppc64le:
+    return "powerpc64le";
+  case ppc:
+    return "powerpc";
+  case ppcle:
+    return "powerpcle";
+  case r600:
+    return "r600";
+  case renderscript32:
+    return "renderscript32";
+  case renderscript64:
+    return "renderscript64";
+  case riscv32:
+    return "riscv32";
+  case riscv64:
+    return "riscv64";
+>>>>>>> theirs
   case riscv32be:
     return "riscv32be";
   case riscv64be:
@@ -589,6 +673,7 @@ static Triple::ArchType parseARMArch(StringRef ArchName) {
 static Triple::ArchType parseArch(StringRef ArchName) {
   auto AT =
       StringSwitch<Triple::ArchType>(ArchName)
+          .Case("abc", Triple::abc)
           .Cases({"i386", "i486", "i586", "i686"}, Triple::x86)
           // FIXME: Do we need to support these?
           .Cases({"i786", "i886", "i986"}, Triple::x86)
@@ -970,6 +1055,7 @@ static Triple::SubArchType parseSubArch(StringRef SubArchName) {
 static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   switch (T.getArch()) {
   case Triple::UnknownArch:
+  case Triple::abc:
   case Triple::aarch64:
   case Triple::aarch64_32:
   case Triple::arm:
@@ -1715,6 +1801,7 @@ unsigned Triple::getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::UnknownArch:
     return 0;
 
+  case llvm::Triple::abc:
   case llvm::Triple::avr:
   case llvm::Triple::msp430:
     return 16;
@@ -1819,6 +1906,7 @@ Triple Triple::get32BitArchVariant() const {
   Triple T(*this);
   switch (getArch()) {
   case Triple::UnknownArch:
+  case Triple::abc:
   case Triple::amdgcn:
   case Triple::avr:
   case Triple::bpfeb:
@@ -1902,6 +1990,7 @@ Triple Triple::get64BitArchVariant() const {
   Triple T(*this);
   switch (getArch()) {
   case Triple::UnknownArch:
+  case Triple::abc:
   case Triple::arc:
   case Triple::avr:
   case Triple::csky:
@@ -1988,6 +2077,7 @@ Triple Triple::getBigEndianArchVariant() const {
     return T;
   switch (getArch()) {
   case Triple::UnknownArch:
+  case Triple::abc:
   case Triple::amdgcn:
   case Triple::amdil64:
   case Triple::amdil:
@@ -2098,6 +2188,7 @@ bool Triple::isLittleEndian() const {
   switch (getArch()) {
   case Triple::aarch64:
   case Triple::aarch64_32:
+  case Triple::abc:
   case Triple::amdgcn:
   case Triple::amdil64:
   case Triple::amdil:

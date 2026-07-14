@@ -45,6 +45,7 @@ if(NOT LLVM_TOOL_LLVM_DRIVER_BUILD)
 endif()
 
 add_llvm_tool_symlink(llvm-otool llvm-objdump)
+add_llvm_tool_symlink(abc-objdump llvm-objdump)
 
 if(LLVM_INSTALL_BINUTILS_SYMLINKS)
   add_llvm_tool_symlink(objdump llvm-objdump)

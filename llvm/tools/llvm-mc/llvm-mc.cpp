@@ -36,6 +36,7 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TimeProfiler.h"
@@ -262,8 +263,15 @@ static cl::opt<std::string>
 
 static const Target *GetTarget(const char *ProgName) {
   // Figure out the target triple.
-  if (TripleName.empty())
-    TripleName = sys::getDefaultTargetTriple();
+  StringRef ToolName = sys::path::stem(ProgName);
+  if (ToolName.equals_insensitive("abc-as") && FileType.getNumOccurrences() == 0)
+    FileType = OFT_ObjectFile;
+
+  if (TripleName.empty()) {
+    TripleName =
+        ToolName.equals_insensitive("abc-as") ? "abc"
+                                              : sys::getDefaultTargetTriple();
+  }
   Triple TheTriple(Triple::normalize(TripleName));
 
   // Get the target specific parser.

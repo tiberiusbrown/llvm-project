@@ -15,3 +15,5 @@ add_llvm_tool(llvm-mc
   Disassembler.cpp
   )
 
+add_llvm_tool_symlink(abc-as llvm-mc)
+

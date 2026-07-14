@@ -13,6 +13,7 @@
 
 #include "Targets.h"
 
+#include "Targets/ABC.h"
 #include "Targets/AArch64.h"
 #include "Targets/AMDGPU.h"
 #include "Targets/ARC.h"
@@ -270,6 +271,8 @@ std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
 
   case llvm::Triple::avr:
     return std::make_unique<AVRTargetInfo>(Triple, Opts);
+  case llvm::Triple::abc:
+    return std::make_unique<ABCTargetInfo>(Triple, Opts);
   case llvm::Triple::bpfeb:
   case llvm::Triple::bpfel:
     return std::make_unique<BPFTargetInfo>(Triple, Opts);

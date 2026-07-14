@@ -47,6 +47,7 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Object/ABCVMBinary.h"
 #include "llvm/Object/BuildID.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
@@ -357,6 +358,12 @@ int objdump::DbgIndent = 52;
 static StringSet<> DisasmSymbolSet;
 StringSet<> objdump::FoundSectionSet;
 static StringRef ToolName;
+static constexpr uint64_t ABCStartupOffset = 0x14;
+static constexpr uint64_t ABCStartupByteCount = 12;
+
+static bool isABCObjdumpMode() {
+  return sys::path::stem(ToolName).contains_insensitive("abc-objdump");
+}
 
 std::unique_ptr<BuildIDFetcher> BIDFetcher;
 
@@ -3527,6 +3534,67 @@ static void dumpInput(StringRef file) {
     return;
   }
 
+  if (isABCObjdumpMode()) {
+    ErrorOr<std::unique_ptr<MemoryBuffer>> FileOrErr =
+        MemoryBuffer::getFileOrSTDIN(file, /*IsText=*/false,
+                                     /*RequiresNullTerminator=*/false);
+    if (std::error_code EC = FileOrErr.getError())
+      reportError(errorCodeToError(EC), file);
+
+    StringRef Buffer = FileOrErr.get()->getBuffer();
+    if (isABCVMBinary(Buffer)) {
+      Expected<ABCVMBinaryInfo> InfoOrErr = parseABCVMBinary(Buffer);
+      if (!InfoOrErr)
+        reportError(InfoOrErr.takeError(), file);
+      const ABCVMBinaryInfo &Info = *InfoOrErr;
+
+      outs() << "\n" << file << ":\tfile format abc-vm-bin\n";
+
+      if (FileHeaders) {
+        outs() << "architecture: abc\n";
+        outs() << "start address: 0x000014\n";
+        outs() << "shades: " << unsigned(Info.Shades) << "\n";
+        outs() << "save size: " << Info.SaveSize << "\n";
+      }
+
+      if (SectionHeaders) {
+        outs() << "\nSections:\n";
+        outs() << "Idx Name       Offset    Size\n";
+        outs() << "  0 .header    " << format_hex_no_prefix(0u, 8) << "  "
+               << format_hex_no_prefix(Info.HeaderSize, 8) << "\n";
+        outs() << "  1 .progdata  "
+               << format_hex_no_prefix(Info.ProgramDataOffset, 8) << "  "
+               << format_hex_no_prefix(Info.ProgramDataSize, 8) << "\n";
+        outs() << "  2 .text      "
+               << format_hex_no_prefix(Info.CodeOffset, 8) << "  "
+               << format_hex_no_prefix(Info.CodeSize, 8) << "\n";
+        outs() << "  3 .filetable "
+               << format_hex_no_prefix(Info.FileTableOffset, 8) << "  "
+               << format_hex_no_prefix(Info.FileTableSize, 8) << "\n";
+        outs() << "  4 .linetable "
+               << format_hex_no_prefix(Info.LineTableOffset, 8) << "  "
+               << format_hex_no_prefix(Info.LineTableSize, 8) << "\n";
+        outs() << "  5 .trailer   "
+               << format_hex_no_prefix(Info.TrailerOffset, 8) << "  "
+               << format_hex_no_prefix(Info.TrailerSize, 8) << "\n";
+      }
+
+      if (Disassemble) {
+        outs() << "\nStartup bytes:\n";
+        for (uint64_t I = 0; I < ABCStartupByteCount; I += 4) {
+          uint64_t Offset = ABCStartupOffset + I;
+          outs() << format("%08" PRIx64 ":", Offset);
+          for (uint64_t J = 0; J < 4; ++J)
+            outs() << " "
+                   << format_hex_no_prefix(
+                          uint8_t(Buffer[ABCStartupOffset + I + J]), 2);
+          outs() << "\n";
+        }
+      }
+      return;
+    }
+  }
+
   // Attempt to open the binary.
   OwningBinary<Binary> OBinary = unwrapOrError(createBinary(file), file);
   Binary &Binary = *OBinary.getBinary();
@@ -3830,7 +3898,7 @@ static void parseObjdumpOptions(const llvm::opt::InputArgList &InputArgs) {
 
   // objdump defaults to a.out if no filenames specified.
   if (InputFilenames.empty())
-    InputFilenames.push_back("a.out");
+    InputFilenames.push_back(isABCObjdumpMode() ? "a.bin" : "a.out");
 }
 
 int llvm_objdump_main(int argc, char **argv, const llvm::ToolContext &) {
