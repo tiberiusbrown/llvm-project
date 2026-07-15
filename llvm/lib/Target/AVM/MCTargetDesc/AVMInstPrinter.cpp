@@ -61,6 +61,7 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::COLDCMPIS8: return {"cmpi.s8", 0};
   case AVM::LEASP: return {"leasp", 0};
   case AVM::LDSP8U: return {"ldsp8u", 0};
+  case AVM::LDSP8U_COMPACT: return {"ldsp8u", 0};
   case AVM::LDSP8S: return {"ldsp8s", 0};
   case AVM::STSP8: return {"stsp8", 0};
   case AVM::STSP8_COMPACT: return {"stsp8", 0};
@@ -233,6 +234,11 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LDSP16:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [sp+" << formatImm(MI->getOperand(1).getImm()) << ']';
+    break;
+  case AVM::LDSP8U_COMPACT:
+    OS << '\t';
+    printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << ", [sp+" << formatImm(MI->getOperand(1).getImm()) << ']';
     break;
   case AVM::STSP8:

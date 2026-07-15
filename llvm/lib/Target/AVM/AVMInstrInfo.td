@@ -114,6 +114,10 @@ class AVMStackStoreInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)>;
 class AVMCompactStackStoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMImm4:$offset, AVMCompactSource:$reg)>;
+class AVMCompactStackLoadInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMImm4:$offset)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+}
 
 // These cold-page absolute data-space forms are MC-only.  The encoder emits
 // the F0 prefix, family secondary byte, explicit ISA register index, and a
@@ -222,6 +226,7 @@ def COLDCMPIS8 : AVMColdRegS8Inst<"cmpi.s8 $reg, $imm"> {
 }
 def LEASP : AVMStackRegU8Inst<"leasp $reg, $imm">;
 def LDSP8U : AVMStackLoadInst<"ldsp8u $reg, [sp+$offset]">;
+def LDSP8U_COMPACT : AVMCompactStackLoadInst<"ldsp8u $dst, [sp+$offset]">;
 def LDSP8S : AVMStackLoadInst<"ldsp8s $reg, [sp+$offset]">;
 def STSP8 : AVMStackStoreInst<"stsp8 [sp+$offset], $reg">;
 def STSP8_COMPACT : AVMCompactStackStoreInst<"stsp8 [sp+$offset], $reg">;

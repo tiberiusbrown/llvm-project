@@ -468,6 +468,23 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 0x30 + 4 * unsigned(Offset) + *Reg);
   }
 
+  void emitCompactStackLoad(const MCInst &MI,
+                            SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isImm()) {
+      error(MI, "expected compact register and unsigned 4-bit stack offset");
+      return;
+    }
+    const auto Reg = compactRegIndex(MI.getOperand(0).getReg());
+    const int64_t Offset = MI.getOperand(1).getImm();
+    if (!Reg || Offset < 0 || Offset > 15) {
+      error(MI, "expected compact register c0-c3 and unsigned 4-bit offset");
+      return;
+    }
+    emit8(Out, 0xf3);
+    emit8(Out, 0x40 + 4 * unsigned(Offset) + *Reg);
+  }
+
   void emitF1FullReg(const MCInst &MI, SmallVectorImpl<char> &Out,
                      unsigned SecondaryBase) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -530,6 +547,7 @@ public:
     case AVM::GETSP: emitF1FullReg(MI, Out, 0x80); return;
     case AVM::SETSP: emitF1FullReg(MI, Out, 0x88); return;
     case AVM::STSP8_COMPACT: emitCompactStackStore(MI, Out); return;
+    case AVM::LDSP8U_COMPACT: emitCompactStackLoad(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;
     case AVM::SUB: emitCompactMatrix(MI, Out, 0x20); return;
     case AVM::CMP: emitCompactMatrix(MI, Out, 0x30); return;

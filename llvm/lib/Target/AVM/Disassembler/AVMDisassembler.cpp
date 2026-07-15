@@ -312,7 +312,7 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
-      if (Secondary > 0x3f) {
+      if (Secondary > 0x7f) {
         Size = 1;
         return Fail;
       }
@@ -322,6 +322,14 @@ public:
         MI.addOperand(MCOperand::createReg(
             static_cast<MCRegister>(AVM::R0 + (Secondary & 3))));
       } else {
+        if (Secondary >= 0x40) {
+          MI.setOpcode(AVM::LDSP8U_COMPACT);
+          MI.addOperand(MCOperand::createReg(
+              compactRegister((Secondary - 0x40) & 3)));
+          MI.addOperand(MCOperand::createImm((Secondary - 0x40) / 4));
+          Size = 2;
+          return Success;
+        }
         const unsigned Family = Secondary & 0x30;
         MI.setOpcode(Family == 0x10 ? AVM::MULU8W
                      : Family == 0x20 ? AVM::MULS8W : AVM::MULSU8W);
