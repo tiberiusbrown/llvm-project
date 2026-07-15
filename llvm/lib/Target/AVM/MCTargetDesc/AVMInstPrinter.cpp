@@ -54,6 +54,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::STSP8: return {"stsp8", 0};
   case AVM::LDSP16: return {"ldsp16", 0};
   case AVM::STSP16: return {"stsp16", 0};
+  case AVM::LDM8U: return {"ldm8u", 0};
+  case AVM::STM8: return {"stm8", 0};
+  case AVM::LDM16: return {"ldm16", 0};
+  case AVM::STM16: return {"stm16", 0};
   default:
     return {"<unknown>", 0};
   }
@@ -173,6 +177,21 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::STSP8:
   case AVM::STSP16:
     OS << "\t[sp+" << formatImm(MI->getOperand(0).getImm()) << "], ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::LDM8U:
+  case AVM::LDM16:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [";
+    printOperand(MI->getOperand(1), OS);
+    OS << ']';
+    break;
+  case AVM::STM8:
+  case AVM::STM16:
+    OS << "\t[";
+    printOperand(MI->getOperand(0), OS);
+    OS << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::JMP16:

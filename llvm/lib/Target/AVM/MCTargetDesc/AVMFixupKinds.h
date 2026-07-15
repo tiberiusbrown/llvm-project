@@ -9,6 +9,7 @@ enum Fixups : unsigned {
   fixup_avm_pcrel8 = FirstTargetFixupKind,
   fixup_avm_pcrel16,
   fixup_avm_far24,
+  fixup_avm_data16,
   LastTargetFixupKind,
   NumTargetFixupKinds = LastTargetFixupKind - FirstTargetFixupKind
 };

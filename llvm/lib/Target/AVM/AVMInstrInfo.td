@@ -19,6 +19,8 @@ def AVMCompactDataPointer
 def AVMColdReg : RegisterOperand<AVMColdRegClass, "printFullReg">;
 def AVMStackReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
+def AVMDataAddr16 : Operand<i32>;
+def AVMAbsoluteDataReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -66,6 +68,14 @@ class AVMStackLoadInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$offset)>;
 class AVMStackStoreInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)>;
+
+// These cold-page absolute data-space forms are MC-only.  The encoder emits
+// the F0 prefix, family secondary byte, explicit ISA register index, and a
+// DATA16 address field; they carry no code-generation metadata.
+class AVMAbsoluteDataLoadInst<string Asm>
+    : AVMInst<Asm, 4, (ins AVMAbsoluteDataReg:$reg, AVMDataAddr16:$addr)>;
+class AVMAbsoluteDataStoreInst<string Asm>
+    : AVMInst<Asm, 4, (ins AVMDataAddr16:$addr, AVMAbsoluteDataReg:$reg)>;
 
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
@@ -124,6 +134,11 @@ def LDSP8S : AVMStackLoadInst<"ldsp8s $reg, [sp+$offset]">;
 def STSP8 : AVMStackStoreInst<"stsp8 [sp+$offset], $reg">;
 def LDSP16 : AVMStackLoadInst<"ldsp16 $reg, [sp+$offset]">;
 def STSP16 : AVMStackStoreInst<"stsp16 [sp+$offset], $reg">;
+
+def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
+def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;
+def LDM16 : AVMAbsoluteDataLoadInst<"ldm16 $reg, [$addr]">;
+def STM16 : AVMAbsoluteDataStoreInst<"stm16 [$addr], $reg">;
 
 def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }

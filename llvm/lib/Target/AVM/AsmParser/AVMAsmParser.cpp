@@ -265,6 +265,66 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parseAbsoluteDataReg(MCRegister &Reg) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
+              .Case("r0", AVM::R0).Case("r1", AVM::R1)
+              .Case("r2", AVM::R2).Case("r3", AVM::R3)
+              .Case("r4", AVM::R4).Case("r5", AVM::R5)
+              .Case("r6", AVM::R6).Case("r7", AVM::R7)
+              .Default(MCRegister());
+    if (!Reg)
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseAbsoluteDataAddress(const MCExpr *&Expr, SMLoc &ExprLoc) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected absolute memory operand '[addr16]'");
+    Parser.Lex();
+    ExprLoc = Parser.getTok().getLoc();
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (Expr->evaluateAsAbsolute(Value) && (Value < 0 || Value > 65535))
+      return error(ExprLoc, "absolute address is out of unsigned 16-bit range");
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected ']' after absolute address");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseAbsoluteDataInstruction(unsigned Opcode, bool IsStore,
+                                    StringRef Name, SMLoc NameLoc,
+                                    OperandVector &Operands) {
+    MCRegister Reg;
+    const MCExpr *Expr = nullptr;
+    SMLoc ExprLoc;
+    if (IsStore) {
+      if (parseAbsoluteDataAddress(Expr, ExprLoc) || Parser.parseComma() ||
+          parseAbsoluteDataReg(Reg))
+        return true;
+    } else {
+      if (parseAbsoluteDataReg(Reg) || Parser.parseComma() ||
+          parseAbsoluteDataAddress(Expr, ExprLoc))
+        return true;
+    }
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    if (IsStore)
+      addExpr(Inst, Expr);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    if (!IsStore)
+      addExpr(Inst, Expr);
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseAbsoluteU8(uint64_t &Value, SMLoc &ExprLoc) {
     ExprLoc = Parser.getTok().getLoc();
     const MCExpr *Expr = nullptr;
@@ -550,6 +610,18 @@ public:
     if (Lower == "st16")
       return parseCompactMemoryInstruction(AVM::ST16, true, Name, NameLoc,
                                            Operands);
+    if (Lower == "ldm8u")
+      return parseAbsoluteDataInstruction(AVM::LDM8U, false, Name, NameLoc,
+                                          Operands);
+    if (Lower == "stm8")
+      return parseAbsoluteDataInstruction(AVM::STM8, true, Name, NameLoc,
+                                          Operands);
+    if (Lower == "ldm16")
+      return parseAbsoluteDataInstruction(AVM::LDM16, false, Name, NameLoc,
+                                          Operands);
+    if (Lower == "stm16")
+      return parseAbsoluteDataInstruction(AVM::STM16, true, Name, NameLoc,
+                                          Operands);
     if (Lower == "and")
       return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
     if (Lower == "or")

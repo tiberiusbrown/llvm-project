@@ -29,6 +29,8 @@ public:
       return ELF::R_AVM_PCREL16;
     case AVM::fixup_avm_far24:
       return ELF::R_AVM_FAR24;
+    case AVM::fixup_avm_data16:
+      return ELF::R_AVM_DATA16;
     default:
       llvm_unreachable("unsupported AVM fixup kind");
     }
@@ -52,6 +54,7 @@ public:
         {"fixup_avm_pcrel8", 0, 8, 0},
         {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
+        {"fixup_avm_data16", 0, 16, 0},
     };
     if (Kind < FirstTargetFixupKind)
       return MCAsmBackend::getFixupKindInfo(Kind);
@@ -65,6 +68,8 @@ public:
                   bool IsResolved) override {
     // Logical program addresses are assigned after MC writes its input object.
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_far24)
+      IsResolved = false;
+    if (IsResolved && Fixup.getKind() == AVM::fixup_avm_data16)
       IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)
@@ -99,6 +104,12 @@ public:
       Data[0] = static_cast<uint8_t>(Value);
       Data[1] = static_cast<uint8_t>(Value >> 8);
       Data[2] = static_cast<uint8_t>(Value >> 16);
+      return;
+    case AVM::fixup_avm_data16:
+      if (!isUInt<16>(Value))
+        Error("AVM absolute data address is out of unsigned 16-bit range");
+      Data[0] = static_cast<uint8_t>(Value);
+      Data[1] = static_cast<uint8_t>(Value >> 8);
       return;
     default:
       llvm_unreachable("unknown AVM fixup");

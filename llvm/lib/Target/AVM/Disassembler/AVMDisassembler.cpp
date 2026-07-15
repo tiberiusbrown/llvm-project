@@ -35,6 +35,29 @@ public:
       if (Bytes.size() < 2)
         return Fail;
       const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x40 && Secondary <= 0x5f) {
+        if (Bytes.size() < 4)
+          return Fail;
+        if (Secondary <= 0x47)
+          MI.setOpcode(AVM::LDM8U);
+        else if (Secondary <= 0x4f)
+          MI.setOpcode(AVM::STM8);
+        else if (Secondary <= 0x57)
+          MI.setOpcode(AVM::LDM16);
+        else
+          MI.setOpcode(AVM::STM16);
+        const MCRegister Reg = static_cast<MCRegister>(AVM::R0 + (Secondary & 7));
+        const int64_t Address = Bytes[2] | (uint16_t(Bytes[3]) << 8);
+        if ((Secondary >= 0x48 && Secondary <= 0x4f) || Secondary >= 0x58) {
+          MI.addOperand(MCOperand::createImm(Address));
+          MI.addOperand(MCOperand::createReg(Reg));
+        } else {
+          MI.addOperand(MCOperand::createReg(Reg));
+          MI.addOperand(MCOperand::createImm(Address));
+        }
+        Size = 4;
+        return Success;
+      }
       if (Secondary > 0x3f) {
         Size = 1;
         return Fail;

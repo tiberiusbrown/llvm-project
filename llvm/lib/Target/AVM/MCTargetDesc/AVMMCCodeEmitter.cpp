@@ -29,6 +29,11 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Value >> 16);
   }
 
+  static void emit16(SmallVectorImpl<char> &Out, uint64_t Value) {
+    emit8(Out, Value);
+    emit8(Out, Value >> 8);
+  }
+
   void emitFarTarget(const MCInst &MI, SmallVectorImpl<char> &Out,
                      SmallVectorImpl<MCFixup> &Fixups) const {
     const MCOperand &Operand = MI.getOperand(0);
@@ -292,6 +297,37 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Value);
   }
 
+  void emitAbsoluteData(const MCInst &MI, SmallVectorImpl<char> &Out,
+                        SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
+                        bool IsStore) const {
+    if (MI.getNumOperands() != 2) {
+      error(MI, "expected absolute data address and full register operands");
+      return;
+    }
+    const MCOperand &Address = MI.getOperand(IsStore ? 0 : 1);
+    const MCOperand &Register = MI.getOperand(IsStore ? 1 : 0);
+    if (!Register.isReg() || (!Address.isImm() && !Address.isExpr())) {
+      error(MI, "expected absolute data address and full register operands");
+      return;
+    }
+    const std::optional<unsigned> Reg = stackRegIndex(Register.getReg());
+    if (!Reg) {
+      error(MI, "expected full register r0-r7");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Family | *Reg);
+    if (Address.isImm()) {
+      if (!isUInt<16>(Address.getImm()))
+        error(MI, "absolute address is out of unsigned 16-bit range");
+      emit16(Out, Address.getImm());
+      return;
+    }
+    Fixups.push_back(
+        MCFixup::create(2, Address.getExpr(), AVM::fixup_avm_data16));
+    emit16(Out, 0);
+  }
+
 public:
   explicit AVMMCCodeEmitter(MCContext &Ctx) : Ctx(Ctx) {}
 
@@ -326,6 +362,10 @@ public:
     case AVM::STSP8: emitStackU8(MI, Out, 0x28, true); return;
     case AVM::LDSP16: emitStackU8(MI, Out, 0x30); return;
     case AVM::STSP16: emitStackU8(MI, Out, 0x38, true); return;
+    case AVM::LDM8U: emitAbsoluteData(MI, Out, Fixups, 0x40, false); return;
+    case AVM::STM8: emitAbsoluteData(MI, Out, Fixups, 0x48, true); return;
+    case AVM::LDM16: emitAbsoluteData(MI, Out, Fixups, 0x50, false); return;
+    case AVM::STM16: emitAbsoluteData(MI, Out, Fixups, 0x58, true); return;
     case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
