@@ -232,6 +232,8 @@ def STSP8 : AVMStackStoreInst<"stsp8 [sp+$offset], $reg">;
 def STSP8_COMPACT : AVMCompactStackStoreInst<"stsp8 [sp+$offset], $reg">;
 def LDSP16 : AVMStackLoadInst<"ldsp16 $reg, [sp+$offset]">;
 def STSP16 : AVMStackStoreInst<"stsp16 [sp+$offset], $reg">;
+def LDSP16_COMPACT : AVMCompactStackLoadInst<"ldsp16 $dst, [sp+$offset]">;
+def STSP16_COMPACT : AVMCompactStackStoreInst<"stsp16 [sp+$offset], $reg">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

@@ -485,6 +485,22 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 0x40 + 4 * unsigned(Offset) + *Reg);
   }
 
+  void emitCompactStackWord(const MCInst &MI, SmallVectorImpl<char> &Out,
+                            bool IsStore) const {
+    if (MI.getNumOperands() != 2)
+      return error(MI, "expected compact register and unsigned 4-bit stack offset");
+    const MCOperand &RegOperand = MI.getOperand(IsStore ? 1 : 0);
+    const MCOperand &ValueOperand = MI.getOperand(IsStore ? 0 : 1);
+    if (!RegOperand.isReg() || !ValueOperand.isImm())
+      return error(MI, "expected compact register and unsigned 4-bit stack offset");
+    const auto Reg = compactRegIndex(RegOperand.getReg());
+    const int64_t Offset = ValueOperand.getImm();
+    if (!Reg || Offset < 0 || Offset > 15)
+      return error(MI, "expected compact register c0-c3 and unsigned 4-bit offset");
+    emit8(Out, 0xf4);
+    emit8(Out, (IsStore ? 0x40 : 0) + 4 * unsigned(Offset) + *Reg);
+  }
+
   void emitF1FullReg(const MCInst &MI, SmallVectorImpl<char> &Out,
                      unsigned SecondaryBase) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -578,6 +594,8 @@ public:
     case AVM::STSP8: emitStackU8(MI, Out, 0x28, true); return;
     case AVM::LDSP16: emitStackU8(MI, Out, 0x30); return;
     case AVM::STSP16: emitStackU8(MI, Out, 0x38, true); return;
+    case AVM::LDSP16_COMPACT: emitCompactStackWord(MI, Out, false); return;
+    case AVM::STSP16_COMPACT: emitCompactStackWord(MI, Out, true); return;
     case AVM::LDM8U: emitAbsoluteData(MI, Out, Fixups, 0x40, false); return;
     case AVM::STM8: emitAbsoluteData(MI, Out, Fixups, 0x48, true); return;
     case AVM::LDM16: emitAbsoluteData(MI, Out, Fixups, 0x50, false); return;

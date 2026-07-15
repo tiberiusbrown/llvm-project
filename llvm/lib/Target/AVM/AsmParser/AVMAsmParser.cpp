@@ -475,6 +475,54 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseSPWordInstruction(StringRef Name, SMLoc NameLoc,
+                              OperandVector &Operands, bool IsStore) {
+    MCRegister Reg;
+    unsigned Offset = 0;
+    if (IsStore) {
+      if (parseSPMemory(Offset) || Parser.parseComma())
+        return true;
+      const AsmToken &Tok = Parser.getTok();
+      const bool IsCompact = Tok.is(AsmToken::Identifier) &&
+                             Tok.getIdentifier().starts_with_insensitive("c");
+      if (IsCompact) {
+        if (Offset > 15)
+          return error(Tok.getLoc(),
+                       "compact stack offset is out of unsigned 4-bit range");
+        if (parseCompactReg(Reg))
+          return true;
+      } else if (parseStackReg(Reg)) {
+        return true;
+      }
+      MCInst Inst;
+      Inst.setOpcode(IsCompact ? AVM::STSP16_COMPACT : AVM::STSP16);
+      Inst.addOperand(MCOperand::createImm(Offset));
+      Inst.addOperand(MCOperand::createReg(Reg));
+      return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                               Operands, Name, NameLoc);
+    }
+
+    const AsmToken &Tok = Parser.getTok();
+    const bool IsCompact = Tok.is(AsmToken::Identifier) &&
+                           Tok.getIdentifier().starts_with_insensitive("c");
+    if (IsCompact) {
+      if (parseCompactReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
+        return true;
+      if (Offset > 15)
+        return error(Tok.getLoc(),
+                     "compact stack offset is out of unsigned 4-bit range");
+    } else if (parseStackReg(Reg) || Parser.parseComma() ||
+               parseSPMemory(Offset)) {
+      return true;
+    }
+    MCInst Inst;
+    Inst.setOpcode(IsCompact ? AVM::LDSP16_COMPACT : AVM::LDSP16);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createImm(Offset));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseStackInstruction(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
     MCRegister Reg;
@@ -1059,8 +1107,8 @@ public:
     if (Lower == "ldsp8u") return parseLDSP8U(Name, NameLoc, Operands);
     if (Lower == "ldsp8s") return parseSPMemoryInstruction(AVM::LDSP8S, false, Name, NameLoc, Operands);
     if (Lower == "stsp8") return parseSTSP8(Name, NameLoc, Operands);
-    if (Lower == "ldsp16") return parseSPMemoryInstruction(AVM::LDSP16, false, Name, NameLoc, Operands);
-    if (Lower == "stsp16") return parseSPMemoryInstruction(AVM::STSP16, true, Name, NameLoc, Operands);
+    if (Lower == "ldsp16") return parseSPWordInstruction(Name, NameLoc, Operands, false);
+    if (Lower == "stsp16") return parseSPWordInstruction(Name, NameLoc, Operands, true);
     if (Lower == "nop")
       return parseNop(Name, NameLoc, Operands);
     if (Lower == "clr")

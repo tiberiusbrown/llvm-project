@@ -67,6 +67,8 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::STSP8_COMPACT: return {"stsp8", 0};
   case AVM::LDSP16: return {"ldsp16", 0};
   case AVM::STSP16: return {"stsp16", 0};
+  case AVM::LDSP16_COMPACT: return {"ldsp16", 0};
+  case AVM::STSP16_COMPACT: return {"stsp16", 0};
   case AVM::LDM8U: return {"ldm8u", 0};
   case AVM::STM8: return {"stm8", 0};
   case AVM::LDM16: return {"ldm16", 0};
@@ -236,6 +238,11 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     printFullReg(MI->getOperand(0).getReg(), OS);
     OS << ", [sp+" << formatImm(MI->getOperand(1).getImm()) << ']';
     break;
+  case AVM::LDSP16_COMPACT:
+    OS << '\t';
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [sp+" << formatImm(MI->getOperand(1).getImm()) << ']';
+    break;
   case AVM::LDSP8U_COMPACT:
     OS << '\t';
     printCompactReg(MI->getOperand(0).getReg(), OS);
@@ -245,6 +252,10 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::STSP16:
     OS << "\t[sp+" << formatImm(MI->getOperand(0).getImm()) << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::STSP16_COMPACT:
+    OS << "\t[sp+" << formatImm(MI->getOperand(0).getImm()) << "], ";
+    printCompactReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::STSP8_COMPACT:
     OS << "\t[sp+" << formatImm(MI->getOperand(0).getImm()) << "], ";

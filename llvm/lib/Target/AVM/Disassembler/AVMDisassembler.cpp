@@ -341,6 +341,31 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf4) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x7f) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned CompactIndex = Secondary & 3;
+      const unsigned Offset = (Secondary & 0x3f) / 4;
+      if (Secondary < 0x40) {
+        MI.setOpcode(AVM::LDSP16_COMPACT);
+        MI.addOperand(MCOperand::createReg(compactRegister(CompactIndex)));
+        MI.addOperand(MCOperand::createImm(Offset));
+      } else {
+        MI.setOpcode(AVM::STSP16_COMPACT);
+        MI.addOperand(MCOperand::createImm(Offset));
+        MI.addOperand(MCOperand::createReg(compactRegister(CompactIndex)));
+      }
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] >= 0xb0 && Bytes[0] <= 0xbf) {
       MI.setOpcode(Bytes[0] < 0xb8 ? AVM::PUSH16 : AVM::POP16);
       MI.addOperand(MCOperand::createReg(
