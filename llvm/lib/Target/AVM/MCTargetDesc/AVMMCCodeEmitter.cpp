@@ -153,21 +153,29 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  static std::optional<unsigned> pair48Index(MCRegister Left,
+                                              MCRegister Right) {
+    const auto L = stackRegIndex(Left);
+    const auto R = stackRegIndex(Right);
+    if (!L || !R || (*L >= 4 && *R >= 4))
+      return std::nullopt;
+    return *L < 4 ? 8 * *L + *R : 0x20 + 4 * (*L - 4) + *R;
+  }
+
   void emitFullMove(const MCInst &MI, SmallVectorImpl<char> &Out) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
         !MI.getOperand(1).isReg()) {
       error(MI, "expected two full register operands");
       return;
     }
-    const std::optional<unsigned> D = stackRegIndex(MI.getOperand(0).getReg());
-    const std::optional<unsigned> S = stackRegIndex(MI.getOperand(1).getReg());
-    if (!D || !S || (*D >= 4 && *S >= 4)) {
+    const auto Pair = pair48Index(MI.getOperand(0).getReg(),
+                                  MI.getOperand(1).getReg());
+    if (!Pair) {
       error(MI, "full-register MOV pairing is not encodable");
       return;
     }
-    const unsigned Pair = *D < 4 ? 8 * *D + *S : 0x20 + 4 * (*D - 4) + *S;
     emit8(Out, 0xf1);
-    emit8(Out, Pair);
+    emit8(Out, *Pair);
   }
 
   void emitFullArithmetic(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -177,15 +185,30 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       error(MI, "expected two full register operands");
       return;
     }
-    const auto D = stackRegIndex(MI.getOperand(0).getReg());
-    const auto S = stackRegIndex(MI.getOperand(1).getReg());
-    if (!D || !S || (*D >= 4 && *S >= 4)) {
+    const auto Pair = pair48Index(MI.getOperand(0).getReg(),
+                                  MI.getOperand(1).getReg());
+    if (!Pair) {
       error(MI, "full-register arithmetic pairing is not encodable; use compact cN spelling");
       return;
     }
-    const unsigned Pair = *D < 4 ? 8 * *D + *S : 0x20 + 4 * (*D - 4) + *S;
     emit8(Out, 0xf2);
-    emit8(Out, SecondaryBase + Pair);
+    emit8(Out, SecondaryBase + *Pair);
+  }
+
+  void emitFullCompare(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two full register operands");
+      return;
+    }
+    const auto Pair = pair48Index(MI.getOperand(0).getReg(),
+                                  MI.getOperand(1).getReg());
+    if (!Pair) {
+      error(MI, "cmp full-register pairing is not encodable; use compact cN spelling");
+      return;
+    }
+    emit8(Out, 0xf5);
+    emit8(Out, *Pair);
   }
 
   // This mapping is architectural, not derived from physical-register enum
@@ -571,6 +594,7 @@ public:
     switch (MI.getOpcode()) {
     case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
     case AVM::MOV_RR: emitFullMove(MI, Out); return;
+    case AVM::CMP_RR: emitFullCompare(MI, Out); return;
     case AVM::ADD_RR: emitFullArithmetic(MI, Out, 0x00); return;
     case AVM::SUB_RR: emitFullArithmetic(MI, Out, 0x30); return;
     case AVM::ZEXT8: emitF1FullReg(MI, Out, 0x70); return;

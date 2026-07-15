@@ -34,6 +34,17 @@ class AVMDisassembler final : public MCDisassembler {
     }
   }
 
+  static bool decodePair48(unsigned Secondary, unsigned &Left,
+                           unsigned &Right) {
+    if (Secondary > 0x2f)
+      return false;
+    Left = Secondary < 0x20 ? Secondary / 8
+                            : 4 + (Secondary - 0x20) / 4;
+    Right = Secondary < 0x20 ? Secondary & 7
+                             : (Secondary - 0x20) & 3;
+    return true;
+  }
+
   static std::optional<MCRegister> scalarRegisterFromPSPEC(unsigned Code) {
     switch (Code) {
     case 0x0: return AVM::R0;
@@ -268,12 +279,8 @@ public:
         Size = 1;
         return Fail;
       }
-      const unsigned D = Secondary < 0x20
-                             ? Secondary / 8
-                             : 4 + (Secondary - 0x20) / 4;
-      const unsigned S = Secondary < 0x20
-                             ? Secondary & 7
-                             : (Secondary - 0x20) & 3;
+      unsigned D, S;
+      decodePair48(Secondary, D, S);
       MI.setOpcode(AVM::MOV_RR);
       MI.addOperand(MCOperand::createReg(
           static_cast<MCRegister>(AVM::R0 + D)));
@@ -295,13 +302,34 @@ public:
       }
       const bool IsSub = Secondary >= 0x30;
       const unsigned Pair = IsSub ? Secondary - 0x30 : Secondary;
-      const unsigned D = Pair < 0x20 ? Pair / 8 : 4 + (Pair - 0x20) / 4;
-      const unsigned S = Pair < 0x20 ? Pair & 7 : (Pair - 0x20) & 3;
+      unsigned D, S;
+      decodePair48(Pair, D, S);
       MI.setOpcode(IsSub ? AVM::SUB_RR : AVM::ADD_RR);
       MI.addOperand(MCOperand::createReg(
           static_cast<MCRegister>(AVM::R0 + D)));
       MI.addOperand(MCOperand::createReg(
           static_cast<MCRegister>(AVM::R0 + S)));
+      Size = 2;
+      return Success;
+    }
+
+    if (Bytes[0] == 0xf5) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x2f) {
+        Size = 1;
+        return Fail;
+      }
+      unsigned L, R;
+      decodePair48(Secondary, L, R);
+      MI.setOpcode(AVM::CMP_RR);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + L)));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + R)));
       Size = 2;
       return Success;
     }

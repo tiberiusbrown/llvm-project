@@ -60,6 +60,14 @@ class AVMF3WideningMultiplyInst<string Asm>
 class AVMFullMoveInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$dst, AVMGeneralReg:$src)>;
 
+// F5 full-register compare is MC-only. Both operands are read-only and the
+// architectural condition-code register is replaced; there is no tied
+// destination or implicit CC use.
+class AVMFullCompareInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$left, AVMGeneralReg:$right)> {
+  let Defs = [CC];
+}
+
 // F2 full-register arithmetic is MC-only.  The first input is tied to the
 // explicit destination so the MC metadata records the two-address read/write
 // operand without introducing any code-generation semantics.
@@ -184,6 +192,7 @@ class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
+def CMP_RR : AVMFullCompareInst<"cmp $left, $right">;
 def ADD_RR : AVMFullArithmeticInst<"add $src1, $src2">;
 def SUB_RR : AVMFullArithmeticInst<"sub $src1, $src2">;
 def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;

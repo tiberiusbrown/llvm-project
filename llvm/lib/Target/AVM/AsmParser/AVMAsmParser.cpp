@@ -703,15 +703,22 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  static std::optional<unsigned> pair48Index(MCRegister Left,
+                                              MCRegister Right) {
+    const unsigned L = Left.id() - AVM::R0;
+    const unsigned R = Right.id() - AVM::R0;
+    if (L > 7 || R > 7 || (L >= 4 && R >= 4))
+      return std::nullopt;
+    return L < 4 ? 8 * L + R : 0x20 + 4 * (L - 4) + R;
+  }
+
   bool parseFullMove(StringRef Name, SMLoc NameLoc,
                      OperandVector &Operands) {
     MCRegister Destination, Source;
     if (parseFullReg(Destination) || Parser.parseComma() ||
         parseFullReg(Source))
       return true;
-    const unsigned D = Destination.id() - AVM::R0;
-    const unsigned S = Source.id() - AVM::R0;
-    if ((D >= 4 && S >= 4))
+    if (!pair48Index(Destination, Source))
       return error(NameLoc,
                    "full-register MOV pairing is not encodable; use compact cN spelling");
     MCInst Inst;
@@ -729,15 +736,29 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (parseFullReg(Destination) || Parser.parseComma() ||
         parseFullReg(Source))
       return true;
-    const unsigned D = Destination.id() - AVM::R0;
-    const unsigned S = Source.id() - AVM::R0;
-    if (D >= 4 && S >= 4)
+    if (!pair48Index(Destination, Source))
       return error(NameLoc, (Mnemonic +
                    " full-register pairing is not encodable; use compact cN spelling").str());
     MCInst Inst;
     Inst.setOpcode(Opcode);
     Inst.addOperand(MCOperand::createReg(Destination));
     Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseFullCompare(StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Left, Right;
+    if (parseFullReg(Left) || Parser.parseComma() || parseFullReg(Right))
+      return true;
+    if (!pair48Index(Left, Right))
+      return error(NameLoc,
+                   "cmp full-register pairing is not encodable; use compact cN spelling");
+    MCInst Inst;
+    Inst.setOpcode(AVM::CMP_RR);
+    Inst.addOperand(MCOperand::createReg(Left));
+    Inst.addOperand(MCOperand::createReg(Right));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
                              Operands, Name, NameLoc);
   }
@@ -1027,8 +1048,12 @@ public:
                                    Operands);
       return parseCompactPair(AVM::SUB, Name, NameLoc, Operands);
     }
-    if (Lower == "cmp")
+    if (Lower == "cmp") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullCompare(Name, NameLoc, Operands);
       return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
+    }
     if (Lower == "ld8u")
       return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
                                               AVM::GPLD8U_POST, false, Name,
