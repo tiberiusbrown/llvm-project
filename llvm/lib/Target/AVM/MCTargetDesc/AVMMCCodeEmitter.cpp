@@ -381,6 +381,29 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 4 * *Address + *Source);
   }
 
+  void emitF5Memory(const MCInst &MI, SmallVectorImpl<char> &Out,
+                    unsigned Base, bool IsStore) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, IsStore ? "expected compact pointer and r0-r3 source operands"
+                        : "expected r0-r3 destination and compact pointer operands");
+      return;
+    }
+    const MCRegister AddressReg =
+        IsStore ? MI.getOperand(0).getReg() : MI.getOperand(1).getReg();
+    const MCRegister DataReg =
+        IsStore ? MI.getOperand(1).getReg() : MI.getOperand(0).getReg();
+    const auto Address = compactRegIndex(AddressReg);
+    const auto Data = stackRegIndex(DataReg);
+    if (!Address || !Data || *Data > 3) {
+      error(MI, IsStore ? "expected compact pointer c0-c3 and source r0-r3"
+                        : "expected destination register r0-r3 and compact pointer c0-c3");
+      return;
+    }
+    emit8(Out, 0xf5);
+    emit8(Out, Base + 4 * *Address + *Data);
+  }
+
   void emitF3Multiply(const MCInst &MI, SmallVectorImpl<char> &Out,
                       unsigned Family) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
@@ -616,6 +639,9 @@ public:
     case AVM::LD8U: emitCompactMatrix(MI, Out, 0x40); return;
     case AVM::ST8: emitCompactMatrix(MI, Out, 0x50); return;
     case AVM::F3ST8: emitF3Store(MI, Out); return;
+    case AVM::F5LD8U: emitF5Memory(MI, Out, 0x30, false); return;
+    case AVM::F5LD16: emitF5Memory(MI, Out, 0x40, false); return;
+    case AVM::F5ST16: emitF5Memory(MI, Out, 0x50, true); return;
     case AVM::MULU8W: emitF3Multiply(MI, Out, 0x10); return;
     case AVM::MULS8W: emitF3Multiply(MI, Out, 0x20); return;
     case AVM::MULSU8W: emitF3Multiply(MI, Out, 0x30); return;

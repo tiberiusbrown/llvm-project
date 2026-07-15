@@ -949,6 +949,29 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseF5LoadInstruction(unsigned F5Opcode, unsigned GeneralOpcode,
+                              unsigned GeneralPostOpcode, StringRef Name,
+                              SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Data, Address;
+    bool DataIsFull = false;
+    bool AddressIsFull = false, PostIncrement = false;
+    if (parseSpelledDataReg(Data, DataIsFull) || !DataIsFull ||
+        Parser.parseComma() ||
+        parseSpelledDataMemory(Address, AddressIsFull, PostIncrement))
+      return true;
+    const auto Index = scalarRegisterIndex(Data);
+    if (!AddressIsFull && (!Index || *Index > 3))
+      return error(NameLoc, "expected destination register r0-r3");
+    MCInst Inst;
+    Inst.setOpcode(!AddressIsFull
+                       ? F5Opcode
+                       : (PostIncrement ? GeneralPostOpcode : GeneralOpcode));
+    Inst.addOperand(MCOperand::createReg(Data));
+    Inst.addOperand(MCOperand::createReg(Address));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseClr(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Reg;
     if (parseCompactReg(Reg))
@@ -1054,10 +1077,16 @@ public:
         return parseFullCompare(Name, NameLoc, Operands);
       return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
     }
-    if (Lower == "ld8u")
+    if (Lower == "ld8u") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseF5LoadInstruction(AVM::F5LD8U, AVM::GPLD8U,
+                                      AVM::GPLD8U_POST, Name, NameLoc,
+                                      Operands);
       return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
                                               AVM::GPLD8U_POST, false, Name,
                                               NameLoc, Operands);
+    }
     if (Lower == "st8")
       return parseOverloadedMemoryInstruction(AVM::ST8, AVM::GPST8,
                                               AVM::GPST8_POST, true, Name,
@@ -1068,14 +1097,20 @@ public:
       return parseF3Multiply(AVM::MULS8W, Name, NameLoc, Operands);
     if (Lower == "mulsu8.w")
       return parseF3Multiply(AVM::MULSU8W, Name, NameLoc, Operands);
-    if (Lower == "ld16")
+    if (Lower == "ld16") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseF5LoadInstruction(AVM::F5LD16, AVM::GPLD16,
+                                      AVM::GPLD16_POST, Name, NameLoc,
+                                      Operands);
       return parseOverloadedMemoryInstruction(AVM::LD16, AVM::GPLD16,
                                               AVM::GPLD16_POST, false, Name,
                                               NameLoc, Operands);
+    }
     if (Lower == "st16")
       return parseOverloadedMemoryInstruction(AVM::ST16, AVM::GPST16,
                                               AVM::GPST16_POST, true, Name,
-                                              NameLoc, Operands);
+                                              NameLoc, Operands, AVM::F5ST16);
     if (Lower == "ldm8u")
       return parseAbsoluteDataInstruction(AVM::LDM8U, false, Name, NameLoc,
                                           Operands);

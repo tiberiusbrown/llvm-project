@@ -48,6 +48,15 @@ class AVMF3StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
                            AVMGeneralReg:$src)>;
 
+class AVMF5LoadInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr)> {
+  let OutOperandList = (outs AVMLowRegClass:$dst);
+}
+
+class AVMF5StoreInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
+                           AVMLowRegClass:$src)>;
+
 class AVMF3WideningMultiplyInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
@@ -212,6 +221,9 @@ def LD8U : AVMCompactMatrixInst<"ld8u $dst, [$addr]", 0x4,
 def ST8 : AVMCompactMatrixInst<"st8 [$addr], $src", 0x5,
     (ins AVMCompactDataPointer:$addr, AVMCompactSource:$src)>;
 def F3ST8 : AVMF3StoreInst<"st8 [$addr], $src">;
+def F5LD8U : AVMF5LoadInst<"ld8u $dst, [$addr]">;
+def F5LD16 : AVMF5LoadInst<"ld16 $dst, [$addr]">;
+def F5ST16 : AVMF5StoreInst<"st16 [$addr], $src">;
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;

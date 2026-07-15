@@ -319,6 +319,33 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x30 && Secondary <= 0x3f) {
+        MI.setOpcode(AVM::F5LD8U);
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + (Secondary & 3))));
+        MI.addOperand(MCOperand::createReg(
+            compactRegister((Secondary - 0x30) / 4)));
+        Size = 2;
+        return Success;
+      }
+      if (Secondary >= 0x40 && Secondary <= 0x4f) {
+        MI.setOpcode(AVM::F5LD16);
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + (Secondary & 3))));
+        MI.addOperand(MCOperand::createReg(
+            compactRegister((Secondary - 0x40) / 4)));
+        Size = 2;
+        return Success;
+      }
+      if (Secondary >= 0x50 && Secondary <= 0x5f) {
+        MI.setOpcode(AVM::F5ST16);
+        MI.addOperand(MCOperand::createReg(
+            compactRegister((Secondary - 0x50) / 4)));
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + (Secondary & 3))));
+        Size = 2;
+        return Success;
+      }
       if (Secondary > 0x2f) {
         Size = 1;
         return Fail;
