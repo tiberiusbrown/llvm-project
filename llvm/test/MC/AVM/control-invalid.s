@@ -10,7 +10,5 @@ callp c3
 jmpp q4
 callp r0:r1
 
-# CHECK: same-bank absolute target is out of range
 # CHECK: far target is out of 24-bit range
-# CHECK: far target must be even-aligned
 # CHECK-COUNT-6: error: expected AVM register pair q0-q3

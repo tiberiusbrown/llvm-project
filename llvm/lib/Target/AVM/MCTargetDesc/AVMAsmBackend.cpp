@@ -135,10 +135,9 @@ public:
     case AVM::fixup_avm_far24: {
       if (!isUInt<24>(Value))
         Error("AVM far target is out of 24-bit range");
-      if (Value & 1)
-        Error("AVM far target must be two-byte aligned");
-      uint8_t Link = Data[0] & 1;
-      Data[0] = static_cast<uint8_t>(Value & 0xfe) | Link;
+      // JMPF and CALLF have distinct primary opcodes.  A far address is a
+      // plain packed 24-bit value, including odd program addresses.
+      Data[0] = static_cast<uint8_t>(Value);
       Data[1] = Value >> 8;
       Data[2] = Value >> 16;
       return;

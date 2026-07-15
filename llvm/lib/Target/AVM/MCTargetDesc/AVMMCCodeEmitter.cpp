@@ -677,9 +677,11 @@ public:
 
     case AVM::JMPF:
     case AVM::CALLF: {
-      emit8(Out, 0xfe);
+      // The current ISA uses independent primary opcodes, not a link bit in
+      // the target address.  In particular, bit zero remains part of target24.
+      emit8(Out, MI.getOpcode() == AVM::JMPF ? 0xe2 : 0xe3);
       if (rejectTargetExpr(MI, 0, "far program target")) {
-        emit24(Out, MI.getOpcode() == AVM::CALLF ? 1 : 0);
+        emit24(Out, 0);
         return;
       }
       uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_far24, Fixups);
@@ -688,9 +690,7 @@ public:
                                         AVM::fixup_avm_relax));
       if (MI.getOperand(0).isImm()) {
         if (!isUInt<24>(V)) error(MI, "far target is out of 24-bit range");
-        if (V & 1) error(MI, "far target must be even-aligned");
       }
-      V = (V & 0xfffffe) | (MI.getOpcode() == AVM::CALLF ? 1 : 0);
       emit24(Out, V);
       return;
     }

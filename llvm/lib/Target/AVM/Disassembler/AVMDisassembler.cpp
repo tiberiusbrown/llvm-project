@@ -138,10 +138,16 @@ public:
       return decodeE0(MI, Size, Bytes);
     if (Op == 0xe1)
       return decodeE1(MI, Size, Bytes);
-    if (Op == 0xe2)
-      return decodeE2(MI, Size, Bytes);
-    if (Op == 0xe3)
-      return decodeE3(MI, Size, Bytes);
+    if (Op == 0xe2 || Op == 0xe3) {
+      if (Bytes.size() < 4)
+        return Fail;
+      uint32_t Target = Bytes[1] | uint32_t(Bytes[2]) << 8 |
+                        uint32_t(Bytes[3]) << 16;
+      MI.setOpcode(Op == 0xe2 ? AVM::JMPF : AVM::CALLF);
+      addImm(MI, Target);
+      Size = 4;
+      return Success;
+    }
     if (Op == 0xe4) {
       if (Bytes.size() < 2) return Fail;
       uint8_t X = Bytes[1]; MI.setOpcode(AVM::CMPI6);
@@ -178,13 +184,6 @@ public:
 
     if (Op == 0xff) {
       MI.setOpcode(AVM::RET); Size = 1; return Success;
-    }
-    if (Op == 0xfe) {
-      if (Bytes.size() < 4) return Fail;
-      uint32_t Packed = Bytes[1] | uint32_t(Bytes[2]) << 8 |
-                        uint32_t(Bytes[3]) << 16;
-      MI.setOpcode((Packed & 1) ? AVM::CALLF : AVM::JMPF);
-      addImm(MI, Packed & 0xfffffe); Size = 4; return Success;
     }
     if (Op == 0xfd)
       return decodeFD(MI, Size, Bytes);
