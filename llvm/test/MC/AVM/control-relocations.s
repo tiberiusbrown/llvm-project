@@ -1,39 +1,12 @@
 # RUN: llvm-mc -triple=avm-unknown-arduboyfx -filetype=obj %s -o %t.o
-# RUN: llvm-readobj --relocations %t.o | FileCheck %s --check-prefix=RELOC
-# RUN: llvm-objdump -dr %t.o | FileCheck %s --check-prefix=DIS
+# RUN: llvm-readobj --relocations %t.o | FileCheck %s
 
-.section .text,"ax",@progbits
-.globl _start
-.globl global_target
-.p2align 1
-_start:
-  jmp16 local_target
-  call16 global_target + 2
-  jmpf far_target
-  callf global_target
-  jmp16 rodata_target
-  jmp16 0x1234
-  callf 0x2468
-
+.text
+.globl local_target
+.globl external_target
+jmpf local_target
+callf external_target + 4
 local_target:
-global_target:
-  nop
-.p2align 1
-far_target:
-  nop
 
-.section .rodata,"a",@progbits
-rodata_target:
-  .byte 0
-
-# RELOC: R_AVM_PCREL16
-# RELOC: R_AVM_PCREL16
-# RELOC: R_AVM_FAR24
-# RELOC: R_AVM_FAR24
-# RELOC: R_AVM_PCREL16
-# RELOC-NOT: R_AVM_{{.*}} 0x1234
-# DIS: R_AVM_PCREL16
-# DIS: R_AVM_PCREL16
-# DIS: R_AVM_FAR24
-# DIS: R_AVM_FAR24
-# DIS: R_AVM_PCREL16
+# CHECK: 0x1 R_AVM_FAR24 local_target 0x0
+# CHECK: 0x5 R_AVM_FAR24 external_target 0x4

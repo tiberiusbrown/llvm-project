@@ -8,7 +8,6 @@
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <memory>
 
@@ -22,18 +21,12 @@ public:
       : MCELFObjectTargetWriter(false, OSABI, ELF::EM_AVM,
                                 /*HasRelocationAddend=*/true) {}
 
-  unsigned getRelocType(const MCFixup &Fixup, const MCValue &,
-                        bool) const override {
+  unsigned getRelocType(const MCFixup &Fixup, const MCValue &, bool) const override {
     switch (Fixup.getKind()) {
-    case FK_Data_2:
-    case AVM::fixup_avm_data16: return ELF::R_AVM_DATA16;
-    case AVM::fixup_avm_prog24: return ELF::R_AVM_PROG24;
-    case AVM::fixup_avm_prog_lo16: return ELF::R_AVM_PROG_LO16;
-    case AVM::fixup_avm_prog_hi8: return ELF::R_AVM_PROG_HI8;
-    case AVM::fixup_avm_pcrel8: return ELF::R_AVM_PCREL8;
-    case AVM::fixup_avm_pcrel16: return ELF::R_AVM_PCREL16;
-    case AVM::fixup_avm_far24: return ELF::R_AVM_FAR24;
-    case AVM::fixup_avm_relax: return ELF::R_AVM_RELAX;
+    case AVM::fixup_avm_pcrel16:
+      return ELF::R_AVM_PCREL16;
+    case AVM::fixup_avm_far24:
+      return ELF::R_AVM_FAR24;
     default:
       llvm_unreachable("unsupported AVM fixup kind");
     }
@@ -54,14 +47,8 @@ public:
 
   MCFixupKindInfo getFixupKindInfo(MCFixupKind Kind) const override {
     static const MCFixupKindInfo Infos[AVM::NumTargetFixupKinds] = {
-        {"fixup_avm_data16", 0, 16, 0},
-        {"fixup_avm_prog24", 0, 24, 0},
-        {"fixup_avm_prog_lo16", 0, 16, 0},
-        {"fixup_avm_prog_hi8", 0, 8, 0},
-        {"fixup_avm_pcrel8", 0, 8, 0},
         {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
-        {"fixup_avm_relax", 0, 0, 0},
     };
     if (Kind < FirstTargetFixupKind)
       return MCAsmBackend::getFixupKindInfo(Kind);
@@ -73,16 +60,9 @@ public:
   void applyFixup(const MCFragment &F, const MCFixup &Fixup,
                   const MCValue &Target, uint8_t *Data, uint64_t Value,
                   bool IsResolved) override {
-    // Program addresses are not known until the image builder assigns logical
-    // addresses to the input sections.  Keep these fixups as relocations even
-    // when MC can resolve a local symbol to an input-section offset.
-    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_data16 ||
-                       Fixup.getKind() == AVM::fixup_avm_prog24 ||
-                       Fixup.getKind() == AVM::fixup_avm_prog_lo16 ||
-                       Fixup.getKind() == AVM::fixup_avm_prog_hi8 ||
-                       Fixup.getKind() == AVM::fixup_avm_pcrel16 ||
-                       Fixup.getKind() == AVM::fixup_avm_far24 ||
-                       Fixup.getKind() == AVM::fixup_avm_relax))
+    // Logical program addresses are assigned after MC writes its input object.
+    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_pcrel16 ||
+                       Fixup.getKind() == AVM::fixup_avm_far24))
       IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)
@@ -91,27 +71,7 @@ public:
     auto Error = [&](const Twine &Message) {
       getContext().reportError(Fixup.getLoc(), Message);
     };
-
     switch (Fixup.getKind()) {
-    case AVM::fixup_avm_data16:
-      if (!isUInt<16>(Value))
-        Error("AVM data-space relocation is out of 16-bit range");
-      Data[0] = Value;
-      Data[1] = Value >> 8;
-      return;
-    case AVM::fixup_avm_prog24:
-      if (!isUInt<24>(Value))
-        Error("AVM program-space relocation is out of 24-bit range");
-      Data[0] = Value;
-      Data[1] = Value >> 8;
-      Data[2] = Value >> 16;
-      return;
-    case AVM::fixup_avm_prog_lo16:
-      if (!isUInt<24>(Value))
-        Error("AVM program address is out of 24-bit range");
-      Data[0] = Value;
-      Data[1] = Value >> 8;
-      return;
     case AVM::fixup_avm_pcrel16: {
       int64_t Signed = static_cast<int64_t>(Value);
       if (!isInt<16>(Signed))
@@ -120,51 +80,22 @@ public:
       Data[1] = static_cast<uint8_t>(Signed >> 8);
       return;
     }
-    case AVM::fixup_avm_prog_hi8:
-      if (!isUInt<24>(Value))
-        Error("AVM program address is out of 24-bit range");
-      Data[0] = Value >> 16;
-      return;
-    case AVM::fixup_avm_pcrel8: {
-      int64_t Signed = static_cast<int64_t>(Value);
-      if (!isInt<8>(Signed))
-        Error("AVM relative displacement is out of signed 8-bit range");
-      Data[0] = static_cast<uint8_t>(Signed);
-      return;
-    }
-    case AVM::fixup_avm_far24: {
+    case AVM::fixup_avm_far24:
       if (!isUInt<24>(Value))
         Error("AVM far target is out of 24-bit range");
-      // JMPF and CALLF have distinct primary opcodes.  A far address is a
-      // plain packed 24-bit value, including odd program addresses.
       Data[0] = static_cast<uint8_t>(Value);
-      Data[1] = Value >> 8;
-      Data[2] = Value >> 16;
-      return;
-    }
-    case AVM::fixup_avm_relax:
+      Data[1] = static_cast<uint8_t>(Value >> 8);
+      Data[2] = static_cast<uint8_t>(Value >> 16);
       return;
     default:
       llvm_unreachable("unknown AVM fixup");
     }
   }
 
-  unsigned getMinimumNopSize() const override { return 1; }
-  unsigned getMaximumNopSize(const MCSubtargetInfo &) const override {
-    return 2;
-  }
-
-  bool writeNopData(raw_ostream &OS, uint64_t Count,
+  bool writeNopData(raw_ostream &, uint64_t Count,
                     const MCSubtargetInfo *) const override {
-    if (Count & 1) {
-      OS.write("\xec", 1);
-      --Count;
-    }
-    while (Count) {
-      OS.write("\xf4\xf3", 2);
-      Count -= 2;
-    }
-    return true;
+    // There is no retained NOP encoding before the opcode-map implementation.
+    return Count == 0;
   }
 };
 
@@ -175,8 +106,7 @@ llvm::createAVMELFObjectWriter(uint8_t OSABI) {
   return std::make_unique<AVMELFObjectWriter>(OSABI);
 }
 
-MCAsmBackend *llvm::createAVMAsmBackend(const Target &,
-                                        const MCSubtargetInfo &,
+MCAsmBackend *llvm::createAVMAsmBackend(const Target &, const MCSubtargetInfo &,
                                         const MCRegisterInfo &,
                                         const MCTargetOptions &) {
   return new AVMAsmBackend(ELF::ELFOSABI_NONE);

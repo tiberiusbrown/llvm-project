@@ -4,9 +4,9 @@ include "llvm/Target/Target.td"
 include "AVMRegisterInfo.td"
 include "AVMInstrInfo.td"
 
-// Target.td requires this remapping while generating MC instruction metadata.
-// It does not register a code generator or make the pseudos selectable.
-defm : RemapAllTargetPseudoPointerOperands<GPR16>;
+// Target.td requires a pointer-like register remapping while it generates MC
+// metadata.  This creates no AVM source mnemonic, parser rule, or encoding.
+defm : RemapAllTargetPseudoPointerOperands<AVMGeneralReg>;
 
 def FeatureV1 : SubtargetFeature<"v1", "IsV1", "true",
                                   "AVM Version 1 ISA">;

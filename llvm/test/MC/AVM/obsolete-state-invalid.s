@@ -6,15 +6,45 @@
 .cfi_same_value flags
 .cfi_endproc
 
+beq.s 0
+bne.s 0
+cpc16 r0, r1
+adc r0, r1
+sbc r0, r1
+cpc r0, r1
 mtpb r0
 mfpb r0
 ldpbi 1
-ld8 r0, [pb:r1]
-ldp8 r0, [pb:r1]
+ldi16 r0, 1
+cmpi6 c0, 1
+breq 0
+jmp16 0
+jmpp q0
+ld8 r0, [r1]
+ldsp16 r0, [sp+0]
+mov32 q0, q1
+ret
+nop
+sys 0
 
 # CHECK-COUNT-3: error: unknown AVM register
+# CHECK: error: unknown AVM instruction 'beq.s'
+# CHECK: error: unknown AVM instruction 'bne.s'
+# CHECK: error: unknown AVM instruction 'cpc16'
+# CHECK: error: unknown AVM instruction 'adc'
+# CHECK: error: unknown AVM instruction 'sbc'
+# CHECK: error: unknown AVM instruction 'cpc'
 # CHECK: error: unknown AVM instruction 'mtpb'
 # CHECK: error: unknown AVM instruction 'mfpb'
 # CHECK: error: unknown AVM instruction 'ldpbi'
-# CHECK: error: unknown AVM register
-# CHECK: error: unknown AVM instruction 'ldp8'
+# CHECK: error: unknown AVM instruction 'ldi16'
+# CHECK: error: unknown AVM instruction 'cmpi6'
+# CHECK: error: unknown AVM instruction 'breq'
+# CHECK: error: unknown AVM instruction 'jmp16'
+# CHECK: error: unknown AVM instruction 'jmpp'
+# CHECK: error: unknown AVM instruction 'ld8'
+# CHECK: error: unknown AVM instruction 'ldsp16'
+# CHECK: error: unknown AVM instruction 'mov32'
+# CHECK: error: unknown AVM instruction 'ret'
+# CHECK: error: unknown AVM instruction 'nop'
+# CHECK: error: unknown AVM instruction 'sys'

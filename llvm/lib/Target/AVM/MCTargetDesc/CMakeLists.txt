@@ -2,7 +2,6 @@ add_llvm_component_library(LLVMAVMDesc
   AVMAsmBackend.cpp
   AVMInstPrinter.cpp
   AVMMCCodeEmitter.cpp
-  AVMMCExpr.cpp
   AVMMCTargetDesc.cpp
 
   DEPENDS
