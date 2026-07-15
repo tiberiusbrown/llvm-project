@@ -48,10 +48,9 @@ let SubRegIndices = [sub_lo16, sub_hi16], CoveredBySubRegs = 1 in {
 }
 
 // Nonallocatable architectural state.
-def SP    : AVMReg<8,  "sp">;
-def FLAGS : AVMReg<9,  "flags">;
-def PB    : AVMReg<10, "pb">;
-def CB    : AVMReg<11, "cb">;
+def SP : AVMReg<8,  "sp">;
+def PC : AVMReg<9,  "pc">;
+def CC : AVMReg<10, "cc">;
 
 // Allocation order prefers compact caller-saved registers first.
 def GPR16  : RegisterClass<"AVM", [i16], 8,
@@ -72,9 +71,9 @@ def CGPR8  : RegisterClass<"AVM", [i8], 8, (add B4, B5, B6, B7)>;
 def GPR32  : RegisterClass<"AVM", [i32], 8,
                             (add R4R5, R6R7, R0R1, R2R3)>;
 
-// SP is restored by the callee and CB is restored by control flow.  Keeping
-// them in the mask (while they remain reserved and therefore never spilled)
-// makes calls model the complete ABI rather than just the allocatable subset.
+// SP is restored by the callee. Keeping it in the mask (while it remains
+// reserved and therefore never spilled) makes calls model the complete ABI
+// rather than just the allocatable subset.
 def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)> {
-  let OtherPreserved = (add SP, CB);
+  let OtherPreserved = (add SP);
 }

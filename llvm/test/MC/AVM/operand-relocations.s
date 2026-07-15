@@ -27,7 +27,6 @@ local_prog:
   xori16 r5, external_data
   cmpi16 r6, external_data
 
-  ldpbi prog_hi8(local_prog)
   ldm8  r0, local_data + 1
   stm8  external_data + 2, r1
   ldm16 r2, external_data

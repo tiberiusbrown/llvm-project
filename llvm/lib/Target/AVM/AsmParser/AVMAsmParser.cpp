@@ -45,7 +45,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
   MCAsmParser &Parser;
   std::optional<MCInst> Pending;
 
-  enum class MemoryKind { Data, Stack, Program };
+  enum class MemoryKind { Data, Stack };
   struct MemoryOperand {
     MemoryKind Kind = MemoryKind::Data;
     MCRegister Base;
@@ -142,6 +142,27 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parseArchitecturalReg(MCRegister &Reg, SMLoc *Start = nullptr,
+                             SMLoc *End = nullptr) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return Parser.Error(Tok.getLoc(), "expected AVM register");
+    StringRef Name = Tok.getIdentifier();
+    if (Name.starts_with_insensitive("q"))
+      return parsePairReg(Reg, Start, End);
+    Reg = StringSwitch<MCRegister>(Name.lower())
+              .Case("sp", AVM::SP).Case("pc", AVM::PC).Case("cc", AVM::CC)
+              .Default(MCRegister());
+    if (!Reg)
+      return parseGPR(Reg, Start, End);
+    if (Start)
+      *Start = Tok.getLoc();
+    if (End)
+      *End = Tok.getEndLoc();
+    Parser.Lex();
+    return false;
+  }
+
   bool parseAVMExpression(const MCExpr *&Expr) {
     if (Parser.getTok().is(AsmToken::Identifier) &&
         Parser.getLexer().peekTok().is(AsmToken::LParen)) {
@@ -182,14 +203,6 @@ class AVMAsmParser final : public MCTargetAsmParser {
       return true;
 
     if (Parser.getTok().is(AsmToken::Identifier) &&
-        Parser.getTok().getIdentifier().equals_insensitive("pb")) {
-      Mem.Kind = MemoryKind::Program;
-      Parser.Lex();
-      if (Parser.parseToken(AsmToken::Colon, "expected ':' after PB"))
-        return true;
-      if (parseGPR(Mem.Base))
-        return true;
-    } else if (Parser.getTok().is(AsmToken::Identifier) &&
                Parser.getTok().getIdentifier().equals_insensitive("sp")) {
       Mem.Kind = MemoryKind::Stack;
       Mem.Base = AVM::SP;
@@ -619,25 +632,6 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Name, NameLoc);
   }
 
-  bool parseProgramLoad(StringRef Name, SMLoc NameLoc,
-                        OperandVector &Operands, bool IsWord) {
-    MCRegister Dst;
-    MemoryOperand Mem;
-    if (parseGPR(Dst) || Parser.parseComma() || parseMemory(Mem))
-      return true;
-    if (Mem.Kind != MemoryKind::Program || Mem.PostIncrement)
-      return error(NameLoc, "expected program operand '[pb:rN]' or '[pb:rN+disp]'");
-    MCInst Inst;
-    Inst.setOpcode(Mem.Disp ? (IsWord ? AVM::LDP16_DISP : AVM::LDP8_DISP)
-                            : (IsWord ? AVM::LDP16 : AVM::LDP8));
-    Inst.addOperand(MCOperand::createReg(Dst));
-    Inst.addOperand(MCOperand::createReg(Mem.Base));
-    if (Mem.Disp)
-      addExpr(Inst, Mem.Disp);
-    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(), Operands,
-                             Name, NameLoc);
-  }
-
 public:
   AVMAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
@@ -647,10 +641,7 @@ public:
 
   bool parseRegister(MCRegister &Reg, SMLoc &StartLoc,
                      SMLoc &EndLoc) override {
-    if (Parser.getTok().is(AsmToken::Identifier) &&
-        Parser.getTok().getIdentifier().starts_with_insensitive("q"))
-      return parsePairReg(Reg, &StartLoc, &EndLoc);
-    return parseGPR(Reg, &StartLoc, &EndLoc);
+    return parseArchitecturalReg(Reg, &StartLoc, &EndLoc);
   }
 
   ParseStatus tryParseRegister(MCRegister &Reg, SMLoc &StartLoc,
@@ -660,6 +651,12 @@ public:
     StringRef Name = Parser.getTok().getIdentifier();
     if (Name.starts_with_insensitive("q")) {
       if (parsePairReg(Reg, &StartLoc, &EndLoc))
+        return ParseStatus::Failure;
+      return ParseStatus::Success;
+    }
+    if (Name.equals_insensitive("sp") || Name.equals_insensitive("pc") ||
+        Name.equals_insensitive("cc")) {
+      if (parseArchitecturalReg(Reg, &StartLoc, &EndLoc))
         return ParseStatus::Failure;
       return ParseStatus::Success;
     }
@@ -736,9 +733,6 @@ public:
     if (M == "stm8") return parseDirectMemory(Name, NameLoc, Operands, false, false);
     if (M == "ldm16") return parseDirectMemory(Name, NameLoc, Operands, true, true);
     if (M == "stm16") return parseDirectMemory(Name, NameLoc, Operands, false, true);
-    if (M == "ldp8") return parseProgramLoad(Name, NameLoc, Operands, false);
-    if (M == "ldp16") return parseProgramLoad(Name, NameLoc, Operands, true);
-
     if (M == "lea") {
       MCRegister Dst;
       MemoryOperand Mem;
@@ -764,7 +758,6 @@ public:
       .Case("asr8", AVM::ASR8).Case("swap8", AVM::SWAP8)
       .Case("getsp", AVM::GETSP).Case("setsp", AVM::SETSP)
       .Case("jmpr", AVM::JMPR).Case("callr", AVM::CALLR)
-      .Case("mtpb", AVM::MTPB).Case("mfpb", AVM::MFPB)
       .Default(0);
     if (Unary) return parseOneReg(Unary, Name, NameLoc, Operands);
     if (M == "lsl16") return parseLSL16(Name, NameLoc, Operands);
@@ -807,7 +800,7 @@ public:
       .Case("jmp", AVM::JMP_REL8).Case("call", AVM::CALL_REL8)
       .Case("jmp16", AVM::JMP16).Case("call16", AVM::CALL16)
       .Case("jmpf", AVM::JMPF).Case("callf", AVM::CALLF)
-      .Case("ldpbi", AVM::LDPBI).Case("sys", AVM::SYS)
+      .Case("sys", AVM::SYS)
       .Case("adjsp", AVM::ADJSP).Default(0);
     if (Branch) return parseBranch(Branch, Name, NameLoc, Operands);
 

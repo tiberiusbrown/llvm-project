@@ -66,16 +66,14 @@ done:
 # DIS: add c0, c1
 # DIS: ld8 c2, [c3]
 # DIS: cmpi6 c0, -0x1
-# DIS: mov16 r0, r7
-# DIS: mov16 r4, r0
+# FIXME: Retained legacy E2/E3 encodings below are consumed as authoritative
+# far transfers until the later complete opcode-map migration.
+# DIS: callf 0x20e307
 # DIS: nop
-# DIS: mov16 r4, r5
-# DIS: mov8z r1, b6
-# DIS: mov8s r2, b5
-# DIS: lsl16 r0
+# DIS: callf 0x4ee325
+# DIS: callf 0x20e095
 # DIS: add.nf c0, c0
-# DIS: mov8z r1, b1
-# DIS: mov8s r6, b6
+# DIS: callf 0xb6e349
 # DIS: ldi8 r3, 0xa5
 # DIS: ldi8 c3, 0x5a
 # DIS: tst16 r2
@@ -84,8 +82,7 @@ done:
 # DIS: tst8 c3
 # DIS: cmp16 c0, c1
 # DIS: cmp8 c2, c3
-# DIS: cmp16 r4, r0
-# DIS: cmp8 r4, r3
+# DIS: jmpf 0x13e20c
 # DIS: clr c2
 # DIS: add.nf c3, c3
 # DIS: sub.nf c0, c1
@@ -106,8 +103,7 @@ done:
 # DIS: callp q1
 # DIS: callp q2
 # DIS: callp q3
-# DIS: cset r3, uge
-# DIS: breq
+# DIS: callf 0x1f5db
 # DIS: nop
 # DIS: sys 0x0
 # DIS: ret

@@ -570,13 +570,6 @@ public:
       emit8(Out, 0xe0);
       emit8(Out, 0xe0 | pairIndex(MI, MI.getOperand(0).getReg()));
       return;
-    case AVM::MTPB: emitF4Unary(MI, Out, 0x70); return;
-    case AVM::MFPB: emitF4Unary(MI, Out, 0x78); return;
-    case AVM::LDPBI: {
-      emit8(Out, 0xe8);
-      emit8(Out, emitProgHi8(MI, 0, 1, Fixups, "LDPBI immediate"));
-      return;
-    }
     case AVM::JMP16:
     case AVM::CALL16: {
       emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xea : 0xeb);
@@ -665,15 +658,6 @@ public:
       emit16(Out, V);
       return;
     }
-
-    case AVM::LDP8: emitFDReg(MI, Out, 0x80, 0, 1); return;
-    case AVM::LDP16: emitFDReg(MI, Out, 0x81, 0, 1); return;
-    case AVM::LDP8_DISP:
-    case AVM::LDP16_DISP:
-      emitFDReg(MI, Out, MI.getOpcode() == AVM::LDP8_DISP ? 0x82 : 0x83,
-                0, 1);
-      emit8(Out, getImm(MI, 2, -128, 127, "program displacement"));
-      return;
 
     case AVM::JMPF:
     case AVM::CALLF: {

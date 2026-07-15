@@ -154,12 +154,16 @@ public:
       addReg(MI, compact(X & 3)); addImm(MI, static_cast<int8_t>(X) >> 2);
       Size = 2; return Success;
     }
-    if (Op >= 0xe5 && Op <= 0xe9) {
+    if (Op >= 0xe5 && Op <= 0xe7) {
       if (Bytes.size() < 2) return Fail;
       unsigned O = Op == 0xe5 ? AVM::JMP_REL8 : Op == 0xe6 ? AVM::CALL_REL8
-                   : Op == 0xe7 ? AVM::ADJSP : Op == 0xe8 ? AVM::LDPBI : AVM::SYS;
-      MI.setOpcode(O); addImm(MI, Op >= 0xe8 ? Bytes[1] : static_cast<int8_t>(Bytes[1]));
+                              : AVM::ADJSP;
+      MI.setOpcode(O); addImm(MI, static_cast<int8_t>(Bytes[1]));
       Size = 2; return Success;
+    }
+    if (Op == 0xe9) {
+      if (Bytes.size() < 2) return Fail;
+      MI.setOpcode(AVM::SYS); addImm(MI, Bytes[1]); Size = 2; return Success;
     }
     if (Op == 0xea || Op == 0xeb) {
       if (Bytes.size() < 3) return Fail;
@@ -261,8 +265,7 @@ private:
     };
     static const unsigned UnaryOps[] = {AVM::NOT16, AVM::NEG16, AVM::INC16,
       AVM::DEC16, AVM::LSL16, AVM::LSR16, AVM::ASR16, AVM::LSR8,
-      AVM::ASR8, 0, 0, AVM::SWAP8, AVM::GETSP, AVM::SETSP,
-      AVM::MTPB, AVM::MFPB};
+      AVM::ASR8, 0, 0, AVM::SWAP8, AVM::GETSP, AVM::SETSP, 0, 0};
     if (S < 0x20)
       return Unary(UnaryOps[S >> 3], S & 0xf8);
     if (S < 0x24)
@@ -271,8 +274,9 @@ private:
     if (S < 0x48)
       return Unary(UnaryOps[S >> 3], S & 0xf8);
     if (S < 0x58) { Size = 2; return Fail; }
-    if (S < 0x80)
+    if (S < 0x70)
       return Unary(UnaryOps[S >> 3], S & 0xf8);
+    if (S < 0x80) { Size = 2; return Fail; }
     auto Imm16 = [&](unsigned Opcode, unsigned Base) -> DecodeStatus {
       if (B.size() < 4) return Fail; MI.setOpcode(Opcode);
       addReg(MI, reg(S - Base)); addImm(MI, B[2] | uint16_t(B[3]) << 8);
@@ -400,13 +404,8 @@ private:
       else if (S <= 0xcf) { Op = AVM::CALLR; Base = 0xc8; }
       else if (S <= 0xd7) { Op = AVM::JMPP; Base = 0xd0; }
       else if (S <= 0xdf) { Op = AVM::CALLP; Base = 0xd8; }
-      else if (S <= 0xe7) { Op = AVM::MTPB; Base = 0xe0; }
-      else { Op = AVM::MFPB; Base = 0xe8; }
+      else { Size = 2; return Fail; }
       return Unary(Op, Base);
-    }
-    if (S == 0xf0) {
-      if (B.size() < 3) return Fail;
-      MI.setOpcode(AVM::LDPBI); addImm(MI, B[2]); Size = 3; return Success;
     }
     if (S == 0xf1 || S == 0xf2) {
       if (B.size() < 4) return Fail;
@@ -480,17 +479,6 @@ private:
       if (Store) { addImm(MI, Addr); addReg(MI, reg(S & 7)); }
       else { addReg(MI, reg(S & 7)); addImm(MI, Addr); }
       Size = 4; return Success;
-    }
-    if (S >= 0x80 && S <= 0x83) {
-      if (B.size() < 3) return Fail;
-      MI.setOpcode(S == 0x80 ? AVM::LDP8 : S == 0x81 ? AVM::LDP16
-                   : S == 0x82 ? AVM::LDP8_DISP : AVM::LDP16_DISP);
-      if (!decodeRR(MI, B[2])) { Size = 3; return Fail; }
-      if (S >= 0x82) {
-        if (B.size() < 4) return Fail;
-        addImm(MI, static_cast<int8_t>(B[3])); Size = 4;
-      } else Size = 3;
-      return Success;
     }
     Size = 2;
     return Fail;

@@ -116,9 +116,6 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(CALLR, "callr");
   AVM_MNEMONIC(JMPP, "jmpp");
   AVM_MNEMONIC(CALLP, "callp");
-  AVM_MNEMONIC(MTPB, "mtpb");
-  AVM_MNEMONIC(MFPB, "mfpb");
-  AVM_MNEMONIC(LDPBI, "ldpbi");
   AVM_MNEMONIC(JMP16, "jmp16");
   AVM_MNEMONIC(CALL16, "call16");
   AVM_MNEMONIC(NOP, "nop");
@@ -136,10 +133,6 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   AVM_MNEMONIC(STM8, "stm8");
   AVM_MNEMONIC(LDM16, "ldm16");
   AVM_MNEMONIC(STM16, "stm16");
-  AVM_MNEMONIC(LDP8, "ldp8");
-  AVM_MNEMONIC(LDP16, "ldp16");
-  AVM_MNEMONIC(LDP8_DISP, "ldp8");
-  AVM_MNEMONIC(LDP16_DISP, "ldp16");
   AVM_MNEMONIC(JMPF, "jmpf");
   AVM_MNEMONIC(CALLF, "callf");
   AVM_MNEMONIC(RET, "ret");
@@ -172,9 +165,8 @@ void AVMInstPrinter::printFullReg(MCRegister Reg, raw_ostream &OS) const {
   case AVM::R4R5: OS << "q2"; return;
   case AVM::R6R7: OS << "q3"; return;
   case AVM::SP: OS << "sp"; return;
-  case AVM::FLAGS: OS << "flags"; return;
-  case AVM::PB: OS << "pb"; return;
-  case AVM::CB: OS << "cb"; return;
+  case AVM::PC: OS << "pc"; return;
+  case AVM::CC: OS << "cc"; return;
   default: OS << "<bad-reg>"; return;
   }
 }
@@ -321,12 +313,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::STM8:
   case AVM::STM16:
     OS << '\t'; Op(0); OS << ", "; FullReg(1); break;
-  case AVM::LDP8:
-  case AVM::LDP16:
-    OS << '\t'; FullReg(0); OS << ", [pb:"; FullReg(1); OS << ']'; break;
-  case AVM::LDP8_DISP:
-  case AVM::LDP16_DISP:
-    OS << '\t'; FullReg(0); OS << ", [pb:"; FullReg(1); SignedSuffix(2); OS << ']'; break;
   case AVM::MOV16_E3:
   case AVM::ADD16:
   case AVM::SUB16:
@@ -382,9 +368,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::SETSP:
   case AVM::JMPR:
   case AVM::CALLR:
-  case AVM::MTPB:
-  case AVM::MFPB:
-    OS << '\t'; FullReg(0); break;
   default:
     if (MI->getNumOperands()) {
       OS << '\t';
