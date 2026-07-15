@@ -27,6 +27,14 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
     return {"jmpf", 0};
   case AVM::CALLF:
     return {"callf", 0};
+  case AVM::BREQ: return {"breq", 0};
+  case AVM::BRNE: return {"brne", 0};
+  case AVM::BRULT: return {"brult", 0};
+  case AVM::BRSLT: return {"brslt", 0};
+  case AVM::JMP: return {"jmp", 0};
+  case AVM::CALL: return {"call", 0};
+  case AVM::ADJSP: return {"adjsp", 0};
+  case AVM::SYS: return {"sys", 0};
   case AVM::LDI8: return {"ldi8", 0};
   case AVM::LDI16: return {"ldi16", 0};
   case AVM::ADDIS8: return {"addi.s8", 0};

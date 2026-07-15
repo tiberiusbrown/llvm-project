@@ -17,7 +17,6 @@ mfpb r0
 ldpbi 1
 ldi16 r0, 1
 cmpi6 c0, 1
-breq 0
 jmp16 0
 jmpp q0
 ld8 r0, [r1]
@@ -39,7 +38,6 @@ sys 0
 # CHECK: error: unknown AVM instruction 'ldpbi'
 # CHECK: error: expected compact register c0-c3
 # CHECK: error: unknown AVM instruction 'cmpi6'
-# CHECK: error: unknown AVM instruction 'breq'
 # CHECK: error: unknown AVM instruction 'ld8'
 # CHECK: error: unknown AVM instruction 'ldsp16'
 # CHECK: error: unknown AVM instruction 'mov32'

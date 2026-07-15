@@ -23,6 +23,8 @@ public:
 
   unsigned getRelocType(const MCFixup &Fixup, const MCValue &, bool) const override {
     switch (Fixup.getKind()) {
+    case AVM::fixup_avm_pcrel8:
+      return ELF::R_AVM_PCREL8;
     case AVM::fixup_avm_pcrel16:
       return ELF::R_AVM_PCREL16;
     case AVM::fixup_avm_far24:
@@ -47,6 +49,7 @@ public:
 
   MCFixupKindInfo getFixupKindInfo(MCFixupKind Kind) const override {
     static const MCFixupKindInfo Infos[AVM::NumTargetFixupKinds] = {
+        {"fixup_avm_pcrel8", 0, 8, 0},
         {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
     };
@@ -72,6 +75,15 @@ public:
       getContext().reportError(Fixup.getLoc(), Message);
     };
     switch (Fixup.getKind()) {
+    case AVM::fixup_avm_pcrel8: {
+      // MC's PC-relative value is based on the operand byte at P + 1;
+      // AVM rel8 is defined from the two-byte instruction's next PC.
+      int64_t Signed = static_cast<int64_t>(Value) - 1;
+      if (!isInt<8>(Signed))
+        Error("AVM relative displacement is out of signed 8-bit range");
+      Data[0] = static_cast<uint8_t>(Signed);
+      return;
+    }
     case AVM::fixup_avm_pcrel16: {
       int64_t Signed = static_cast<int64_t>(Value);
       if (!isInt<16>(Signed))

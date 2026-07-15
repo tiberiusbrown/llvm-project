@@ -6,7 +6,8 @@
 namespace llvm::AVM {
 
 enum Fixups : unsigned {
-  fixup_avm_pcrel16 = FirstTargetFixupKind,
+  fixup_avm_pcrel8 = FirstTargetFixupKind,
+  fixup_avm_pcrel16,
   fixup_avm_far24,
   LastTargetFixupKind,
   NumTargetFixupKinds = LastTargetFixupKind - FirstTargetFixupKind

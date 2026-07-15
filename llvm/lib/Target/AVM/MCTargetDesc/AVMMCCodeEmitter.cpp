@@ -48,6 +48,55 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit24(Out, 0);
   }
 
+  void emitRel8(const MCInst &MI, SmallVectorImpl<char> &Out,
+                SmallVectorImpl<MCFixup> &Fixups, unsigned Opcode) const {
+    if (MI.getNumOperands() != 1) {
+      error(MI, "expected one relative displacement operand");
+      return;
+    }
+    emit8(Out, Opcode);
+    const MCOperand &Operand = MI.getOperand(0);
+    if (Operand.isImm()) {
+      if (!isInt<8>(Operand.getImm()))
+        error(MI, "relative displacement is out of signed 8-bit range");
+      emit8(Out, Operand.getImm());
+      return;
+    }
+    if (!Operand.isExpr()) {
+      error(MI, "expected relative displacement expression");
+      emit8(Out, 0);
+      return;
+    }
+    Fixups.push_back(
+        MCFixup::create(1, Operand.getExpr(), AVM::fixup_avm_pcrel8, true));
+    emit8(Out, 0);
+  }
+
+  void emitSigned8(const MCInst &MI, SmallVectorImpl<char> &Out,
+                   unsigned Opcode) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isImm()) {
+      error(MI, "expected one signed 8-bit immediate operand");
+      return;
+    }
+    const int64_t Value = MI.getOperand(0).getImm();
+    if (!isInt<8>(Value)) {
+      error(MI, "immediate is out of signed 8-bit range");
+      return;
+    }
+    emit8(Out, Opcode);
+    emit8(Out, Value);
+  }
+
+  void emitService(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isImm() ||
+        MI.getOperand(0).getImm() < 0 || MI.getOperand(0).getImm() > 3) {
+      error(MI, "invalid AVM version 1 service identifier");
+      return;
+    }
+    emit8(Out, 0xd7);
+    emit8(Out, MI.getOperand(0).getImm());
+  }
+
   static std::optional<unsigned> compactRegIndex(MCRegister Reg) {
     switch (Reg.id()) {
     case AVM::R4: return 0;
@@ -155,6 +204,14 @@ public:
     case AVM::LDI16: emitCompactImmediate(MI, Out, 0xc4, 16, false); return;
     case AVM::ADDIS8: emitCompactImmediate(MI, Out, 0xc8, 8, true); return;
     case AVM::CMPIS8: emitCompactImmediate(MI, Out, 0xcc, 8, true); return;
+    case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
+    case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
+    case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
+    case AVM::BRSLT: emitRel8(MI, Out, Fixups, 0xd3); return;
+    case AVM::JMP: emitRel8(MI, Out, Fixups, 0xd4); return;
+    case AVM::CALL: emitSigned8(MI, Out, 0xd5); return;
+    case AVM::ADJSP: emitSigned8(MI, Out, 0xd6); return;
+    case AVM::SYS: emitService(MI, Out); return;
     case AVM::JMPF:
       emit8(Out, 0xe2);
       emitFarTarget(MI, Out, Fixups);

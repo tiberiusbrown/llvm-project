@@ -6,6 +6,7 @@ def AVMImm24 : Operand<i32>;
 def AVMImm8 : Operand<i32>;
 def AVMImm16 : Operand<i32>;
 def AVMSImm8 : Operand<i32>;
+def AVMService8 : Operand<i32>;
 
 def AVMCompactDest : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactSource : RegisterOperand<AVMCompactReg, "printCompactReg">;
@@ -48,6 +49,12 @@ class AVMCompactRegU16Inst<string Asm>
 class AVMCompactRegS8Inst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMSImm8:$imm)>;
 
+// These direct forms are MC-only.  In particular, no code-generation
+// patterns or scheduling state is attached to the short control instructions.
+class AVMRel8ControlInst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$rel)>;
+class AVMSImm8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$imm)>;
+class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
+
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def ADD : AVMCompactMatrixInst<"add $dst, $src", 0x1,
@@ -82,6 +89,19 @@ def ADDIS8 : AVMCompactRegS8Inst<"addi.s8 $reg, $imm">;
 def CMPIS8 : AVMCompactRegS8Inst<"cmpi.s8 $reg, $imm"> {
   let Defs = [CC];
 }
+
+def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
+def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
+def BRULT : AVMRel8ControlInst<"brult $rel"> { let Uses = [CC]; }
+def BRSLT : AVMRel8ControlInst<"brslt $rel"> { let Uses = [CC]; }
+def JMP : AVMRel8ControlInst<"jmp $rel"> {
+  let isBranch = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+}
+def CALL : AVMRel8ControlInst<"call $rel"> { let isCall = 1; }
+def ADJSP : AVMSImm8Inst<"adjsp $imm">;
+def SYS : AVMService8Inst<"sys $service">;
 
 def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
   let isBranch = 1;

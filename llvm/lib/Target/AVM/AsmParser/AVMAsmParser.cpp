@@ -106,6 +106,63 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseSignedImmediate(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                            OperandVector &Operands) {
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (!Expr->evaluateAsAbsolute(Value))
+      return error(ExprLoc, "immediate expression must be fully resolvable");
+    if (Value < -128 || Value > 127)
+      return error(ExprLoc, "immediate is out of signed 8-bit range");
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createImm(Value));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseRel8Control(unsigned Opcode, bool AllowSymbol, StringRef Name,
+                        SMLoc NameLoc, OperandVector &Operands) {
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    if (Expr->evaluateAsAbsolute(Value)) {
+      if (Value < -128 || Value > 127)
+        return error(ExprLoc, "relative displacement is out of signed 8-bit range");
+      Inst.addOperand(MCOperand::createImm(Value));
+    } else if (AllowSymbol) {
+      Inst.addOperand(MCOperand::createExpr(Expr));
+    } else {
+      return error(ExprLoc, "symbolic call is deferred to relaxable pseudo support");
+    }
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseService(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (!Expr->evaluateAsAbsolute(Value))
+      return error(ExprLoc, "service expression must be fully resolvable");
+    if (Value < 0 || Value > 3)
+      return error(ExprLoc, "invalid AVM version 1 service identifier");
+    MCInst Inst;
+    Inst.setOpcode(AVM::SYS);
+    Inst.addOperand(MCOperand::createImm(Value));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactReg(MCRegister &Reg) {
     SMLoc Loc = Parser.getTok().getLoc();
     if (Parser.getTok().is(AsmToken::Identifier) &&
@@ -355,6 +412,14 @@ public:
       return parseFarTransfer(AVM::JMPF, Name, NameLoc, Operands);
     if (Lower == "callf")
       return parseFarTransfer(AVM::CALLF, Name, NameLoc, Operands);
+    if (Lower == "breq") return parseRel8Control(AVM::BREQ, true, Name, NameLoc, Operands);
+    if (Lower == "brne") return parseRel8Control(AVM::BRNE, true, Name, NameLoc, Operands);
+    if (Lower == "brult") return parseRel8Control(AVM::BRULT, true, Name, NameLoc, Operands);
+    if (Lower == "brslt") return parseRel8Control(AVM::BRSLT, true, Name, NameLoc, Operands);
+    if (Lower == "jmp") return parseRel8Control(AVM::JMP, true, Name, NameLoc, Operands);
+    if (Lower == "call") return parseRel8Control(AVM::CALL, false, Name, NameLoc, Operands);
+    if (Lower == "adjsp") return parseSignedImmediate(AVM::ADJSP, Name, NameLoc, Operands);
+    if (Lower == "sys") return parseService(Name, NameLoc, Operands);
     return error(NameLoc, Twine("unknown AVM instruction '") + Name + "'");
   }
 

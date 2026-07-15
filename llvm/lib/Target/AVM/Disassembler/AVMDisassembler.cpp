@@ -83,6 +83,38 @@ public:
       return Success;
     }
 
+    if (Bytes[0] >= 0xd0 && Bytes[0] <= 0xd7) {
+      if (Bytes.size() < 2)
+        return Fail;
+      switch (Bytes[0]) {
+      case 0xd0: MI.setOpcode(AVM::BREQ); break;
+      case 0xd1: MI.setOpcode(AVM::BRNE); break;
+      case 0xd2: MI.setOpcode(AVM::BRULT); break;
+      case 0xd3: MI.setOpcode(AVM::BRSLT); break;
+      case 0xd4: MI.setOpcode(AVM::JMP); break;
+      case 0xd5: MI.setOpcode(AVM::CALL); break;
+      case 0xd6: MI.setOpcode(AVM::ADJSP); break;
+      default:
+        if (Bytes[1] > 3) {
+          Size = 1;
+          return Fail;
+        }
+        MI.setOpcode(AVM::SYS);
+        MI.addOperand(MCOperand::createImm(Bytes[1]));
+        Size = 2;
+        return Success;
+      }
+      MI.addOperand(MCOperand::createImm(int64_t(Bytes[1]) -
+          ((Bytes[1] & 0x80) ? 256 : 0)));
+      Size = 2;
+      return Success;
+    }
+
+    if (Bytes[0] >= 0xd8 && Bytes[0] <= 0xdf) {
+      Size = 1;
+      return Fail;
+    }
+
     if (Bytes.size() < 4)
       return Fail;
     if (Bytes[0] != 0xe2 && Bytes[0] != 0xe3) {
