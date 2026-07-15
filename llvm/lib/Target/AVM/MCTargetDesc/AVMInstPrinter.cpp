@@ -21,6 +21,8 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::AND: return {"and", 0};
   case AVM::OR: return {"or", 0};
   case AVM::XOR: return {"xor", 0};
+  case AVM::PUSH16: return {"push16", 0};
+  case AVM::POP16: return {"pop16", 0};
   case AVM::JMPF:
     return {"jmpf", 0};
   case AVM::CALLF:
@@ -111,6 +113,11 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << ", ";
     printCompactReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::PUSH16:
+  case AVM::POP16:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
     break;
   default:
     if (MI->getNumOperands()) {

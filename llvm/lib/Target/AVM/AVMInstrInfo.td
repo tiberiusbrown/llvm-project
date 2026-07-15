@@ -12,6 +12,7 @@ def AVMCompactCompareRight
     : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactDataPointer
     : RegisterOperand<AVMCompactReg, "printCompactReg">;
+def AVMStackReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -28,6 +29,13 @@ class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
 class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
     : AVMInst<Asm, 1, Operands> {
   bits<4> CompactFamily = Family;
+}
+
+// Stack-register operations are MC-only and encode the explicit architectural
+// register number in the low three bits of their one-byte opcode.
+class AVMStackRegInst<string Asm, bits<8> Family>
+    : AVMInst<Asm, 1, (ins AVMStackReg:$reg)> {
+  bits<8> StackFamily = Family;
 }
 
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
@@ -54,6 +62,9 @@ def OR : AVMCompactMatrixInst<"or $dst, $src", 0x9,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def XOR : AVMCompactMatrixInst<"xor $dst, $src", 0xa,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
+
+def PUSH16 : AVMStackRegInst<"push16 $reg", 0xb0>;
+def POP16 : AVMStackRegInst<"pop16 $reg", 0xb8>;
 
 def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
   let isBranch = 1;

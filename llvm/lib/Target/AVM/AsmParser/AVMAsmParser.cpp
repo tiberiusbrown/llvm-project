@@ -121,6 +121,34 @@ class AVMAsmParser final : public MCTargetAsmParser {
     }
   }
 
+  bool parseStackReg(MCRegister &Reg) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
+              .Case("r0", AVM::R0).Case("r1", AVM::R1)
+              .Case("r2", AVM::R2).Case("r3", AVM::R3)
+              .Case("r4", AVM::R4).Case("r5", AVM::R5)
+              .Case("r6", AVM::R6).Case("r7", AVM::R7)
+              .Default(MCRegister());
+    if (!Reg)
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseStackInstruction(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                             OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseStackReg(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactMemory(MCRegister &Reg) {
     if (!Parser.getTok().is(AsmToken::LBrac))
       return error(Parser.getTok().getLoc(), "expected compact memory operand '[cN]'");
@@ -269,6 +297,10 @@ public:
       return parseCompactPair(AVM::OR, Name, NameLoc, Operands);
     if (Lower == "xor")
       return parseCompactPair(AVM::XOR, Name, NameLoc, Operands);
+    if (Lower == "push16")
+      return parseStackInstruction(AVM::PUSH16, Name, NameLoc, Operands);
+    if (Lower == "pop16")
+      return parseStackInstruction(AVM::POP16, Name, NameLoc, Operands);
     if (Lower == "nop")
       return parseNop(Name, NameLoc, Operands);
     if (Lower == "clr")

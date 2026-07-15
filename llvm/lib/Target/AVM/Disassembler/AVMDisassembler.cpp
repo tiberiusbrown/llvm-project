@@ -31,6 +31,14 @@ public:
     if (Bytes.empty())
       return Fail;
 
+    if (Bytes[0] >= 0xb0 && Bytes[0] <= 0xbf) {
+      MI.setOpcode(Bytes[0] < 0xb8 ? AVM::PUSH16 : AVM::POP16);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + (Bytes[0] & 7))));
+      Size = 1;
+      return Success;
+    }
+
     if (Bytes[0] <= 0xaf) {
       switch (Bytes[0] >> 4) {
       case 0x0: MI.setOpcode(AVM::MOV); break;

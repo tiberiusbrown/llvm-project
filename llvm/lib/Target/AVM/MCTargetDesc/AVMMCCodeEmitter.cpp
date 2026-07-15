@@ -58,6 +58,35 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  static std::optional<unsigned> stackRegIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0: return 0;
+    case AVM::R1: return 1;
+    case AVM::R2: return 2;
+    case AVM::R3: return 3;
+    case AVM::R4: return 4;
+    case AVM::R5: return 5;
+    case AVM::R6: return 6;
+    case AVM::R7: return 7;
+    default: return std::nullopt;
+    }
+  }
+
+  void emitStackReg(const MCInst &MI, SmallVectorImpl<char> &Out,
+                    unsigned Family) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one full register operand");
+      return;
+    }
+    const std::optional<unsigned> Index =
+        stackRegIndex(MI.getOperand(0).getReg());
+    if (!Index) {
+      error(MI, "expected full register r0-r7");
+      return;
+    }
+    emit8(Out, Family | *Index);
+  }
+
   void emitCompactMatrix(const MCInst &MI, SmallVectorImpl<char> &Out,
                          unsigned Family) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
@@ -94,6 +123,8 @@ public:
     case AVM::AND: emitCompactMatrix(MI, Out, 0x80); return;
     case AVM::OR: emitCompactMatrix(MI, Out, 0x90); return;
     case AVM::XOR: emitCompactMatrix(MI, Out, 0xa0); return;
+    case AVM::PUSH16: emitStackReg(MI, Out, 0xb0); return;
+    case AVM::POP16: emitStackReg(MI, Out, 0xb8); return;
     case AVM::JMPF:
       emit8(Out, 0xe2);
       emitFarTarget(MI, Out, Fixups);
