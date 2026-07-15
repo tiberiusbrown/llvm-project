@@ -58,6 +58,15 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::STM8: return {"stm8", 0};
   case AVM::LDM16: return {"ldm16", 0};
   case AVM::STM16: return {"stm16", 0};
+  case AVM::LDP8U:
+  case AVM::LDP8U_POST: return {"ldp8u", 0};
+  case AVM::LDP8S: return {"ldp8s", 0};
+  case AVM::LDP16:
+  case AVM::LDP16_POST: return {"ldp16", 0};
+  case AVM::LDP24:
+  case AVM::LDP24_POST: return {"ldp24", 0};
+  case AVM::LDP32:
+  case AVM::LDP32_POST: return {"ldp32", 0};
   default:
     return {"<unknown>", 0};
   }
@@ -193,6 +202,26 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     printOperand(MI->getOperand(0), OS);
     OS << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::LDP8U:
+  case AVM::LDP8S:
+  case AVM::LDP16:
+  case AVM::LDP24:
+  case AVM::LDP32:
+  case AVM::LDP8U_POST:
+  case AVM::LDP16_POST:
+  case AVM::LDP24_POST:
+  case AVM::LDP32_POST:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    if (MI->getOpcode() == AVM::LDP8U_POST ||
+        MI->getOpcode() == AVM::LDP16_POST ||
+        MI->getOpcode() == AVM::LDP24_POST ||
+        MI->getOpcode() == AVM::LDP32_POST)
+      OS << '+';
+    OS << ']';
     break;
   case AVM::JMP16:
   case AVM::CALL16:

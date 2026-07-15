@@ -21,6 +21,30 @@ class AVMDisassembler final : public MCDisassembler {
     }
   }
 
+  static std::optional<MCRegister> scalarRegisterFromPSPEC(unsigned Code) {
+    switch (Code) {
+    case 0x0: return AVM::R0;
+    case 0x2: return AVM::R1;
+    case 0x4: return AVM::R2;
+    case 0x6: return AVM::R3;
+    case 0x8: return AVM::R4;
+    case 0xa: return AVM::R5;
+    case 0xc: return AVM::R6;
+    case 0xe: return AVM::R7;
+    default: return std::nullopt;
+    }
+  }
+
+  static std::optional<MCRegister> pairRegisterFromPSPEC(unsigned Code) {
+    switch (Code) {
+    case 0x0: return AVM::R0R1;
+    case 0x4: return AVM::R2R3;
+    case 0x8: return AVM::R4R5;
+    case 0xc: return AVM::R6R7;
+    default: return std::nullopt;
+    }
+  }
+
 public:
   AVMDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx)
       : MCDisassembler(STI, Ctx) {}
@@ -35,6 +59,43 @@ public:
       if (Bytes.size() < 2)
         return Fail;
       const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x60 && Secondary <= 0x68) {
+        if (Bytes.size() < 3)
+          return Fail;
+        const bool IsPair = Secondary == 0x63 || Secondary == 0x64 ||
+                            Secondary == 0x67 || Secondary == 0x68;
+        const uint8_t PSPEC = Bytes[2];
+        const auto Destination = IsPair
+                                     ? pairRegisterFromPSPEC(PSPEC >> 4)
+                                     : scalarRegisterFromPSPEC(PSPEC >> 4);
+        const auto Address = pairRegisterFromPSPEC(PSPEC & 0xf);
+        if (!Destination || !Address) {
+          Size = 1;
+          return Fail;
+        }
+        const bool PostIncrement = Secondary >= 0x65;
+        if (PostIncrement &&
+            (IsPair ? *Destination == *Address
+                    : (PSPEC >> 6) == (PSPEC & 0xf) / 4)) {
+          Size = 1;
+          return Fail;
+        }
+        switch (Secondary) {
+        case 0x60: MI.setOpcode(AVM::LDP8U); break;
+        case 0x61: MI.setOpcode(AVM::LDP8S); break;
+        case 0x62: MI.setOpcode(AVM::LDP16); break;
+        case 0x63: MI.setOpcode(AVM::LDP24); break;
+        case 0x64: MI.setOpcode(AVM::LDP32); break;
+        case 0x65: MI.setOpcode(AVM::LDP8U_POST); break;
+        case 0x66: MI.setOpcode(AVM::LDP16_POST); break;
+        case 0x67: MI.setOpcode(AVM::LDP24_POST); break;
+        default: MI.setOpcode(AVM::LDP32_POST); break;
+        }
+        MI.addOperand(MCOperand::createReg(*Destination));
+        MI.addOperand(MCOperand::createReg(*Address));
+        Size = 3;
+        return Success;
+      }
       if (Secondary >= 0x40 && Secondary <= 0x5f) {
         if (Bytes.size() < 4)
           return Fail;

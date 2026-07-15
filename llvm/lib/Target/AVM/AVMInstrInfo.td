@@ -21,6 +21,8 @@ def AVMStackReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 def AVMDataAddr16 : Operand<i32>;
 def AVMAbsoluteDataReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
+def AVMProgramLoadScalarReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
+def AVMProgramLoadPairReg : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -76,6 +78,16 @@ class AVMAbsoluteDataLoadInst<string Asm>
     : AVMInst<Asm, 4, (ins AVMAbsoluteDataReg:$reg, AVMDataAddr16:$addr)>;
 class AVMAbsoluteDataStoreInst<string Asm>
     : AVMInst<Asm, 4, (ins AVMDataAddr16:$addr, AVMAbsoluteDataReg:$reg)>;
+
+// Program-space load forms are MC-only.  Their memory operands are canonical
+// program-pointer pairs parsed as a separate address register; the encoder
+// supplies the PSPEC register codes explicitly.
+class AVMProgramLoadScalarInst<string Asm>
+    : AVMInst<Asm, 3,
+              (ins AVMProgramLoadScalarReg:$dst, AVMProgramLoadPairReg:$addr)>;
+class AVMProgramLoadPairInst<string Asm>
+    : AVMInst<Asm, 3,
+              (ins AVMProgramLoadPairReg:$dst, AVMProgramLoadPairReg:$addr)>;
 
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
@@ -139,6 +151,16 @@ def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;
 def LDM16 : AVMAbsoluteDataLoadInst<"ldm16 $reg, [$addr]">;
 def STM16 : AVMAbsoluteDataStoreInst<"stm16 [$addr], $reg">;
+
+def LDP8U : AVMProgramLoadScalarInst<"ldp8u $dst, [$addr]">;
+def LDP8S : AVMProgramLoadScalarInst<"ldp8s $dst, [$addr]">;
+def LDP16 : AVMProgramLoadScalarInst<"ldp16 $dst, [$addr]">;
+def LDP24 : AVMProgramLoadPairInst<"ldp24 $dst, [$addr]">;
+def LDP32 : AVMProgramLoadPairInst<"ldp32 $dst, [$addr]">;
+def LDP8U_POST : AVMProgramLoadScalarInst<"ldp8u $dst, [$addr+]">;
+def LDP16_POST : AVMProgramLoadScalarInst<"ldp16 $dst, [$addr+]">;
+def LDP24_POST : AVMProgramLoadPairInst<"ldp24 $dst, [$addr+]">;
+def LDP32_POST : AVMProgramLoadPairInst<"ldp32 $dst, [$addr+]">;
 
 def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }

@@ -453,6 +453,83 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  static std::optional<unsigned> scalarRegisterIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0: return 0;
+    case AVM::R1: return 1;
+    case AVM::R2: return 2;
+    case AVM::R3: return 3;
+    case AVM::R4: return 4;
+    case AVM::R5: return 5;
+    case AVM::R6: return 6;
+    case AVM::R7: return 7;
+    default: return std::nullopt;
+    }
+  }
+
+  static std::optional<unsigned> programPairIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0R1: return 0;
+    case AVM::R2R3: return 1;
+    case AVM::R4R5: return 2;
+    case AVM::R6R7: return 3;
+    default: return std::nullopt;
+    }
+  }
+
+  bool parseProgramMemory(MCRegister &Address, bool &PostIncrement) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected program memory operand '[qN]' or '[qN+]'");
+    Parser.Lex();
+    if (parseProgramPair(Address))
+      return true;
+    PostIncrement = Parser.getTok().is(AsmToken::Plus);
+    if (PostIncrement)
+      Parser.Lex();
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected ']' after program address register");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseProgramLoad(unsigned OrdinaryOpcode, unsigned PostOpcode,
+                        bool IsPair, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Destination, Address;
+    if ((IsPair ? parseProgramPair(Destination)
+                : parseAbsoluteDataReg(Destination)) ||
+        Parser.parseComma())
+      return true;
+    bool PostIncrement = false;
+    if (parseProgramMemory(Address, PostIncrement))
+      return true;
+    if (PostIncrement && !PostOpcode)
+      return error(NameLoc, "this program load does not support postincrement");
+
+    if (PostIncrement) {
+      if (IsPair) {
+        if (Destination == Address)
+          return error(NameLoc,
+                       "postincrement destination must not overlap address pair");
+      } else {
+        const auto Data = scalarRegisterIndex(Destination);
+        const auto Pair = programPairIndex(Address);
+        if (!Data || !Pair || *Data / 2 == *Pair)
+          return error(NameLoc,
+                       "postincrement destination must not overlap address pair");
+      }
+    }
+
+    MCInst Inst;
+    Inst.setOpcode(PostIncrement ? PostOpcode : OrdinaryOpcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Address));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactPair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                         OperandVector &Operands) {
     MCRegister First, Second;
@@ -622,6 +699,20 @@ public:
     if (Lower == "stm16")
       return parseAbsoluteDataInstruction(AVM::STM16, true, Name, NameLoc,
                                           Operands);
+    if (Lower == "ldp8u")
+      return parseProgramLoad(AVM::LDP8U, AVM::LDP8U_POST, false, Name,
+                              NameLoc, Operands);
+    if (Lower == "ldp8s")
+      return parseProgramLoad(AVM::LDP8S, 0, false, Name, NameLoc, Operands);
+    if (Lower == "ldp16")
+      return parseProgramLoad(AVM::LDP16, AVM::LDP16_POST, false, Name,
+                              NameLoc, Operands);
+    if (Lower == "ldp24")
+      return parseProgramLoad(AVM::LDP24, AVM::LDP24_POST, true, Name,
+                              NameLoc, Operands);
+    if (Lower == "ldp32")
+      return parseProgramLoad(AVM::LDP32, AVM::LDP32_POST, true, Name,
+                              NameLoc, Operands);
     if (Lower == "and")
       return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
     if (Lower == "or")

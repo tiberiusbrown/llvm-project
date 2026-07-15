@@ -173,6 +173,28 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  void emitProgramLoad(const MCInst &MI, SmallVectorImpl<char> &Out,
+                       unsigned Secondary, bool IsPair) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected program-load destination and address pair operands");
+      return;
+    }
+    const std::optional<unsigned> Address =
+        programPairIndex(MI.getOperand(1).getReg());
+    const std::optional<unsigned> Destination =
+        IsPair ? programPairIndex(MI.getOperand(0).getReg())
+               : stackRegIndex(MI.getOperand(0).getReg());
+    if (!Destination || !Address) {
+      error(MI, "invalid program-load register operands");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Secondary);
+    emit8(Out, (IsPair ? 4 * *Destination : 2 * *Destination) << 4 |
+                   4 * *Address);
+  }
+
   void emitProgramPair(const MCInst &MI, SmallVectorImpl<char> &Out,
                        unsigned Family) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -366,6 +388,15 @@ public:
     case AVM::STM8: emitAbsoluteData(MI, Out, Fixups, 0x48, true); return;
     case AVM::LDM16: emitAbsoluteData(MI, Out, Fixups, 0x50, false); return;
     case AVM::STM16: emitAbsoluteData(MI, Out, Fixups, 0x58, true); return;
+    case AVM::LDP8U: emitProgramLoad(MI, Out, 0x60, false); return;
+    case AVM::LDP8S: emitProgramLoad(MI, Out, 0x61, false); return;
+    case AVM::LDP16: emitProgramLoad(MI, Out, 0x62, false); return;
+    case AVM::LDP24: emitProgramLoad(MI, Out, 0x63, true); return;
+    case AVM::LDP32: emitProgramLoad(MI, Out, 0x64, true); return;
+    case AVM::LDP8U_POST: emitProgramLoad(MI, Out, 0x65, false); return;
+    case AVM::LDP16_POST: emitProgramLoad(MI, Out, 0x66, false); return;
+    case AVM::LDP24_POST: emitProgramLoad(MI, Out, 0x67, true); return;
+    case AVM::LDP32_POST: emitProgramLoad(MI, Out, 0x68, true); return;
     case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
