@@ -18,9 +18,8 @@ st16 [c3],r7
 st16 [c0],q0
 st16 [c0],sp
 st16 [q0],r0
-st16 [c0+],r0
 st16 r0,[c0]
 st16 [c0]
 st16 [c0],r0,r1
 
-# CHECK-COUNT-22: error:
+# CHECK-COUNT-21: error:

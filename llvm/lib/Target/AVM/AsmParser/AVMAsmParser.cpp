@@ -957,7 +957,8 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
-  bool parseF5LoadInstruction(unsigned F5Opcode, unsigned GeneralOpcode,
+  bool parseF5LoadInstruction(unsigned F5Opcode, unsigned CompactPostOpcode,
+                              unsigned GeneralOpcode,
                               unsigned GeneralPostOpcode, StringRef Name,
                               SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Data, Address;
@@ -965,14 +966,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
     bool AddressIsFull = false, PostIncrement = false;
     if (parseSpelledDataReg(Data, DataIsFull) || !DataIsFull ||
         Parser.parseComma() ||
-        parseSpelledDataMemory(Address, AddressIsFull, PostIncrement))
+        parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
+                               std::nullopt, CompactPostOpcode != 0))
       return true;
     const auto Index = scalarRegisterIndex(Data);
-    if (!AddressIsFull && (!Index || *Index > 3))
+    if (!AddressIsFull && !PostIncrement && (!Index || *Index > 3))
       return error(NameLoc, "expected destination register r0-r3");
+    if (!AddressIsFull && PostIncrement && Data == Address)
+      return error(NameLoc,
+                   "postincrement destination must not overlap address register");
     MCInst Inst;
     Inst.setOpcode(!AddressIsFull
-                       ? F5Opcode
+                       ? (PostIncrement ? CompactPostOpcode : F5Opcode)
                        : (PostIncrement ? GeneralPostOpcode : GeneralOpcode));
     Inst.addOperand(MCOperand::createReg(Data));
     Inst.addOperand(MCOperand::createReg(Address));
@@ -1098,7 +1103,8 @@ public:
     if (Lower == "ld8u") {
       if (Parser.getTok().is(AsmToken::Identifier) &&
           Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseF5LoadInstruction(AVM::F5LD8U, AVM::GPLD8U,
+        return parseF5LoadInstruction(AVM::F5LD8U, AVM::F7LD8U_POST,
+                                      AVM::GPLD8U,
                                       AVM::GPLD8U_POST, Name, NameLoc,
                                       Operands);
       return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
@@ -1126,7 +1132,8 @@ public:
     if (Lower == "ld16") {
       if (Parser.getTok().is(AsmToken::Identifier) &&
           Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseF5LoadInstruction(AVM::F5LD16, AVM::GPLD16,
+        return parseF5LoadInstruction(AVM::F5LD16, AVM::F7LD16_POST,
+                                      AVM::GPLD16,
                                       AVM::GPLD16_POST, Name, NameLoc,
                                       Operands);
       return parseOverloadedMemoryInstruction(AVM::LD16, AVM::GPLD16,
@@ -1136,7 +1143,8 @@ public:
     if (Lower == "st16")
       return parseOverloadedMemoryInstruction(AVM::ST16, AVM::GPST16,
                                               AVM::GPST16_POST, true, Name,
-                                              NameLoc, Operands, AVM::F5ST16);
+                                              NameLoc, Operands, AVM::F5ST16,
+                                              AVM::F7ST16_POST);
     if (Lower == "ldm8u")
       return parseAbsoluteDataInstruction(AVM::LDM8U, false, Name, NameLoc,
                                           Operands);

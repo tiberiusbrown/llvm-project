@@ -317,6 +317,30 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
                    (*AddressIndex << 1) | unsigned(IsPost));
   }
 
+  void emitF7Memory(const MCInst &MI, SmallVectorImpl<char> &Out,
+                    unsigned Base, bool IsStore) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected compact-pointer postincrement register operands");
+      return;
+    }
+    const MCRegister Data = MI.getOperand(IsStore ? 1 : 0).getReg();
+    const MCRegister Address = MI.getOperand(IsStore ? 0 : 1).getReg();
+    const auto DataIndex = stackRegIndex(Data);
+    const auto AddressIndex = compactRegIndex(Address);
+    if (!DataIndex || !AddressIndex) {
+      error(MI, IsStore ? "expected compact pointer c0-c3 and source r0-r7"
+                        : "expected compact pointer c0-c3 and destination r0-r7");
+      return;
+    }
+    if (!IsStore && *DataIndex == 4 + *AddressIndex) {
+      error(MI, "postincrement destination must not overlap address register");
+      return;
+    }
+    emit8(Out, 0xf7);
+    emit8(Out, Base + 8 * *AddressIndex + *DataIndex);
+  }
+
   void emitProgramPair(const MCInst &MI, SmallVectorImpl<char> &Out,
                        unsigned Family) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -696,6 +720,9 @@ public:
     case AVM::F5LD8U: emitF5Memory(MI, Out, 0x30, false); return;
     case AVM::F5LD16: emitF5Memory(MI, Out, 0x40, false); return;
     case AVM::F5ST16: emitF5Memory(MI, Out, 0x50, true); return;
+    case AVM::F7LD8U_POST: emitF7Memory(MI, Out, 0x00, false); return;
+    case AVM::F7LD16_POST: emitF7Memory(MI, Out, 0x20, false); return;
+    case AVM::F7ST16_POST: emitF7Memory(MI, Out, 0x40, true); return;
     case AVM::MULU8W: emitF3Multiply(MI, Out, 0x10); return;
     case AVM::MULS8W: emitF3Multiply(MI, Out, 0x20); return;
     case AVM::MULSU8W: emitF3Multiply(MI, Out, 0x30); return;

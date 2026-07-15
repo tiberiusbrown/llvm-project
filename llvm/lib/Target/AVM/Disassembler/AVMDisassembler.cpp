@@ -399,6 +399,38 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf7) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x5f) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned PointerIndex = Secondary / 8;
+      const unsigned DataIndex = Secondary & 7;
+      if (Secondary < 0x20 || (Secondary >= 0x20 && Secondary < 0x40)) {
+        if (DataIndex == 4 + PointerIndex) {
+          Size = 1;
+          return Fail;
+        }
+        MI.setOpcode(Secondary < 0x20 ? AVM::F7LD8U_POST
+                                     : AVM::F7LD16_POST);
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + DataIndex)));
+        MI.addOperand(MCOperand::createReg(compactRegister(PointerIndex)));
+      } else {
+        MI.setOpcode(AVM::F7ST16_POST);
+        MI.addOperand(MCOperand::createReg(compactRegister(PointerIndex)));
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + DataIndex)));
+      }
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf3) {
       if (Bytes.size() < 2) {
         Size = 1;

@@ -64,6 +64,22 @@ class AVMF5StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
                            AVMLowRegClass:$src)>;
 
+// F7 compact-pointer postincrement memory is MC-only. The pointer is an
+// explicit tied read/write operand, while load destinations are define-only.
+class AVMF7LoadInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr_in)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst,
+                             AVMCompactDataPointer:$addr);
+  let Constraints = "$addr = $addr_in";
+}
+
+class AVMF7StoreInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr_in,
+                           AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMCompactDataPointer:$addr);
+  let Constraints = "$addr = $addr_in";
+}
+
 class AVMF3WideningMultiplyInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
@@ -246,6 +262,9 @@ def F6ST8_POST : AVMF6PostStoreInst<"st8 [$addr_in+], $src">;
 def F5LD8U : AVMF5LoadInst<"ld8u $dst, [$addr]">;
 def F5LD16 : AVMF5LoadInst<"ld16 $dst, [$addr]">;
 def F5ST16 : AVMF5StoreInst<"st16 [$addr], $src">;
+def F7LD8U_POST : AVMF7LoadInst<"ld8u $dst, [$addr+]">;
+def F7LD16_POST : AVMF7LoadInst<"ld16 $dst, [$addr+]">;
+def F7ST16_POST : AVMF7StoreInst<"st16 [$addr+], $src">;
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;
