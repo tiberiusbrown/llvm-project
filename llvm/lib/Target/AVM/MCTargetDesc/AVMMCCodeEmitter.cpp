@@ -105,6 +105,32 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Family | (*First << 2) | *Second);
   }
 
+  void emitCompactImmediate(const MCInst &MI, SmallVectorImpl<char> &Out,
+                            unsigned Family, unsigned Bits, bool IsSigned) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isImm()) {
+      error(MI, "expected compact register and immediate operands");
+      return;
+    }
+    const std::optional<unsigned> Reg = compactRegIndex(MI.getOperand(0).getReg());
+    if (!Reg) {
+      error(MI, "expected compact register c0-c3");
+      return;
+    }
+    const int64_t Value = MI.getOperand(1).getImm();
+    const int64_t Min = IsSigned ? -(int64_t(1) << (Bits - 1)) : 0;
+    const int64_t Max = IsSigned ? (int64_t(1) << (Bits - 1)) - 1
+                                 : (int64_t(1) << Bits) - 1;
+    if (Value < Min || Value > Max) {
+      error(MI, "immediate is out of range");
+      return;
+    }
+    emit8(Out, Family | *Reg);
+    emit8(Out, Value);
+    if (Bits == 16)
+      emit8(Out, Value >> 8);
+  }
+
 public:
   explicit AVMMCCodeEmitter(MCContext &Ctx) : Ctx(Ctx) {}
 
@@ -125,6 +151,10 @@ public:
     case AVM::XOR: emitCompactMatrix(MI, Out, 0xa0); return;
     case AVM::PUSH16: emitStackReg(MI, Out, 0xb0); return;
     case AVM::POP16: emitStackReg(MI, Out, 0xb8); return;
+    case AVM::LDI8: emitCompactImmediate(MI, Out, 0xc0, 8, false); return;
+    case AVM::LDI16: emitCompactImmediate(MI, Out, 0xc4, 16, false); return;
+    case AVM::ADDIS8: emitCompactImmediate(MI, Out, 0xc8, 8, true); return;
+    case AVM::CMPIS8: emitCompactImmediate(MI, Out, 0xcc, 8, true); return;
     case AVM::JMPF:
       emit8(Out, 0xe2);
       emitFarTarget(MI, Out, Fixups);

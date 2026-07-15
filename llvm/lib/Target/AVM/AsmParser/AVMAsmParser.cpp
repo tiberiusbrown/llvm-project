@@ -108,6 +108,9 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseCompactReg(MCRegister &Reg) {
     SMLoc Loc = Parser.getTok().getLoc();
+    if (Parser.getTok().is(AsmToken::Identifier) &&
+        !Parser.getTok().getIdentifier().starts_with_insensitive("c"))
+      return error(Loc, "expected compact register c0-c3");
     if (parseArchitecturalReg(Reg))
       return true;
     switch (Reg.id()) {
@@ -178,6 +181,37 @@ class AVMAsmParser final : public MCTargetAsmParser {
     Inst.setOpcode(Opcode);
     Inst.addOperand(MCOperand::createReg(First));
     Inst.addOperand(MCOperand::createReg(Second));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
+                             StringRef Name, SMLoc NameLoc,
+                             OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseCompactReg(Reg))
+      return true;
+    if (Parser.parseComma())
+      return true;
+
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (!Expr->evaluateAsAbsolute(Value))
+      return error(ExprLoc, "immediate expression must be fully resolvable");
+
+    const int64_t Min = IsSigned ? -(int64_t(1) << (Bits - 1)) : 0;
+    const int64_t Max = IsSigned ? (int64_t(1) << (Bits - 1)) - 1
+                                 : (int64_t(1) << Bits) - 1;
+    if (Value < Min || Value > Max)
+      return error(ExprLoc, "immediate is out of range");
+
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createImm(Value));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
                              Operands, Name, NameLoc);
   }
@@ -301,6 +335,18 @@ public:
       return parseStackInstruction(AVM::PUSH16, Name, NameLoc, Operands);
     if (Lower == "pop16")
       return parseStackInstruction(AVM::POP16, Name, NameLoc, Operands);
+    if (Lower == "ldi8")
+      return parseCompactImmediate(AVM::LDI8, false, 8, Name, NameLoc,
+                                   Operands);
+    if (Lower == "ldi16")
+      return parseCompactImmediate(AVM::LDI16, false, 16, Name, NameLoc,
+                                   Operands);
+    if (Lower == "addi.s8")
+      return parseCompactImmediate(AVM::ADDIS8, true, 8, Name, NameLoc,
+                                   Operands);
+    if (Lower == "cmpi.s8")
+      return parseCompactImmediate(AVM::CMPIS8, true, 8, Name, NameLoc,
+                                   Operands);
     if (Lower == "nop")
       return parseNop(Name, NameLoc, Operands);
     if (Lower == "clr")

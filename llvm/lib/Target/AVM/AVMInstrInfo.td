@@ -3,6 +3,9 @@
 // The current opcode map is introduced in a later change.  These are the
 // already-verified, direct far transfers whose encodings match docs/arch.md.
 def AVMImm24 : Operand<i32>;
+def AVMImm8 : Operand<i32>;
+def AVMImm16 : Operand<i32>;
+def AVMSImm8 : Operand<i32>;
 
 def AVMCompactDest : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactSource : RegisterOperand<AVMCompactReg, "printCompactReg">;
@@ -38,6 +41,13 @@ class AVMStackRegInst<string Asm, bits<8> Family>
   bits<8> StackFamily = Family;
 }
 
+class AVMCompactRegU8Inst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMImm8:$imm)>;
+class AVMCompactRegU16Inst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMCompactDest:$reg, AVMImm16:$imm)>;
+class AVMCompactRegS8Inst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMSImm8:$imm)>;
+
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def ADD : AVMCompactMatrixInst<"add $dst, $src", 0x1,
@@ -65,6 +75,13 @@ def XOR : AVMCompactMatrixInst<"xor $dst, $src", 0xa,
 
 def PUSH16 : AVMStackRegInst<"push16 $reg", 0xb0>;
 def POP16 : AVMStackRegInst<"pop16 $reg", 0xb8>;
+
+def LDI8 : AVMCompactRegU8Inst<"ldi8 $reg, $imm">;
+def LDI16 : AVMCompactRegU16Inst<"ldi16 $reg, $imm">;
+def ADDIS8 : AVMCompactRegS8Inst<"addi.s8 $reg, $imm">;
+def CMPIS8 : AVMCompactRegS8Inst<"cmpi.s8 $reg, $imm"> {
+  let Defs = [CC];
+}
 
 def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
   let isBranch = 1;

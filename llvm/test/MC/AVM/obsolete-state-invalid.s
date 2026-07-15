@@ -37,7 +37,7 @@ sys 0
 # CHECK: error: unknown AVM instruction 'mtpb'
 # CHECK: error: unknown AVM instruction 'mfpb'
 # CHECK: error: unknown AVM instruction 'ldpbi'
-# CHECK: error: unknown AVM instruction 'ldi16'
+# CHECK: error: expected compact register c0-c3
 # CHECK: error: unknown AVM instruction 'cmpi6'
 # CHECK: error: unknown AVM instruction 'breq'
 # CHECK: error: unknown AVM instruction 'ld8'

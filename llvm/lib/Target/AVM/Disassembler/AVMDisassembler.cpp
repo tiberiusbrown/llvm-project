@@ -59,6 +59,30 @@ public:
       return Success;
     }
 
+    if (Bytes[0] >= 0xc0 && Bytes[0] <= 0xcf) {
+      const uint8_t Opcode = Bytes[0];
+      const bool IsLDI16 = Opcode >= 0xc4 && Opcode <= 0xc7;
+      if (Bytes.size() < (IsLDI16 ? 3 : 2))
+        return Fail;
+      if (Opcode <= 0xc3)
+        MI.setOpcode(AVM::LDI8);
+      else if (IsLDI16)
+        MI.setOpcode(AVM::LDI16);
+      else if (Opcode <= 0xcb)
+        MI.setOpcode(AVM::ADDIS8);
+      else
+        MI.setOpcode(AVM::CMPIS8);
+      MI.addOperand(MCOperand::createReg(compactRegister(Opcode & 3)));
+      const int64_t Immediate = IsLDI16
+                                    ? Bytes[1] | (uint16_t(Bytes[2]) << 8)
+                                    : (Opcode >= 0xc8 && Bytes[1] & 0x80
+                                           ? int64_t(Bytes[1]) - 256
+                                           : Bytes[1]);
+      MI.addOperand(MCOperand::createImm(Immediate));
+      Size = IsLDI16 ? 3 : 2;
+      return Success;
+    }
+
     if (Bytes.size() < 4)
       return Fail;
     if (Bytes[0] != 0xe2 && Bytes[0] != 0xe3) {
