@@ -43,6 +43,12 @@ class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
   bits<4> CompactFamily = Family;
 }
 
+// F1 full-register moves use the architectural PAIR48 index. This is an
+// MC-only family: the encoder supplies explicit ISA register indices and no
+// code-generation or scheduling metadata is attached.
+class AVMFullMoveInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$dst, AVMGeneralReg:$src)>;
+
 // Stack-register operations are MC-only and encode the explicit architectural
 // register number in the low three bits of their one-byte opcode.
 class AVMStackRegInst<string Asm, bits<8> Family>
@@ -128,6 +134,7 @@ class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
+def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
 def ADD : AVMCompactMatrixInst<"add $dst, $src", 0x1,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def SUB : AVMCompactMatrixInst<"sub $dst, $src", 0x2,

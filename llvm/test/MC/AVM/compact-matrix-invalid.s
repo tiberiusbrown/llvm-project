@@ -23,7 +23,7 @@ clr q0
 clr
 nop c0
 
-# CHECK: error: expected compact register c0-c3
+# CHECK: error: expected full register r0-r7
 # CHECK: error: expected compact register c0-c3
 # CHECK: error: expected compact register c0-c3
 # CHECK: error: expected compact register c0-c3

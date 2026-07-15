@@ -589,6 +589,41 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFullReg(MCRegister &Reg) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
+              .Case("r0", AVM::R0).Case("r1", AVM::R1)
+              .Case("r2", AVM::R2).Case("r3", AVM::R3)
+              .Case("r4", AVM::R4).Case("r5", AVM::R5)
+              .Case("r6", AVM::R6).Case("r7", AVM::R7)
+              .Default(MCRegister());
+    if (!Reg)
+      return error(Tok.getLoc(), "expected full register r0-r7");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseFullMove(StringRef Name, SMLoc NameLoc,
+                     OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    const unsigned D = Destination.id() - AVM::R0;
+    const unsigned S = Source.id() - AVM::R0;
+    if ((D >= 4 && S >= 4))
+      return error(NameLoc,
+                   "full-register MOV pairing is not encodable; use compact cN spelling");
+    MCInst Inst;
+    Inst.setOpcode(AVM::MOV_RR);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
                              StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
@@ -796,8 +831,12 @@ public:
                         OperandVector &Operands) override {
     Pending.reset();
     std::string Lower = Name.lower();
-    if (Lower == "mov")
+    if (Lower == "mov") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullMove(Name, NameLoc, Operands);
       return parseCompactPair(AVM::MOV, Name, NameLoc, Operands);
+    }
     if (Lower == "add")
       return parseCompactPair(AVM::ADD, Name, NameLoc, Operands);
     if (Lower == "sub")

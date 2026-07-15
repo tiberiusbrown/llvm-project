@@ -153,6 +153,23 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  void emitFullMove(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two full register operands");
+      return;
+    }
+    const std::optional<unsigned> D = stackRegIndex(MI.getOperand(0).getReg());
+    const std::optional<unsigned> S = stackRegIndex(MI.getOperand(1).getReg());
+    if (!D || !S || (*D >= 4 && *S >= 4)) {
+      error(MI, "full-register MOV pairing is not encodable");
+      return;
+    }
+    const unsigned Pair = *D < 4 ? 8 * *D + *S : 0x20 + 4 * (*D - 4) + *S;
+    emit8(Out, 0xf1);
+    emit8(Out, Pair);
+  }
+
   // This mapping is architectural, not derived from physical-register enum
   // layout.  The dddWaaaP encoding uses these r0-r7 values directly.
   static std::optional<unsigned> generalPointerRegIndex(MCRegister Reg) {
@@ -422,6 +439,7 @@ public:
                          const MCSubtargetInfo &) const override {
     switch (MI.getOpcode()) {
     case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
+    case AVM::MOV_RR: emitFullMove(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;
     case AVM::SUB: emitCompactMatrix(MI, Out, 0x20); return;
     case AVM::CMP: emitCompactMatrix(MI, Out, 0x30); return;
