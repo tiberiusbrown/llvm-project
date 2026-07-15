@@ -15,7 +15,6 @@ ld8u [c0],c1
 
 st8 c0,c1
 st8 [r0],c0
-st8 [c0+],c0
 st8 [c0]
 
 clr r0
@@ -36,7 +35,6 @@ nop c0
 # CHECK: error: expected AVM register
 # CHECK: error: expected compact memory operand '[cN]'
 # CHECK: error: expected compact register c0-c3
-# CHECK: error: postincrement memory operands are not supported
 # CHECK: error: expected comma
 # CHECK: error: expected compact register c0-c3
 # CHECK: error: expected compact register c0-c3

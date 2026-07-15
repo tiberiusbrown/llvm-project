@@ -32,6 +32,7 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::LD8U: return {"ld8u", 0};
   case AVM::ST8: return {"st8", 0};
   case AVM::F3ST8: return {"st8", 0};
+  case AVM::F6ST8_POST: return {"st8", 0};
   case AVM::F5LD8U: return {"ld8u", 0};
   case AVM::F5LD16: return {"ld16", 0};
   case AVM::F5ST16: return {"st16", 0};
@@ -371,6 +372,12 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
         MI->getOpcode() == AVM::GPST16_POST)
       OS << '+';
     OS << "], ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::F6ST8_POST:
+    OS << "\t[";
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << "+], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::JMP16:

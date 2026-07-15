@@ -361,6 +361,24 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf6) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x1f) {
+        Size = 1;
+        return Fail;
+      }
+      MI.setOpcode(AVM::F6ST8_POST);
+      MI.addOperand(MCOperand::createReg(compactRegister(Secondary / 8)));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + (Secondary & 7))));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf3) {
       if (Bytes.size() < 2) {
         Size = 1;

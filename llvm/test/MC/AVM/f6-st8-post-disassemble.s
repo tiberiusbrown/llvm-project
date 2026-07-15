@@ -1,0 +1,34 @@
+# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/f6-st8-post-all.txt | FileCheck %s
+
+# CHECK: st8 [c0+], r0
+# CHECK: st8 [c0+], r1
+# CHECK: st8 [c0+], r2
+# CHECK: st8 [c0+], r3
+# CHECK: st8 [c0+], r4
+# CHECK: st8 [c0+], r5
+# CHECK: st8 [c0+], r6
+# CHECK: st8 [c0+], r7
+# CHECK: st8 [c1+], r0
+# CHECK: st8 [c1+], r1
+# CHECK: st8 [c1+], r2
+# CHECK: st8 [c1+], r3
+# CHECK: st8 [c1+], r4
+# CHECK: st8 [c1+], r5
+# CHECK: st8 [c1+], r6
+# CHECK: st8 [c1+], r7
+# CHECK: st8 [c2+], r0
+# CHECK: st8 [c2+], r1
+# CHECK: st8 [c2+], r2
+# CHECK: st8 [c2+], r3
+# CHECK: st8 [c2+], r4
+# CHECK: st8 [c2+], r5
+# CHECK: st8 [c2+], r6
+# CHECK: st8 [c2+], r7
+# CHECK: st8 [c3+], r0
+# CHECK: st8 [c3+], r1
+# CHECK: st8 [c3+], r2
+# CHECK: st8 [c3+], r3
+# CHECK: st8 [c3+], r4
+# CHECK: st8 [c3+], r5
+# CHECK: st8 [c3+], r6
+# CHECK: st8 [c3+], r7

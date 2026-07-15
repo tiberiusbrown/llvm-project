@@ -48,6 +48,13 @@ class AVMF3StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
                            AVMGeneralReg:$src)>;
 
+class AVMF6PostStoreInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr_in,
+                           AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMCompactDataPointer:$addr);
+  let Constraints = "$addr = $addr_in";
+}
+
 class AVMF5LoadInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr)> {
   let OutOperandList = (outs AVMLowRegClass:$dst);
@@ -221,6 +228,7 @@ def LD8U : AVMCompactMatrixInst<"ld8u $dst, [$addr]", 0x4,
 def ST8 : AVMCompactMatrixInst<"st8 [$addr], $src", 0x5,
     (ins AVMCompactDataPointer:$addr, AVMCompactSource:$src)>;
 def F3ST8 : AVMF3StoreInst<"st8 [$addr], $src">;
+def F6ST8_POST : AVMF6PostStoreInst<"st8 [$addr_in+], $src">;
 def F5LD8U : AVMF5LoadInst<"ld8u $dst, [$addr]">;
 def F5LD16 : AVMF5LoadInst<"ld16 $dst, [$addr]">;
 def F5ST16 : AVMF5StoreInst<"st16 [$addr], $src">;

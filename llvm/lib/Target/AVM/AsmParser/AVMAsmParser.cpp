@@ -873,7 +873,8 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseSpelledDataMemory(MCRegister &Reg, bool &IsFull,
                               bool &PostIncrement,
-                              std::optional<bool> ExpectedClass = std::nullopt) {
+                              std::optional<bool> ExpectedClass = std::nullopt,
+                              bool AllowCompactPostIncrement = false) {
     if (!Parser.getTok().is(AsmToken::LBrac))
       return error(Parser.getTok().getLoc(),
                    ExpectedClass && *ExpectedClass
@@ -889,7 +890,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
     }
     PostIncrement = Parser.getTok().is(AsmToken::Plus);
     if (PostIncrement) {
-      if (!IsFull)
+      if (!IsFull && !AllowCompactPostIncrement)
         return error(Parser.getTok().getLoc(),
                      "postincrement memory operands are not supported");
       Parser.Lex();
@@ -907,11 +908,13 @@ class AVMAsmParser final : public MCTargetAsmParser {
                                         bool IsStore, StringRef Name,
                                         SMLoc NameLoc,
                                         OperandVector &Operands,
-                                        unsigned MixedOpcode = 0) {
+                                        unsigned MixedOpcode = 0,
+                                        unsigned CompactPostOpcode = 0) {
     MCRegister Data, Address;
     bool DataIsFull = false, AddressIsFull = false, PostIncrement = false;
     if (IsStore) {
-      if (parseSpelledDataMemory(Address, AddressIsFull, PostIncrement) ||
+      if (parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
+                                 std::nullopt, CompactPostOpcode != 0) ||
           Parser.parseComma() || parseSpelledDataReg(Data, DataIsFull))
         return true;
     } else {
@@ -920,20 +923,25 @@ class AVMAsmParser final : public MCTargetAsmParser {
                                  DataIsFull))
         return true;
     }
-    if (!AddressIsFull && DataIsFull && MixedOpcode) {
+    if (!AddressIsFull && DataIsFull && MixedOpcode && !PostIncrement) {
       const auto Source = scalarRegisterIndex(Data);
       if (!Source || *Source > 3)
         return error(NameLoc, "expected source register r0-r3");
-    } else if (DataIsFull != AddressIsFull)
+    } else if (DataIsFull != AddressIsFull &&
+               !(CompactPostOpcode && PostIncrement && !AddressIsFull))
       return error(NameLoc, "expected compact register c0-c3");
-    if (!DataIsFull && PostIncrement)
+    if (!AddressIsFull && PostIncrement && CompactPostOpcode && !DataIsFull)
+      return error(NameLoc, "expected full register r0-r7");
+    if (!AddressIsFull && PostIncrement && !CompactPostOpcode)
       return error(NameLoc, "compact memory operands do not support postincrement");
     if (DataIsFull && !IsStore && PostIncrement && Data == Address)
       return error(NameLoc,
                    "postincrement destination must not overlap address register");
 
     MCInst Inst;
-    Inst.setOpcode(!AddressIsFull && DataIsFull && MixedOpcode
+    Inst.setOpcode(!AddressIsFull && PostIncrement && CompactPostOpcode
+                       ? CompactPostOpcode
+                       : !AddressIsFull && DataIsFull && MixedOpcode
                        ? MixedOpcode
                        : DataIsFull
                        ? (PostIncrement ? GeneralPostOpcode : GeneralOpcode)
@@ -1087,10 +1095,18 @@ public:
                                               AVM::GPLD8U_POST, false, Name,
                                               NameLoc, Operands);
     }
+    if (Lower == "st8" && Parser.getTok().is(AsmToken::LBrac)) {
+      // Select the compact postincrement form by its cN spelling. The
+      // general overloaded parser remains responsible for [rN+] and all
+      // existing ordinary forms.
+      const auto Saved = Parser.getTok();
+      (void)Saved;
+    }
     if (Lower == "st8")
       return parseOverloadedMemoryInstruction(AVM::ST8, AVM::GPST8,
                                               AVM::GPST8_POST, true, Name,
-                                              NameLoc, Operands, AVM::F3ST8);
+                                              NameLoc, Operands, AVM::F3ST8,
+                                              AVM::F6ST8_POST);
     if (Lower == "mulu8.w")
       return parseF3Multiply(AVM::MULU8W, Name, NameLoc, Operands);
     if (Lower == "muls8.w")
