@@ -106,6 +106,60 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseRel16Control(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                         OperandVector &Operands) {
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    if (Expr->evaluateAsAbsolute(Value)) {
+      if (Value < -32768 || Value > 32767)
+        return error(ExprLoc, "relative displacement is out of signed 16-bit range");
+      Inst.addOperand(MCOperand::createImm(Value));
+    } else {
+      Inst.addOperand(MCOperand::createExpr(Expr));
+    }
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseProgramPair(MCRegister &Reg) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected program pair q0-q3");
+    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
+              .Case("q0", AVM::R0R1).Case("q1", AVM::R2R3)
+              .Case("q2", AVM::R4R5).Case("q3", AVM::R6R7)
+              .Default(MCRegister());
+    if (!Reg)
+      return error(Tok.getLoc(), "expected program pair q0-q3");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseProgramPairTransfer(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                                OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseProgramPair(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseOperandless(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseSignedImmediate(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                             OperandVector &Operands) {
     SMLoc ExprLoc = Parser.getTok().getLoc();
@@ -412,6 +466,16 @@ public:
       return parseFarTransfer(AVM::JMPF, Name, NameLoc, Operands);
     if (Lower == "callf")
       return parseFarTransfer(AVM::CALLF, Name, NameLoc, Operands);
+    if (Lower == "jmp16")
+      return parseRel16Control(AVM::JMP16, Name, NameLoc, Operands);
+    if (Lower == "call16")
+      return parseRel16Control(AVM::CALL16, Name, NameLoc, Operands);
+    if (Lower == "jmpp")
+      return parseProgramPairTransfer(AVM::JMPP, Name, NameLoc, Operands);
+    if (Lower == "callp")
+      return parseProgramPairTransfer(AVM::CALLP, Name, NameLoc, Operands);
+    if (Lower == "ret")
+      return parseOperandless(AVM::RET, Name, NameLoc, Operands);
     if (Lower == "breq") return parseRel8Control(AVM::BREQ, true, Name, NameLoc, Operands);
     if (Lower == "brne") return parseRel8Control(AVM::BRNE, true, Name, NameLoc, Operands);
     if (Lower == "brult") return parseRel8Control(AVM::BRULT, true, Name, NameLoc, Operands);

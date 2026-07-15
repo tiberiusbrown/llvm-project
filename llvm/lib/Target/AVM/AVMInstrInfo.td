@@ -17,6 +17,7 @@ def AVMCompactCompareRight
 def AVMCompactDataPointer
     : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMStackReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
+def AVMProgramPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -52,6 +53,10 @@ class AVMCompactRegS8Inst<string Asm>
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
 class AVMRel8ControlInst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$rel)>;
+class AVMRel16ControlInst<string Asm> : AVMInst<Asm, 3, (ins AVMImm16:$rel)>;
+class AVMProgramPairControlInst<string Asm> : AVMInst<Asm, 1,
+                                                   (ins AVMProgramPair:$pair)>;
+class AVMOperandlessInst<string Asm> : AVMInst<Asm, 1>;
 class AVMSImm8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$imm)>;
 class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 
@@ -111,4 +116,22 @@ def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
 
 def CALLF : AVMInst<"callf $target", 4, (ins AVMImm24:$target)> {
   let isCall = 1;
+}
+
+def JMP16 : AVMRel16ControlInst<"jmp16 $rel"> {
+  let isBranch = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+}
+def CALL16 : AVMRel16ControlInst<"call16 $rel"> { let isCall = 1; }
+def JMPP : AVMProgramPairControlInst<"jmpp $pair"> {
+  let isBranch = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+}
+def CALLP : AVMProgramPairControlInst<"callp $pair"> { let isCall = 1; }
+def RET : AVMOperandlessInst<"ret"> {
+  let isReturn = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
 }

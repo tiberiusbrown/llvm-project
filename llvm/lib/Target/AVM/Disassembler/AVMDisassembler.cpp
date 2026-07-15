@@ -115,17 +115,47 @@ public:
       return Fail;
     }
 
-    if (Bytes.size() < 4)
-      return Fail;
-    if (Bytes[0] != 0xe2 && Bytes[0] != 0xe3) {
+    if (Bytes[0] == 0xe0 || Bytes[0] == 0xe1) {
+      if (Bytes.size() < 3)
+        return Fail;
+      MI.setOpcode(Bytes[0] == 0xe0 ? AVM::JMP16 : AVM::CALL16);
+      MI.addOperand(MCOperand::createImm(
+          int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
+          ((Bytes[2] & 0x80) ? 65536 : 0)));
+      Size = 3;
+      return Success;
+    }
+
+    if (Bytes[0] == 0xe2 || Bytes[0] == 0xe3) {
+      if (Bytes.size() < 4)
+        return Fail;
+      MI.setOpcode(Bytes[0] == 0xe2 ? AVM::JMPF : AVM::CALLF);
+      MI.addOperand(MCOperand::createImm(Bytes[1] | uint32_t(Bytes[2]) << 8 |
+                                         uint32_t(Bytes[3]) << 16));
+      Size = 4;
+      return Success;
+    }
+
+    if (Bytes[0] >= 0xe4 && Bytes[0] <= 0xeb) {
+      const unsigned Index = Bytes[0] & 3;
+      static const MCRegister Pairs[] = {AVM::R0R1, AVM::R2R3,
+                                         AVM::R4R5, AVM::R6R7};
+      MI.setOpcode(Bytes[0] < 0xe8 ? AVM::JMPP : AVM::CALLP);
+      MI.addOperand(MCOperand::createReg(Pairs[Index]));
+      Size = 1;
+      return Success;
+    }
+
+    if (Bytes[0] == 0xef) {
+      MI.setOpcode(AVM::RET);
+      Size = 1;
+      return Success;
+    }
+
+    {
       Size = 1;
       return Fail;
     }
-    MI.setOpcode(Bytes[0] == 0xe2 ? AVM::JMPF : AVM::CALLF);
-    MI.addOperand(MCOperand::createImm(Bytes[1] | uint32_t(Bytes[2]) << 8 |
-                                       uint32_t(Bytes[3]) << 16));
-    Size = 4;
-    return Success;
   }
 };
 

@@ -41,3 +41,9 @@ def AVMGeneralReg : RegisterClass<"AVM", [i16], 16,
 // c0-c3 are the compact aliases for r4-r7.  This class is MC metadata for
 // compact operand validation; it carries no register-allocation semantics.
 def AVMCompactReg : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
+
+// Aligned 32-bit register pairs are MC-only program pointers.  Their
+// architectural encoding is deliberately supplied by the code emitter rather
+// than inferred from physical-register enum values.
+def AVMProgramPairReg : RegisterClass<"AVM", [i32], 32,
+                                      (add R0R1, R2R3, R4R5, R6R7)>;

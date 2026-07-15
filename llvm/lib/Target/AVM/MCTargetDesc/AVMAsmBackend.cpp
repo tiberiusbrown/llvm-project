@@ -64,8 +64,7 @@ public:
                   const MCValue &Target, uint8_t *Data, uint64_t Value,
                   bool IsResolved) override {
     // Logical program addresses are assigned after MC writes its input object.
-    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_pcrel16 ||
-                       Fixup.getKind() == AVM::fixup_avm_far24))
+    if (IsResolved && Fixup.getKind() == AVM::fixup_avm_far24)
       IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)
@@ -85,7 +84,9 @@ public:
       return;
     }
     case AVM::fixup_avm_pcrel16: {
-      int64_t Signed = static_cast<int64_t>(Value);
+      // MC's PC-relative value is based on the rel16 field at P + 1;
+      // AVM rel16 is defined from this three-byte instruction's next PC.
+      int64_t Signed = static_cast<int64_t>(Value) - 2;
       if (!isInt<16>(Signed))
         Error("AVM relative displacement is out of signed 16-bit range");
       Data[0] = static_cast<uint8_t>(Signed);

@@ -72,6 +72,33 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 0);
   }
 
+  void emitRel16(const MCInst &MI, SmallVectorImpl<char> &Out,
+                 SmallVectorImpl<MCFixup> &Fixups, unsigned Opcode) const {
+    if (MI.getNumOperands() != 1) {
+      error(MI, "expected one relative displacement operand");
+      return;
+    }
+    emit8(Out, Opcode);
+    const MCOperand &Operand = MI.getOperand(0);
+    if (Operand.isImm()) {
+      if (!isInt<16>(Operand.getImm()))
+        error(MI, "relative displacement is out of signed 16-bit range");
+      emit8(Out, Operand.getImm());
+      emit8(Out, Operand.getImm() >> 8);
+      return;
+    }
+    if (!Operand.isExpr()) {
+      error(MI, "expected relative displacement expression");
+      emit8(Out, 0);
+      emit8(Out, 0);
+      return;
+    }
+    Fixups.push_back(
+        MCFixup::create(1, Operand.getExpr(), AVM::fixup_avm_pcrel16, true));
+    emit8(Out, 0);
+    emit8(Out, 0);
+  }
+
   void emitSigned8(const MCInst &MI, SmallVectorImpl<char> &Out,
                    unsigned Opcode) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isImm()) {
@@ -119,6 +146,31 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     case AVM::R7: return 7;
     default: return std::nullopt;
     }
+  }
+
+  static std::optional<unsigned> programPairIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0R1: return 0;
+    case AVM::R2R3: return 1;
+    case AVM::R4R5: return 2;
+    case AVM::R6R7: return 3;
+    default: return std::nullopt;
+    }
+  }
+
+  void emitProgramPair(const MCInst &MI, SmallVectorImpl<char> &Out,
+                       unsigned Family) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one program pair q0-q3");
+      return;
+    }
+    const std::optional<unsigned> Index =
+        programPairIndex(MI.getOperand(0).getReg());
+    if (!Index) {
+      error(MI, "expected program pair q0-q3");
+      return;
+    }
+    emit8(Out, Family | *Index);
   }
 
   void emitStackReg(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -212,6 +264,8 @@ public:
     case AVM::CALL: emitSigned8(MI, Out, 0xd5); return;
     case AVM::ADJSP: emitSigned8(MI, Out, 0xd6); return;
     case AVM::SYS: emitService(MI, Out); return;
+    case AVM::JMP16: emitRel16(MI, Out, Fixups, 0xe0); return;
+    case AVM::CALL16: emitRel16(MI, Out, Fixups, 0xe1); return;
     case AVM::JMPF:
       emit8(Out, 0xe2);
       emitFarTarget(MI, Out, Fixups);
@@ -220,6 +274,9 @@ public:
       emit8(Out, 0xe3);
       emitFarTarget(MI, Out, Fixups);
       return;
+    case AVM::JMPP: emitProgramPair(MI, Out, 0xe4); return;
+    case AVM::CALLP: emitProgramPair(MI, Out, 0xe8); return;
+    case AVM::RET: emit8(Out, 0xef); return;
     default:
       error(MI, "unsupported AVM MC opcode");
       return;

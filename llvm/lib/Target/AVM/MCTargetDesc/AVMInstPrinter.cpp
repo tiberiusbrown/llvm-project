@@ -27,6 +27,11 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
     return {"jmpf", 0};
   case AVM::CALLF:
     return {"callf", 0};
+  case AVM::JMP16: return {"jmp16", 0};
+  case AVM::CALL16: return {"call16", 0};
+  case AVM::JMPP: return {"jmpp", 0};
+  case AVM::CALLP: return {"callp", 0};
+  case AVM::RET: return {"ret", 0};
   case AVM::BREQ: return {"breq", 0};
   case AVM::BRNE: return {"brne", 0};
   case AVM::BRULT: return {"brult", 0};
@@ -138,6 +143,10 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     OS << '\t';
     printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << ", " << formatImm(MI->getOperand(1).getImm());
+    break;
+  case AVM::JMP16:
+  case AVM::CALL16:
+    OS << '\t' << MI->getOperand(0).getImm();
     break;
   default:
     if (MI->getNumOperands()) {
