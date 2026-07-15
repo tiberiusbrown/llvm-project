@@ -35,10 +35,10 @@ public:
     case R_AVM_PROG24:
     case R_AVM_PROG_LO16:
     case R_AVM_PROG_HI8:
-    case R_AVM_BANK16:
     case R_AVM_FAR24:
       return R_ABS;
     case R_AVM_PCREL8:
+    case R_AVM_PCREL16:
       return R_PC;
     default:
       Err(ctx) << "unknown AVM relocation (" << Type << ')';
@@ -70,12 +70,6 @@ public:
       checkUInt(ctx, Loc, Val, 24, Rel);
       Loc[0] = Val >> 16;
       return;
-    case R_AVM_BANK16:
-      // Same-bank transfers encode the absolute low 16 bits. Bank membership
-      // is a later placement/relaxation responsibility.
-      checkUInt(ctx, Loc, Val, 24, Rel);
-      write16le(Loc, Val & 0xffff);
-      return;
     case R_AVM_FAR24:
       checkUInt(ctx, Loc, Val, 24, Rel);
       checkAlignment(ctx, Loc, Val, 2, Rel);
@@ -87,6 +81,10 @@ public:
     case R_AVM_PCREL8:
       checkInt(ctx, Loc, Val, 8, Rel);
       Loc[0] = Val;
+      return;
+    case R_AVM_PCREL16:
+      checkInt(ctx, Loc, Val, 16, Rel);
+      write16le(Loc, Val);
       return;
     default:
       llvm_unreachable("unknown AVM relocation");

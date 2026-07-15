@@ -31,7 +31,7 @@ public:
     case AVM::fixup_avm_prog_lo16: return ELF::R_AVM_PROG_LO16;
     case AVM::fixup_avm_prog_hi8: return ELF::R_AVM_PROG_HI8;
     case AVM::fixup_avm_pcrel8: return ELF::R_AVM_PCREL8;
-    case AVM::fixup_avm_bank16: return ELF::R_AVM_BANK16;
+    case AVM::fixup_avm_pcrel16: return ELF::R_AVM_PCREL16;
     case AVM::fixup_avm_far24: return ELF::R_AVM_FAR24;
     case AVM::fixup_avm_relax: return ELF::R_AVM_RELAX;
     default:
@@ -59,7 +59,7 @@ public:
         {"fixup_avm_prog_lo16", 0, 16, 0},
         {"fixup_avm_prog_hi8", 0, 8, 0},
         {"fixup_avm_pcrel8", 0, 8, 0},
-        {"fixup_avm_bank16", 0, 16, 0},
+        {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
         {"fixup_avm_relax", 0, 0, 0},
     };
@@ -80,7 +80,7 @@ public:
                        Fixup.getKind() == AVM::fixup_avm_prog24 ||
                        Fixup.getKind() == AVM::fixup_avm_prog_lo16 ||
                        Fixup.getKind() == AVM::fixup_avm_prog_hi8 ||
-                       Fixup.getKind() == AVM::fixup_avm_bank16 ||
+                       Fixup.getKind() == AVM::fixup_avm_pcrel16 ||
                        Fixup.getKind() == AVM::fixup_avm_far24 ||
                        Fixup.getKind() == AVM::fixup_avm_relax))
       IsResolved = false;
@@ -107,12 +107,19 @@ public:
       Data[2] = Value >> 16;
       return;
     case AVM::fixup_avm_prog_lo16:
-    case AVM::fixup_avm_bank16:
       if (!isUInt<24>(Value))
         Error("AVM program address is out of 24-bit range");
       Data[0] = Value;
       Data[1] = Value >> 8;
       return;
+    case AVM::fixup_avm_pcrel16: {
+      int64_t Signed = static_cast<int64_t>(Value);
+      if (!isInt<16>(Signed))
+        Error("AVM relative displacement is out of signed 16-bit range");
+      Data[0] = static_cast<uint8_t>(Signed);
+      Data[1] = static_cast<uint8_t>(Signed >> 8);
+      return;
+    }
     case AVM::fixup_avm_prog_hi8:
       if (!isUInt<24>(Value))
         Error("AVM program address is out of 24-bit range");

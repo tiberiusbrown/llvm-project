@@ -68,7 +68,7 @@ local_data:
 # FIXUP: breq external_prog+2{{.*}}encoding: [0xf5,A]
 # FIXUP: fixup A - offset: 1, value: external_prog+2-1, kind: fixup_avm_pcrel8
 # FIXUP: jmp16 local_prog{{.*}}encoding: [0xea,A,A]
-# FIXUP: fixup A - offset: 1, value: local_prog, kind: fixup_avm_bank16
+# FIXUP: fixup A - offset: 1, value: local_prog-2, kind: fixup_avm_pcrel16
 # FIXUP: callf external_prog+4
 # FIXUP: fixup A - offset: 1, value: external_prog+4, kind: fixup_avm_far24
 # FIXUP: fixup B - offset: 1, value: external_prog+4, kind: fixup_avm_relax
@@ -79,7 +79,7 @@ local_data:
 # RELOC-DAG: R_AVM_DATA16 external_data 0x2
 # RELOC-DAG: R_AVM_DATA16 .data 0x1
 # RELOC-DAG: R_AVM_PCREL8 external_prog 0x1
-# RELOC-DAG: R_AVM_BANK16 .text 0x0
+# RELOC-DAG: R_AVM_PCREL16 .text
 # RELOC-DAG: R_AVM_FAR24 .text 0x0
 # RELOC-DAG: R_AVM_FAR24 external_prog 0x4
 # RELOC-DAG: R_AVM_RELAX .text 0x0
@@ -89,6 +89,6 @@ local_data:
 # DIS: R_AVM_PROG_LO16 .text+0x4
 # DIS: R_AVM_DATA16 external_data+0x2
 # DIS: R_AVM_PCREL8 external_prog+0x1
-# DIS: R_AVM_BANK16 .text
+# DIS: R_AVM_PCREL16 .text
 # DIS: R_AVM_FAR24 external_prog+0x4
 # DIS: R_AVM_RELAX external_prog+0x4

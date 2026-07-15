@@ -207,7 +207,7 @@ static Error applyRelocations(const ObjectFile &Obj, StringRef SectionName,
                            ? 1
                            : Type == ELF::R_AVM_DATA16 ||
                                      Type == ELF::R_AVM_PROG_LO16 ||
-                                     Type == ELF::R_AVM_BANK16
+                                     Type == ELF::R_AVM_PCREL16
                                  ? 2
                                  : 3;
       if (Type == ELF::R_AVM_NONE || Type == ELF::R_AVM_RELAX)
@@ -256,10 +256,10 @@ static Error applyRelocations(const ObjectFile &Obj, StringRef SectionName,
           return bad("AVM program-space relocation is out of 24-bit range");
         Loc[0] = Value >> 16;
         break;
-      case ELF::R_AVM_BANK16:
-        if (!isUInt<24>(Value))
-          return bad("AVM same-bank target is out of 24-bit range");
-        write16le(Loc, Value & 0xffff);
+      case ELF::R_AVM_PCREL16:
+        if (!isInt<16>(SignedValue))
+          return bad("AVM relative displacement is out of signed 16-bit range");
+        write16le(Loc, SignedValue);
         break;
       case ELF::R_AVM_FAR24: {
         if (!isUInt<24>(Value))

@@ -95,7 +95,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
   uint64_t emitExprOrImm(const MCInst &MI, unsigned Op, unsigned Offset,
                          AVM::Fixups Kind, SmallVectorImpl<MCFixup> &Fixups,
-                         bool PCRel = false) const {
+                         bool PCRel = false, unsigned NextPCBias = 1) const {
     const MCOperand &MO = MI.getOperand(Op);
     if (MO.isImm())
       return static_cast<uint64_t>(MO.getImm());
@@ -106,9 +106,11 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const MCExpr *Expr = MO.getExpr();
     if (PCRel) {
       // Relocation place is the final displacement byte, while AVM relative
-      // transfers are based on nextPC, one byte beyond that place.
+      // transfers are based on nextPC. The relocation place is the first
+      // displacement byte, so exact rel8 and rel16 forms need different
+      // addends to make P identify the primary opcode.
       Expr = MCBinaryExpr::createSub(
-          Expr, MCConstantExpr::create(1, Ctx), Ctx);
+          Expr, MCConstantExpr::create(NextPCBias, Ctx), Ctx);
     }
     Fixups.push_back(MCFixup::create(Offset, Expr, Kind, PCRel));
     return 0;
@@ -578,13 +580,14 @@ public:
     case AVM::JMP16:
     case AVM::CALL16: {
       emit8(Out, MI.getOpcode() == AVM::JMP16 ? 0xea : 0xeb);
-      if (rejectTargetExpr(MI, 0, "same-bank program target")) {
+      if (rejectTargetExpr(MI, 0, "PC-relative control target")) {
         emit16(Out, 0);
         return;
       }
-      uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_bank16, Fixups);
-      if (MI.getOperand(0).isImm() && !isUInt<16>(V))
-        error(MI, "same-bank absolute target is out of range");
+      uint64_t V = emitExprOrImm(MI, 0, 1, AVM::fixup_avm_pcrel16, Fixups,
+                                 /*PCRel=*/true, /*NextPCBias=*/2);
+      if (MI.getOperand(0).isImm() && !isInt<16>(static_cast<int64_t>(V)))
+        error(MI, "relative control displacement is out of signed 16-bit range");
       emit16(Out, V); return;
     }
     case AVM::NOP:
