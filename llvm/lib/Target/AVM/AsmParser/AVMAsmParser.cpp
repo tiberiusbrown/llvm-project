@@ -652,6 +652,93 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseSpelledDataReg(MCRegister &Reg, bool &IsFull) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return parseArchitecturalReg(Reg);
+    if (Tok.getIdentifier().starts_with_insensitive("r")) {
+      IsFull = true;
+      return parseStackReg(Reg);
+    }
+    if (Tok.getIdentifier().starts_with_insensitive("c")) {
+      IsFull = false;
+      return parseCompactReg(Reg);
+    }
+    return error(Tok.getLoc(),
+                 "expected full register r0-r7 or compact register c0-c3");
+  }
+
+  bool parseSpelledDataMemory(MCRegister &Reg, bool &IsFull,
+                              bool &PostIncrement,
+                              std::optional<bool> ExpectedClass = std::nullopt) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(),
+                   ExpectedClass && *ExpectedClass
+                       ? "expected data memory operand '[rN]'"
+                       : "expected compact memory operand '[cN]'");
+    Parser.Lex();
+    if (ExpectedClass) {
+      IsFull = *ExpectedClass;
+      if (IsFull ? parseStackReg(Reg) : parseCompactReg(Reg))
+        return true;
+    } else if (parseSpelledDataReg(Reg, IsFull)) {
+      return true;
+    }
+    PostIncrement = Parser.getTok().is(AsmToken::Plus);
+    if (PostIncrement) {
+      if (!IsFull)
+        return error(Parser.getTok().getLoc(),
+                     "postincrement memory operands are not supported");
+      Parser.Lex();
+    }
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected ']' after data address register");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseOverloadedMemoryInstruction(unsigned CompactOpcode,
+                                        unsigned GeneralOpcode,
+                                        unsigned GeneralPostOpcode,
+                                        bool IsStore, StringRef Name,
+                                        SMLoc NameLoc,
+                                        OperandVector &Operands) {
+    MCRegister Data, Address;
+    bool DataIsFull = false, AddressIsFull = false, PostIncrement = false;
+    if (IsStore) {
+      if (parseSpelledDataMemory(Address, AddressIsFull, PostIncrement) ||
+          Parser.parseComma() || parseSpelledDataReg(Data, DataIsFull))
+        return true;
+    } else {
+      if (parseSpelledDataReg(Data, DataIsFull) || Parser.parseComma() ||
+          parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
+                                 DataIsFull))
+        return true;
+    }
+    if (DataIsFull != AddressIsFull)
+      return error(NameLoc, "expected compact register c0-c3");
+    if (!DataIsFull && PostIncrement)
+      return error(NameLoc, "compact memory operands do not support postincrement");
+    if (DataIsFull && !IsStore && PostIncrement && Data == Address)
+      return error(NameLoc,
+                   "postincrement destination must not overlap address register");
+
+    MCInst Inst;
+    Inst.setOpcode(DataIsFull
+                       ? (PostIncrement ? GeneralPostOpcode : GeneralOpcode)
+                       : CompactOpcode);
+    if (IsStore) {
+      Inst.addOperand(MCOperand::createReg(Address));
+      Inst.addOperand(MCOperand::createReg(Data));
+    } else {
+      Inst.addOperand(MCOperand::createReg(Data));
+      Inst.addOperand(MCOperand::createReg(Address));
+    }
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseClr(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Reg;
     if (parseCompactReg(Reg))
@@ -718,17 +805,21 @@ public:
     if (Lower == "cmp")
       return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
     if (Lower == "ld8u")
-      return parseCompactMemoryInstruction(AVM::LD8U, false, Name, NameLoc,
-                                           Operands);
+      return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
+                                              AVM::GPLD8U_POST, false, Name,
+                                              NameLoc, Operands);
     if (Lower == "st8")
-      return parseCompactMemoryInstruction(AVM::ST8, true, Name, NameLoc,
-                                           Operands);
+      return parseOverloadedMemoryInstruction(AVM::ST8, AVM::GPST8,
+                                              AVM::GPST8_POST, true, Name,
+                                              NameLoc, Operands);
     if (Lower == "ld16")
-      return parseCompactMemoryInstruction(AVM::LD16, false, Name, NameLoc,
-                                           Operands);
+      return parseOverloadedMemoryInstruction(AVM::LD16, AVM::GPLD16,
+                                              AVM::GPLD16_POST, false, Name,
+                                              NameLoc, Operands);
     if (Lower == "st16")
-      return parseCompactMemoryInstruction(AVM::ST16, true, Name, NameLoc,
-                                           Operands);
+      return parseOverloadedMemoryInstruction(AVM::ST16, AVM::GPST16,
+                                              AVM::GPST16_POST, true, Name,
+                                              NameLoc, Operands);
     if (Lower == "ldm8u")
       return parseAbsoluteDataInstruction(AVM::LDM8U, false, Name, NameLoc,
                                           Operands);

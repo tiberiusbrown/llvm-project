@@ -100,6 +100,22 @@ class AVMColdPairLoadInst<string Asm>
 class AVMColdPairStoreInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMColdDataPointer:$addr, AVMColdPair:$src)>;
 
+// General-pointer forms are MC-only.  They encode the explicit architectural
+// r0-r7 indices in the dddWaaaP operand byte, independent of LLVM physical
+// register enum values.
+def AVMGeneralPointerDataReg
+    : RegisterOperand<AVMGeneralReg, "printFullReg">;
+def AVMGeneralPointerAddressReg
+    : RegisterOperand<AVMGeneralReg, "printFullReg">;
+class AVMGeneralPointerLoadInst<string Asm>
+    : AVMInst<Asm, 3,
+              (ins AVMGeneralPointerDataReg:$dst,
+                   AVMGeneralPointerAddressReg:$addr)>;
+class AVMGeneralPointerStoreInst<string Asm>
+    : AVMInst<Asm, 3,
+              (ins AVMGeneralPointerAddressReg:$addr,
+                   AVMGeneralPointerDataReg:$src)>;
+
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
 class AVMRel8ControlInst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$rel)>;
@@ -178,6 +194,15 @@ def CMP32 : AVMColdPairPairInst<"cmp32 $left, $right"> {
 }
 def LD32 : AVMColdPairLoadInst<"ld32 $dst, [$addr]">;
 def ST32 : AVMColdPairStoreInst<"st32 [$addr], $src">;
+
+def GPLD8U : AVMGeneralPointerLoadInst<"ld8u $dst, [$addr]">;
+def GPLD16 : AVMGeneralPointerLoadInst<"ld16 $dst, [$addr]">;
+def GPLD8U_POST : AVMGeneralPointerLoadInst<"ld8u $dst, [$addr+]">;
+def GPLD16_POST : AVMGeneralPointerLoadInst<"ld16 $dst, [$addr+]">;
+def GPST8 : AVMGeneralPointerStoreInst<"st8 [$addr], $src">;
+def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
+def GPST8_POST : AVMGeneralPointerStoreInst<"st8 [$addr+], $src">;
+def GPST16_POST : AVMGeneralPointerStoreInst<"st16 [$addr+], $src">;
 
 def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }

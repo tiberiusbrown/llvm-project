@@ -21,6 +21,19 @@ class AVMDisassembler final : public MCDisassembler {
     }
   }
 
+  static MCRegister generalPointerRegister(unsigned Index) {
+    switch (Index) {
+    case 0: return AVM::R0;
+    case 1: return AVM::R1;
+    case 2: return AVM::R2;
+    case 3: return AVM::R3;
+    case 4: return AVM::R4;
+    case 5: return AVM::R5;
+    case 6: return AVM::R6;
+    default: return AVM::R7;
+    }
+  }
+
   static std::optional<MCRegister> scalarRegisterFromPSPEC(unsigned Code) {
     switch (Code) {
     case 0x0: return AVM::R0;
@@ -121,6 +134,39 @@ public:
           MI.addOperand(MCOperand::createReg(*Low));
           MI.addOperand(MCOperand::createReg(*High));
         }
+        Size = 3;
+        return Success;
+      }
+      if (Secondary == 0x6c || Secondary == 0x6d) {
+        if (Bytes.size() < 3)
+          return Fail;
+        const uint8_t Spec = Bytes[2];
+        const unsigned DataIndex = Spec >> 5;
+        const unsigned AddressIndex = (Spec >> 1) & 7;
+        const bool IsWord = Spec & 0x10;
+        const bool IsPost = Spec & 1;
+        if (Secondary == 0x6c && IsPost && DataIndex == AddressIndex) {
+          Size = 1;
+          return Fail;
+        }
+        if (Secondary == 0x6c) {
+          if (IsWord)
+            MI.setOpcode(IsPost ? AVM::GPLD16_POST : AVM::GPLD16);
+          else
+            MI.setOpcode(IsPost ? AVM::GPLD8U_POST : AVM::GPLD8U);
+        } else {
+          if (IsWord)
+            MI.setOpcode(IsPost ? AVM::GPST16_POST : AVM::GPST16);
+          else
+            MI.setOpcode(IsPost ? AVM::GPST8_POST : AVM::GPST8);
+        }
+        const MCRegister Data = generalPointerRegister(DataIndex);
+        const MCRegister Address = generalPointerRegister(AddressIndex);
+        if (Secondary == 0x6d)
+          MI.addOperand(MCOperand::createReg(Address));
+        MI.addOperand(MCOperand::createReg(Data));
+        if (Secondary == 0x6c)
+          MI.addOperand(MCOperand::createReg(Address));
         Size = 3;
         return Success;
       }

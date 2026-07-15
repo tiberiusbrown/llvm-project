@@ -153,6 +153,22 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  // This mapping is architectural, not derived from physical-register enum
+  // layout.  The dddWaaaP encoding uses these r0-r7 values directly.
+  static std::optional<unsigned> generalPointerRegIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0: return 0;
+    case AVM::R1: return 1;
+    case AVM::R2: return 2;
+    case AVM::R3: return 3;
+    case AVM::R4: return 4;
+    case AVM::R5: return 5;
+    case AVM::R6: return 6;
+    case AVM::R7: return 7;
+    default: return std::nullopt;
+    }
+  }
+
   static std::optional<unsigned> coldRegIndex(MCRegister Reg) {
     switch (Reg.id()) {
     case AVM::R0: return 0;
@@ -215,6 +231,32 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Secondary);
     emit8(Out, (IsPair ? 4 * *Destination : 2 * *Destination) << 4 |
                    4 * *Address);
+  }
+
+  void emitGeneralPointer(const MCInst &MI, SmallVectorImpl<char> &Out,
+                          unsigned Secondary, bool IsWord, bool IsPost,
+                          bool IsStore) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected general-pointer register memory operands");
+      return;
+    }
+    const MCRegister Data = MI.getOperand(IsStore ? 1 : 0).getReg();
+    const MCRegister Address = MI.getOperand(IsStore ? 0 : 1).getReg();
+    const auto DataIndex = generalPointerRegIndex(Data);
+    const auto AddressIndex = generalPointerRegIndex(Address);
+    if (!DataIndex || !AddressIndex) {
+      error(MI, "expected full register r0-r7 operands");
+      return;
+    }
+    if (!IsStore && IsPost && *DataIndex == *AddressIndex) {
+      error(MI, "postincrement destination must not overlap address register");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Secondary);
+    emit8(Out, (*DataIndex << 5) | (unsigned(IsWord) << 4) |
+                   (*AddressIndex << 1) | unsigned(IsPost));
   }
 
   void emitProgramPair(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -422,6 +464,14 @@ public:
     case AVM::CMP32: emitCold32(MI, Out, 0x69, true, false); return;
     case AVM::LD32: emitCold32(MI, Out, 0x6a, false, false); return;
     case AVM::ST32: emitCold32(MI, Out, 0x6b, false, true); return;
+    case AVM::GPLD8U: emitGeneralPointer(MI, Out, 0x6c, false, false, false); return;
+    case AVM::GPLD16: emitGeneralPointer(MI, Out, 0x6c, true, false, false); return;
+    case AVM::GPLD8U_POST: emitGeneralPointer(MI, Out, 0x6c, false, true, false); return;
+    case AVM::GPLD16_POST: emitGeneralPointer(MI, Out, 0x6c, true, true, false); return;
+    case AVM::GPST8: emitGeneralPointer(MI, Out, 0x6d, false, false, true); return;
+    case AVM::GPST16: emitGeneralPointer(MI, Out, 0x6d, true, false, true); return;
+    case AVM::GPST8_POST: emitGeneralPointer(MI, Out, 0x6d, false, true, true); return;
+    case AVM::GPST16_POST: emitGeneralPointer(MI, Out, 0x6d, true, true, true); return;
     case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
