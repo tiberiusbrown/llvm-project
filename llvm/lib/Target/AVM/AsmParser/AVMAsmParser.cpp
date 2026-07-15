@@ -1065,6 +1065,16 @@ public:
       return parseF4FullReg(AVM::INC16, Name, NameLoc, Operands);
     if (Lower == "dec16")
       return parseF4FullReg(AVM::DEC16, Name, NameLoc, Operands);
+    if (Lower == "bswap16")
+      return parseF4FullReg(AVM::BSWAP16, Name, NameLoc, Operands);
+    if (Lower == "tst16")
+      return parseF4FullReg(AVM::TST16, Name, NameLoc, Operands);
+    if (Lower == "mul8")
+      return parseCompactPair(AVM::MUL8, Name, NameLoc, Operands);
+    if (Lower == "sext8")
+      return parseF4FullReg(AVM::SEXT8, Name, NameLoc, Operands);
+    if (Lower == "neg16")
+      return parseF4FullReg(AVM::NEG16, Name, NameLoc, Operands);
     if (Lower == "add") {
       if (Parser.getTok().is(AsmToken::Identifier) &&
           Parser.getTok().getIdentifier().starts_with_insensitive("r"))

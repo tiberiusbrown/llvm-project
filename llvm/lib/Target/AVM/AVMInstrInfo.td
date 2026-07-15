@@ -107,7 +107,21 @@ class AVMF4UnaryFullRegInst<string Asm>
 }
 class AVMF4TestFullRegInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$reg)> {
+    let Defs = [CC];
+}
+class AVMF6UnaryFullRegInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMF6TestFullRegInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$reg)> {
   let Defs = [CC];
+}
+class AVMF6MultiplyInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src1";
 }
 class AVMGetSPInst<string Asm>
     : AVMInst<Asm, 2> {
@@ -279,6 +293,11 @@ def NOT16 : AVMF4UnaryFullRegInst<"not16 $dst">;
 def TST8 : AVMF4TestFullRegInst<"tst8 $reg">;
 def INC16 : AVMF4UnaryFullRegInst<"inc16 $dst">;
 def DEC16 : AVMF4UnaryFullRegInst<"dec16 $dst">;
+def BSWAP16 : AVMF6UnaryFullRegInst<"bswap16 $dst">;
+def TST16 : AVMF6TestFullRegInst<"tst16 $reg">;
+def MUL8 : AVMF6MultiplyInst<"mul8 $dst, $src2">;
+def SEXT8 : AVMF6UnaryFullRegInst<"sext8 $dst">;
+def NEG16 : AVMF6UnaryFullRegInst<"neg16 $dst">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

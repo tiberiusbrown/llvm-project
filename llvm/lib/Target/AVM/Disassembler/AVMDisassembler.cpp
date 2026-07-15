@@ -368,8 +368,28 @@ public:
       }
       const uint8_t Secondary = Bytes[1];
       if (Secondary > 0x1f) {
-        Size = 1;
-        return Fail;
+        if (Secondary <= 0x27) {
+          MI.setOpcode(AVM::BSWAP16);
+          MI.addOperand(MCOperand::createReg(static_cast<MCRegister>(AVM::R0 + (Secondary - 0x20))));
+        } else if (Secondary <= 0x2f) {
+          MI.setOpcode(AVM::TST16);
+          MI.addOperand(MCOperand::createReg(static_cast<MCRegister>(AVM::R0 + (Secondary - 0x28))));
+        } else if (Secondary <= 0x3f) {
+          MI.setOpcode(AVM::MUL8);
+          MI.addOperand(MCOperand::createReg(compactRegister((Secondary - 0x30) / 4)));
+          MI.addOperand(MCOperand::createReg(compactRegister((Secondary - 0x30) & 3)));
+        } else if (Secondary <= 0x47) {
+          MI.setOpcode(AVM::SEXT8);
+          MI.addOperand(MCOperand::createReg(static_cast<MCRegister>(AVM::R0 + (Secondary - 0x40))));
+        } else if (Secondary <= 0x4f) {
+          MI.setOpcode(AVM::NEG16);
+          MI.addOperand(MCOperand::createReg(static_cast<MCRegister>(AVM::R0 + (Secondary - 0x48))));
+        } else {
+          Size = 1;
+          return Fail;
+        }
+        Size = 2;
+        return Success;
       }
       MI.setOpcode(AVM::F6ST8_POST);
       MI.addOperand(MCOperand::createReg(compactRegister(Secondary / 8)));
