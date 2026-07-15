@@ -44,6 +44,16 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::LDI16: return {"ldi16", 0};
   case AVM::ADDIS8: return {"addi.s8", 0};
   case AVM::CMPIS8: return {"cmpi.s8", 0};
+  case AVM::COLDLDI8: return {"ldi8", 0};
+  case AVM::COLDLDI16: return {"ldi16", 0};
+  case AVM::COLDADDIS8: return {"addi.s8", 0};
+  case AVM::COLDCMPIS8: return {"cmpi.s8", 0};
+  case AVM::LEASP: return {"leasp", 0};
+  case AVM::LDSP8U: return {"ldsp8u", 0};
+  case AVM::LDSP8S: return {"ldsp8s", 0};
+  case AVM::STSP8: return {"stsp8", 0};
+  case AVM::LDSP16: return {"ldsp16", 0};
+  case AVM::STSP16: return {"stsp16", 0};
   default:
     return {"<unknown>", 0};
   }
@@ -143,6 +153,27 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     OS << '\t';
     printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << ", " << formatImm(MI->getOperand(1).getImm());
+    break;
+  case AVM::COLDLDI8:
+  case AVM::COLDLDI16:
+  case AVM::COLDADDIS8:
+  case AVM::COLDCMPIS8:
+  case AVM::LEASP:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", " << formatImm(MI->getOperand(1).getImm());
+    break;
+  case AVM::LDSP8U:
+  case AVM::LDSP8S:
+  case AVM::LDSP16:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [sp+" << formatImm(MI->getOperand(1).getImm()) << ']';
+    break;
+  case AVM::STSP8:
+  case AVM::STSP16:
+    OS << "\t[sp+" << formatImm(MI->getOperand(0).getImm()) << "], ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::JMP16:
   case AVM::CALL16:

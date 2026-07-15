@@ -15,12 +15,10 @@ cpc r0, r1
 mtpb r0
 mfpb r0
 ldpbi 1
-ldi16 r0, 1
 cmpi6 c0, 1
 jmp16 0
 jmpp q0
 ld8 r0, [r1]
-ldsp16 r0, [sp+0]
 mov32 q0, q1
 ret
 nop
@@ -36,8 +34,6 @@ sys 0
 # CHECK: error: unknown AVM instruction 'mtpb'
 # CHECK: error: unknown AVM instruction 'mfpb'
 # CHECK: error: unknown AVM instruction 'ldpbi'
-# CHECK: error: expected compact register c0-c3
 # CHECK: error: unknown AVM instruction 'cmpi6'
 # CHECK: error: unknown AVM instruction 'ld8'
-# CHECK: error: unknown AVM instruction 'ldsp16'
 # CHECK: error: unknown AVM instruction 'mov32'

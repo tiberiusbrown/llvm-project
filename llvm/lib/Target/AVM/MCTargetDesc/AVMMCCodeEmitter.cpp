@@ -148,6 +148,16 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  static std::optional<unsigned> coldRegIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0: return 0;
+    case AVM::R1: return 1;
+    case AVM::R2: return 2;
+    case AVM::R3: return 3;
+    default: return std::nullopt;
+    }
+  }
+
   static std::optional<unsigned> programPairIndex(MCRegister Reg) {
     switch (Reg.id()) {
     case AVM::R0R1: return 0;
@@ -232,6 +242,56 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       emit8(Out, Value >> 8);
   }
 
+  void emitColdImmediate(const MCInst &MI, SmallVectorImpl<char> &Out,
+                         unsigned Family, unsigned Bits, bool IsSigned) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isImm()) {
+      error(MI, "expected cold register and immediate operands");
+      return;
+    }
+    const std::optional<unsigned> Reg = coldRegIndex(MI.getOperand(0).getReg());
+    if (!Reg) {
+      error(MI, "expected cold register r0-r3");
+      return;
+    }
+    const int64_t Value = MI.getOperand(1).getImm();
+    const int64_t Min = IsSigned ? -(int64_t(1) << (Bits - 1)) : 0;
+    const int64_t Max = IsSigned ? (int64_t(1) << (Bits - 1)) - 1
+                                 : (int64_t(1) << Bits) - 1;
+    if (Value < Min || Value > Max) {
+      error(MI, "immediate is out of range");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Family | *Reg);
+    emit8(Out, Value);
+    if (Bits == 16)
+      emit8(Out, Value >> 8);
+  }
+
+  void emitStackU8(const MCInst &MI, SmallVectorImpl<char> &Out,
+                   unsigned Family, bool IsStore = false) const {
+    if (MI.getNumOperands() != 2) {
+      error(MI, "expected stack register and unsigned 8-bit operand");
+      return;
+    }
+    const MCOperand &RegOperand = MI.getOperand(IsStore ? 1 : 0);
+    const MCOperand &ValueOperand = MI.getOperand(IsStore ? 0 : 1);
+    if (!RegOperand.isReg() || !ValueOperand.isImm()) {
+      error(MI, "expected stack register and unsigned 8-bit operand");
+      return;
+    }
+    const std::optional<unsigned> Reg = stackRegIndex(RegOperand.getReg());
+    const int64_t Value = ValueOperand.getImm();
+    if (!Reg || Value < 0 || Value > 255) {
+      error(MI, "expected full register r0-r7 and unsigned 8-bit operand");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Family | *Reg);
+    emit8(Out, Value);
+  }
+
 public:
   explicit AVMMCCodeEmitter(MCContext &Ctx) : Ctx(Ctx) {}
 
@@ -256,6 +316,16 @@ public:
     case AVM::LDI16: emitCompactImmediate(MI, Out, 0xc4, 16, false); return;
     case AVM::ADDIS8: emitCompactImmediate(MI, Out, 0xc8, 8, true); return;
     case AVM::CMPIS8: emitCompactImmediate(MI, Out, 0xcc, 8, true); return;
+    case AVM::COLDLDI8: emitColdImmediate(MI, Out, 0x00, 8, false); return;
+    case AVM::COLDLDI16: emitColdImmediate(MI, Out, 0x04, 16, false); return;
+    case AVM::COLDADDIS8: emitColdImmediate(MI, Out, 0x08, 8, true); return;
+    case AVM::COLDCMPIS8: emitColdImmediate(MI, Out, 0x0c, 8, true); return;
+    case AVM::LEASP: emitStackU8(MI, Out, 0x10); return;
+    case AVM::LDSP8U: emitStackU8(MI, Out, 0x18); return;
+    case AVM::LDSP8S: emitStackU8(MI, Out, 0x20); return;
+    case AVM::STSP8: emitStackU8(MI, Out, 0x28, true); return;
+    case AVM::LDSP16: emitStackU8(MI, Out, 0x30); return;
+    case AVM::STSP16: emitStackU8(MI, Out, 0x38, true); return;
     case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;

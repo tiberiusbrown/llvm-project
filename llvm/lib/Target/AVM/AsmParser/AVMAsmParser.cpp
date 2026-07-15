@@ -251,6 +251,120 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parseColdReg(MCRegister &Reg) {
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier))
+      return error(Tok.getLoc(), "expected cold register r0-r3");
+    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
+              .Case("r0", AVM::R0).Case("r1", AVM::R1)
+              .Case("r2", AVM::R2).Case("r3", AVM::R3)
+              .Default(MCRegister());
+    if (!Reg)
+      return error(Tok.getLoc(), "expected cold register r0-r3");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseAbsoluteU8(uint64_t &Value, SMLoc &ExprLoc) {
+    ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t SignedValue = 0;
+    if (!Expr->evaluateAsAbsolute(SignedValue))
+      return error(ExprLoc, "immediate expression must be fully resolvable");
+    if (SignedValue < 0 || SignedValue > 255)
+      return error(ExprLoc, "immediate is out of unsigned 8-bit range");
+    Value = SignedValue;
+    return false;
+  }
+
+  bool parseColdImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
+                          StringRef Name, SMLoc NameLoc,
+                          OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseColdReg(Reg) || Parser.parseComma())
+      return true;
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (!Expr->evaluateAsAbsolute(Value))
+      return error(ExprLoc, "immediate expression must be fully resolvable");
+    const int64_t Min = IsSigned ? -(int64_t(1) << (Bits - 1)) : 0;
+    const int64_t Max = IsSigned ? (int64_t(1) << (Bits - 1)) - 1
+                                 : (int64_t(1) << Bits) - 1;
+    if (Value < Min || Value > Max)
+      return error(ExprLoc, "immediate is out of range");
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createImm(Value));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseSPMemory(unsigned &Offset) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(), "expected stack memory operand '[sp+u8]'");
+    Parser.Lex();
+    const AsmToken &Tok = Parser.getTok();
+    if (!Tok.is(AsmToken::Identifier) || !Tok.getIdentifier().equals_insensitive("sp"))
+      return error(Tok.getLoc(), "expected stack pointer 'sp'");
+    Parser.Lex();
+    if (!Parser.getTok().is(AsmToken::Plus))
+      return error(Parser.getTok().getLoc(), "expected '+' and stack offset");
+    Parser.Lex();
+    uint64_t Value = 0;
+    SMLoc ExprLoc;
+    if (parseAbsoluteU8(Value, ExprLoc))
+      return true;
+    Offset = static_cast<unsigned>(Value);
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(), "expected ']' after stack offset");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseLEASP(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseStackReg(Reg) || Parser.parseComma())
+      return true;
+    uint64_t Value = 0;
+    SMLoc ExprLoc;
+    if (parseAbsoluteU8(Value, ExprLoc))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(AVM::LEASP);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createImm(Value));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(), Operands,
+                             Name, NameLoc);
+  }
+
+  bool parseSPMemoryInstruction(unsigned Opcode, bool IsStore, StringRef Name,
+                                SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Reg;
+    unsigned Offset = 0;
+    if (IsStore) {
+      if (parseSPMemory(Offset) || Parser.parseComma() || parseStackReg(Reg))
+        return true;
+    } else {
+      if (parseStackReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
+        return true;
+    }
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    if (IsStore)
+      Inst.addOperand(MCOperand::createImm(Offset));
+    Inst.addOperand(MCOperand::createReg(Reg));
+    if (!IsStore)
+      Inst.addOperand(MCOperand::createImm(Offset));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(), Operands,
+                             Name, NameLoc);
+  }
+
   bool parseStackInstruction(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
     MCRegister Reg;
@@ -446,18 +560,48 @@ public:
       return parseStackInstruction(AVM::PUSH16, Name, NameLoc, Operands);
     if (Lower == "pop16")
       return parseStackInstruction(AVM::POP16, Name, NameLoc, Operands);
+    if (Lower == "ldi8" && Parser.getTok().is(AsmToken::Identifier) &&
+        (Parser.getTok().getIdentifier().equals_insensitive("r0") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r1") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r2") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r3")))
+      return parseColdImmediate(AVM::COLDLDI8, false, 8, Name, NameLoc, Operands);
     if (Lower == "ldi8")
       return parseCompactImmediate(AVM::LDI8, false, 8, Name, NameLoc,
                                    Operands);
+    if (Lower == "ldi16" && Parser.getTok().is(AsmToken::Identifier) &&
+        (Parser.getTok().getIdentifier().equals_insensitive("r0") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r1") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r2") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r3")))
+      return parseColdImmediate(AVM::COLDLDI16, false, 16, Name, NameLoc, Operands);
     if (Lower == "ldi16")
       return parseCompactImmediate(AVM::LDI16, false, 16, Name, NameLoc,
                                    Operands);
+    if (Lower == "addi.s8" && Parser.getTok().is(AsmToken::Identifier) &&
+        (Parser.getTok().getIdentifier().equals_insensitive("r0") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r1") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r2") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r3")))
+      return parseColdImmediate(AVM::COLDADDIS8, true, 8, Name, NameLoc, Operands);
     if (Lower == "addi.s8")
       return parseCompactImmediate(AVM::ADDIS8, true, 8, Name, NameLoc,
                                    Operands);
+    if (Lower == "cmpi.s8" && Parser.getTok().is(AsmToken::Identifier) &&
+        (Parser.getTok().getIdentifier().equals_insensitive("r0") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r1") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r2") ||
+         Parser.getTok().getIdentifier().equals_insensitive("r3")))
+      return parseColdImmediate(AVM::COLDCMPIS8, true, 8, Name, NameLoc, Operands);
     if (Lower == "cmpi.s8")
       return parseCompactImmediate(AVM::CMPIS8, true, 8, Name, NameLoc,
                                    Operands);
+    if (Lower == "leasp") return parseLEASP(Name, NameLoc, Operands);
+    if (Lower == "ldsp8u") return parseSPMemoryInstruction(AVM::LDSP8U, false, Name, NameLoc, Operands);
+    if (Lower == "ldsp8s") return parseSPMemoryInstruction(AVM::LDSP8S, false, Name, NameLoc, Operands);
+    if (Lower == "stsp8") return parseSPMemoryInstruction(AVM::STSP8, true, Name, NameLoc, Operands);
+    if (Lower == "ldsp16") return parseSPMemoryInstruction(AVM::LDSP16, false, Name, NameLoc, Operands);
+    if (Lower == "stsp16") return parseSPMemoryInstruction(AVM::STSP16, true, Name, NameLoc, Operands);
     if (Lower == "nop")
       return parseNop(Name, NameLoc, Operands);
     if (Lower == "clr")

@@ -1,0 +1,15 @@
+# RUN: llvm-mc -triple=avm -show-encoding %s | FileCheck %s
+
+ldi8 r0, 1+2
+ldi16 r1, 0x1200+0x34
+addi.s8 r2, -(4+1)
+cmpi.s8 r3, 64-65
+leasp r4, 128-1
+ldsp8u r5, [sp+2+3]
+
+# CHECK: encoding: [0xf0,0x00,0x03]
+# CHECK: encoding: [0xf0,0x05,0x34,0x12]
+# CHECK: encoding: [0xf0,0x0a,0xfb]
+# CHECK: encoding: [0xf0,0x0f,0xff]
+# CHECK: encoding: [0xf0,0x14,0x7f]
+# CHECK: encoding: [0xf0,0x1d,0x05]

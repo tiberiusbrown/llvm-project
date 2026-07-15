@@ -36,7 +36,8 @@ def CC : AVMReg<10, "cc">;
 // Required by TableGen's MC register metadata.  It has no instruction or
 // code-generation semantics and contains only general architectural words.
 def AVMGeneralReg : RegisterClass<"AVM", [i16], 16,
-                                  (add R0, R1, R2, R3, R4, R5, R6, R7)>;
+  (add R0, R1, R2, R3, R4, R5, R6, R7)>;
+def AVMColdRegClass : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
 
 // c0-c3 are the compact aliases for r4-r7.  This class is MC metadata for
 // compact operand validation; it carries no register-allocation semantics.

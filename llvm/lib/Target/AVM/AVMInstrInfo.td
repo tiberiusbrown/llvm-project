@@ -16,6 +16,7 @@ def AVMCompactCompareRight
     : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactDataPointer
     : RegisterOperand<AVMCompactReg, "printCompactReg">;
+def AVMColdReg : RegisterOperand<AVMColdRegClass, "printFullReg">;
 def AVMStackReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 
@@ -49,6 +50,22 @@ class AVMCompactRegU16Inst<string Asm>
     : AVMInst<Asm, 3, (ins AVMCompactDest:$reg, AVMImm16:$imm)>;
 class AVMCompactRegS8Inst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMSImm8:$imm)>;
+
+// Cold-page operands are MC-only.  The encoder supplies an explicit ISA
+// register index in the secondary byte; these definitions do not imply any
+// code-generation pattern or physical-register enum layout.
+class AVMColdRegImm8Inst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdReg:$reg, AVMImm8:$imm)>;
+class AVMColdRegImm16Inst<string Asm>
+    : AVMInst<Asm, 4, (ins AVMColdReg:$reg, AVMImm16:$imm)>;
+class AVMColdRegS8Inst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdReg:$reg, AVMSImm8:$imm)>;
+class AVMStackRegU8Inst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$imm)>;
+class AVMStackLoadInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$offset)>;
+class AVMStackStoreInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)>;
 
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
@@ -94,6 +111,19 @@ def ADDIS8 : AVMCompactRegS8Inst<"addi.s8 $reg, $imm">;
 def CMPIS8 : AVMCompactRegS8Inst<"cmpi.s8 $reg, $imm"> {
   let Defs = [CC];
 }
+
+def COLDLDI8 : AVMColdRegImm8Inst<"ldi8 $reg, $imm">;
+def COLDLDI16 : AVMColdRegImm16Inst<"ldi16 $reg, $imm">;
+def COLDADDIS8 : AVMColdRegS8Inst<"addi.s8 $reg, $imm">;
+def COLDCMPIS8 : AVMColdRegS8Inst<"cmpi.s8 $reg, $imm"> {
+  let Defs = [CC];
+}
+def LEASP : AVMStackRegU8Inst<"leasp $reg, $imm">;
+def LDSP8U : AVMStackLoadInst<"ldsp8u $reg, [sp+$offset]">;
+def LDSP8S : AVMStackLoadInst<"ldsp8s $reg, [sp+$offset]">;
+def STSP8 : AVMStackStoreInst<"stsp8 [sp+$offset], $reg">;
+def LDSP16 : AVMStackLoadInst<"ldsp16 $reg, [sp+$offset]">;
+def STSP16 : AVMStackStoreInst<"stsp16 [sp+$offset], $reg">;
 
 def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }

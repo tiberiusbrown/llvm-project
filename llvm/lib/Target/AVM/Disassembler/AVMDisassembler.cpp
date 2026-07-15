@@ -31,6 +31,54 @@ public:
     if (Bytes.empty())
       return Fail;
 
+    if (Bytes[0] == 0xf0) {
+      if (Bytes.size() < 2)
+        return Fail;
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x3f) {
+        Size = 1;
+        return Fail;
+      }
+      const bool IsLDI16 = Secondary >= 0x04 && Secondary <= 0x07;
+      if (Bytes.size() < (IsLDI16 ? 4 : 3))
+        return Fail;
+      if (Secondary <= 0x03)
+        MI.setOpcode(AVM::COLDLDI8);
+      else if (Secondary <= 0x07)
+        MI.setOpcode(AVM::COLDLDI16);
+      else if (Secondary <= 0x0b)
+        MI.setOpcode(AVM::COLDADDIS8);
+      else if (Secondary <= 0x0f)
+        MI.setOpcode(AVM::COLDCMPIS8);
+      else if (Secondary <= 0x17)
+        MI.setOpcode(AVM::LEASP);
+      else if (Secondary <= 0x1f)
+        MI.setOpcode(AVM::LDSP8U);
+      else if (Secondary <= 0x27)
+        MI.setOpcode(AVM::LDSP8S);
+      else if (Secondary <= 0x2f)
+        MI.setOpcode(AVM::STSP8);
+      else if (Secondary <= 0x37)
+        MI.setOpcode(AVM::LDSP16);
+      else
+        MI.setOpcode(AVM::STSP16);
+      const unsigned RegIndex = Secondary & (Secondary < 0x10 ? 3 : 7);
+      const MCRegister Reg = static_cast<MCRegister>(AVM::R0 + RegIndex);
+      const int64_t Value = IsLDI16
+                                ? Bytes[2] | (uint16_t(Bytes[3]) << 8)
+                                : ((Secondary >= 0x08 && Secondary <= 0x0f &&
+                                    Bytes[2] & 0x80)
+                                       ? int64_t(Bytes[2]) - 256
+                                       : Bytes[2]);
+      if (Secondary >= 0x28 && Secondary <= 0x2f || Secondary >= 0x38)
+        MI.addOperand(MCOperand::createImm(Value));
+      MI.addOperand(MCOperand::createReg(Reg));
+      if (!(Secondary >= 0x28 && Secondary <= 0x2f || Secondary >= 0x38))
+        MI.addOperand(MCOperand::createImm(Value));
+      Size = IsLDI16 ? 4 : 3;
+      return Success;
+    }
+
     if (Bytes[0] >= 0xb0 && Bytes[0] <= 0xbf) {
       MI.setOpcode(Bytes[0] < 0xb8 ? AVM::PUSH16 : AVM::POP16);
       MI.addOperand(MCOperand::createReg(
