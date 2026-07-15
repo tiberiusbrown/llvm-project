@@ -76,6 +76,15 @@ class AVMUnaryFullRegInst<string Asm>
   let OutOperandList = (outs AVMGeneralReg:$dst);
   let Constraints = "$dst = $src";
 }
+class AVMF4UnaryFullRegInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMF4TestFullRegInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$reg)> {
+  let Defs = [CC];
+}
 class AVMGetSPInst<string Asm>
     : AVMInst<Asm, 2> {
   let OutOperandList = (outs AVMGeneralReg:$dst);
@@ -234,6 +243,13 @@ def LDSP16 : AVMStackLoadInst<"ldsp16 $reg, [sp+$offset]">;
 def STSP16 : AVMStackStoreInst<"stsp16 [sp+$offset], $reg">;
 def LDSP16_COMPACT : AVMCompactStackLoadInst<"ldsp16 $dst, [sp+$offset]">;
 def STSP16_COMPACT : AVMCompactStackStoreInst<"stsp16 [sp+$offset], $reg">;
+def LSL16_1 : AVMF4UnaryFullRegInst<"lsl16.1 $dst">;
+def LSR16_1 : AVMF4UnaryFullRegInst<"lsr16.1 $dst">;
+def ASR16_1 : AVMF4UnaryFullRegInst<"asr16.1 $dst">;
+def NOT16 : AVMF4UnaryFullRegInst<"not16 $dst">;
+def TST8 : AVMF4TestFullRegInst<"tst8 $reg">;
+def INC16 : AVMF4UnaryFullRegInst<"inc16 $dst">;
+def DEC16 : AVMF4UnaryFullRegInst<"dec16 $dst">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

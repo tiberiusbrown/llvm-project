@@ -516,6 +516,21 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, SecondaryBase + *Reg);
   }
 
+  void emitF4FullReg(const MCInst &MI, SmallVectorImpl<char> &Out,
+                     unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one full register operand");
+      return;
+    }
+    const auto Reg = stackRegIndex(MI.getOperand(0).getReg());
+    if (!Reg) {
+      error(MI, "expected full register r0-r7");
+      return;
+    }
+    emit8(Out, 0xf4);
+    emit8(Out, SecondaryBase + *Reg);
+  }
+
   void emitAbsoluteData(const MCInst &MI, SmallVectorImpl<char> &Out,
                         SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
                         bool IsStore) const {
@@ -562,6 +577,13 @@ public:
     case AVM::SWAP8: emitF1FullReg(MI, Out, 0x78); return;
     case AVM::GETSP: emitF1FullReg(MI, Out, 0x80); return;
     case AVM::SETSP: emitF1FullReg(MI, Out, 0x88); return;
+    case AVM::LSL16_1: emitF4FullReg(MI, Out, 0x80); return;
+    case AVM::LSR16_1: emitF4FullReg(MI, Out, 0x88); return;
+    case AVM::ASR16_1: emitF4FullReg(MI, Out, 0x90); return;
+    case AVM::NOT16: emitF4FullReg(MI, Out, 0x98); return;
+    case AVM::TST8: emitF4FullReg(MI, Out, 0xa0); return;
+    case AVM::INC16: emitF4FullReg(MI, Out, 0xa8); return;
+    case AVM::DEC16: emitF4FullReg(MI, Out, 0xb0); return;
     case AVM::STSP8_COMPACT: emitCompactStackStore(MI, Out); return;
     case AVM::LDSP8U_COMPACT: emitCompactStackLoad(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;

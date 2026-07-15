@@ -754,6 +754,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseF4FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                      OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseFullReg(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
                              StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
@@ -987,6 +999,20 @@ public:
       return parseF1FullReg(AVM::GETSP, Name, NameLoc, Operands);
     if (Lower == "setsp")
       return parseF1FullReg(AVM::SETSP, Name, NameLoc, Operands);
+    if (Lower == "lsl16.1")
+      return parseF4FullReg(AVM::LSL16_1, Name, NameLoc, Operands);
+    if (Lower == "lsr16.1")
+      return parseF4FullReg(AVM::LSR16_1, Name, NameLoc, Operands);
+    if (Lower == "asr16.1")
+      return parseF4FullReg(AVM::ASR16_1, Name, NameLoc, Operands);
+    if (Lower == "not16")
+      return parseF4FullReg(AVM::NOT16, Name, NameLoc, Operands);
+    if (Lower == "tst8")
+      return parseF4FullReg(AVM::TST8, Name, NameLoc, Operands);
+    if (Lower == "inc16")
+      return parseF4FullReg(AVM::INC16, Name, NameLoc, Operands);
+    if (Lower == "dec16")
+      return parseF4FullReg(AVM::DEC16, Name, NameLoc, Operands);
     if (Lower == "add") {
       if (Parser.getTok().is(AsmToken::Identifier) &&
           Parser.getTok().getIdentifier().starts_with_insensitive("r"))

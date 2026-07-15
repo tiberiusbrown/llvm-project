@@ -347,9 +347,20 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
-      if (Secondary > 0x7f) {
+      if (Secondary > 0xb7) {
         Size = 1;
         return Fail;
+      }
+      if (Secondary >= 0x80) {
+        static const unsigned Opcodes[] = {
+            AVM::LSL16_1, AVM::LSR16_1, AVM::ASR16_1, AVM::NOT16,
+            AVM::TST8, AVM::INC16, AVM::DEC16};
+        const unsigned Family = (Secondary - 0x80) / 8;
+        MI.setOpcode(Opcodes[Family]);
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + ((Secondary - 0x80) & 7))));
+        Size = 2;
+        return Success;
       }
       const unsigned CompactIndex = Secondary & 3;
       const unsigned Offset = (Secondary & 0x3f) / 4;
