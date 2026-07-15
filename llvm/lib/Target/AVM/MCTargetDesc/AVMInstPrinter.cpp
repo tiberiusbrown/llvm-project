@@ -12,6 +12,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   switch (MI.getOpcode()) {
   case AVM::MOV: return {"mov", 0};
   case AVM::MOV_RR: return {"mov", 0};
+  case AVM::ZEXT8: return {"zext8", 0};
+  case AVM::SWAP8: return {"swap8", 0};
+  case AVM::GETSP: return {"getsp", 0};
+  case AVM::SETSP: return {"setsp", 0};
   case AVM::ADD: return {"add", 0};
   case AVM::SUB: return {"sub", 0};
   case AVM::CMP: return {"cmp", 0};
@@ -172,6 +176,13 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     printFullReg(MI->getOperand(0).getReg(), OS);
     OS << ", ";
     printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::ZEXT8:
+  case AVM::SWAP8:
+  case AVM::GETSP:
+  case AVM::SETSP:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
     break;
   case AVM::PUSH16:
   case AVM::POP16:

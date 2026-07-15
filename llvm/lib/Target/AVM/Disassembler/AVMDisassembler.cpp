@@ -251,6 +251,19 @@ public:
         Size = 2;
         return Success;
       }
+      if (Secondary >= 0x70 && Secondary <= 0x8f) {
+        const unsigned RegIndex = Secondary & 7;
+        switch (Secondary & 0xf8) {
+        case 0x70: MI.setOpcode(AVM::ZEXT8); break;
+        case 0x78: MI.setOpcode(AVM::SWAP8); break;
+        case 0x80: MI.setOpcode(AVM::GETSP); break;
+        default: MI.setOpcode(AVM::SETSP); break;
+        }
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + RegIndex)));
+        Size = 2;
+        return Success;
+      }
       if (Secondary > 0x2f) {
         Size = 1;
         return Fail;

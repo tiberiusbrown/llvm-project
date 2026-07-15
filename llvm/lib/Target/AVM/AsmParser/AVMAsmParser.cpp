@@ -650,6 +650,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseF1FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                      OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseFullReg(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
                              StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
@@ -863,6 +875,14 @@ public:
         return parseFullMove(Name, NameLoc, Operands);
       return parseCompactPair(AVM::MOV, Name, NameLoc, Operands);
     }
+    if (Lower == "zext8")
+      return parseF1FullReg(AVM::ZEXT8, Name, NameLoc, Operands);
+    if (Lower == "swap8")
+      return parseF1FullReg(AVM::SWAP8, Name, NameLoc, Operands);
+    if (Lower == "getsp")
+      return parseF1FullReg(AVM::GETSP, Name, NameLoc, Operands);
+    if (Lower == "setsp")
+      return parseF1FullReg(AVM::SETSP, Name, NameLoc, Operands);
     if (Lower == "add")
       return parseCompactPair(AVM::ADD, Name, NameLoc, Operands);
     if (Lower == "sub")

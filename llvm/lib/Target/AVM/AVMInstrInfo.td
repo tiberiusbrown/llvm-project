@@ -50,6 +50,20 @@ class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
 class AVMFullMoveInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$dst, AVMGeneralReg:$src)>;
 
+// F1 unary and SP forms are MC-only.  The unary forms are two-address
+// operations; GETSP has an explicit definition and SETSP an explicit use.
+class AVMUnaryFullRegInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMGetSPInst<string Asm>
+    : AVMInst<Asm, 2> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+}
+class AVMSetSPInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)>;
+
 // Stack-register operations are MC-only and encode the explicit architectural
 // register number in the low three bits of their one-byte opcode.
 class AVMStackRegInst<string Asm, bits<8> Family>
@@ -138,6 +152,10 @@ class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
+def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;
+def SWAP8 : AVMUnaryFullRegInst<"swap8 $dst">;
+def GETSP : AVMGetSPInst<"getsp $dst">;
+def SETSP : AVMSetSPInst<"setsp $src">;
 def ADD : AVMCompactMatrixInst<"add $dst, $src", 0x1,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def SUB : AVMCompactMatrixInst<"sub $dst, $src", 0x2,
