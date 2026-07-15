@@ -41,9 +41,20 @@ ldsp16 r0, [sp-1]
 ldsp16 r0, [sp+256]
 ldsp16 r0, [sp+symbol]
 stsp8 r0, [sp+0]
-stsp8 [sp+0], c0
 stsp8 [sp+0]
 stsp8 [sp+0], r0, r1
+stsp8 [sp+0], q0
+stsp8 [sp+0], sp
+stsp8 [sp+0], pc
+stsp8 [sp+0], cc
+stsp8 [sp-1], c0
+stsp8 [sp+16], c0
+stsp8 [sp+255], c0
+stsp8 [sp+symbol], c0
+stsp8 c0, [sp+0]
+stsp8
+stsp8 [sp+0]
+stsp8 [sp+0], c0, c1
 stsp16 r0, [sp+0]
 stsp16 [sp+0], c0
 stsp16 [sp+0]

@@ -387,6 +387,32 @@ class AVMAsmParser final : public MCTargetAsmParser {
     return false;
   }
 
+  bool parseSTSP8(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    unsigned Offset = 0;
+    MCRegister Reg;
+    if (parseSPMemory(Offset) || Parser.parseComma())
+      return true;
+    MCInst Inst;
+    const AsmToken &Tok = Parser.getTok();
+    const bool IsCompact = Tok.is(AsmToken::Identifier) &&
+                           Tok.getIdentifier().starts_with_insensitive("c");
+    if (IsCompact) {
+      if (Offset > 15)
+        return error(Tok.getLoc(), "compact stack offset is out of unsigned 4-bit range");
+      if (parseCompactReg(Reg))
+        return true;
+      Inst.setOpcode(AVM::STSP8_COMPACT);
+    } else {
+      if (parseStackReg(Reg))
+        return true;
+      Inst.setOpcode(AVM::STSP8);
+    }
+    Inst.addOperand(MCOperand::createImm(Offset));
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseLEASP(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     MCRegister Reg;
     if (parseStackReg(Reg) || Parser.parseComma())
@@ -940,7 +966,7 @@ public:
     if (Lower == "leasp") return parseLEASP(Name, NameLoc, Operands);
     if (Lower == "ldsp8u") return parseSPMemoryInstruction(AVM::LDSP8U, false, Name, NameLoc, Operands);
     if (Lower == "ldsp8s") return parseSPMemoryInstruction(AVM::LDSP8S, false, Name, NameLoc, Operands);
-    if (Lower == "stsp8") return parseSPMemoryInstruction(AVM::STSP8, true, Name, NameLoc, Operands);
+    if (Lower == "stsp8") return parseSTSP8(Name, NameLoc, Operands);
     if (Lower == "ldsp16") return parseSPMemoryInstruction(AVM::LDSP16, false, Name, NameLoc, Operands);
     if (Lower == "stsp16") return parseSPMemoryInstruction(AVM::STSP16, true, Name, NameLoc, Operands);
     if (Lower == "nop")

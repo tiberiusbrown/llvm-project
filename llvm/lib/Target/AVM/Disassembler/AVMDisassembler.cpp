@@ -243,6 +243,14 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x30 && Secondary <= 0x6f) {
+        MI.setOpcode(AVM::STSP8_COMPACT);
+        MI.addOperand(MCOperand::createImm((Secondary - 0x30) / 4));
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R4 + ((Secondary - 0x30) & 3))));
+        Size = 2;
+        return Success;
+      }
       if (Secondary > 0x2f) {
         Size = 1;
         return Fail;

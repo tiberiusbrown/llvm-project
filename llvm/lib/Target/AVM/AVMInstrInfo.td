@@ -4,6 +4,7 @@
 // already-verified, direct far transfers whose encodings match docs/arch.md.
 def AVMImm24 : Operand<i32>;
 def AVMImm8 : Operand<i32>;
+def AVMImm4 : Operand<i32>;
 def AVMImm16 : Operand<i32>;
 def AVMSImm8 : Operand<i32>;
 def AVMService8 : Operand<i32>;
@@ -78,6 +79,8 @@ class AVMStackLoadInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$offset)>;
 class AVMStackStoreInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)>;
+class AVMCompactStackStoreInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMImm4:$offset, AVMCompactSource:$reg)>;
 
 // These cold-page absolute data-space forms are MC-only.  The encoder emits
 // the F0 prefix, family secondary byte, explicit ISA register index, and a
@@ -178,6 +181,7 @@ def LEASP : AVMStackRegU8Inst<"leasp $reg, $imm">;
 def LDSP8U : AVMStackLoadInst<"ldsp8u $reg, [sp+$offset]">;
 def LDSP8S : AVMStackLoadInst<"ldsp8s $reg, [sp+$offset]">;
 def STSP8 : AVMStackStoreInst<"stsp8 [sp+$offset], $reg">;
+def STSP8_COMPACT : AVMCompactStackStoreInst<"stsp8 [sp+$offset], $reg">;
 def LDSP16 : AVMStackLoadInst<"ldsp16 $reg, [sp+$offset]">;
 def STSP16 : AVMStackStoreInst<"stsp16 [sp+$offset], $reg">;
 
