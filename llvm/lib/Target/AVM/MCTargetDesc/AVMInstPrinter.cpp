@@ -67,6 +67,9 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::LDP24_POST: return {"ldp24", 0};
   case AVM::LDP32:
   case AVM::LDP32_POST: return {"ldp32", 0};
+  case AVM::CMP32: return {"cmp32", 0};
+  case AVM::LD32: return {"ld32", 0};
+  case AVM::ST32: return {"st32", 0};
   default:
     return {"<unknown>", 0};
   }
@@ -222,6 +225,25 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
         MI->getOpcode() == AVM::LDP32_POST)
       OS << '+';
     OS << ']';
+    break;
+  case AVM::CMP32:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::LD32:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    OS << ']';
+    break;
+  case AVM::ST32:
+    OS << "\t[";
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << "], ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::JMP16:
   case AVM::CALL16:

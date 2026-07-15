@@ -530,6 +530,48 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseColdMemory(MCRegister &Address) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected data memory operand '[rN]'");
+    Parser.Lex();
+    if (parseStackReg(Address))
+      return true;
+    if (Parser.getTok().is(AsmToken::Plus))
+      return error(Parser.getTok().getLoc(),
+                   "postincrement memory operands are not supported");
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected ']' after data address register");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseCold32(unsigned Opcode, bool IsStore, bool IsCompare,
+                   StringRef Name, SMLoc NameLoc,
+                   OperandVector &Operands) {
+    MCRegister First, Second;
+    if (IsCompare) {
+      if (parseProgramPair(First) || Parser.parseComma() ||
+          parseProgramPair(Second))
+        return true;
+    } else if (IsStore) {
+      if (parseColdMemory(First) || Parser.parseComma() ||
+          parseProgramPair(Second))
+        return true;
+    } else {
+      if (parseProgramPair(First) || Parser.parseComma() ||
+          parseColdMemory(Second))
+        return true;
+    }
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(First));
+    Inst.addOperand(MCOperand::createReg(Second));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactPair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                         OperandVector &Operands) {
     MCRegister First, Second;
@@ -713,6 +755,12 @@ public:
     if (Lower == "ldp32")
       return parseProgramLoad(AVM::LDP32, AVM::LDP32_POST, true, Name,
                               NameLoc, Operands);
+    if (Lower == "cmp32")
+      return parseCold32(AVM::CMP32, false, true, Name, NameLoc, Operands);
+    if (Lower == "ld32")
+      return parseCold32(AVM::LD32, false, false, Name, NameLoc, Operands);
+    if (Lower == "st32")
+      return parseCold32(AVM::ST32, true, false, Name, NameLoc, Operands);
     if (Lower == "and")
       return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
     if (Lower == "or")

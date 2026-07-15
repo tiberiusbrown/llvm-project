@@ -96,6 +96,34 @@ public:
         Size = 3;
         return Success;
       }
+      if (Secondary >= 0x69 && Secondary <= 0x6b) {
+        if (Bytes.size() < 3)
+          return Fail;
+        const uint8_t RRSPEC = Bytes[2];
+        const auto High = pairRegisterFromPSPEC(RRSPEC >> 4);
+        const auto Low = Secondary == 0x69
+                             ? pairRegisterFromPSPEC(RRSPEC & 0xf)
+                             : scalarRegisterFromPSPEC(RRSPEC & 0xf);
+        if (!High || !Low) {
+          Size = 1;
+          return Fail;
+        }
+        if (Secondary == 0x69) {
+          MI.setOpcode(AVM::CMP32);
+          MI.addOperand(MCOperand::createReg(*High));
+          MI.addOperand(MCOperand::createReg(*Low));
+        } else if (Secondary == 0x6a) {
+          MI.setOpcode(AVM::LD32);
+          MI.addOperand(MCOperand::createReg(*High));
+          MI.addOperand(MCOperand::createReg(*Low));
+        } else {
+          MI.setOpcode(AVM::ST32);
+          MI.addOperand(MCOperand::createReg(*Low));
+          MI.addOperand(MCOperand::createReg(*High));
+        }
+        Size = 3;
+        return Success;
+      }
       if (Secondary >= 0x40 && Secondary <= 0x5f) {
         if (Bytes.size() < 4)
           return Fail;

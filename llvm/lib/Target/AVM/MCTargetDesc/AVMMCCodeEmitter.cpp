@@ -173,6 +173,28 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
   }
 
+  void emitCold32(const MCInst &MI, SmallVectorImpl<char> &Out,
+                  unsigned Secondary, bool IsCompare, bool IsStore) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two register operands");
+      return;
+    }
+    const MCRegister HighReg = MI.getOperand(IsStore ? 1 : 0).getReg();
+    const MCRegister LowReg = MI.getOperand(IsStore ? 0 : 1).getReg();
+    const auto High = programPairIndex(HighReg);
+    const auto Low = IsCompare ? programPairIndex(LowReg)
+                               : stackRegIndex(LowReg);
+    if (!High || !Low) {
+      error(MI, IsCompare ? "expected pair operands q0-q3"
+                          : "expected pair and address operands");
+      return;
+    }
+    emit8(Out, 0xf0);
+    emit8(Out, Secondary);
+    emit8(Out, (*High * 4) << 4 | (*Low * (IsCompare ? 4 : 2)));
+  }
+
   void emitProgramLoad(const MCInst &MI, SmallVectorImpl<char> &Out,
                        unsigned Secondary, bool IsPair) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
@@ -397,6 +419,9 @@ public:
     case AVM::LDP16_POST: emitProgramLoad(MI, Out, 0x66, false); return;
     case AVM::LDP24_POST: emitProgramLoad(MI, Out, 0x67, true); return;
     case AVM::LDP32_POST: emitProgramLoad(MI, Out, 0x68, true); return;
+    case AVM::CMP32: emitCold32(MI, Out, 0x69, true, false); return;
+    case AVM::LD32: emitCold32(MI, Out, 0x6a, false, false); return;
+    case AVM::ST32: emitCold32(MI, Out, 0x6b, false, true); return;
     case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;

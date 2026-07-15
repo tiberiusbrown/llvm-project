@@ -23,6 +23,8 @@ def AVMDataAddr16 : Operand<i32>;
 def AVMAbsoluteDataReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramLoadScalarReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramLoadPairReg : RegisterOperand<AVMProgramPairReg, "printFullReg">;
+def AVMColdPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
+def AVMColdDataPointer : RegisterOperand<AVMGeneralReg, "printFullReg">;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -88,6 +90,15 @@ class AVMProgramLoadScalarInst<string Asm>
 class AVMProgramLoadPairInst<string Asm>
     : AVMInst<Asm, 3,
               (ins AVMProgramLoadPairReg:$dst, AVMProgramLoadPairReg:$addr)>;
+
+// Cold 32-bit forms are MC-only.  Their RRSPEC32 byte is encoded explicitly
+// from the architectural q/r mappings; it is not derived from register enums.
+class AVMColdPairPairInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdPair:$left, AVMColdPair:$right)>;
+class AVMColdPairLoadInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdPair:$dst, AVMColdDataPointer:$addr)>;
+class AVMColdPairStoreInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdDataPointer:$addr, AVMColdPair:$src)>;
 
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
@@ -161,6 +172,12 @@ def LDP8U_POST : AVMProgramLoadScalarInst<"ldp8u $dst, [$addr+]">;
 def LDP16_POST : AVMProgramLoadScalarInst<"ldp16 $dst, [$addr+]">;
 def LDP24_POST : AVMProgramLoadPairInst<"ldp24 $dst, [$addr+]">;
 def LDP32_POST : AVMProgramLoadPairInst<"ldp32 $dst, [$addr+]">;
+
+def CMP32 : AVMColdPairPairInst<"cmp32 $left, $right"> {
+  let Defs = [CC];
+}
+def LD32 : AVMColdPairLoadInst<"ld32 $dst, [$addr]">;
+def ST32 : AVMColdPairStoreInst<"st32 [$addr], $src">;
 
 def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
