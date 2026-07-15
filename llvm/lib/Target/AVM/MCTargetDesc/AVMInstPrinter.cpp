@@ -23,6 +23,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::CMP: return {"cmp", 0};
   case AVM::LD8U: return {"ld8u", 0};
   case AVM::ST8: return {"st8", 0};
+  case AVM::F3ST8: return {"st8", 0};
+  case AVM::MULU8W: return {"mulu8.w", 0};
+  case AVM::MULS8W: return {"muls8.w", 0};
+  case AVM::MULSU8W: return {"mulsu8.w", 0};
   case AVM::LD16: return {"ld16", 0};
   case AVM::ST16: return {"st16", 0};
   case AVM::AND: return {"and", 0};
@@ -159,6 +163,20 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     OS << "\t[";
     printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << "], ";
+    printCompactReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::F3ST8:
+    OS << "\t[";
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << "], ";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::MULU8W:
+  case AVM::MULS8W:
+  case AVM::MULSU8W:
+    OS << '\t';
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << ", ";
     printCompactReg(MI->getOperand(1).getReg(), OS);
     break;
   case AVM::MOV:

@@ -342,6 +342,39 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Family | (*First << 2) | *Second);
   }
 
+  void emitF3Store(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected compact pointer and r0-r3 source operands");
+      return;
+    }
+    const auto Address = compactRegIndex(MI.getOperand(0).getReg());
+    const auto Source = stackRegIndex(MI.getOperand(1).getReg());
+    if (!Address || !Source || *Source > 3) {
+      error(MI, "expected compact pointer c0-c3 and source r0-r3");
+      return;
+    }
+    emit8(Out, 0xf3);
+    emit8(Out, 4 * *Address + *Source);
+  }
+
+  void emitF3Multiply(const MCInst &MI, SmallVectorImpl<char> &Out,
+                      unsigned Family) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two compact register operands");
+      return;
+    }
+    const auto Destination = compactRegIndex(MI.getOperand(0).getReg());
+    const auto Source = compactRegIndex(MI.getOperand(1).getReg());
+    if (!Destination || !Source) {
+      error(MI, "expected compact register c0-c3");
+      return;
+    }
+    emit8(Out, 0xf3);
+    emit8(Out, Family + 4 * *Destination + *Source);
+  }
+
   void emitCompactImmediate(const MCInst &MI, SmallVectorImpl<char> &Out,
                             unsigned Family, unsigned Bits, bool IsSigned) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
@@ -502,6 +535,10 @@ public:
     case AVM::CMP: emitCompactMatrix(MI, Out, 0x30); return;
     case AVM::LD8U: emitCompactMatrix(MI, Out, 0x40); return;
     case AVM::ST8: emitCompactMatrix(MI, Out, 0x50); return;
+    case AVM::F3ST8: emitF3Store(MI, Out); return;
+    case AVM::MULU8W: emitF3Multiply(MI, Out, 0x10); return;
+    case AVM::MULS8W: emitF3Multiply(MI, Out, 0x20); return;
+    case AVM::MULSU8W: emitF3Multiply(MI, Out, 0x30); return;
     case AVM::LD16: emitCompactMatrix(MI, Out, 0x60); return;
     case AVM::ST16: emitCompactMatrix(MI, Out, 0x70); return;
     case AVM::AND: emitCompactMatrix(MI, Out, 0x80); return;

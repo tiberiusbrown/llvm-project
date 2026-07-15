@@ -44,6 +44,16 @@ class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
   bits<4> CompactFamily = Family;
 }
 
+class AVMF3StoreInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
+                           AVMGeneralReg:$src)>;
+
+class AVMF3WideningMultiplyInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 // F1 full-register moves use the architectural PAIR48 index. This is an
 // MC-only family: the encoder supplies explicit ISA register indices and no
 // code-generation or scheduling metadata is attached.
@@ -179,6 +189,10 @@ def LD8U : AVMCompactMatrixInst<"ld8u $dst, [$addr]", 0x4,
     (ins AVMCompactDest:$dst, AVMCompactDataPointer:$addr)>;
 def ST8 : AVMCompactMatrixInst<"st8 [$addr], $src", 0x5,
     (ins AVMCompactDataPointer:$addr, AVMCompactSource:$src)>;
+def F3ST8 : AVMF3StoreInst<"st8 [$addr], $src">;
+def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
+def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
+def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;
 def LD16 : AVMCompactMatrixInst<"ld16 $dst, [$addr]", 0x6,
     (ins AVMCompactDest:$dst, AVMCompactDataPointer:$addr)>;
 def ST16 : AVMCompactMatrixInst<"st16 [$addr], $src", 0x7,

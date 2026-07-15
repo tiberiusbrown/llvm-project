@@ -306,6 +306,33 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf3) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x3f) {
+        Size = 1;
+        return Fail;
+      }
+      if (Secondary < 0x10) {
+        MI.setOpcode(AVM::F3ST8);
+        MI.addOperand(MCOperand::createReg(compactRegister(Secondary / 4)));
+        MI.addOperand(MCOperand::createReg(
+            static_cast<MCRegister>(AVM::R0 + (Secondary & 3))));
+      } else {
+        const unsigned Family = Secondary & 0x30;
+        MI.setOpcode(Family == 0x10 ? AVM::MULU8W
+                     : Family == 0x20 ? AVM::MULS8W : AVM::MULSU8W);
+        const unsigned Matrix = Secondary & 0x0f;
+        MI.addOperand(MCOperand::createReg(compactRegister(Matrix / 4)));
+        MI.addOperand(MCOperand::createReg(compactRegister(Matrix & 3)));
+      }
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] >= 0xb0 && Bytes[0] <= 0xbf) {
       MI.setOpcode(Bytes[0] < 0xb8 ? AVM::PUSH16 : AVM::POP16);
       MI.addOperand(MCOperand::createReg(
