@@ -6,6 +6,7 @@
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/MathExtras.h"
+#include <optional>
 
 using namespace llvm;
 
@@ -47,6 +48,34 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit24(Out, 0);
   }
 
+  static std::optional<unsigned> compactRegIndex(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R4: return 0;
+    case AVM::R5: return 1;
+    case AVM::R6: return 2;
+    case AVM::R7: return 3;
+    default: return std::nullopt;
+    }
+  }
+
+  void emitCompactMatrix(const MCInst &MI, SmallVectorImpl<char> &Out,
+                         unsigned Family) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two compact register operands");
+      return;
+    }
+    const std::optional<unsigned> First =
+        compactRegIndex(MI.getOperand(0).getReg());
+    const std::optional<unsigned> Second =
+        compactRegIndex(MI.getOperand(1).getReg());
+    if (!First || !Second) {
+      error(MI, "expected compact register c0-c3");
+      return;
+    }
+    emit8(Out, Family | (*First << 2) | *Second);
+  }
+
 public:
   explicit AVMMCCodeEmitter(MCContext &Ctx) : Ctx(Ctx) {}
 
@@ -54,6 +83,17 @@ public:
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &) const override {
     switch (MI.getOpcode()) {
+    case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
+    case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;
+    case AVM::SUB: emitCompactMatrix(MI, Out, 0x20); return;
+    case AVM::CMP: emitCompactMatrix(MI, Out, 0x30); return;
+    case AVM::LD8U: emitCompactMatrix(MI, Out, 0x40); return;
+    case AVM::ST8: emitCompactMatrix(MI, Out, 0x50); return;
+    case AVM::LD16: emitCompactMatrix(MI, Out, 0x60); return;
+    case AVM::ST16: emitCompactMatrix(MI, Out, 0x70); return;
+    case AVM::AND: emitCompactMatrix(MI, Out, 0x80); return;
+    case AVM::OR: emitCompactMatrix(MI, Out, 0x90); return;
+    case AVM::XOR: emitCompactMatrix(MI, Out, 0xa0); return;
     case AVM::JMPF:
       emit8(Out, 0xe2);
       emitFarTarget(MI, Out, Fixups);

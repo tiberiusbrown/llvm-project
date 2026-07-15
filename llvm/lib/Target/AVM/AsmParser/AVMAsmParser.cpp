@@ -106,6 +106,107 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseCompactReg(MCRegister &Reg) {
+    SMLoc Loc = Parser.getTok().getLoc();
+    if (parseArchitecturalReg(Reg))
+      return true;
+    switch (Reg.id()) {
+    case AVM::R4:
+    case AVM::R5:
+    case AVM::R6:
+    case AVM::R7:
+      return false;
+    default:
+      return error(Loc, "expected compact register c0-c3");
+    }
+  }
+
+  bool parseCompactMemory(MCRegister &Reg) {
+    if (!Parser.getTok().is(AsmToken::LBrac))
+      return error(Parser.getTok().getLoc(), "expected compact memory operand '[cN]'");
+    Parser.Lex();
+    if (parseCompactReg(Reg))
+      return true;
+    if (Parser.getTok().is(AsmToken::Plus))
+      return error(Parser.getTok().getLoc(),
+                   "postincrement memory operands are not supported");
+    if (!Parser.getTok().is(AsmToken::RBrac))
+      return error(Parser.getTok().getLoc(),
+                   "expected ']' after compact address register");
+    Parser.Lex();
+    return false;
+  }
+
+  bool parseCompactPair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister First, Second;
+    if (parseCompactReg(First))
+      return true;
+    if (Parser.parseComma())
+      return true;
+    if (parseCompactReg(Second))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(First));
+    Inst.addOperand(MCOperand::createReg(Second));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseCompactMemoryInstruction(unsigned Opcode, bool IsStore,
+                                     StringRef Name, SMLoc NameLoc,
+                                     OperandVector &Operands) {
+    MCRegister Data, Address;
+    if (IsStore) {
+      if (parseCompactMemory(Address))
+        return true;
+      if (Parser.parseComma())
+        return true;
+      if (parseCompactReg(Data))
+        return true;
+    } else {
+      if (parseCompactReg(Data))
+        return true;
+      if (Parser.parseComma())
+        return true;
+      if (parseCompactMemory(Address))
+        return true;
+    }
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    if (IsStore) {
+      Inst.addOperand(MCOperand::createReg(Address));
+      Inst.addOperand(MCOperand::createReg(Data));
+    } else {
+      Inst.addOperand(MCOperand::createReg(Data));
+      Inst.addOperand(MCOperand::createReg(Address));
+    }
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseClr(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseCompactReg(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(AVM::XOR);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseNop(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCInst Inst;
+    Inst.setOpcode(AVM::MOV);
+    Inst.addOperand(MCOperand::createReg(AVM::R4));
+    Inst.addOperand(MCOperand::createReg(AVM::R4));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
 public:
   AVMAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
@@ -142,6 +243,36 @@ public:
                         OperandVector &Operands) override {
     Pending.reset();
     std::string Lower = Name.lower();
+    if (Lower == "mov")
+      return parseCompactPair(AVM::MOV, Name, NameLoc, Operands);
+    if (Lower == "add")
+      return parseCompactPair(AVM::ADD, Name, NameLoc, Operands);
+    if (Lower == "sub")
+      return parseCompactPair(AVM::SUB, Name, NameLoc, Operands);
+    if (Lower == "cmp")
+      return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
+    if (Lower == "ld8u")
+      return parseCompactMemoryInstruction(AVM::LD8U, false, Name, NameLoc,
+                                           Operands);
+    if (Lower == "st8")
+      return parseCompactMemoryInstruction(AVM::ST8, true, Name, NameLoc,
+                                           Operands);
+    if (Lower == "ld16")
+      return parseCompactMemoryInstruction(AVM::LD16, false, Name, NameLoc,
+                                           Operands);
+    if (Lower == "st16")
+      return parseCompactMemoryInstruction(AVM::ST16, true, Name, NameLoc,
+                                           Operands);
+    if (Lower == "and")
+      return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
+    if (Lower == "or")
+      return parseCompactPair(AVM::OR, Name, NameLoc, Operands);
+    if (Lower == "xor")
+      return parseCompactPair(AVM::XOR, Name, NameLoc, Operands);
+    if (Lower == "nop")
+      return parseNop(Name, NameLoc, Operands);
+    if (Lower == "clr")
+      return parseClr(Name, NameLoc, Operands);
     if (Lower == "jmpf")
       return parseFarTransfer(AVM::JMPF, Name, NameLoc, Operands);
     if (Lower == "callf")

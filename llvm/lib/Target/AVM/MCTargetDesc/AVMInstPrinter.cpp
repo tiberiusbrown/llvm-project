@@ -10,12 +10,33 @@ using namespace llvm;
 std::pair<const char *, uint64_t>
 AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   switch (MI.getOpcode()) {
+  case AVM::MOV: return {"mov", 0};
+  case AVM::ADD: return {"add", 0};
+  case AVM::SUB: return {"sub", 0};
+  case AVM::CMP: return {"cmp", 0};
+  case AVM::LD8U: return {"ld8u", 0};
+  case AVM::ST8: return {"st8", 0};
+  case AVM::LD16: return {"ld16", 0};
+  case AVM::ST16: return {"st16", 0};
+  case AVM::AND: return {"and", 0};
+  case AVM::OR: return {"or", 0};
+  case AVM::XOR: return {"xor", 0};
   case AVM::JMPF:
     return {"jmpf", 0};
   case AVM::CALLF:
     return {"callf", 0};
   default:
     return {"<unknown>", 0};
+  }
+}
+
+void AVMInstPrinter::printCompactReg(MCRegister Reg, raw_ostream &OS) const {
+  switch (Reg.id()) {
+  case AVM::R4: OS << "c0"; return;
+  case AVM::R5: OS << "c1"; return;
+  case AVM::R6: OS << "c2"; return;
+  case AVM::R7: OS << "c3"; return;
+  default: OS << "<bad-compact-reg>"; return;
   }
 }
 
@@ -63,9 +84,40 @@ void AVMInstPrinter::printOperand(const MCOperand &Op, raw_ostream &OS) const {
 void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
                                const MCSubtargetInfo &, raw_ostream &OS) {
   OS << getMnemonic(*MI).first;
-  if (MI->getNumOperands()) {
+  switch (MI->getOpcode()) {
+  case AVM::LD8U:
+  case AVM::LD16:
     OS << '\t';
-    printOperand(MI->getOperand(0), OS);
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [";
+    printCompactReg(MI->getOperand(1).getReg(), OS);
+    OS << ']';
+    break;
+  case AVM::ST8:
+  case AVM::ST16:
+    OS << "\t[";
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << "], ";
+    printCompactReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::MOV:
+  case AVM::ADD:
+  case AVM::SUB:
+  case AVM::CMP:
+  case AVM::AND:
+  case AVM::OR:
+  case AVM::XOR:
+    OS << '\t';
+    printCompactReg(MI->getOperand(0).getReg(), OS);
+    OS << ", ";
+    printCompactReg(MI->getOperand(1).getReg(), OS);
+    break;
+  default:
+    if (MI->getNumOperands()) {
+      OS << '\t';
+      printOperand(MI->getOperand(0), OS);
+    }
+    break;
   }
   printAnnotation(OS, Annot);
 }

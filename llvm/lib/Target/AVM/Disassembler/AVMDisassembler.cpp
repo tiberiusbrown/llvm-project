@@ -12,6 +12,15 @@ using namespace llvm;
 namespace {
 
 class AVMDisassembler final : public MCDisassembler {
+  static MCRegister compactRegister(unsigned Index) {
+    switch (Index) {
+    case 0: return AVM::R4;
+    case 1: return AVM::R5;
+    case 2: return AVM::R6;
+    default: return AVM::R7;
+    }
+  }
+
 public:
   AVMDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx)
       : MCDisassembler(STI, Ctx) {}
@@ -19,6 +28,29 @@ public:
   DecodeStatus getInstruction(MCInst &MI, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t,
                               raw_ostream &) const override {
+    if (Bytes.empty())
+      return Fail;
+
+    if (Bytes[0] <= 0xaf) {
+      switch (Bytes[0] >> 4) {
+      case 0x0: MI.setOpcode(AVM::MOV); break;
+      case 0x1: MI.setOpcode(AVM::ADD); break;
+      case 0x2: MI.setOpcode(AVM::SUB); break;
+      case 0x3: MI.setOpcode(AVM::CMP); break;
+      case 0x4: MI.setOpcode(AVM::LD8U); break;
+      case 0x5: MI.setOpcode(AVM::ST8); break;
+      case 0x6: MI.setOpcode(AVM::LD16); break;
+      case 0x7: MI.setOpcode(AVM::ST16); break;
+      case 0x8: MI.setOpcode(AVM::AND); break;
+      case 0x9: MI.setOpcode(AVM::OR); break;
+      default: MI.setOpcode(AVM::XOR); break;
+      }
+      MI.addOperand(MCOperand::createReg(compactRegister((Bytes[0] >> 2) & 3)));
+      MI.addOperand(MCOperand::createReg(compactRegister(Bytes[0] & 3)));
+      Size = 1;
+      return Success;
+    }
+
     if (Bytes.size() < 4)
       return Fail;
     if (Bytes[0] != 0xe2 && Bytes[0] != 0xe3) {
