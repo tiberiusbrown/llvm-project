@@ -650,6 +650,26 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFullArithmetic(unsigned Opcode, StringRef Mnemonic,
+                           StringRef Name, SMLoc NameLoc,
+                           OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    const unsigned D = Destination.id() - AVM::R0;
+    const unsigned S = Source.id() - AVM::R0;
+    if (D >= 4 && S >= 4)
+      return error(NameLoc, (Mnemonic +
+                   " full-register pairing is not encodable; use compact cN spelling").str());
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseF1FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                       OperandVector &Operands) {
     MCRegister Reg;
@@ -883,10 +903,20 @@ public:
       return parseF1FullReg(AVM::GETSP, Name, NameLoc, Operands);
     if (Lower == "setsp")
       return parseF1FullReg(AVM::SETSP, Name, NameLoc, Operands);
-    if (Lower == "add")
+    if (Lower == "add") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullArithmetic(AVM::ADD_RR, "add", Name, NameLoc,
+                                   Operands);
       return parseCompactPair(AVM::ADD, Name, NameLoc, Operands);
-    if (Lower == "sub")
+    }
+    if (Lower == "sub") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullArithmetic(AVM::SUB_RR, "sub", Name, NameLoc,
+                                   Operands);
       return parseCompactPair(AVM::SUB, Name, NameLoc, Operands);
+    }
     if (Lower == "cmp")
       return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
     if (Lower == "ld8u")

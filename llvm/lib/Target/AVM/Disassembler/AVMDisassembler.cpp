@@ -283,6 +283,29 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf2) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary > 0x5f) {
+        Size = 1;
+        return Fail;
+      }
+      const bool IsSub = Secondary >= 0x30;
+      const unsigned Pair = IsSub ? Secondary - 0x30 : Secondary;
+      const unsigned D = Pair < 0x20 ? Pair / 8 : 4 + (Pair - 0x20) / 4;
+      const unsigned S = Pair < 0x20 ? Pair & 7 : (Pair - 0x20) & 3;
+      MI.setOpcode(IsSub ? AVM::SUB_RR : AVM::ADD_RR);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + D)));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + S)));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] >= 0xb0 && Bytes[0] <= 0xbf) {
       MI.setOpcode(Bytes[0] < 0xb8 ? AVM::PUSH16 : AVM::POP16);
       MI.addOperand(MCOperand::createReg(

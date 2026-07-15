@@ -50,6 +50,15 @@ class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
 class AVMFullMoveInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$dst, AVMGeneralReg:$src)>;
 
+// F2 full-register arithmetic is MC-only.  The first input is tied to the
+// explicit destination so the MC metadata records the two-address read/write
+// operand without introducing any code-generation semantics.
+class AVMFullArithmeticInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src1, AVMGeneralReg:$src2)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 // F1 unary and SP forms are MC-only.  The unary forms are two-address
 // operations; GETSP has an explicit definition and SETSP an explicit use.
 class AVMUnaryFullRegInst<string Asm>
@@ -152,6 +161,8 @@ class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
     (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
+def ADD_RR : AVMFullArithmeticInst<"add $src1, $src2">;
+def SUB_RR : AVMFullArithmeticInst<"sub $src1, $src2">;
 def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;
 def SWAP8 : AVMUnaryFullRegInst<"swap8 $dst">;
 def GETSP : AVMGetSPInst<"getsp $dst">;

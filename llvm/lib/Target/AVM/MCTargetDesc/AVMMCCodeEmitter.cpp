@@ -170,6 +170,24 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Pair);
   }
 
+  void emitFullArithmetic(const MCInst &MI, SmallVectorImpl<char> &Out,
+                          unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two full register operands");
+      return;
+    }
+    const auto D = stackRegIndex(MI.getOperand(0).getReg());
+    const auto S = stackRegIndex(MI.getOperand(1).getReg());
+    if (!D || !S || (*D >= 4 && *S >= 4)) {
+      error(MI, "full-register arithmetic pairing is not encodable; use compact cN spelling");
+      return;
+    }
+    const unsigned Pair = *D < 4 ? 8 * *D + *S : 0x20 + 4 * (*D - 4) + *S;
+    emit8(Out, 0xf2);
+    emit8(Out, SecondaryBase + Pair);
+  }
+
   // This mapping is architectural, not derived from physical-register enum
   // layout.  The dddWaaaP encoding uses these r0-r7 values directly.
   static std::optional<unsigned> generalPointerRegIndex(MCRegister Reg) {
@@ -472,6 +490,8 @@ public:
     switch (MI.getOpcode()) {
     case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
     case AVM::MOV_RR: emitFullMove(MI, Out); return;
+    case AVM::ADD_RR: emitFullArithmetic(MI, Out, 0x00); return;
+    case AVM::SUB_RR: emitFullArithmetic(MI, Out, 0x30); return;
     case AVM::ZEXT8: emitF1FullReg(MI, Out, 0x70); return;
     case AVM::SWAP8: emitF1FullReg(MI, Out, 0x78); return;
     case AVM::GETSP: emitF1FullReg(MI, Out, 0x80); return;
