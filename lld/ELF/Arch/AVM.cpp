@@ -194,19 +194,32 @@ static AVMRelaxKind getRelaxKind(ArrayRef<uint8_t> content, uint64_t offset,
 static uint8_t directCondition(uint8_t inverse) {
   switch (inverse) {
   case 0xd1:
-    return 0xd0; // br.ne -> br.eq
+    return 0xd0; // brne -> breq8
   case 0xd0:
-    return 0xd1; // br.eq -> br.ne
+    return 0xd1; // breq -> brne8
   case 0xd8:
-    return 0xd2; // br.uge -> br.ult
+    return 0xd2; // bruge -> brult8
   case 0xd2:
-    return 0xd8; // br.ult -> br.uge
+    return 0xd8; // brult -> bruge8
   case 0xd9:
-    return 0xd3; // br.sge -> br.slt
+    return 0xd3; // brsge -> brslt8
   case 0xd3:
-    return 0xd9; // br.slt -> br.sge
+    return 0xd9; // brslt -> brsge8
   default:
     llvm_unreachable("invalid AVM inverse branch");
+  }
+}
+
+static uint8_t directCondition16(uint8_t inverse) {
+  switch (directCondition(inverse)) {
+  case 0xd0: return 0xda;
+  case 0xd1: return 0xdb;
+  case 0xd2: return 0xdc;
+  case 0xd8: return 0xdd;
+  case 0xd3: return 0xde;
+  case 0xd9: return 0xdf;
+  default:
+    llvm_unreachable("invalid AVM direct branch");
   }
 }
 
@@ -368,7 +381,7 @@ static uint8_t chooseAVMForm(Ctx &ctx, const InputSection &sec,
                     static_cast<int64_t>(p + 2));
   };
   auto fits16 = [&](uint64_t finalSize) {
-    const uint64_t next = kind == AVMRelaxCond ? p + 5 : p + 3;
+    const uint64_t next = p + 3;
     return isInt<16>(static_cast<int64_t>(adjustedTarget(finalSize)) -
                      static_cast<int64_t>(next));
   };
@@ -383,8 +396,8 @@ static uint8_t chooseAVMForm(Ctx &ctx, const InputSection &sec,
   case AVMRelaxCond:
     if (fits8(2))
       return 2;
-    if (fits16(5))
-      return 5;
+    if (fits16(3))
+      return 3;
     return 6;
   default:
     llvm_unreachable("invalid AVM relaxation kind");
@@ -517,11 +530,9 @@ void AVM::finalizeRelax(int) const {
           if (finalSize == 2) {
             p[0] = directCondition(old[marker.offset]);
             p[1] = 0;
-          } else if (finalSize == 5) {
-            p[0] = old[marker.offset];
-            p[1] = 3;
-            p[2] = 0xe0;
-            p[3] = p[4] = 0;
+          } else if (finalSize == 3) {
+            p[0] = directCondition16(old[marker.offset]);
+            p[1] = p[2] = 0;
           } else {
             memcpy(p, old.data() + marker.offset, 6);
           }
@@ -570,9 +581,10 @@ void AVM::finalizeRelax(int) const {
           continue;
         uint64_t initialSize = 0;
         AVMRelaxKind kind = getRelaxKind(old, marker.offset, initialSize);
-        const uint8_t finalSize = aux.relocStates[i];
         fieldOffsets[aux.relocPairs[i]] =
-            finalSize == 2 ? 1 : (kind == AVMRelaxCond ? 3 : 1);
+            aux.relocStates[i] == initialSize
+                ? (kind == AVMRelaxCond ? 3 : 1)
+                : 1;
       }
 
       uint64_t delta = 0;

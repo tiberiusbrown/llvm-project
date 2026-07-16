@@ -4,12 +4,12 @@
 back:
 jmp back
 call forward
-br.eq short_target
-br.ne far_target
-br.ult back
-br.uge forward
-br.slt short_target
-br.sge far_target
+breq short_target
+brne far_target
+brult back
+bruge forward
+brslt short_target
+brsge far_target
 short_target:
 .zero 130
 far_target:

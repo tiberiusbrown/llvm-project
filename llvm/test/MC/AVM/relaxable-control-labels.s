@@ -5,17 +5,17 @@ jmp after_jmp
 after_jmp:
 call after_call
 after_call:
-br.eq after_eq
+breq after_eq
 after_eq:
-br.ne after_ne
+brne after_ne
 after_ne:
-br.ult after_ult
+brult after_ult
 after_ult:
-br.uge after_uge
+bruge after_uge
 after_uge:
-br.slt after_slt
+brslt after_slt
 after_slt:
-br.sge after_sge
+brsge after_sge
 after_sge:
 
 # CHECK: Name: after_jmp

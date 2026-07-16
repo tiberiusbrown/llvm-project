@@ -1,13 +1,13 @@
 # RUN: not llvm-mc -triple=avm -show-encoding %s 2>&1 | FileCheck %s
 
-breq -129
-brne 128
-brult 255
-brslt 0xff
-bruge -129
-bruge 128
-brsge -129
-brsge 128
+breq8 -129
+brne8 128
+brult8 255
+brslt8 0xff
+bruge8 -129
+bruge8 128
+brsge8 -129
+brsge8 128
 jmp8 128
 call8 -129
 adjsp 255
@@ -15,8 +15,8 @@ sys -1
 sys 4
 sys 255
 sys symbol
-breq
-breq 1, 2
+breq8
+breq8 1, 2
 jmp
 call 0
 jmp8

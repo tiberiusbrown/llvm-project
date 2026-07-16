@@ -1001,16 +1001,22 @@ public:
     case AVM::GPST16: emitGeneralPointer(MI, Out, 0x6d, true, false, true); return;
     case AVM::GPST8_POST: emitGeneralPointer(MI, Out, 0x6d, false, true, true); return;
     case AVM::GPST16_POST: emitGeneralPointer(MI, Out, 0x6d, true, true, true); return;
-    case AVM::BREQ: emitRel8(MI, Out, Fixups, 0xd0); return;
-    case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
-    case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
-    case AVM::BRSLT: emitRel8(MI, Out, Fixups, 0xd3); return;
-    case AVM::BRUGE: emitRel8(MI, Out, Fixups, 0xd8); return;
-    case AVM::BRSGE: emitRel8(MI, Out, Fixups, 0xd9); return;
+    case AVM::BREQ8: emitRel8(MI, Out, Fixups, 0xd0); return;
+    case AVM::BRNE8: emitRel8(MI, Out, Fixups, 0xd1); return;
+    case AVM::BRULT8: emitRel8(MI, Out, Fixups, 0xd2); return;
+    case AVM::BRSLT8: emitRel8(MI, Out, Fixups, 0xd3); return;
+    case AVM::BRUGE8: emitRel8(MI, Out, Fixups, 0xd8); return;
+    case AVM::BRSGE8: emitRel8(MI, Out, Fixups, 0xd9); return;
     case AVM::JMP8: emitRel8(MI, Out, Fixups, 0xd4); return;
     case AVM::CALL8: emitRel8(MI, Out, Fixups, 0xd5); return;
     case AVM::ADJSP: emitSigned8(MI, Out, 0xd6); return;
     case AVM::SYS: emitService(MI, Out); return;
+    case AVM::BREQ16: emitRel16(MI, Out, Fixups, 0xda); return;
+    case AVM::BRNE16: emitRel16(MI, Out, Fixups, 0xdb); return;
+    case AVM::BRULT16: emitRel16(MI, Out, Fixups, 0xdc); return;
+    case AVM::BRUGE16: emitRel16(MI, Out, Fixups, 0xdd); return;
+    case AVM::BRSLT16: emitRel16(MI, Out, Fixups, 0xde); return;
+    case AVM::BRSGE16: emitRel16(MI, Out, Fixups, 0xdf); return;
     case AVM::JMP16: emitRel16(MI, Out, Fixups, 0xe0); return;
     case AVM::CALL16: emitRel16(MI, Out, Fixups, 0xe1); return;
     case AVM::JMPF:

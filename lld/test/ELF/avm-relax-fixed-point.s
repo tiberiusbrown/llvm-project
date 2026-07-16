@@ -40,7 +40,7 @@ target:
 
 #--- cond-staged.s
 .text
-br.eq target
+breq target
 jmp target
 .zero 125
 target:

@@ -1,45 +1,45 @@
 # RUN: llvm-mc -triple=avm -show-encoding %s | FileCheck %s
 
-breq -128
-breq -127
-breq -1
-breq 0
-breq 1
-breq 126
-breq 127
-brne -128
-brne -127
-brne -1
-brne 0
-brne 1
-brne 126
-brne 127
-brult -128
-brult -127
-brult -1
-brult 0
-brult 1
-brult 126
-brult 127
-brslt -128
-brslt -127
-brslt -1
-brslt 0
-brslt 1
-brslt 126
-brslt 127
-bruge -128
-bruge -1
-bruge 0
-bruge 1
-bruge 127
-brsge -128
-brsge -1
-brsge 0
-brsge 1
-brsge 127
-BRUGE 0
-BRSGE 0
+breq8 -128
+breq8 -127
+breq8 -1
+breq8 0
+breq8 1
+breq8 126
+breq8 127
+brne8 -128
+brne8 -127
+brne8 -1
+brne8 0
+brne8 1
+brne8 126
+brne8 127
+brult8 -128
+brult8 -127
+brult8 -1
+brult8 0
+brult8 1
+brult8 126
+brult8 127
+brslt8 -128
+brslt8 -127
+brslt8 -1
+brslt8 0
+brslt8 1
+brslt8 126
+brslt8 127
+bruge8 -128
+bruge8 -1
+bruge8 0
+bruge8 1
+bruge8 127
+brsge8 -128
+brsge8 -1
+brsge8 0
+brsge8 1
+brsge8 127
+bruge8 0
+brsge8 0
 jmp8 -128
 jmp8 -127
 jmp8 -1
@@ -66,46 +66,46 @@ sys 1
 sys 2
 sys 3
 
-# CHECK: breq{{.*}}[0xd0,0x80]
-# CHECK: breq{{.*}}[0xd0,0x81]
-# CHECK: breq{{.*}}[0xd0,0xff]
-# CHECK: breq{{.*}}[0xd0,0x00]
-# CHECK: breq{{.*}}[0xd0,0x01]
-# CHECK: breq{{.*}}[0xd0,0x7e]
-# CHECK: breq{{.*}}[0xd0,0x7f]
-# CHECK: brne{{.*}}[0xd1,0x80]
-# CHECK: brne{{.*}}[0xd1,0x81]
-# CHECK: brne{{.*}}[0xd1,0xff]
-# CHECK: brne{{.*}}[0xd1,0x00]
-# CHECK: brne{{.*}}[0xd1,0x01]
-# CHECK: brne{{.*}}[0xd1,0x7e]
-# CHECK: brne{{.*}}[0xd1,0x7f]
-# CHECK: brult{{.*}}[0xd2,0x80]
-# CHECK: brult{{.*}}[0xd2,0x81]
-# CHECK: brult{{.*}}[0xd2,0xff]
-# CHECK: brult{{.*}}[0xd2,0x00]
-# CHECK: brult{{.*}}[0xd2,0x01]
-# CHECK: brult{{.*}}[0xd2,0x7e]
-# CHECK: brult{{.*}}[0xd2,0x7f]
-# CHECK: brslt{{.*}}[0xd3,0x80]
-# CHECK: brslt{{.*}}[0xd3,0x81]
-# CHECK: brslt{{.*}}[0xd3,0xff]
-# CHECK: brslt{{.*}}[0xd3,0x00]
-# CHECK: brslt{{.*}}[0xd3,0x01]
-# CHECK: brslt{{.*}}[0xd3,0x7e]
-# CHECK: brslt{{.*}}[0xd3,0x7f]
-# CHECK: bruge{{.*}}[0xd8,0x80]
-# CHECK: bruge{{.*}}[0xd8,0xff]
-# CHECK: bruge{{.*}}[0xd8,0x00]
-# CHECK: bruge{{.*}}[0xd8,0x01]
-# CHECK: bruge{{.*}}[0xd8,0x7f]
-# CHECK: brsge{{.*}}[0xd9,0x80]
-# CHECK: brsge{{.*}}[0xd9,0xff]
-# CHECK: brsge{{.*}}[0xd9,0x00]
-# CHECK: brsge{{.*}}[0xd9,0x01]
-# CHECK: brsge{{.*}}[0xd9,0x7f]
-# CHECK: bruge{{.*}}[0xd8,0x00]
-# CHECK: brsge{{.*}}[0xd9,0x00]
+# CHECK: breq8{{.*}}[0xd0,0x80]
+# CHECK: breq8{{.*}}[0xd0,0x81]
+# CHECK: breq8{{.*}}[0xd0,0xff]
+# CHECK: breq8{{.*}}[0xd0,0x00]
+# CHECK: breq8{{.*}}[0xd0,0x01]
+# CHECK: breq8{{.*}}[0xd0,0x7e]
+# CHECK: breq8{{.*}}[0xd0,0x7f]
+# CHECK: brne8{{.*}}[0xd1,0x80]
+# CHECK: brne8{{.*}}[0xd1,0x81]
+# CHECK: brne8{{.*}}[0xd1,0xff]
+# CHECK: brne8{{.*}}[0xd1,0x00]
+# CHECK: brne8{{.*}}[0xd1,0x01]
+# CHECK: brne8{{.*}}[0xd1,0x7e]
+# CHECK: brne8{{.*}}[0xd1,0x7f]
+# CHECK: brult8{{.*}}[0xd2,0x80]
+# CHECK: brult8{{.*}}[0xd2,0x81]
+# CHECK: brult8{{.*}}[0xd2,0xff]
+# CHECK: brult8{{.*}}[0xd2,0x00]
+# CHECK: brult8{{.*}}[0xd2,0x01]
+# CHECK: brult8{{.*}}[0xd2,0x7e]
+# CHECK: brult8{{.*}}[0xd2,0x7f]
+# CHECK: brslt8{{.*}}[0xd3,0x80]
+# CHECK: brslt8{{.*}}[0xd3,0x81]
+# CHECK: brslt8{{.*}}[0xd3,0xff]
+# CHECK: brslt8{{.*}}[0xd3,0x00]
+# CHECK: brslt8{{.*}}[0xd3,0x01]
+# CHECK: brslt8{{.*}}[0xd3,0x7e]
+# CHECK: brslt8{{.*}}[0xd3,0x7f]
+# CHECK: bruge8{{.*}}[0xd8,0x80]
+# CHECK: bruge8{{.*}}[0xd8,0xff]
+# CHECK: bruge8{{.*}}[0xd8,0x00]
+# CHECK: bruge8{{.*}}[0xd8,0x01]
+# CHECK: bruge8{{.*}}[0xd8,0x7f]
+# CHECK: brsge8{{.*}}[0xd9,0x80]
+# CHECK: brsge8{{.*}}[0xd9,0xff]
+# CHECK: brsge8{{.*}}[0xd9,0x00]
+# CHECK: brsge8{{.*}}[0xd9,0x01]
+# CHECK: brsge8{{.*}}[0xd9,0x7f]
+# CHECK: bruge8{{.*}}[0xd8,0x00]
+# CHECK: brsge8{{.*}}[0xd9,0x00]
 # CHECK: jmp8{{.*}}[0xd4,0x80]
 # CHECK: jmp8{{.*}}[0xd4,0x81]
 # CHECK: jmp8{{.*}}[0xd4,0xff]

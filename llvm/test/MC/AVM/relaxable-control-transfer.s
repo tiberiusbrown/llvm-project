@@ -5,21 +5,21 @@
 
 jmp target_jmp
 call target_call
-br.eq target_eq
-br.ne target_ne
-br.ult target_ult
-br.uge target_uge
-br.slt target_slt
-br.sge target_sge
+breq target_eq
+brne target_ne
+brult target_ult
+bruge target_uge
+brslt target_slt
+brsge target_sge
 
 # ENC: jmp target_jmp{{.*}}encoding: [0xe2,B,B,B]
 # ENC: call target_call{{.*}}encoding: [0xe3,B,B,B]
-# ENC: br.eq target_eq{{.*}}encoding: [0xd1,0x04,0xe2,B,B,B]
-# ENC: br.ne target_ne{{.*}}encoding: [0xd0,0x04,0xe2,B,B,B]
-# ENC: br.ult target_ult{{.*}}encoding: [0xd8,0x04,0xe2,B,B,B]
-# ENC: br.uge target_uge{{.*}}encoding: [0xd2,0x04,0xe2,B,B,B]
-# ENC: br.slt target_slt{{.*}}encoding: [0xd9,0x04,0xe2,B,B,B]
-# ENC: br.sge target_sge{{.*}}encoding: [0xd3,0x04,0xe2,B,B,B]
+# ENC: breq target_eq{{.*}}encoding: [0xd1,0x04,0xe2,B,B,B]
+# ENC: brne target_ne{{.*}}encoding: [0xd0,0x04,0xe2,B,B,B]
+# ENC: brult target_ult{{.*}}encoding: [0xd8,0x04,0xe2,B,B,B]
+# ENC: bruge target_uge{{.*}}encoding: [0xd2,0x04,0xe2,B,B,B]
+# ENC: brslt target_slt{{.*}}encoding: [0xd9,0x04,0xe2,B,B,B]
+# ENC: brsge target_sge{{.*}}encoding: [0xd3,0x04,0xe2,B,B,B]
 
 # BYTES: 0000 e2000000 e3000000 d104e200 0000d004
 # BYTES: 0010 e2000000 d804e200 0000d204 e2000000

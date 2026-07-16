@@ -62,14 +62,14 @@
 # CFARMIN: 10000 e3028000
 # CFARMAX: 10000 e3038001
 # COND8: 10000 d07fd17d d27bd879 d377d975
-# COND16N: 10000 d103e07c ffd003e0 77ffd803 e072ffd2
-# COND16N-NEXT: 10010 03e06dff d903e068 ffd303e0 63ff
-# COND16P: 10000 d103e07d 00d17bd2 79d877d3 75d973
-# CONDFARMIN: 10000 d104e204 8000d004 e2048000 d804e204
-# CONDFARMIN-NEXT: 10010 8000d204 e2048000 d904e204 8000d304
-# CONDFARMIN-NEXT: 10020 e2048000
-# CONDFARMAX: 10000 d104e205 8001d003 e0fa7fd8 03e0f57f
-# CONDFARMAX-NEXT: 10010 d203e0f0 7fd903e0 eb7fd303 e0e67f
+# COND16N: 10000 da7effdb 7bffdc78 ffdd75ff de72ffdf
+# COND16N-NEXT: 10010 6fff
+# COND16P: 10000 da7f00d1 7dd27bd8 79d377d9 75
+# CONDFARMIN: 10000 da0180d0 04e20480 00d804e2 048000d2
+# CONDFARMIN-NEXT: 10010 04e20480 00d904e2 048000d3 04e20480
+# CONDFARMIN-NEXT: 10020 00
+# CONDFARMAX: 10000 d104e205 8001dbfc 7fdcf97f ddf67fde
+# CONDFARMAX-NEXT: 10010 f37fdff0 7f
 
 #--- jump.s
 .text
@@ -81,9 +81,9 @@ call target
 
 #--- cond.s
 .text
-br.eq target
-br.ne target
-br.ult target
-br.uge target
-br.slt target
-br.sge target
+breq target
+brne target
+brult target
+bruge target
+brslt target
+brsge target

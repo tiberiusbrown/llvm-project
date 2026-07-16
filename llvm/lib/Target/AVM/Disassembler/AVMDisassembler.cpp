@@ -714,14 +714,14 @@ public:
       if (Bytes.size() < 2)
         return Fail;
       switch (Bytes[0]) {
-      case 0xd0: MI.setOpcode(AVM::BREQ); break;
-      case 0xd1: MI.setOpcode(AVM::BRNE); break;
-      case 0xd2: MI.setOpcode(AVM::BRULT); break;
-      case 0xd3: MI.setOpcode(AVM::BRSLT); break;
+      case 0xd0: MI.setOpcode(AVM::BREQ8); break;
+      case 0xd1: MI.setOpcode(AVM::BRNE8); break;
+      case 0xd2: MI.setOpcode(AVM::BRULT8); break;
+      case 0xd3: MI.setOpcode(AVM::BRSLT8); break;
       case 0xd4: MI.setOpcode(AVM::JMP8); break;
       case 0xd5: MI.setOpcode(AVM::CALL8); break;
-      case 0xd8: MI.setOpcode(AVM::BRUGE); break;
-      case 0xd9: MI.setOpcode(AVM::BRSGE); break;
+      case 0xd8: MI.setOpcode(AVM::BRUGE8); break;
+      case 0xd9: MI.setOpcode(AVM::BRSGE8); break;
       case 0xd6: MI.setOpcode(AVM::ADJSP); break;
       default:
         if (Bytes[1] > 3) {
@@ -740,8 +740,21 @@ public:
     }
 
     if (Bytes[0] >= 0xda && Bytes[0] <= 0xdf) {
-      Size = 1;
-      return Fail;
+      if (Bytes.size() < 3)
+        return Fail;
+      switch (Bytes[0]) {
+      case 0xda: MI.setOpcode(AVM::BREQ16); break;
+      case 0xdb: MI.setOpcode(AVM::BRNE16); break;
+      case 0xdc: MI.setOpcode(AVM::BRULT16); break;
+      case 0xdd: MI.setOpcode(AVM::BRUGE16); break;
+      case 0xde: MI.setOpcode(AVM::BRSLT16); break;
+      case 0xdf: MI.setOpcode(AVM::BRSGE16); break;
+      }
+      MI.addOperand(MCOperand::createImm(
+          int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
+          ((Bytes[2] & 0x80) ? 65536 : 0)));
+      Size = 3;
+      return Success;
     }
 
     if (Bytes[0] == 0xe0 || Bytes[0] == 0xe1) {

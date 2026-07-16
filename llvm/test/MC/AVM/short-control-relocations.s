@@ -1,12 +1,12 @@
 # RUN: llvm-mc -triple=avm -filetype=obj %s -o %t.o
 # RUN: llvm-readobj --relocations %t.o | FileCheck %s
 
-breq symbol
-brne symbol + 1
-brult symbol - 1
-brslt symbol
-bruge symbol + 1
-brsge symbol - 1
+breq8 symbol
+brne8 symbol + 1
+brult8 symbol - 1
+brslt8 symbol
+bruge8 symbol + 1
+brsge8 symbol - 1
 jmp8 symbol + 1
 call8 symbol
 

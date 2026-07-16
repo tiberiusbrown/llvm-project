@@ -4,8 +4,8 @@
 
 # All 512 valid D8/D9 byte pairs decode once, consume two bytes, and reassemble
 # to the byte-identical .text section below.
-# DIS-COUNT-256: bruge
-# DIS-COUNT-256: brsge
+# DIS-COUNT-256: bruge8
+# DIS-COUNT-256: brsge8
 
 # ROUNDTRIP: Contents of section .text:
 # ROUNDTRIP: 0000 d800d801 d802d803 d804d805 d806d807

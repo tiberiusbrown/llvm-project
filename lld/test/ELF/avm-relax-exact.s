@@ -18,12 +18,12 @@ jmpf target
 callf target
 jmp16 target
 call16 target
-breq target
-brne target
-brult target
-bruge target
-brslt target
-brsge target
+breq8 target
+brne8 target
+brult8 target
+bruge8 target
+brslt8 target
+brsge8 target
 jmp8 target
 call8 target
 
@@ -31,7 +31,7 @@ call8 target
 .text
 jmp8 target
 call8 target
-breq target
+breq8 target
 
 #--- long-overflow.s
 .text

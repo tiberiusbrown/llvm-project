@@ -297,6 +297,11 @@ class AVMConditionalRel8ControlInst<string Asm>
   let isBranch = 1;
   let isTerminator = 1;
 }
+class AVMConditionalRel16ControlInst<string Asm>
+    : AVMRel16ControlInst<Asm> {
+  let isBranch = 1;
+  let isTerminator = 1;
+}
 class AVMRelaxableTransferPseudo<string Asm, int Bytes>
     : AVMInst<Asm, Bytes, (ins AVMImm24:$target)> {
   let isPseudo = 1;
@@ -453,12 +458,18 @@ def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
 def GPST8_POST : AVMGeneralPointerStoreInst<"st8 [$addr+], $src">;
 def GPST16_POST : AVMGeneralPointerStoreInst<"st16 [$addr+], $src">;
 
-def BREQ : AVMConditionalRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
-def BRNE : AVMConditionalRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
-def BRULT : AVMConditionalRel8ControlInst<"brult $rel"> { let Uses = [CC]; }
-def BRSLT : AVMConditionalRel8ControlInst<"brslt $rel"> { let Uses = [CC]; }
-def BRUGE : AVMConditionalRel8ControlInst<"bruge $rel"> { let Uses = [CC]; }
-def BRSGE : AVMConditionalRel8ControlInst<"brsge $rel"> { let Uses = [CC]; }
+def BREQ8 : AVMConditionalRel8ControlInst<"breq8 $rel"> { let Uses = [CC]; }
+def BRNE8 : AVMConditionalRel8ControlInst<"brne8 $rel"> { let Uses = [CC]; }
+def BRULT8 : AVMConditionalRel8ControlInst<"brult8 $rel"> { let Uses = [CC]; }
+def BRSLT8 : AVMConditionalRel8ControlInst<"brslt8 $rel"> { let Uses = [CC]; }
+def BRUGE8 : AVMConditionalRel8ControlInst<"bruge8 $rel"> { let Uses = [CC]; }
+def BRSGE8 : AVMConditionalRel8ControlInst<"brsge8 $rel"> { let Uses = [CC]; }
+def BREQ16 : AVMConditionalRel16ControlInst<"breq16 $rel"> { let Uses = [CC]; }
+def BRNE16 : AVMConditionalRel16ControlInst<"brne16 $rel"> { let Uses = [CC]; }
+def BRULT16 : AVMConditionalRel16ControlInst<"brult16 $rel"> { let Uses = [CC]; }
+def BRUGE16 : AVMConditionalRel16ControlInst<"bruge16 $rel"> { let Uses = [CC]; }
+def BRSLT16 : AVMConditionalRel16ControlInst<"brslt16 $rel"> { let Uses = [CC]; }
+def BRSGE16 : AVMConditionalRel16ControlInst<"brsge16 $rel"> { let Uses = [CC]; }
 def JMP8 : AVMRel8ControlInst<"jmp8 $rel"> {
   let isBranch = 1;
   let isTerminator = 1;
@@ -505,32 +516,32 @@ def RELAX_JMP : AVMRelaxableTransferPseudo<"jmp $target", 4> {
   let isBarrier = 1;
 }
 def RELAX_CALL : AVMRelaxableTransferPseudo<"call $target", 4> { let isCall = 1; }
-def RELAX_BR_EQ : AVMRelaxableTransferPseudo<"br.eq $target", 6> {
+def RELAX_BR_EQ : AVMRelaxableTransferPseudo<"breq $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;
 }
-def RELAX_BR_NE : AVMRelaxableTransferPseudo<"br.ne $target", 6> {
+def RELAX_BR_NE : AVMRelaxableTransferPseudo<"brne $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;
 }
-def RELAX_BR_ULT : AVMRelaxableTransferPseudo<"br.ult $target", 6> {
+def RELAX_BR_ULT : AVMRelaxableTransferPseudo<"brult $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;
 }
-def RELAX_BR_UGE : AVMRelaxableTransferPseudo<"br.uge $target", 6> {
+def RELAX_BR_UGE : AVMRelaxableTransferPseudo<"bruge $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;
 }
-def RELAX_BR_SLT : AVMRelaxableTransferPseudo<"br.slt $target", 6> {
+def RELAX_BR_SLT : AVMRelaxableTransferPseudo<"brslt $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;
 }
-def RELAX_BR_SGE : AVMRelaxableTransferPseudo<"br.sge $target", 6> {
+def RELAX_BR_SGE : AVMRelaxableTransferPseudo<"brsge $target", 6> {
   let Uses = [CC];
   let isBranch = 1;
   let isTerminator = 1;

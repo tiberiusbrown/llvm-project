@@ -2,13 +2,13 @@
 # RUN: llvm-objdump -d --triple=avm %t.o | FileCheck %s
 
 .text
-breq forward
+breq8 forward
 .byte 0
 forward:
 jmp8 backward
 .byte 0
 backward:
-brne forward
+brne8 forward
 
 # CHECK: d0 01
 # CHECK: d4 01

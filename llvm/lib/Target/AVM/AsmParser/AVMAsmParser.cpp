@@ -1530,17 +1530,17 @@ public:
       return parseRelaxableTransfer(AVM::RELAX_JMP, Name, NameLoc, Operands);
     if (Lower == "call")
       return parseRelaxableTransfer(AVM::RELAX_CALL, Name, NameLoc, Operands);
-    if (Lower == "br.eq")
+    if (Lower == "breq")
       return parseRelaxableTransfer(AVM::RELAX_BR_EQ, Name, NameLoc, Operands);
-    if (Lower == "br.ne")
+    if (Lower == "brne")
       return parseRelaxableTransfer(AVM::RELAX_BR_NE, Name, NameLoc, Operands);
-    if (Lower == "br.ult")
+    if (Lower == "brult")
       return parseRelaxableTransfer(AVM::RELAX_BR_ULT, Name, NameLoc, Operands);
-    if (Lower == "br.uge")
+    if (Lower == "bruge")
       return parseRelaxableTransfer(AVM::RELAX_BR_UGE, Name, NameLoc, Operands);
-    if (Lower == "br.slt")
+    if (Lower == "brslt")
       return parseRelaxableTransfer(AVM::RELAX_BR_SLT, Name, NameLoc, Operands);
-    if (Lower == "br.sge")
+    if (Lower == "brsge")
       return parseRelaxableTransfer(AVM::RELAX_BR_SGE, Name, NameLoc, Operands);
     if (Lower == "jmp16")
       return parseRel16Control(AVM::JMP16, Name, NameLoc, Operands);
@@ -1552,12 +1552,18 @@ public:
       return parseProgramPairTransfer(AVM::CALLP, Name, NameLoc, Operands);
     if (Lower == "ret")
       return parseOperandless(AVM::RET, Name, NameLoc, Operands);
-    if (Lower == "breq") return parseRel8Control(AVM::BREQ, true, Name, NameLoc, Operands);
-    if (Lower == "brne") return parseRel8Control(AVM::BRNE, true, Name, NameLoc, Operands);
-    if (Lower == "brult") return parseRel8Control(AVM::BRULT, true, Name, NameLoc, Operands);
-    if (Lower == "brslt") return parseRel8Control(AVM::BRSLT, true, Name, NameLoc, Operands);
-    if (Lower == "bruge") return parseRel8Control(AVM::BRUGE, true, Name, NameLoc, Operands);
-    if (Lower == "brsge") return parseRel8Control(AVM::BRSGE, true, Name, NameLoc, Operands);
+    if (Lower == "breq8") return parseRel8Control(AVM::BREQ8, true, Name, NameLoc, Operands);
+    if (Lower == "brne8") return parseRel8Control(AVM::BRNE8, true, Name, NameLoc, Operands);
+    if (Lower == "brult8") return parseRel8Control(AVM::BRULT8, true, Name, NameLoc, Operands);
+    if (Lower == "brslt8") return parseRel8Control(AVM::BRSLT8, true, Name, NameLoc, Operands);
+    if (Lower == "bruge8") return parseRel8Control(AVM::BRUGE8, true, Name, NameLoc, Operands);
+    if (Lower == "brsge8") return parseRel8Control(AVM::BRSGE8, true, Name, NameLoc, Operands);
+    if (Lower == "breq16") return parseRel16Control(AVM::BREQ16, Name, NameLoc, Operands);
+    if (Lower == "brne16") return parseRel16Control(AVM::BRNE16, Name, NameLoc, Operands);
+    if (Lower == "brult16") return parseRel16Control(AVM::BRULT16, Name, NameLoc, Operands);
+    if (Lower == "bruge16") return parseRel16Control(AVM::BRUGE16, Name, NameLoc, Operands);
+    if (Lower == "brslt16") return parseRel16Control(AVM::BRSLT16, Name, NameLoc, Operands);
+    if (Lower == "brsge16") return parseRel16Control(AVM::BRSGE16, Name, NameLoc, Operands);
     if (Lower == "jmp8") return parseRel8Control(AVM::JMP8, true, Name, NameLoc, Operands);
     if (Lower == "call8") return parseRel8Control(AVM::CALL8, true, Name, NameLoc, Operands);
     if (Lower == "adjsp") return parseSignedImmediate(AVM::ADJSP, Name, NameLoc, Operands);

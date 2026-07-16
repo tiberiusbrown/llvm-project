@@ -122,9 +122,9 @@ jmp16 too_far16
 .text
 jmp relax_target
 call relax_target
-br.eq relax_target
-br.ne relax_target
-br.ult relax_target
-br.uge relax_target
-br.slt relax_target
-br.sge relax_target
+breq relax_target
+brne relax_target
+brult relax_target
+bruge relax_target
+brslt relax_target
+brsge relax_target

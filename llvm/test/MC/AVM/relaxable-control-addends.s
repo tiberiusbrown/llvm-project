@@ -3,12 +3,12 @@
 
 jmp target+1
 call target-2
-br.eq target+3
-br.ne target-4
-br.ult target+5
-br.uge target-6
-br.slt target+7
-br.sge target-8
+breq target+3
+brne target-4
+brult target+5
+bruge target-6
+brslt target+7
+brsge target-8
 
 # CHECK: 0x0 R_AVM_RELAX - 0x0
 # CHECK: 0x1 R_AVM_FAR24 target 0x1
