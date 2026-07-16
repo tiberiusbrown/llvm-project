@@ -35,7 +35,7 @@
 # HDR: Name: .text
 # HDR: Name: .data
 # DATA: Contents of section .text:
-# DATA: 123450 05010001 693412c4 6434c012 e2643412
+# DATA: 123450 05010001 693412c4 6434c112 e2643412
 # DATA: 123460 e36b3412 00
 # DATA: Contents of section .data:
 # DATA: 0100 020100

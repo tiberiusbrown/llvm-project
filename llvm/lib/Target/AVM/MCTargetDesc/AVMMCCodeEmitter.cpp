@@ -67,17 +67,42 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     return AVM::fixup_avm_data16;
   }
 
-  void emitLoadableImmediate(const MCInst &MI, SmallVectorImpl<char> &Out,
-                             SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
-                             unsigned Bits, bool Cold) const {
-    const MCOperand &Operand = MI.getOperand(1);
-    if (!Operand.isExpr()) return error(MI, "expected loadable immediate expression");
-    if (Cold) { emit8(Out, 0xf0); emit8(Out, Family); }
-    else emit8(Out, Family);
+  void emitLoadableImmediate(const MCInst &MI,
+                             SmallVectorImpl<char> &Out,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             unsigned Family,
+                             unsigned Bits,
+                             bool Cold) const {
+    if (MI.getNumOperands() != 2 ||
+        !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isExpr()) {
+      return error(MI, "expected register and loadable expression");
+    }
+
+    const auto Reg =
+        Cold ? coldRegIndex(MI.getOperand(0).getReg())
+             : compactRegIndex(MI.getOperand(0).getReg());
+
+    if (!Reg)
+      return error(MI, Cold ? "expected register r0-r3"
+                            : "expected compact register c0-c3");
+
+    if (Cold) {
+      emit8(Out, 0xf0);
+      emit8(Out, Family | *Reg);
+    } else {
+      emit8(Out, Family | *Reg);
+    }
+
     const unsigned Offset = Cold ? 2 : 1;
-    Fixups.push_back(MCFixup::create(Offset, Operand.getExpr(),
-                                     getImmediateFixup(Operand.getExpr(), Bits)));
-    if (Bits == 16) emit16(Out, 0); else emit8(Out, 0);
+    Fixups.push_back(MCFixup::create(
+        Offset, MI.getOperand(1).getExpr(),
+        getImmediateFixup(MI.getOperand(1).getExpr(), Bits)));
+
+    if (Bits == 16)
+      emit16(Out, 0);
+    else
+      emit8(Out, 0);
   }
 
   void emitProgPtr(const MCInst &MI, SmallVectorImpl<char> &Out,

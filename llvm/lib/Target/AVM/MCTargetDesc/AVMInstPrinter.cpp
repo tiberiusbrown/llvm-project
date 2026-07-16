@@ -379,7 +379,8 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::CMPIS8:
     OS << '\t';
     printCompactReg(MI->getOperand(0).getReg(), OS);
-    OS << ", " << formatImm(MI->getOperand(1).getImm());
+    OS << ", ";
+    printOperand(MI->getOperand(1), OS);
     break;
   case AVM::COLDLDI8:
   case AVM::COLDLDI16:
@@ -388,7 +389,8 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LEASP:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
-    OS << ", " << formatImm(MI->getOperand(1).getImm());
+    OS << ", ";
+    printOperand(MI->getOperand(1), OS);
     break;
   case AVM::LDSP8U:
   case AVM::LDSP8S:
