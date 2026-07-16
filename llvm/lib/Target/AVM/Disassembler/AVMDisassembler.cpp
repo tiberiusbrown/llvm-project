@@ -561,6 +561,32 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xfe) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x40) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned D = Secondary >> 3;
+      const unsigned S = Secondary & 7;
+      MI.setOpcode(AVM::MUL16);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + D)));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + S)));
+      Size = 2;
+      return Success;
+    }
+
+    if (Bytes[0] == 0xff) {
+      Size = 1;
+      return Fail;
+    }
+
     if (Bytes[0] == 0xf3) {
       if (Bytes.size() < 2) {
         Size = 1;

@@ -212,6 +212,23 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, (*D << 5) | (*S << 2) | Operation);
   }
 
+  void emitFullMultiply16(const MCInst &MI,
+                          SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two full register operands");
+      return;
+    }
+    const auto D = stackRegIndex(MI.getOperand(0).getReg());
+    const auto S = stackRegIndex(MI.getOperand(1).getReg());
+    if (!D || !S) {
+      error(MI, "expected full registers r0-r7");
+      return;
+    }
+    emit8(Out, 0xfe);
+    emit8(Out, (*D << 3) | *S);
+  }
+
   void emitFullCompare(const MCInst &MI, SmallVectorImpl<char> &Out) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
         !MI.getOperand(1).isReg()) {
@@ -808,6 +825,7 @@ public:
     case AVM::AND_RR: emitFullBitwise(MI, Out, 0); return;
     case AVM::OR_RR: emitFullBitwise(MI, Out, 1); return;
     case AVM::XOR_RR: emitFullBitwise(MI, Out, 2); return;
+    case AVM::MUL16: emitFullMultiply16(MI, Out); return;
     case AVM::ZEXT8: emitF1FullReg(MI, Out, 0x70); return;
     case AVM::SWAP8: emitF1FullReg(MI, Out, 0x78); return;
     case AVM::GETSP: emitF1FullReg(MI, Out, 0x80); return;

@@ -747,6 +747,20 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFullMultiply16(StringRef Name, SMLoc NameLoc,
+                           OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(AVM::MUL16);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseFullBitwise(unsigned FullOpcode, unsigned CompactOpcode,
                         StringRef Name, SMLoc NameLoc,
                         OperandVector &Operands) {
@@ -1151,6 +1165,8 @@ public:
       return parseF4FullReg(AVM::TST16, Name, NameLoc, Operands);
     if (Lower == "mul8")
       return parseCompactPair(AVM::MUL8, Name, NameLoc, Operands);
+    if (Lower == "mul16")
+      return parseFullMultiply16(Name, NameLoc, Operands);
     if (Lower == "sext8")
       return parseF4FullReg(AVM::SEXT8, Name, NameLoc, Operands);
     if (Lower == "neg16")
