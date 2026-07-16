@@ -1,0 +1,21 @@
+# RUN: yaml2obj %s -o %t.o
+# RUN: not ld.lld %t.o -o %t.out 2>&1 | FileCheck %s
+
+# CHECK: AVM does not support allocated NOBITS or .bss storage
+# CHECK: AVM does not support allocated NOBITS or .bss storage
+
+--- !ELF
+FileHeader:
+  Class: ELFCLASS32
+  Data: ELFDATA2LSB
+  Type: ET_REL
+  Machine: EM_AVM
+Sections:
+  - Name: .bss
+    Type: SHT_PROGBITS
+    ShFlags: 0x20000003
+    Content: '00000000'
+  - Name: .zerodata
+    Type: SHT_NOBITS
+    ShFlags: 0x20000003
+    Size: 4

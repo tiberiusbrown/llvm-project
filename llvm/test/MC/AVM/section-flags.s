@@ -12,7 +12,7 @@ text_symbol:
 .data
 .byte 0
 
-.bss
+.saved
 .zero 1
 
 .section .init_array,"a",@init_array
@@ -38,7 +38,7 @@ text_symbol:
 # CHECK:   SHF_AVM_DATASPACE
 # CHECK:   SHF_WRITE
 # CHECK-NOT: SHF_GNU_RETAIN
-# CHECK: Name: .bss
+# CHECK: Name: .saved
 # CHECK: Flags [ (0x20000003)
 # CHECK:   SHF_ALLOC
 # CHECK:   SHF_AVM_DATASPACE

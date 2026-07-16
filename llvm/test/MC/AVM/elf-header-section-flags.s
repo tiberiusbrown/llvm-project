@@ -16,7 +16,7 @@ data_object:
   .short 2
   .progptr function
 
-.bss
+.saved
   .zero 3
 
 .section .init_array,"a",@init_array
@@ -62,8 +62,8 @@ data_object:
 # CHECK: Type: SHT_RELA
 # CHECK: Flags [ (0x40)
 
-# CHECK: Name: .bss
-# CHECK: Type: SHT_NOBITS
+# CHECK: Name: .saved
+# CHECK: Type: SHT_PROGBITS
 # CHECK: Flags [ (0x20000003)
 # CHECK: SHF_ALLOC
 # CHECK: SHF_WRITE

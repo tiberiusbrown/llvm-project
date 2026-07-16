@@ -7,7 +7,7 @@
   .byte 1
 .section .data
   .byte 2
-.section .bss
+.section .saved
   .zero 3
 
 # CHECK: Name: .text
@@ -16,5 +16,5 @@
 # CHECK: Flags [ (0x10000002)
 # CHECK: Name: .data
 # CHECK: Flags [ (0x20000003)
-# CHECK: Name: .bss
+# CHECK: Name: .saved
 # CHECK: Flags [ (0x20000003)

@@ -402,9 +402,16 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
   const unsigned AVMProgSpace = IsAVM ? ELF::SHF_AVM_PROGSPACE : 0;
   const unsigned AVMDataSpace = IsAVM ? ELF::SHF_AVM_DATASPACE : 0;
 
-  BSSSection = Ctx->getELFSection(".bss", ELF::SHT_NOBITS,
-                                  ELF::SHF_WRITE | ELF::SHF_ALLOC |
-                                      AVMDataSpace);
+  // AVM has no runtime .bss. Its static storage is explicitly initialized in
+  // the writable .saved and .data PROGBITS sections.
+  if (IsAVM) {
+    Ctx->getELFSection(".saved", ELF::SHT_PROGBITS,
+                       ELF::SHF_WRITE | ELF::SHF_ALLOC | AVMDataSpace);
+    BSSSection = nullptr;
+  } else {
+    BSSSection = Ctx->getELFSection(".bss", ELF::SHT_NOBITS,
+                                    ELF::SHF_WRITE | ELF::SHF_ALLOC);
+  }
 
   TextSection = Ctx->getELFSection(".text", ELF::SHT_PROGBITS,
                                    ELF::SHF_EXECINSTR | ELF::SHF_ALLOC |

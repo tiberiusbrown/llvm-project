@@ -50,6 +50,7 @@ public:
     this->MCAsmParserExtension::Initialize(Parser);
 
     addDirectiveHandler<&ELFAsmParser::parseSectionDirectiveData>(".data");
+    addDirectiveHandler<&ELFAsmParser::parseSectionDirectiveSaved>(".saved");
     addDirectiveHandler<&ELFAsmParser::parseSectionDirectiveText>(".text");
     addDirectiveHandler<&ELFAsmParser::parseSectionDirectiveBSS>(".bss");
     addDirectiveHandler<&ELFAsmParser::parseSectionDirectiveRoData>(".rodata");
@@ -85,12 +86,25 @@ public:
                               ELF::SHF_WRITE | ELF::SHF_ALLOC,
                               SectionKind::getData());
   }
+  bool parseSectionDirectiveSaved(StringRef, SMLoc) {
+    if (getContext().getTargetTriple().getArch() == Triple::avm)
+      return parseSectionSwitch(".saved", ELF::SHT_PROGBITS,
+                                ELF::SHF_WRITE | ELF::SHF_ALLOC |
+                                    ELF::SHF_AVM_DATASPACE,
+                                SectionKind::getData());
+    return parseSectionSwitch(".saved", ELF::SHT_PROGBITS,
+                              ELF::SHF_WRITE | ELF::SHF_ALLOC,
+                              SectionKind::getData());
+  }
   bool parseSectionDirectiveText(StringRef, SMLoc) {
     return parseSectionSwitch(".text", ELF::SHT_PROGBITS,
                               ELF::SHF_EXECINSTR |
                               ELF::SHF_ALLOC, SectionKind::getText());
   }
   bool parseSectionDirectiveBSS(StringRef, SMLoc) {
+    if (getContext().getTargetTriple().getArch() == Triple::avm)
+      return TokError("AVM does not support allocated NOBITS or .bss storage; "
+                      "emit explicit zero bytes in .saved or .data");
     return parseSectionSwitch(".bss", ELF::SHT_NOBITS,
                               ELF::SHF_WRITE |
                               ELF::SHF_ALLOC, SectionKind::getBSS());
@@ -514,7 +528,8 @@ bool ELFAsmParser::parseSectionArguments(bool IsPush, SMLoc loc) {
   else if (SectionName == ".fini" || SectionName == ".init" ||
            hasPrefix(SectionName, ".text"))
     Flags |= ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
-  else if (hasPrefix(SectionName, ".data") || SectionName == ".data1" ||
+  else if (hasPrefix(SectionName, ".data") ||
+           hasPrefix(SectionName, ".saved") || SectionName == ".data1" ||
            hasPrefix(SectionName, ".bss") ||
            hasPrefix(SectionName, ".init_array") ||
            hasPrefix(SectionName, ".fini_array") ||
@@ -650,9 +665,14 @@ EndStmt:
       Flags = (Flags & ~AVMSpaceFlags) | ELF::SHF_AVM_PROGSPACE;
       if (SectionName == ".init_array" || SectionName == ".fini_array")
         Flags &= ~ELF::SHF_WRITE;
-    } else if (SectionName == ".data" || SectionName == ".bss") {
+    } else if (hasPrefix(SectionName, ".data") ||
+               hasPrefix(SectionName, ".saved")) {
       Flags = (Flags & ~AVMSpaceFlags) | ELF::SHF_AVM_DATASPACE;
     }
+    if (hasPrefix(SectionName, ".bss") ||
+        (Type == ELF::SHT_NOBITS && (Flags & ELF::SHF_ALLOC)))
+      return Error(loc, "AVM does not support allocated NOBITS or .bss storage; "
+                        "emit explicit zero bytes in .saved or .data");
   }
 
   if (UseLastGroup) {

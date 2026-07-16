@@ -103,7 +103,7 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
     return ".text";
   }
 
-  for (StringRef v : {".data.rel.ro", ".data",       ".rodata",
+  for (StringRef v : {".data.rel.ro", ".saved",      ".data",       ".rodata",
                       ".bss.rel.ro",  ".bss",        ".ldata",
                       ".lrodata",     ".lbss",       ".gcc_except_table",
                       ".init_array",  ".fini_array", ".tbss",

@@ -827,6 +827,36 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats,
       this->sections[i] = &InputSection::discarded;
       continue;
     }
+    if (emachine == EM_AVM && (sec.sh_flags & SHF_ALLOC)) {
+      StringRef name = check(obj.getSectionName(sec, shstrtab));
+      const uint64_t space = sec.sh_flags &
+                             (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE);
+      if (type == SHT_NOBITS || name.starts_with(".bss"))
+        Err(ctx) << this << ": AVM does not support allocated NOBITS or .bss "
+                 << "storage; emit explicit zero bytes in .saved or .data";
+      if (space == (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE))
+        Err(ctx) << this << ": AVM allocated section " << name
+                 << " has both program-space and data-space flags";
+      if ((sec.sh_flags & SHF_AVM_PROGSPACE) && (sec.sh_flags & SHF_WRITE))
+        Err(ctx) << this << ": AVM program-space section " << name
+                 << " must not be writable";
+      if ((sec.sh_flags & SHF_AVM_DATASPACE) &&
+          (sec.sh_flags & SHF_EXECINSTR))
+        Err(ctx) << this << ": AVM data-space section " << name
+                 << " must not be executable";
+      if (sec.sh_flags & SHF_TLS)
+        Err(ctx) << this << ": TLS sections are unsupported for AVM";
+      if (name == ".saved" || name.starts_with(".saved.") ||
+          name == ".data" || name.starts_with(".data.")) {
+        const uint64_t required =
+            SHF_ALLOC | SHF_WRITE | SHF_AVM_DATASPACE;
+        if (type != SHT_PROGBITS || (sec.sh_flags & required) != required ||
+            (sec.sh_flags & SHF_AVM_PROGSPACE))
+          Err(ctx) << this << ": AVM static-data section " << name
+                   << " must be allocated writable data-space SHT_PROGBITS";
+      }
+    }
+
     switch (type) {
     case SHT_GROUP: {
       if (!ctx.arg.relocatable)

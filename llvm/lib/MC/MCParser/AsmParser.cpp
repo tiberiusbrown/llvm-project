@@ -4930,6 +4930,9 @@ bool AsmParser::parseDirectiveSymbolAttribute(MCSymbolAttr Attr) {
 /// parseDirectiveComm
 ///  ::= ( .comm | .lcomm ) identifier , size_expression [ , align_expression ]
 bool AsmParser::parseDirectiveComm(bool IsLocal) {
+  if (getContext().getTargetTriple().getArch() == Triple::avm)
+    return TokError("AVM does not support common or tentative storage; emit "
+                    "explicit zero bytes in .data");
   if (checkForValidSection())
     return true;
 
