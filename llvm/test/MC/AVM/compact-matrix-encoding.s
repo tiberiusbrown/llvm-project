@@ -178,7 +178,7 @@ xor c3, c1
 xor c3, c2
 xor c3, c3
 
-# CHECK: mov{{.*}}c0, c0{{.*}}encoding: [0x00]
+# CHECK: nop{{.*}}encoding: [0x00]
 # CHECK: mov{{.*}}c0, c1{{.*}}encoding: [0x01]
 # CHECK: mov{{.*}}c0, c2{{.*}}encoding: [0x02]
 # CHECK: mov{{.*}}c0, c3{{.*}}encoding: [0x03]

@@ -195,6 +195,14 @@ void AVMInstPrinter::printOperand(const MCOperand &Op, raw_ostream &OS) const {
 
 void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
                                const MCSubtargetInfo &, raw_ostream &OS) {
+  if (MI->getOpcode() == AVM::MOV && MI->getNumOperands() == 2 &&
+      MI->getOperand(0).isReg() && MI->getOperand(1).isReg() &&
+      MI->getOperand(0).getReg() == AVM::R4 &&
+      MI->getOperand(1).getReg() == AVM::R4) {
+    OS << "nop";
+    printAnnotation(OS, Annot);
+    return;
+  }
   OS << getMnemonic(*MI).first;
   switch (MI->getOpcode()) {
   case AVM::LD8U:

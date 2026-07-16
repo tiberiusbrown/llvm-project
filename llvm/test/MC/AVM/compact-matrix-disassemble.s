@@ -1,6 +1,6 @@
 # RUN: llvm-mc -triple=avm-unknown-arduboyfx --disassemble < %S/Inputs/compact-matrix-00-af.txt | FileCheck %s
 
-# CHECK: mov	c0, c0
+# CHECK: nop
 # CHECK: mov	c0, c1
 # CHECK: mov	c0, c2
 # CHECK: mov	c0, c3

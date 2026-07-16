@@ -21,6 +21,11 @@ clr r0
 clr q0
 clr
 nop c0
+nop r0
+nop 0
+nop symbol
+nop [r0]
+nop ,
 
 # CHECK: error: expected full register r0-r7
 # CHECK: error: expected compact register c0-c3

@@ -35,6 +35,6 @@
 # CHECK: stm16 [65535], r5
 # CHECK: stm16 [1], r6
 # CHECK: stm16 [256], r7
-# CHECK: mov c0, c0
+# CHECK: nop
 # CHECK: ldi8 c0, 18
 # TRUNC: warning: invalid instruction encoding
