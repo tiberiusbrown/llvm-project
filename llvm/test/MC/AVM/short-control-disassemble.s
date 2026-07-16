@@ -10,8 +10,8 @@
 # CHECK: jmp8 1
 # CHECK: call8 -2
 # CHECK: adjsp -1
-# CHECK: sys 0
-# CHECK: sys 1
+# CHECK: sys debug_putc
+# CHECK: sys debug_break
 # CHECK: sys 2
 # CHECK: sys 3
 

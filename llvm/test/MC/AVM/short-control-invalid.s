@@ -15,6 +15,9 @@ sys -1
 sys 4
 sys 255
 sys symbol
+sys debug_unknown
+sys putc
+sys break
 breq8
 breq8 1, 2
 jmp
@@ -26,6 +29,9 @@ sys 0, 1
 
 # CHECK-COUNT-11: error: {{(relative displacement|immediate) is out of signed 8-bit range}}
 # CHECK-COUNT-3: error: invalid AVM version 1 service identifier
-# CHECK: error: service expression must be fully resolvable
+# CHECK: error: unknown AVM system function 'symbol'
+# CHECK: error: unknown AVM system function 'debug_unknown'
+# CHECK: error: unknown AVM system function 'putc'
+# CHECK: error: unknown AVM system function 'break'
 # CHECK: error: unknown token in expression
 # CHECK: error: unexpected token after AVM instruction

@@ -268,6 +268,24 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseService(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
     SMLoc ExprLoc = Parser.getTok().getLoc();
+    if (Parser.getTok().is(AsmToken::Identifier)) {
+      StringRef Identifier = Parser.getTok().getIdentifier();
+      std::optional<int64_t> Service =
+          StringSwitch<std::optional<int64_t>>(Identifier.lower())
+              .Case("debug_putc", 0)
+              .Case("debug_break", 1)
+              .Default(std::nullopt);
+      if (!Service)
+        return error(ExprLoc,
+                     Twine("unknown AVM system function '") + Identifier + "'");
+
+      MCInst Inst;
+      Inst.setOpcode(AVM::SYS);
+      Inst.addOperand(MCOperand::createImm(*Service));
+      Parser.Lex();
+      return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                               Operands, Name, NameLoc);
+    }
     const MCExpr *Expr = nullptr;
     if (Parser.parseExpression(Expr))
       return true;
