@@ -5,7 +5,7 @@
 breq forward
 .byte 0
 forward:
-jmp backward
+jmp8 backward
 .byte 0
 backward:
 brne forward

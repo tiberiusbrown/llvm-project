@@ -718,8 +718,8 @@ public:
       case 0xd1: MI.setOpcode(AVM::BRNE); break;
       case 0xd2: MI.setOpcode(AVM::BRULT); break;
       case 0xd3: MI.setOpcode(AVM::BRSLT); break;
-      case 0xd4: MI.setOpcode(AVM::JMP); break;
-      case 0xd5: MI.setOpcode(AVM::CALL); break;
+      case 0xd4: MI.setOpcode(AVM::JMP8); break;
+      case 0xd5: MI.setOpcode(AVM::CALL8); break;
       case 0xd6: MI.setOpcode(AVM::ADJSP); break;
       default:
         if (Bytes[1] > 3) {

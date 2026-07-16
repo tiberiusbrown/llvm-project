@@ -4,8 +4,8 @@ breq -129
 brne 128
 brult 255
 brslt 0xff
-jmp 128
-call -129
+jmp8 128
+call8 -129
 adjsp 255
 sys -1
 sys 4
@@ -14,7 +14,9 @@ sys symbol
 breq
 breq 1, 2
 jmp
-call 1, 2
+call 0
+jmp8
+call8 1, 2
 adjsp
 sys 0, 1
 

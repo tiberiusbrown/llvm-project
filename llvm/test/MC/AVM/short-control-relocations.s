@@ -5,7 +5,7 @@ breq symbol
 brne symbol + 1
 brult symbol - 1
 brslt symbol
-jmp symbol + 1
+jmp8 symbol + 1
 
 # CHECK: 0x1 R_AVM_PCREL8 symbol 0x0
 # CHECK: 0x3 R_AVM_PCREL8 symbol 0x1

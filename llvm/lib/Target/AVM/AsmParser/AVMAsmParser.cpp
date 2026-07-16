@@ -1391,8 +1391,8 @@ public:
     if (Lower == "brne") return parseRel8Control(AVM::BRNE, true, Name, NameLoc, Operands);
     if (Lower == "brult") return parseRel8Control(AVM::BRULT, true, Name, NameLoc, Operands);
     if (Lower == "brslt") return parseRel8Control(AVM::BRSLT, true, Name, NameLoc, Operands);
-    if (Lower == "jmp") return parseRel8Control(AVM::JMP, true, Name, NameLoc, Operands);
-    if (Lower == "call") return parseRel8Control(AVM::CALL, false, Name, NameLoc, Operands);
+    if (Lower == "jmp8") return parseRel8Control(AVM::JMP8, true, Name, NameLoc, Operands);
+    if (Lower == "call8") return parseRel8Control(AVM::CALL8, true, Name, NameLoc, Operands);
     if (Lower == "adjsp") return parseSignedImmediate(AVM::ADJSP, Name, NameLoc, Operands);
     if (Lower == "sys") return parseService(Name, NameLoc, Operands);
     return error(NameLoc, Twine("unknown AVM instruction '") + Name + "'");

@@ -442,12 +442,12 @@ def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
 def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
 def BRULT : AVMRel8ControlInst<"brult $rel"> { let Uses = [CC]; }
 def BRSLT : AVMRel8ControlInst<"brslt $rel"> { let Uses = [CC]; }
-def JMP : AVMRel8ControlInst<"jmp $rel"> {
+def JMP8 : AVMRel8ControlInst<"jmp8 $rel"> {
   let isBranch = 1;
   let isTerminator = 1;
   let isBarrier = 1;
 }
-def CALL : AVMRel8ControlInst<"call $rel"> { let isCall = 1; }
+def CALL8 : AVMRel8ControlInst<"call8 $rel"> { let isCall = 1; }
 def ADJSP : AVMSImm8Inst<"adjsp $imm">;
 def SYS : AVMService8Inst<"sys $service">;
 

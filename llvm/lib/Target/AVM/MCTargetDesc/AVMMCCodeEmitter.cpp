@@ -931,8 +931,8 @@ public:
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
     case AVM::BRSLT: emitRel8(MI, Out, Fixups, 0xd3); return;
-    case AVM::JMP: emitRel8(MI, Out, Fixups, 0xd4); return;
-    case AVM::CALL: emitSigned8(MI, Out, 0xd5); return;
+    case AVM::JMP8: emitRel8(MI, Out, Fixups, 0xd4); return;
+    case AVM::CALL8: emitSigned8(MI, Out, 0xd5); return;
     case AVM::ADJSP: emitSigned8(MI, Out, 0xd6); return;
     case AVM::SYS: emitService(MI, Out); return;
     case AVM::JMP16: emitRel16(MI, Out, Fixups, 0xe0); return;
