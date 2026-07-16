@@ -1318,6 +1318,15 @@ public:
       return parseCompactPair(AVM::LSR16V, Name, NameLoc, Operands);
     if (Lower == "asr16v")
       return parseCompactPair(AVM::ASR16V, Name, NameLoc, Operands);
+    if (Lower == "lsl16i")
+      return parseCompactImmediate(AVM::LSL16I, false, 4, Name, NameLoc,
+                                   Operands);
+    if (Lower == "lsr16i")
+      return parseCompactImmediate(AVM::LSR16I, false, 4, Name, NameLoc,
+                                   Operands);
+    if (Lower == "asr16i")
+      return parseCompactImmediate(AVM::ASR16I, false, 4, Name, NameLoc,
+                                   Operands);
     if (Lower == "not16")
       return parseF4FullReg(AVM::NOT16, Name, NameLoc, Operands);
     if (Lower == "tst8")

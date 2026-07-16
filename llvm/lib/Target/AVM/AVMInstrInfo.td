@@ -54,6 +54,15 @@ class AVMCompactVariableShiftInst<string Asm>
   let Constraints = "$dst = $src1";
 }
 
+// FA compact immediate shifts are MC-only.  The destination is an explicit
+// tied read/write operand; the immediate is an absolute unsigned four-bit
+// count and has no relocation semantics.
+class AVMCompactImmediateShiftInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMImm4:$count)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 class AVMF3StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
                            AVMGeneralReg:$src)>;
@@ -427,6 +436,9 @@ def CMOV_SGE : AVMConditionalMoveInst<"cmov.sge $dst, $src2">;
 def SHL16V : AVMCompactVariableShiftInst<"shl16v $dst, $count">;
 def LSR16V : AVMCompactVariableShiftInst<"lsr16v $dst, $count">;
 def ASR16V : AVMCompactVariableShiftInst<"asr16v $dst, $count">;
+def LSL16I : AVMCompactImmediateShiftInst<"lsl16i $dst, $count">;
+def LSR16I : AVMCompactImmediateShiftInst<"lsr16i $dst, $count">;
+def ASR16I : AVMCompactImmediateShiftInst<"asr16i $dst, $count">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

@@ -840,6 +840,28 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, SecondaryBase + 4 * *D + *C);
   }
 
+  void emitCompactImmediateShift(const MCInst &MI,
+                                 SmallVectorImpl<char> &Out,
+                                 unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isImm()) {
+      error(MI, "expected compact register and immediate operands");
+      return;
+    }
+    const auto D = compactRegIndex(MI.getOperand(0).getReg());
+    const int64_t I = MI.getOperand(1).getImm();
+    if (!D) {
+      error(MI, "expected compact register c0-c3");
+      return;
+    }
+    if (!isUInt<4>(I)) {
+      error(MI, "immediate is out of range");
+      return;
+    }
+    emit8(Out, 0xfa);
+    emit8(Out, SecondaryBase + 16 * *D + I);
+  }
+
   void emitAbsoluteData(const MCInst &MI, SmallVectorImpl<char> &Out,
                         SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
                         bool IsStore) const {
@@ -918,6 +940,9 @@ public:
     case AVM::SHL16V: emitCompactVariableShift(MI, Out, 0x00); return;
     case AVM::LSR16V: emitCompactVariableShift(MI, Out, 0x10); return;
     case AVM::ASR16V: emitCompactVariableShift(MI, Out, 0x20); return;
+    case AVM::LSL16I: emitCompactImmediateShift(MI, Out, 0x30); return;
+    case AVM::LSR16I: emitCompactImmediateShift(MI, Out, 0x70); return;
+    case AVM::ASR16I: emitCompactImmediateShift(MI, Out, 0xb0); return;
     case AVM::STSP8_COMPACT: emitCompactStackStore(MI, Out); return;
     case AVM::LDSP8U_COMPACT: emitCompactStackLoad(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;

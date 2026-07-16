@@ -417,18 +417,30 @@ public:
       if (Bytes.size() < 2)
         return Fail;
       const uint8_t Secondary = Bytes[1];
-      if (Secondary >= 0x30) {
+      if (Secondary >= 0xf0) {
         Size = 1;
         return Fail;
       }
-      if (Secondary < 0x10)
+      if (Secondary < 0x10) {
         MI.setOpcode(AVM::SHL16V);
-      else if (Secondary < 0x20)
+        MI.addOperand(MCOperand::createReg(compactRegister(Secondary >> 2)));
+        MI.addOperand(MCOperand::createReg(compactRegister(Secondary & 3)));
+      } else if (Secondary < 0x20) {
         MI.setOpcode(AVM::LSR16V);
-      else
+        MI.addOperand(MCOperand::createReg(compactRegister((Secondary - 0x10) >> 2)));
+        MI.addOperand(MCOperand::createReg(compactRegister(Secondary & 3)));
+      } else if (Secondary < 0x30) {
         MI.setOpcode(AVM::ASR16V);
-      MI.addOperand(MCOperand::createReg(compactRegister((Secondary & 0xf) / 4)));
-      MI.addOperand(MCOperand::createReg(compactRegister(Secondary & 3)));
+        MI.addOperand(MCOperand::createReg(compactRegister((Secondary - 0x20) >> 2)));
+        MI.addOperand(MCOperand::createReg(compactRegister(Secondary & 3)));
+      } else {
+        const unsigned Base = Secondary < 0x70 ? 0x30
+                            : Secondary < 0xb0 ? 0x70 : 0xb0;
+        MI.setOpcode(Base == 0x30 ? AVM::LSL16I
+                     : Base == 0x70 ? AVM::LSR16I : AVM::ASR16I);
+        MI.addOperand(MCOperand::createReg(compactRegister((Secondary - Base) >> 4)));
+        MI.addOperand(MCOperand::createImm(Secondary & 0xf));
+      }
       Size = 2;
       return Success;
     }
