@@ -1,7 +1,9 @@
 #include "MCTargetDesc/AVMMCTargetDesc.h"
+#include "MCTargetDesc/AVMMCExpr.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
@@ -80,6 +82,36 @@ class AVMAsmParser final : public MCTargetAsmParser {
       Inst.addOperand(MCOperand::createImm(Constant->getValue()));
     else
       Inst.addOperand(MCOperand::createExpr(Expr));
+  }
+
+  bool parseProgramAddressExpr(const MCExpr *&Expr, SMLoc &ExprLoc) {
+    ExprLoc = Parser.getTok().getLoc();
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (Expr->evaluateAsAbsolute(Value) && (Value < 0 || Value > 0xffffff))
+      return error(ExprLoc, "program address is out of unsigned 24-bit range");
+    return false;
+  }
+
+  bool parseLoadableImmediate(unsigned Bits, const MCExpr *&Expr,
+                              SMLoc &ExprLoc) {
+    ExprLoc = Parser.getTok().getLoc();
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (Expr->evaluateAsAbsolute(Value)) {
+      if (Value < 0 || Value >= (int64_t(1) << Bits))
+        return error(ExprLoc, "immediate is out of range");
+      return false;
+    }
+    const auto *Spec = dyn_cast<MCSpecifierExpr>(Expr);
+    const unsigned Required = Bits == 16 ? AVM::VK_AVM_LO16 : AVM::VK_AVM_HI8;
+    if (Spec && Spec->getSpecifier() != Required)
+      return error(ExprLoc, "incompatible AVM expression modifier for immediate width");
+    if (Bits == 8 && !Spec)
+      return error(ExprLoc, "immediate expression must be fully resolvable");
+    return false;
   }
 
   static bool isArchitecturalRegisterIdentifier(StringRef Identifier) {
@@ -379,10 +411,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
     MCRegister Reg;
     if (parseColdReg(Reg) || Parser.parseComma())
       return true;
-    SMLoc ExprLoc = Parser.getTok().getLoc();
     const MCExpr *Expr = nullptr;
-    if (Parser.parseExpression(Expr))
-      return true;
+    SMLoc ExprLoc;
+    if (!IsSigned && (Bits == 8 || Bits == 16)) {
+      if (parseLoadableImmediate(Bits, Expr, ExprLoc))
+        return true;
+      MCInst Inst;
+      Inst.setOpcode(Opcode);
+      Inst.addOperand(MCOperand::createReg(Reg));
+      addExpr(Inst, Expr);
+      return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                               Operands, Name, NameLoc);
+    } else if (Parser.parseExpression(Expr)) return true;
     int64_t Value = 0;
     if (!Expr->evaluateAsAbsolute(Value))
       return error(ExprLoc, "immediate expression must be fully resolvable");
@@ -913,10 +953,20 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (Parser.parseComma())
       return true;
 
-    SMLoc ExprLoc = Parser.getTok().getLoc();
     const MCExpr *Expr = nullptr;
-    if (Parser.parseExpression(Expr))
-      return true;
+    SMLoc ExprLoc;
+    if (!IsSigned && (Bits == 8 || Bits == 16)) {
+      if (parseLoadableImmediate(Bits, Expr, ExprLoc))
+        return true;
+      MCInst Inst;
+      Inst.setOpcode(Opcode);
+      Inst.addOperand(MCOperand::createReg(Reg));
+      addExpr(Inst, Expr);
+      return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                               Operands, Name, NameLoc);
+    }
+    ExprLoc = Parser.getTok().getLoc();
+    if (Parser.parseExpression(Expr)) return true;
     int64_t Value = 0;
     if (!Expr->evaluateAsAbsolute(Value))
       return error(ExprLoc, "immediate expression must be fully resolvable");
@@ -1151,8 +1201,73 @@ public:
 
   void convertToMapAndConstraints(unsigned, const OperandVector &) override {}
 
-  ParseStatus parseDirective(AsmToken) override {
-    return ParseStatus::NoMatch;
+  bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
+    if (!Parser.getTok().is(AsmToken::Percent))
+      return MCTargetAsmParser::parsePrimaryExpr(Res, EndLoc);
+    SMLoc Loc = Parser.getTok().getLoc();
+    Parser.Lex();
+    if (!Parser.getTok().is(AsmToken::Identifier))
+      return error(Loc, "expected AVM expression modifier name after '%'");
+    StringRef Name = Parser.getTok().getIdentifier();
+    uint16_t Kind = StringSwitch<uint16_t>(Name.lower())
+        .Case("lo16", AVM::VK_AVM_LO16)
+        .Case("hi8", AVM::VK_AVM_HI8)
+        .Case("prog24", AVM::VK_AVM_PROG24)
+        .Default(0);
+    if (!Kind)
+      return error(Loc, "unknown AVM expression modifier");
+    Parser.Lex();
+    if (!Parser.getTok().is(AsmToken::LParen))
+      return error(Parser.getTok().getLoc(), "expected '(' after AVM expression modifier");
+    Parser.Lex();
+    if (Parser.getTok().is(AsmToken::RParen))
+      return error(Parser.getTok().getLoc(), "expected expression inside AVM modifier");
+    const MCExpr *Inner = nullptr;
+    if (Parser.parseExpression(Inner)) return true;
+    if (isa<MCSpecifierExpr>(Inner))
+      return error(Loc, "nested AVM expression modifiers are not supported");
+    if (!Parser.getTok().is(AsmToken::RParen))
+      return error(Parser.getTok().getLoc(), "expected ')' after AVM expression modifier");
+    EndLoc = Parser.getTok().getEndLoc();
+    Parser.Lex();
+    Res = MCSpecifierExpr::create(Inner, Kind, getContext(), Loc);
+    return false;
+  }
+
+  ParseStatus parseDirective(AsmToken Directive) override {
+    if (Directive.getString().equals_insensitive(".word")) {
+      auto ParseOne = [&]() -> bool {
+        const MCExpr *Expr = nullptr;
+        SMLoc Loc = Parser.getTok().getLoc();
+        if (Parser.parseExpression(Expr)) return true;
+        Parser.getStreamer().emitValue(Expr, 2, Loc);
+        return false;
+      };
+      if (Parser.parseMany(ParseOne)) return ParseStatus::Failure;
+      return ParseStatus::Success;
+    }
+    if (!Directive.getString().equals_insensitive(".progptr"))
+      return ParseStatus::NoMatch;
+    const MCExpr *Expr = nullptr;
+    SMLoc Loc;
+    if (parseProgramAddressExpr(Expr, Loc) ||
+        Parser.parseEOL("unexpected token after .progptr"))
+      return ParseStatus::Failure;
+    const auto *Spec = dyn_cast<MCSpecifierExpr>(Expr);
+    if (Spec && Spec->getSpecifier() != AVM::VK_AVM_PROG24) {
+      error(Loc, ".progptr only accepts %prog24() modifiers");
+      return ParseStatus::Failure;
+    }
+    MCInst Inst;
+    Inst.setOpcode(AVM::PROGPTR);
+    addExpr(Inst, Expr);
+    if (auto *Section = static_cast<MCSectionELF *>(Parser.getStreamer().getCurrentSectionOnly())) {
+      if (Section->getType() == ELF::SHT_INIT_ARRAY ||
+          Section->getType() == ELF::SHT_FINI_ARRAY)
+        Section->setEntrySize(3);
+    }
+    Parser.getStreamer().emitInstruction(Inst, getSTI());
+    return ParseStatus::Success;
   }
 
   bool parseInstruction(ParseInstructionInfo &, StringRef Name, SMLoc NameLoc,

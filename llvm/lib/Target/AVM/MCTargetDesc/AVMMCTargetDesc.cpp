@@ -1,10 +1,12 @@
 #include "AVMMCTargetDesc.h"
 #include "AVMInstPrinter.h"
+#include "AVMMCExpr.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCValue.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
 
@@ -29,6 +31,42 @@ public:
     MaxInstLength = 4;
     MinInstAlignment = 1;
     SupportsDebugInformation = false;
+  }
+
+  void printSpecifierExpr(raw_ostream &OS,
+                          const MCSpecifierExpr &Expr) const override {
+    StringRef Name;
+    switch (Expr.getSpecifier()) {
+    case AVM::VK_AVM_LO16: Name = "lo16"; break;
+    case AVM::VK_AVM_HI8: Name = "hi8"; break;
+    case AVM::VK_AVM_PROG24: Name = "prog24"; break;
+    default: llvm_unreachable("unknown AVM expression modifier");
+    }
+    OS << '%' << Name << '(';
+    printExpr(OS, *Expr.getSubExpr());
+    OS << ')';
+  }
+
+  bool evaluateAsRelocatableImpl(const MCSpecifierExpr &Expr, MCValue &Res,
+                                 const MCAssembler *Asm) const override {
+    if (!Expr.getSubExpr()->evaluateAsRelocatable(Res, Asm))
+      return false;
+    if (!AVM::isAVMExprKind(Expr.getSpecifier()))
+      return false;
+    if (!Res.isAbsolute()) {
+      Res.setSpecifier(Expr.getSpecifier());
+      return !Res.getSubSym();
+    }
+    const int64_t Value = Res.getConstant();
+    if (Value < 0 || Value > 0xffffff)
+      return false;
+    switch (Expr.getSpecifier()) {
+    case AVM::VK_AVM_LO16: Res.setConstant(Value & 0xffff); break;
+    case AVM::VK_AVM_HI8: Res.setConstant((Value >> 16) & 0xff); break;
+    case AVM::VK_AVM_PROG24: break;
+    default: llvm_unreachable("unknown AVM expression modifier");
+    }
+    return true;
   }
 };
 

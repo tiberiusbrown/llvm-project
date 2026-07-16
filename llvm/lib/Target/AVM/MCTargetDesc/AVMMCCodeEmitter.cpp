@@ -1,6 +1,8 @@
 #include "AVMFixupKinds.h"
+#include "AVMMCExpr.h"
 #include "AVMMCTargetDesc.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -52,6 +54,39 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
     Fixups.push_back(
         MCFixup::create(FixupOffset, Operand.getExpr(), AVM::fixup_avm_far24));
+    emit24(Out, 0);
+  }
+
+  AVM::Fixups getImmediateFixup(const MCExpr *Expr, unsigned Bits) const {
+    if (const auto *Spec = dyn_cast<MCSpecifierExpr>(Expr)) {
+      if (Bits == 16 && Spec->getSpecifier() == AVM::VK_AVM_LO16)
+        return AVM::fixup_avm_prog_lo16;
+      if (Bits == 8 && Spec->getSpecifier() == AVM::VK_AVM_HI8)
+        return AVM::fixup_avm_prog_hi8;
+    }
+    return AVM::fixup_avm_data16;
+  }
+
+  void emitLoadableImmediate(const MCInst &MI, SmallVectorImpl<char> &Out,
+                             SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
+                             unsigned Bits, bool Cold) const {
+    const MCOperand &Operand = MI.getOperand(1);
+    if (!Operand.isExpr()) return error(MI, "expected loadable immediate expression");
+    if (Cold) { emit8(Out, 0xf0); emit8(Out, Family); }
+    else emit8(Out, Family);
+    const unsigned Offset = Cold ? 2 : 1;
+    Fixups.push_back(MCFixup::create(Offset, Operand.getExpr(),
+                                     getImmediateFixup(Operand.getExpr(), Bits)));
+    if (Bits == 16) emit16(Out, 0); else emit8(Out, 0);
+  }
+
+  void emitProgPtr(const MCInst &MI, SmallVectorImpl<char> &Out,
+                   SmallVectorImpl<MCFixup> &Fixups) const {
+    if (MI.getNumOperands() != 1) return error(MI, "expected one .progptr expression");
+    const MCOperand &Operand = MI.getOperand(0);
+    if (Operand.isImm()) { emit24(Out, Operand.getImm()); return; }
+    if (!Operand.isExpr()) return error(MI, "expected .progptr expression");
+    Fixups.push_back(MCFixup::create(0, Operand.getExpr(), AVM::fixup_avm_prog24));
     emit24(Out, 0);
   }
 
@@ -913,12 +948,24 @@ public:
     case AVM::XOR: emitCompactMatrix(MI, Out, 0xa0); return;
     case AVM::PUSH16: emitStackReg(MI, Out, 0xb0); return;
     case AVM::POP16: emitStackReg(MI, Out, 0xb8); return;
-    case AVM::LDI8: emitCompactImmediate(MI, Out, 0xc0, 8, false); return;
-    case AVM::LDI16: emitCompactImmediate(MI, Out, 0xc4, 16, false); return;
+    case AVM::LDI8:
+      if (MI.getOperand(1).isExpr()) emitLoadableImmediate(MI, Out, Fixups, 0xc0, 8, false);
+      else emitCompactImmediate(MI, Out, 0xc0, 8, false); return;
+      return;
+    case AVM::LDI16:
+      if (MI.getOperand(1).isExpr()) emitLoadableImmediate(MI, Out, Fixups, 0xc4, 16, false);
+      else emitCompactImmediate(MI, Out, 0xc4, 16, false); return;
+      return;
     case AVM::ADDIS8: emitCompactImmediate(MI, Out, 0xc8, 8, true); return;
     case AVM::CMPIS8: emitCompactImmediate(MI, Out, 0xcc, 8, true); return;
-    case AVM::COLDLDI8: emitColdImmediate(MI, Out, 0x00, 8, false); return;
-    case AVM::COLDLDI16: emitColdImmediate(MI, Out, 0x04, 16, false); return;
+    case AVM::COLDLDI8:
+      if (MI.getOperand(1).isExpr()) emitLoadableImmediate(MI, Out, Fixups, 0x00, 8, true);
+      else emitColdImmediate(MI, Out, 0x00, 8, false); return;
+      return;
+    case AVM::COLDLDI16:
+      if (MI.getOperand(1).isExpr()) emitLoadableImmediate(MI, Out, Fixups, 0x04, 16, true);
+      else emitColdImmediate(MI, Out, 0x04, 16, false); return;
+      return;
     case AVM::COLDADDIS8: emitColdImmediate(MI, Out, 0x08, 8, true); return;
     case AVM::COLDCMPIS8: emitColdImmediate(MI, Out, 0x0c, 8, true); return;
     case AVM::LEASP: emitStackU8(MI, Out, 0x10); return;
@@ -933,6 +980,7 @@ public:
     case AVM::STM8: emitAbsoluteData(MI, Out, Fixups, 0x48, true); return;
     case AVM::LDM16: emitAbsoluteData(MI, Out, Fixups, 0x50, false); return;
     case AVM::STM16: emitAbsoluteData(MI, Out, Fixups, 0x58, true); return;
+    case AVM::PROGPTR: emitProgPtr(MI, Out, Fixups); return;
     case AVM::LDP8U: emitProgramLoad(MI, Out, 0x60, false); return;
     case AVM::LDP8S: emitProgramLoad(MI, Out, 0x61, false); return;
     case AVM::LDP16: emitProgramLoad(MI, Out, 0x62, false); return;

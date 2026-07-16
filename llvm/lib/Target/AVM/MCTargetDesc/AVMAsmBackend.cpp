@@ -1,4 +1,5 @@
 #include "AVMFixupKinds.h"
+#include "AVMMCExpr.h"
 #include "AVMMCTargetDesc.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -7,6 +8,7 @@
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCTargetOptions.h"
+#include "llvm/MC/MCValue.h"
 #include "llvm/Support/MathExtras.h"
 #include <cassert>
 #include <memory>
@@ -21,7 +23,14 @@ public:
       : MCELFObjectTargetWriter(false, OSABI, ELF::EM_AVM,
                                 /*HasRelocationAddend=*/true) {}
 
-  unsigned getRelocType(const MCFixup &Fixup, const MCValue &, bool) const override {
+  unsigned getRelocType(const MCFixup &Fixup, const MCValue &Target, bool) const override {
+    if (Fixup.getKind() == FK_Data_1 && Target.getSpecifier() == AVM::VK_AVM_HI8)
+      return ELF::R_AVM_PROG_HI8;
+    if (Fixup.getKind() == FK_Data_2) {
+      if (Target.getSpecifier() == AVM::VK_AVM_LO16)
+        return ELF::R_AVM_PROG_LO16;
+      if (!Target.getSpecifier()) return ELF::R_AVM_DATA16;
+    }
     switch (Fixup.getKind()) {
     case AVM::fixup_avm_pcrel8:
       return ELF::R_AVM_PCREL8;
@@ -31,6 +40,12 @@ public:
       return ELF::R_AVM_FAR24;
     case AVM::fixup_avm_data16:
       return ELF::R_AVM_DATA16;
+    case AVM::fixup_avm_prog24:
+      return ELF::R_AVM_PROG24;
+    case AVM::fixup_avm_prog_lo16:
+      return ELF::R_AVM_PROG_LO16;
+    case AVM::fixup_avm_prog_hi8:
+      return ELF::R_AVM_PROG_HI8;
     case AVM::fixup_avm_relax:
       return ELF::R_AVM_RELAX;
     default:
@@ -57,6 +72,9 @@ public:
         {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
         {"fixup_avm_data16", 0, 16, 0},
+        {"fixup_avm_prog24", 0, 24, 0},
+        {"fixup_avm_prog_lo16", 0, 16, 0},
+        {"fixup_avm_prog_hi8", 0, 8, 0},
         {"fixup_avm_relax", 0, 0, 0},
     };
     if (Kind < FirstTargetFixupKind)
@@ -72,7 +90,11 @@ public:
     // Logical program addresses are assigned after MC writes its input object.
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_far24)
       IsResolved = false;
-    if (IsResolved && Fixup.getKind() == AVM::fixup_avm_data16)
+    if (IsResolved && (Fixup.getKind() == AVM::fixup_avm_data16 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog24 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog_lo16 ||
+                       Fixup.getKind() == AVM::fixup_avm_prog_hi8 ||
+                       Fixup.getKind() == FK_Data_1 || Fixup.getKind() == FK_Data_2))
       IsResolved = false;
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_relax)
       IsResolved = false;
@@ -116,6 +138,16 @@ public:
       Data[0] = static_cast<uint8_t>(Value);
       Data[1] = static_cast<uint8_t>(Value >> 8);
       return;
+    case AVM::fixup_avm_prog24:
+      if (!isUInt<24>(Value)) Error("AVM program address is out of 24-bit range");
+      Data[0] = static_cast<uint8_t>(Value); Data[1] = static_cast<uint8_t>(Value >> 8);
+      Data[2] = static_cast<uint8_t>(Value >> 16); return;
+    case AVM::fixup_avm_prog_lo16:
+      if (!isUInt<24>(Value)) Error("AVM program address is out of 24-bit range");
+      Data[0] = static_cast<uint8_t>(Value); Data[1] = static_cast<uint8_t>(Value >> 8); return;
+    case AVM::fixup_avm_prog_hi8:
+      if (!isUInt<24>(Value)) Error("AVM program address is out of 24-bit range");
+      Data[0] = static_cast<uint8_t>(Value >> 16); return;
     case AVM::fixup_avm_relax:
       return;
     default:

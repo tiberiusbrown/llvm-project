@@ -301,6 +301,12 @@ class AVMRelaxableTransferPseudo<string Asm, int Bytes>
     : AVMInst<Asm, Bytes, (ins AVMImm24:$target)> {
   let isPseudo = 1;
 }
+// This assembly-only pseudo is the implementation vehicle for .progptr; it
+// emits data, not an architectural instruction.
+def AVMProgPtr : Operand<i32>;
+class AVMProgPtrPseudo : AVMInst<"", 3, (ins AVMProgPtr:$value)> {
+  let isPseudo = 1;
+}
 class AVMProgramPairControlInst<string Asm> : AVMInst<Asm, 1,
                                                    (ins AVMProgramPair:$pair)>;
 class AVMOperandlessInst<string Asm> : AVMInst<Asm, 1>;
@@ -489,6 +495,7 @@ def RET : AVMOperandlessInst<"ret"> {
   let isTerminator = 1;
   let isBarrier = 1;
 }
+def PROGPTR : AVMProgPtrPseudo;
 
 // These are assembly-only pseudos.  The MC code emitter expands each to its
 // maximal encoding and emits the R_AVM_RELAX marker alongside R_AVM_FAR24.
