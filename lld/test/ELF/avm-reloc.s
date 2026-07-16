@@ -18,6 +18,16 @@
 # RUN: ld.lld -T %t/layout.ld %t/relax.o %t/defs.o -o %t/relax.out
 # RUN: llvm-readobj --sections %t/relax.out | FileCheck %s --check-prefix=RELAX
 # RUN: llvm-objdump -s -j .text %t/relax.out | FileCheck %s --check-prefix=RELAX-BYTES
+# RUN: ld.lld --no-relax -T %t/layout.ld %t/relax.o %t/defs.o -o %t/relax-no.out
+# RUN: llvm-readobj --sections %t/relax-no.out | FileCheck %s --check-prefix=RELAX-NO
+# RUN: llvm-objdump -s -j .text %t/relax-no.out | FileCheck %s --check-prefix=RELAX-NO-BYTES
+# RUN: ld.lld --emit-relocs -T %t/layout.ld %t/relax.o %t/defs.o -o %t/relax-emit.out
+# RUN: llvm-readobj -r %t/relax-emit.out | FileCheck %s --check-prefix=RELAX-EMIT
+# RUN: llvm-objdump -s -j .text %t/relax-emit.out | FileCheck %s --check-prefix=RELAX-EMIT-BYTES
+# RUN: ld.lld -r %t/relax.o -o %t/relax-r.o
+# RUN: llvm-readobj -r %t/relax-r.o | FileCheck %s --check-prefix=RELAX-R
+# RUN: ld.lld -T %t/layout.ld %t/relax-r.o %t/defs.o -o %t/relax-r.out
+# RUN: llvm-objdump -s -j .text %t/relax-r.out | FileCheck %s --check-prefix=RELAX-R-BYTES
 
 # HDR: Format: elf32-avm
 # HDR: Arch: avm
@@ -36,11 +46,27 @@
 # ERR8: relocation R_AVM_PCREL8 out of range
 # ERR16: relocation R_AVM_PCREL16 out of range
 # RELAX: Name: .text
-# RELAX: Size: 46
+# RELAX: Size: 18
 # RELAX-BYTES: Contents of section .text:
-# RELAX-BYTES: 123450 e27d3412 e37d3412 d104e27d 3412d004
-# RELAX-BYTES: 123460 e27d3412 d804e27d 3412d204 e27d3412
-# RELAX-BYTES: 123470 d904e27d 3412d304 e27d3412 0000
+# RELAX-BYTES: 123450 d40fd50d d00bd109 d207d805 d303d901
+# RELAX-BYTES: 123460 0000
+# RELAX-NO: Name: .text
+# RELAX-NO: Size: 46
+# RELAX-NO-BYTES: Contents of section .text:
+# RELAX-NO-BYTES: 123450 e27d3412 e37d3412 d104e27d 3412d004
+# RELAX-NO-BYTES: 123460 e27d3412 d804e27d 3412d204 e27d3412
+# RELAX-NO-BYTES: 123470 d904e27d 3412d304 e27d3412 0000
+# RELAX-EMIT: R_AVM_RELAX
+# RELAX-EMIT: R_AVM_FAR24 relax_target
+# RELAX-EMIT-BYTES: Contents of section .text:
+# RELAX-EMIT-BYTES: 123450 e27d3412 e37d3412 d104e27d 3412d004
+# RELAX-EMIT-BYTES: 123460 e27d3412 d804e27d 3412d204 e27d3412
+# RELAX-EMIT-BYTES: 123470 d904e27d 3412d304 e27d3412 0000
+# RELAX-R: R_AVM_RELAX
+# RELAX-R: R_AVM_FAR24 relax_target
+# RELAX-R-BYTES: Contents of section .text:
+# RELAX-R-BYTES: 123450 d40fd50d d00bd109 d207d805 d303d901
+# RELAX-R-BYTES: 123460 0000
 
 #--- defs.s
 .section .text
