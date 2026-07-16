@@ -164,6 +164,46 @@ OutputDesc *LinkerScript::getOrCreateOutputSection(StringRef name) {
   return secRef;
 }
 
+// AVM has two logical address spaces. Construct the target's ordinary-layout
+// rules as linker-script commands so the normal garbage collection, COMDAT,
+// input merging, and iterative address assignment machinery remains in use.
+// A user supplied SECTIONS command deliberately bypasses these defaults.
+void LinkerScript::createAVMDefaultLayout() {
+  if (ctx.arg.emachine != EM_AVM || hasSectionsCommand ||
+      !ctx.arg.sectionStartMap.empty())
+    return;
+
+  isAVMDefaultLayout = true;
+  hasSectionsCommand = true;
+
+  auto add = [&](StringRef name, ArrayRef<StringRef> patterns, Expr addr) {
+    OutputDesc *desc = createOutputSection(name, "<AVM default layout>");
+    OutputSection &osec = desc->osec;
+    osec.addrExpr = std::move(addr);
+    auto *isd = make<InputSectionDescription>("*");
+    for (StringRef pattern : patterns)
+      isd->sectionPatterns.push_back({{}, StringMatcher(pattern)});
+    osec.commands.push_back(isd);
+    sectionCommands.push_back(desc);
+    return &osec;
+  };
+
+  OutputSection *saved = add(".saved", {".saved", ".saved.*"},
+                             [] { return ExprValue(0x100); });
+  OutputSection *data = add(
+      ".data", {".data", ".data.*"},
+      [saved] { return ExprValue(0x100 + saved->size); });
+  OutputSection *text = add(".text", {".text", ".text.*"}, {});
+  text->addrExpr = [saved, data, text] {
+    return ExprValue(alignToPowerOf2(
+        alignToPowerOf2(0x100 + saved->size + data->size, 0x100),
+        text->addralign));
+  };
+  add(".rodata", {".rodata", ".rodata.*"}, {});
+  add(".init_array", {".init_array", ".init_array.*"}, {});
+  add(".fini_array", {".fini_array", ".fini_array.*"}, {});
+}
+
 // Expands the memory region by the specified size.
 static void expandMemoryRegion(MemoryRegion *memRegion, uint64_t size,
                                StringRef secName) {

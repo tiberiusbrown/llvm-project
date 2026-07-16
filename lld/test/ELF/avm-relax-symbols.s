@@ -18,14 +18,14 @@
 # SYMBOLS: Name: after_sites
 # SYMBOLS-NEXT: Value: 0x123454
 # SYMBOLS: Name: data_symbol
-# SYMBOLS-NEXT: Value: 0x208
+# SYMBOLS-NEXT: Value: 0x100
 # SYMBOLS: Type: Object
 # BYTES: Contents of section .text:
 # BYTES-NEXT: 123450 d404d402 d40000
 # BYTES: Contents of section .data:
-# BYTES-NEXT: 0208 00
+# BYTES-NEXT: 0100 00
 # BYTES: Contents of section .meta:
-# BYTES-NEXT: 0000 56341256 34120802
+# BYTES-NEXT: 0200 56341256 34120001
 
 #--- code.s
 .text
@@ -54,7 +54,7 @@ data_symbol:
 .byte 0
 
 #--- refs.s
-.section .meta
+.section .rodata.meta
 .progptr moved
 .short %lo16(moved)
 .byte %hi8(moved)
@@ -63,6 +63,6 @@ data_symbol:
 #--- layout.ld
 SECTIONS {
   .text 0x123450 : { *(.text) }
-  .data 0x200 + SIZEOF(.text) : { *(.data) }
-  .meta 0x200 : { *(.meta) }
+  .data 0x100 : { *(.data) }
+  .meta 0x200 : { *(.rodata.meta) }
 }

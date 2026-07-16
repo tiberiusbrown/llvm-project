@@ -445,6 +445,9 @@ static void checkOptions(Ctx &ctx) {
   if (ctx.arg.pie && ctx.arg.shared)
     ErrAlways(ctx) << "-shared and -pie may not be used together";
 
+  if (ctx.arg.emachine == EM_AVM && (ctx.arg.shared || ctx.arg.pie))
+    ErrAlways(ctx) << "AVM does not support shared or PIE output";
+
   if (!ctx.arg.shared && !ctx.arg.filterList.empty())
     ErrAlways(ctx) << "-F may not be used without -shared";
 
@@ -3477,6 +3480,11 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   {
     llvm::TimeTraceScope timeScope("Assign sections");
+
+    // AVM's default ET_EXEC has separate data and program address spaces.
+    // Install its target-local output rules only when the user did not supply
+    // a linker script or explicit section start option.
+    ctx.script->createAVMDefaultLayout();
 
     // Create output sections described by SECTIONS commands.
     ctx.script->processSectionCommands();

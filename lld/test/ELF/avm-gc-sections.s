@@ -22,7 +22,7 @@
 # DATA: Contents of section .data:
 # DATA: 0200 56
 # DATA: Contents of section .saved:
-# DATA: 0408 12
+# DATA: 0208 12
 
 # SYMBOLS: Name: live_saved
 # SYMBOLS: Name: live_data

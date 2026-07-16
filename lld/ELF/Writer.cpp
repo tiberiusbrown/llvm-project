@@ -65,6 +65,7 @@ private:
   void finalizeSections();
   void checkExecuteOnly();
   void checkExecuteOnlyReport();
+  void validateAVMLayout();
   void setReservedSymbolSections();
 
   SmallVector<std::unique_ptr<PhdrEntry>, 0> createPhdrs(Partition &part);
@@ -2051,7 +2052,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // Binary and relocatable output does not have PHDRS.
   // The headers have to be created before finalize as that can influence the
   // image base and the dynamic section on mips includes the image base.
-  if (!ctx.arg.relocatable && !ctx.arg.oFormatBinary) {
+  if (!ctx.arg.relocatable && !ctx.arg.oFormatBinary &&
+      ctx.arg.emachine != EM_AVM) {
     for (Partition &part : ctx.partitions) {
       part.phdrs = ctx.script->hasPhdrsCommands() ? ctx.script->createPhdrs()
                                                   : createPhdrs(part);
@@ -2179,6 +2181,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     sec->finalize(ctx);
 
   ctx.script->checkFinalScriptConditions();
+  validateAVMLayout();
 
   if (ctx.arg.emachine == EM_ARM && !ctx.arg.isLE && ctx.arg.armBe8) {
     addArmInputSectionMappingSymbols(ctx);
@@ -2826,20 +2829,136 @@ template <class ELFT> void Writer<ELFT>::checkSections() {
   // Furthermore, we also need to skip SHF_TLS sections since these will be
   // mapped to other addresses at runtime and can therefore have overlapping
   // ranges in the file.
-  std::vector<SectionOffset> vmas;
-  for (OutputSection *sec : ctx.outputSections)
-    if (sec->size > 0 && (sec->flags & SHF_ALLOC) && !(sec->flags & SHF_TLS))
-      vmas.push_back({sec, sec->addr});
-  checkOverlap(ctx, "virtual address", vmas, true);
+  // AVM section VMAs are logical addresses in two distinct architectural
+  // spaces. Equal numeric data- and program-space addresses are valid.
+  if (ctx.arg.emachine != EM_AVM) {
+    std::vector<SectionOffset> vmas;
+    for (OutputSection *sec : ctx.outputSections)
+      if (sec->size > 0 && (sec->flags & SHF_ALLOC) &&
+          !(sec->flags & SHF_TLS))
+        vmas.push_back({sec, sec->addr});
+    checkOverlap(ctx, "virtual address", vmas, true);
+  }
 
   // Finally, check that the load addresses don't overlap. This will usually be
   // the same as the virtual addresses but can be different when using a linker
   // script with AT().
-  std::vector<SectionOffset> lmas;
-  for (OutputSection *sec : ctx.outputSections)
-    if (sec->size > 0 && (sec->flags & SHF_ALLOC) && !(sec->flags & SHF_TLS))
-      lmas.push_back({sec, sec->getLMA()});
-  checkOverlap(ctx, "load address", lmas, false);
+  if (ctx.arg.emachine != EM_AVM) {
+    std::vector<SectionOffset> lmas;
+    for (OutputSection *sec : ctx.outputSections)
+      if (sec->size > 0 && (sec->flags & SHF_ALLOC) &&
+          !(sec->flags & SHF_TLS))
+        lmas.push_back({sec, sec->getLMA()});
+    checkOverlap(ctx, "load address", lmas, false);
+  }
+}
+
+template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
+  if (ctx.arg.emachine != EM_AVM || ctx.arg.relocatable ||
+      !ctx.arg.sectionStartMap.empty())
+    return;
+
+  auto find = [&](StringRef name) -> OutputSection * {
+    for (OutputSection *sec : ctx.outputSections)
+      if (sec->name == name)
+        return sec;
+    return nullptr;
+  };
+  auto isData = [](const OutputSection &sec) {
+    return (sec.flags & (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE)) ==
+           SHF_AVM_DATASPACE;
+  };
+  auto isProgram = [](const OutputSection &sec) {
+    return (sec.flags & (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE)) ==
+           SHF_AVM_PROGSPACE;
+  };
+
+  OutputSection *saved = find(".saved");
+  OutputSection *data = find(".data");
+  uint64_t saveSize = saved ? saved->size : 0;
+  uint64_t dataSize = saveSize + (data ? data->size : 0);
+
+  auto checkStatic = [&](OutputSection *sec, StringRef name, uint64_t addr) {
+    if (!sec)
+      return;
+    if (sec->addr != addr)
+      Err(ctx) << "AVM " << name << " must begin at data address 0x"
+               << utohexstr(addr);
+    if (sec->type != SHT_PROGBITS || !isData(*sec) ||
+        (sec->flags & (SHF_ALLOC | SHF_WRITE)) != (SHF_ALLOC | SHF_WRITE) ||
+        (sec->flags & SHF_EXECINSTR))
+      Err(ctx) << "AVM " << name
+               << " must be allocated writable data-space SHT_PROGBITS";
+  };
+  checkStatic(saved, ".saved", 0x100);
+  checkStatic(data, ".data", 0x100 + saveSize);
+  if (dataSize > 1024)
+    Err(ctx) << "AVM static storage exceeds the 1024-byte limit";
+
+  const uint64_t programStart =
+      alignToPowerOf2(0x100 + dataSize, 0x100);
+  for (OutputSection *sec : ctx.outputSections) {
+    if (!(sec->flags & SHF_ALLOC))
+      continue;
+    if (isData(*sec)) {
+      if (sec != saved && sec != data)
+        Err(ctx) << "AVM data-space section " << sec->name
+                 << " requires explicit .saved or .data placement";
+      continue;
+    }
+    if (!isProgram(*sec)) {
+      Err(ctx) << "AVM allocated section " << sec->name
+               << " is missing an AVM address-space flag";
+      continue;
+    }
+    if (sec->flags & SHF_WRITE)
+      Err(ctx) << "AVM program-space section " << sec->name
+               << " must not be writable";
+    if (sec->addr < 0x100)
+      Err(ctx) << "AVM program-space section " << sec->name
+               << " overlaps the reserved header range";
+    if (sec->addr > 0x1000000 || sec->size > 0x1000000 - sec->addr)
+      Err(ctx) << "AVM program-space section " << sec->name
+               << " exceeds the 24-bit program-space limit";
+  }
+
+  if (ctx.script->isAVMDefaultLayout) {
+    for (OutputSection *sec : ctx.outputSections)
+      if ((sec->flags & SHF_ALLOC) && isProgram(*sec) &&
+          sec->addr < programStart)
+        Err(ctx) << "AVM default program-space section " << sec->name
+                 << " begins before program address 0x"
+                 << utohexstr(programStart);
+    if (OutputSection *text = find(".text"))
+      if (text->addr != programStart)
+        Err(ctx) << "AVM default .text must begin at program address 0x"
+                 << utohexstr(programStart);
+  }
+
+  for (StringRef name : {StringRef(".init_array"), StringRef(".fini_array")})
+    if (OutputSection *sec = find(name))
+      if (sec->entsize != 3 || !isProgram(*sec) ||
+          sec->type != (name == ".init_array" ? SHT_INIT_ARRAY
+                                              : SHT_FINI_ARRAY) ||
+          (sec->flags & (SHF_WRITE | SHF_EXECINSTR)))
+        Err(ctx) << "AVM " << name
+                 << " must contain packed 3-byte program-space pointers";
+
+  Symbol *entry = ctx.symtab->find(ctx.arg.entry);
+  auto *defined = dyn_cast_or_null<Defined>(entry);
+  if (!defined || !defined->section) {
+    Err(ctx) << "AVM entry symbol " << ctx.arg.entry << " is undefined";
+    return;
+  }
+  const uint64_t flags = defined->section->flags;
+  const uint64_t entryAddr = defined->getVA(ctx);
+  if ((flags & (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE)) != SHF_AVM_PROGSPACE ||
+      !(flags & SHF_EXECINSTR))
+    Err(ctx) << "AVM entry symbol " << ctx.arg.entry
+             << " must be in an executable program-space section";
+  if (entryAddr > 0xffffff)
+    Err(ctx) << "AVM entry symbol " << ctx.arg.entry
+             << " exceeds the 24-bit program-space limit";
 }
 
 // The entry point address is chosen in the following ways.

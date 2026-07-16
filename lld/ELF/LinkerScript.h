@@ -360,6 +360,7 @@ public:
 
   OutputDesc *createOutputSection(StringRef name, StringRef location);
   OutputDesc *getOrCreateOutputSection(StringRef name);
+  void createAVMDefaultLayout();
 
   bool hasPhdrsCommands() { return !phdrsCommands.empty(); }
   uint64_t getDot() { return dot; }
@@ -418,6 +419,10 @@ public:
   SmallVector<PhdrsCommand, 0> phdrsCommands;
 
   bool hasSectionsCommand = false;
+  // The AVM default layout is assembled from ordinary linker-script commands
+  // after input processing. Keep it distinct from a user supplied script so
+  // target validation can preserve explicit scripts.
+  bool isAVMDefaultLayout = false;
   bool seenDataAlign = false;
   bool seenRelroEnd = false;
   bool errorOnMissingSection = false;

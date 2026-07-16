@@ -17,6 +17,8 @@
 
 #--- a.s
 .section .text.a
+.globl _start
+_start:
 .globl source
 source:
   jmp local_target
@@ -35,7 +37,7 @@ global_target:
   call source
   .byte 0
 
-.section .far,"ax"
+.section .text.far,"ax"
 .globl long_target
 long_target:
   .byte 0
@@ -45,5 +47,5 @@ SECTIONS {
   .text.a 0x10000 : { *(.text.a) }
   .text.local 0x10070 : { *(.text.local) }
   .text.b 0x10080 : { *(.text.b) }
-  .far 0x18002 : { *(.far) }
+  .far 0x18002 : { *(.text.far) }
 }

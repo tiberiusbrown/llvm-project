@@ -22,11 +22,13 @@
 
 #--- source.s
 .text
+.globl _start
+_start:
 jmp target
 .zero 125
 
 #--- target.s
-.section .target,"ax"
+.section .text.target,"ax"
 .p2align 7
 .globl target
 target:
@@ -35,5 +37,5 @@ target:
 #--- layout.ld
 SECTIONS {
   .text 0x10000 : { *(.text) }
-  .target : { *(.target) }
+  .target : { *(.text.target) }
 }

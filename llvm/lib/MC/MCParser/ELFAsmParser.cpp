@@ -660,10 +660,13 @@ EndStmt:
   if (getContext().getTargetTriple().getArch() == Triple::avm) {
     const unsigned AVMSpaceFlags =
         ELF::SHF_AVM_PROGSPACE | ELF::SHF_AVM_DATASPACE;
-    if (SectionName == ".text" || SectionName == ".rodata" ||
-        SectionName == ".init_array" || SectionName == ".fini_array") {
+    if (hasPrefix(SectionName, ".text") ||
+        hasPrefix(SectionName, ".rodata") ||
+        hasPrefix(SectionName, ".init_array") ||
+        hasPrefix(SectionName, ".fini_array")) {
       Flags = (Flags & ~AVMSpaceFlags) | ELF::SHF_AVM_PROGSPACE;
-      if (SectionName == ".init_array" || SectionName == ".fini_array")
+      if (hasPrefix(SectionName, ".init_array") ||
+          hasPrefix(SectionName, ".fini_array"))
         Flags &= ~ELF::SHF_WRITE;
     } else if (hasPrefix(SectionName, ".data") ||
                hasPrefix(SectionName, ".saved")) {

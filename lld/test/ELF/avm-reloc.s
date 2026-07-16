@@ -35,10 +35,10 @@
 # HDR: Name: .text
 # HDR: Name: .data
 # DATA: Contents of section .text:
-# DATA: 123450 05020002 693412c4 6434c012 e2643412
+# DATA: 123450 05010001 693412c4 6434c012 e2643412
 # DATA: 123460 e36b3412 00
 # DATA: Contents of section .data:
-# DATA: 0200 020200
+# DATA: 0100 020100
 # PCREL8: Contents of section .text:
 # PCREL8: 10000 d47fd580
 # PCREL16: Contents of section .text:
@@ -70,6 +70,8 @@
 
 #--- defs.s
 .section .text
+.globl _start
+_start:
 .globl program_symbol
 program_symbol:
   .byte 0
@@ -98,7 +100,7 @@ callf program_symbol+7
 #--- layout.ld
 SECTIONS {
   .text 0x123450 : { *(.text) }
-  .data 0x200 : { *(.data) }
+  .data 0x100 : { *(.data) }
 }
 
 #--- pcrel8-good.s
