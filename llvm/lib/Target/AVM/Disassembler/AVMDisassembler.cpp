@@ -1,6 +1,9 @@
 #include "MCTargetDesc/AVMMCTargetDesc.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/MC/MCDisassembler/MCSymbolizer.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
@@ -11,7 +14,74 @@ using namespace llvm;
 
 namespace {
 
+class AVMSymbolizer final : public MCSymbolizer {
+  SectionSymbolsTy *Symbols;
+
+public:
+  AVMSymbolizer(MCContext &Ctx, std::unique_ptr<MCRelocationInfo> &&RelInfo,
+                void *DisInfo)
+      : MCSymbolizer(Ctx, std::move(RelInfo)),
+        Symbols(static_cast<SectionSymbolsTy *>(DisInfo)) {}
+
+  bool tryAddingSymbolicOperand(MCInst &Inst, raw_ostream &, int64_t Value,
+                                uint64_t, bool IsBranch, uint64_t, uint64_t,
+                                uint64_t) override {
+    if (!IsBranch || !Symbols || Value < 0)
+      return false;
+
+    const uint64_t Target = static_cast<uint64_t>(Value);
+    auto It = llvm::partition_point(*Symbols, [=](const SymbolInfoTy &Symbol) {
+      return Symbol.Addr <= Target;
+    });
+    while (It != Symbols->begin()) {
+      --It;
+      if (It->IsMappingSymbol)
+        continue;
+      auto *Symbol = Ctx.getOrCreateSymbol(It->Name);
+      const MCExpr *Expr = MCSymbolRefExpr::create(Symbol, Ctx);
+      const uint64_t Offset = Target - It->Addr;
+      if (Offset)
+        Expr = MCBinaryExpr::createAdd(
+            Expr, MCConstantExpr::create(Offset, Ctx), Ctx);
+      Inst.addOperand(MCOperand::createExpr(Expr));
+      return true;
+    }
+    return false;
+  }
+
+  void tryAddingPcLoadReferenceComment(raw_ostream &, int64_t,
+                                       uint64_t) override {}
+};
+
+static MCSymbolizer *createAVMSymbolizer(
+    const Triple &, LLVMOpInfoCallback, LLVMSymbolLookupCallback, void *DisInfo,
+    MCContext *Ctx, std::unique_ptr<MCRelocationInfo> &&RelInfo) {
+  return new AVMSymbolizer(*Ctx, std::move(RelInfo), DisInfo);
+}
+
 class AVMDisassembler final : public MCDisassembler {
+  static constexpr uint64_t MaxProgramAddress = 0xffffff;
+
+  void addDirectControlTarget(MCInst &MI, int64_t EncodedOperand,
+                              uint64_t Address, uint64_t InstructionSize,
+                              uint64_t OperandSize, bool IsRelative) const {
+    int64_t Target = EncodedOperand;
+    if (IsRelative) {
+      if (Address > MaxProgramAddress) {
+        MI.addOperand(MCOperand::createImm(EncodedOperand));
+        return;
+      }
+      Target += static_cast<int64_t>(Address) + InstructionSize;
+    }
+
+    if (Target >= 0 && static_cast<uint64_t>(Target) <= MaxProgramAddress &&
+        tryAddingSymbolicOperand(MI, Target, Address, /*IsBranch=*/true,
+                                 /*Offset=*/1, OperandSize, InstructionSize))
+      return;
+
+    MI.addOperand(MCOperand::createImm(EncodedOperand));
+  }
+
   static MCRegister compactRegister(unsigned Index) {
     switch (Index) {
     case 0: return AVM::R4;
@@ -83,8 +153,9 @@ public:
       : MCDisassembler(STI, Ctx) {}
 
   DecodeStatus getInstruction(MCInst &MI, uint64_t &Size,
-                              ArrayRef<uint8_t> Bytes, uint64_t,
-                              raw_ostream &) const override {
+                              ArrayRef<uint8_t> Bytes, uint64_t Address,
+                              raw_ostream &CStream) const override {
+    CommentStream = &CStream;
     if (Bytes.empty())
       return Fail;
 
@@ -733,8 +804,10 @@ public:
         Size = 2;
         return Success;
       }
-      MI.addOperand(MCOperand::createImm(int64_t(Bytes[1]) -
-          ((Bytes[1] & 0x80) ? 256 : 0)));
+      addDirectControlTarget(MI, int64_t(Bytes[1]) -
+                                 ((Bytes[1] & 0x80) ? 256 : 0),
+                             Address, /*InstructionSize=*/2,
+                             /*OperandSize=*/1, /*IsRelative=*/true);
       Size = 2;
       return Success;
     }
@@ -750,9 +823,11 @@ public:
       case 0xde: MI.setOpcode(AVM::BRSLT16); break;
       case 0xdf: MI.setOpcode(AVM::BRSGE16); break;
       }
-      MI.addOperand(MCOperand::createImm(
-          int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
-          ((Bytes[2] & 0x80) ? 65536 : 0)));
+      addDirectControlTarget(
+          MI, int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
+                  ((Bytes[2] & 0x80) ? 65536 : 0),
+          Address, /*InstructionSize=*/3, /*OperandSize=*/2,
+          /*IsRelative=*/true);
       Size = 3;
       return Success;
     }
@@ -761,9 +836,11 @@ public:
       if (Bytes.size() < 3)
         return Fail;
       MI.setOpcode(Bytes[0] == 0xe0 ? AVM::JMP16 : AVM::CALL16);
-      MI.addOperand(MCOperand::createImm(
-          int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
-          ((Bytes[2] & 0x80) ? 65536 : 0)));
+      addDirectControlTarget(
+          MI, int64_t(uint16_t(Bytes[1]) | (uint16_t(Bytes[2]) << 8)) -
+                  ((Bytes[2] & 0x80) ? 65536 : 0),
+          Address, /*InstructionSize=*/3, /*OperandSize=*/2,
+          /*IsRelative=*/true);
       Size = 3;
       return Success;
     }
@@ -772,8 +849,10 @@ public:
       if (Bytes.size() < 4)
         return Fail;
       MI.setOpcode(Bytes[0] == 0xe2 ? AVM::JMPF : AVM::CALLF);
-      MI.addOperand(MCOperand::createImm(Bytes[1] | uint32_t(Bytes[2]) << 8 |
-                                         uint32_t(Bytes[3]) << 16));
+      addDirectControlTarget(MI, Bytes[1] | uint32_t(Bytes[2]) << 8 |
+                                     uint32_t(Bytes[3]) << 16,
+                             Address, /*InstructionSize=*/4,
+                             /*OperandSize=*/3, /*IsRelative=*/false);
       Size = 4;
       return Success;
     }
@@ -813,4 +892,5 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void
 LLVMInitializeAVMDisassembler() {
   TargetRegistry::RegisterMCDisassembler(getTheAVMTarget(),
                                           createAVMDisassembler);
+  TargetRegistry::RegisterMCSymbolizer(getTheAVMTarget(), createAVMSymbolizer);
 }

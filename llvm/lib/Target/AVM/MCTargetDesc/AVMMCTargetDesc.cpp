@@ -8,6 +8,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -119,6 +120,11 @@ static MCTargetStreamer *createAVMObjectTargetStreamer(MCStreamer &S,
   return new AVMObjectTargetStreamer(S);
 }
 
+static MCRelocationInfo *createAVMMCRelocationInfo(const Triple &TT,
+                                                   MCContext &Ctx) {
+  return llvm::createMCRelocationInfo(TT, Ctx);
+}
+
 } // namespace
 
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
@@ -130,6 +136,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
   TargetRegistry::RegisterMCInstPrinter(T, createAVMMCInstPrinter);
   TargetRegistry::RegisterMCCodeEmitter(T, createAVMMCCodeEmitter);
   TargetRegistry::RegisterMCAsmBackend(T, createAVMAsmBackend);
+  TargetRegistry::RegisterMCRelocationInfo(T, createAVMMCRelocationInfo);
   TargetRegistry::RegisterObjectTargetStreamer(T,
                                                createAVMObjectTargetStreamer);
 }

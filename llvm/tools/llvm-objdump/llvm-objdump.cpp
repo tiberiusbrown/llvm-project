@@ -1673,13 +1673,14 @@ static void addSymbolizer(
       Target->createMCRelocationInfo(TheTriple, Ctx));
   if (!RelInfo)
     return;
+
+  if (!SymbolizeOperands)
+    return;
+
   std::unique_ptr<MCSymbolizer> Symbolizer(Target->createMCSymbolizer(
       TheTriple, nullptr, nullptr, &Symbols, &Ctx, std::move(RelInfo)));
   MCSymbolizer *SymbolizerPtr = &*Symbolizer;
   DisAsm->setSymbolizer(std::move(Symbolizer));
-
-  if (!SymbolizeOperands)
-    return;
 
   // Synthesize labels referenced by branch instructions by
   // disassembling, discarding the output, and collecting the referenced
@@ -2020,8 +2021,9 @@ disassembleObject(ObjectFile &Obj, const ObjectFile &DbgObj,
         unwrapOrError(Section.getContents(), Obj.getFileName()));
 
     std::vector<std::unique_ptr<std::string>> SynthesizedLabelNames;
-    if (Obj.isELF() && Obj.getArch() == Triple::amdgcn) {
-      // AMDGPU disassembler uses symbolizer for printing labels
+    if (Obj.isELF() &&
+        (Obj.getArch() == Triple::amdgcn || Obj.getArch() == Triple::avm)) {
+      // These disassemblers use the generic symbolizer for operands and labels.
       addSymbolizer(*DT->Context, DT->TheTarget, DT->TheTriple,
                     DT->DisAsm.get(), SectionAddr, Bytes, Symbols,
                     SynthesizedLabelNames);
@@ -3734,7 +3736,8 @@ static void parseObjdumpOptions(const llvm::opt::InputArgList &InputArgs) {
   parseIntArg(InputArgs, OBJDUMP_stop_address_EQ, StopAddress);
   HasStopAddressFlag = InputArgs.hasArg(OBJDUMP_stop_address_EQ);
   SymbolTable = InputArgs.hasArg(OBJDUMP_syms);
-  SymbolizeOperands = InputArgs.hasArg(OBJDUMP_symbolize_operands);
+  SymbolizeOperands = InputArgs.hasFlag(OBJDUMP_symbolize_operands,
+                                        OBJDUMP_no_symbolize_operands, false);
   PrettyPGOAnalysisMap = InputArgs.hasArg(OBJDUMP_pretty_pgo_analysis_map);
   if (PrettyPGOAnalysisMap && !SymbolizeOperands)
     reportCmdLineWarning("--symbolize-operands must be enabled for "

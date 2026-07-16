@@ -209,6 +209,8 @@ def : Flag<["-"], "t">, Alias<syms>, HelpText<"Alias for --syms">;
 
 def symbolize_operands : Flag<["--"], "symbolize-operands">,
   HelpText<"Symbolize instruction operands when disassembling">;
+def no_symbolize_operands : Flag<["--"], "no-symbolize-operands">,
+  HelpText<"Do not symbolize instruction operands when disassembling">;
 
 def pretty_pgo_analysis_map : Flag<["--"], "pretty-pgo-analysis-map">,
                               HelpText<"Display PGO analysis values with "

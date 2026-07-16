@@ -497,7 +497,11 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     break;
   case AVM::JMP16:
   case AVM::CALL16:
-    OS << '\t' << MI->getOperand(0).getImm();
+    OS << '\t';
+    if (MI->getOperand(0).isImm())
+      OS << MI->getOperand(0).getImm();
+    else
+      printOperand(MI->getOperand(0), OS);
     break;
   case AVM::SYS:
     OS << '\t';
