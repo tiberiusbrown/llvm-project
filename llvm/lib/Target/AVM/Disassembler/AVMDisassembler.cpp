@@ -534,6 +534,33 @@ public:
       return Success;
     }
 
+    if (Bytes[0] >= 0xfb && Bytes[0] <= 0xfd) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x80) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned D = (Secondary & 0x38) >> 3;
+      const unsigned S = Secondary & 7;
+      const bool Invert = (Secondary & 0x40) != 0;
+      const unsigned Family = Bytes[0] - 0xfb;
+      static constexpr unsigned Opcodes[3][2] = {
+          {AVM::CMOV_EQ, AVM::CMOV_NE},
+          {AVM::CMOV_ULT, AVM::CMOV_UGE},
+          {AVM::CMOV_SLT, AVM::CMOV_SGE}};
+      MI.setOpcode(Opcodes[Family][Invert]);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + D)));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + S)));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf3) {
       if (Bytes.size() < 2) {
         Size = 1;

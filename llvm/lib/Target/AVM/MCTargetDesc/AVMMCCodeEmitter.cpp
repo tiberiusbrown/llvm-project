@@ -711,6 +711,23 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, SecondaryBase + *Reg);
   }
 
+  void emitConditionalMove(const MCInst &MI, SmallVectorImpl<char> &Out,
+                           unsigned Prefix, unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two full register operands");
+      return;
+    }
+    const auto D = stackRegIndex(MI.getOperand(0).getReg());
+    const auto S = stackRegIndex(MI.getOperand(1).getReg());
+    if (!D || !S) {
+      error(MI, "expected full register r0-r7");
+      return;
+    }
+    emit8(Out, Prefix);
+    emit8(Out, SecondaryBase + (*D << 3) + *S);
+  }
+
   void emitF6Multiply(const MCInst &MI, SmallVectorImpl<char> &Out) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
         !MI.getOperand(1).isReg()) {
@@ -813,6 +830,12 @@ public:
     case AVM::CSET_UGE: emitCSet(MI, Out, 0x18); return;
     case AVM::CSET_SLT: emitCSet(MI, Out, 0x20); return;
     case AVM::CSET_SGE: emitCSet(MI, Out, 0x28); return;
+    case AVM::CMOV_EQ: emitConditionalMove(MI, Out, 0xfb, 0x00); return;
+    case AVM::CMOV_NE: emitConditionalMove(MI, Out, 0xfb, 0x40); return;
+    case AVM::CMOV_ULT: emitConditionalMove(MI, Out, 0xfc, 0x00); return;
+    case AVM::CMOV_UGE: emitConditionalMove(MI, Out, 0xfc, 0x40); return;
+    case AVM::CMOV_SLT: emitConditionalMove(MI, Out, 0xfd, 0x00); return;
+    case AVM::CMOV_SGE: emitConditionalMove(MI, Out, 0xfd, 0x40); return;
     case AVM::SHL16V: emitCompactVariableShift(MI, Out, 0x00); return;
     case AVM::LSR16V: emitCompactVariableShift(MI, Out, 0x10); return;
     case AVM::ASR16V: emitCompactVariableShift(MI, Out, 0x20); return;

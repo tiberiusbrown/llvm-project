@@ -842,6 +842,20 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseConditionalMove(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                             OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
                              StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
@@ -1153,6 +1167,18 @@ public:
       return parseCSet(AVM::CSET_SLT, Name, NameLoc, Operands);
     if (Lower == "cset.sge")
       return parseCSet(AVM::CSET_SGE, Name, NameLoc, Operands);
+    if (Lower == "cmov.eq")
+      return parseConditionalMove(AVM::CMOV_EQ, Name, NameLoc, Operands);
+    if (Lower == "cmov.ne")
+      return parseConditionalMove(AVM::CMOV_NE, Name, NameLoc, Operands);
+    if (Lower == "cmov.ult")
+      return parseConditionalMove(AVM::CMOV_ULT, Name, NameLoc, Operands);
+    if (Lower == "cmov.uge")
+      return parseConditionalMove(AVM::CMOV_UGE, Name, NameLoc, Operands);
+    if (Lower == "cmov.slt")
+      return parseConditionalMove(AVM::CMOV_SLT, Name, NameLoc, Operands);
+    if (Lower == "cmov.sge")
+      return parseConditionalMove(AVM::CMOV_SGE, Name, NameLoc, Operands);
     if (Lower == "add32")
       return parseF7PairArithmetic(AVM::ADD32, Name, NameLoc, Operands);
     if (Lower == "sub32")

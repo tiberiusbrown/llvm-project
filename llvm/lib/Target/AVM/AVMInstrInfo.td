@@ -178,6 +178,16 @@ class AVMCSetInst<string Asm> : AVMInst<Asm, 2> {
   let OutOperandList = (outs AVMGeneralReg:$dst);
   let Uses = [CC];
 }
+
+// FB-FD conditional moves are MC-only. The destination is a tied read/write
+// operand because the false path preserves its original value; the source is
+// read-only and CC is implicitly read and preserved.
+class AVMConditionalMoveInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src1, AVMGeneralReg:$src2)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src1";
+  let Uses = [CC];
+}
 class AVMF6MultiplyInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
@@ -376,6 +386,13 @@ def CSET_ULT : AVMCSetInst<"cset.ult $dst">;
 def CSET_UGE : AVMCSetInst<"cset.uge $dst">;
 def CSET_SLT : AVMCSetInst<"cset.slt $dst">;
 def CSET_SGE : AVMCSetInst<"cset.sge $dst">;
+
+def CMOV_EQ : AVMConditionalMoveInst<"cmov.eq $dst, $src2">;
+def CMOV_NE : AVMConditionalMoveInst<"cmov.ne $dst, $src2">;
+def CMOV_ULT : AVMConditionalMoveInst<"cmov.ult $dst, $src2">;
+def CMOV_UGE : AVMConditionalMoveInst<"cmov.uge $dst, $src2">;
+def CMOV_SLT : AVMConditionalMoveInst<"cmov.slt $dst, $src2">;
+def CMOV_SGE : AVMConditionalMoveInst<"cmov.sge $dst, $src2">;
 
 def SHL16V : AVMCompactVariableShiftInst<"shl16v $dst, $count">;
 def LSR16V : AVMCompactVariableShiftInst<"lsr16v $dst, $count">;
