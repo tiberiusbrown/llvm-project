@@ -40,6 +40,9 @@ public:
   virtual void writeGotPlt(uint8_t *buf, const Symbol &s) const {}
   virtual void writeIgotPlt(uint8_t *buf, const Symbol &s) const {}
   virtual int64_t getImplicitAddend(const uint8_t *buf, RelType type) const;
+  // Returns the number of bytes occupied by a relocation field. A zero-sized
+  // relocation is a marker and does not access the relocated section.
+  virtual unsigned getRelocSize(RelType type) const { return 0; }
   virtual int getTlsGdRelaxSkip(RelType type) const { return 1; }
 
   // If lazy binding is supported, the first entry of the PLT has code

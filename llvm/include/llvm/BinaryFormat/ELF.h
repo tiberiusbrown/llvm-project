@@ -519,6 +519,11 @@ enum {
 #include "ELFRelocs/AVR.def"
 };
 
+// Arduboy Virtual Machine specific e_flags.
+enum : unsigned {
+  EF_AVM_ABI_V1 = 0x00000001,
+};
+
 // ELF relocations for the Arduboy Virtual Machine.
 enum {
 #include "ELFRelocs/AVM.def"
@@ -1288,6 +1293,9 @@ enum : unsigned {
   SHF_EXCLUDE = 0x80000000U,
 
   // Start of target-specific flags.
+
+  SHF_AVM_PROGSPACE = 0x00100000,
+  SHF_AVM_DATASPACE = 0x00200000,
 
   SHF_MASKOS = 0x0ff00000,
 

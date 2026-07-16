@@ -84,6 +84,12 @@ void RelocScan::scan(typename Relocs<RelTy>::const_iterator &it, RelType type,
   uint32_t symIdx = rel.getSymbol(false);
   Symbol &sym = sec->getFile<ELFT>()->getSymbol(symIdx);
   uint64_t offset = rel.r_offset;
+  unsigned size = ctx.target->getRelocSize(type);
+  if (size && (offset > sec->getSize() || size > sec->getSize() - offset)) {
+    Err(ctx) << sec->getLocation(offset) << ": relocation " << type
+             << " extends past the end of the input section";
+    return;
+  }
   RelExpr expr =
       ctx.target->getRelExpr(type, sym, sec->content().data() + offset);
 

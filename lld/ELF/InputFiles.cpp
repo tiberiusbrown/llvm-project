@@ -847,6 +847,10 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats,
     case SHT_SYMTAB:
     case SHT_STRTAB:
     case SHT_REL:
+      if (type == SHT_REL && emachine == EM_AVM)
+        Err(ctx) << this
+                 << ": SHT_REL relocation sections are unsupported for AVM";
+      break;
     case SHT_RELA:
     case SHT_CREL:
     case SHT_NULL:
