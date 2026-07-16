@@ -356,6 +356,52 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, Family | *Index);
   }
 
+  void emitF7PairArithmetic(const MCInst &MI, SmallVectorImpl<char> &Out,
+                            unsigned Base) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two pair operands q0-q3");
+      return;
+    }
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    const auto S = programPairIndex(MI.getOperand(1).getReg());
+    if (!D || !S) {
+      error(MI, "expected pair operands q0-q3");
+      return;
+    }
+    emit8(Out, 0xf7);
+    emit8(Out, Base + 4 * *D + *S);
+  }
+
+  void emitF7PairUnary(const MCInst &MI, SmallVectorImpl<char> &Out,
+                       unsigned Base) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one pair operand q0-q3");
+      return;
+    }
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    if (!D) {
+      error(MI, "expected pair operand q0-q3");
+      return;
+    }
+    emit8(Out, 0xf7);
+    emit8(Out, Base + *D);
+  }
+
+  void emitF7Bool(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one full register operand r0-r7");
+      return;
+    }
+    const auto D = generalPointerRegIndex(MI.getOperand(0).getReg());
+    if (!D) {
+      error(MI, "expected full register operand r0-r7");
+      return;
+    }
+    emit8(Out, 0xf7);
+    emit8(Out, 0x88 + *D);
+  }
+
   void emitStackReg(const MCInst &MI, SmallVectorImpl<char> &Out,
                     unsigned Family) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -723,6 +769,11 @@ public:
     case AVM::F7LD8U_POST: emitF7Memory(MI, Out, 0x00, false); return;
     case AVM::F7LD16_POST: emitF7Memory(MI, Out, 0x20, false); return;
     case AVM::F7ST16_POST: emitF7Memory(MI, Out, 0x40, true); return;
+    case AVM::ADD32: emitF7PairArithmetic(MI, Out, 0x60); return;
+    case AVM::SUB32: emitF7PairArithmetic(MI, Out, 0x70); return;
+    case AVM::LSR32_1: emitF7PairUnary(MI, Out, 0x80); return;
+    case AVM::ASR32_1: emitF7PairUnary(MI, Out, 0x84); return;
+    case AVM::BOOL: emitF7Bool(MI, Out); return;
     case AVM::MULU8W: emitF3Multiply(MI, Out, 0x10); return;
     case AVM::MULS8W: emitF3Multiply(MI, Out, 0x20); return;
     case AVM::MULSU8W: emitF3Multiply(MI, Out, 0x30); return;

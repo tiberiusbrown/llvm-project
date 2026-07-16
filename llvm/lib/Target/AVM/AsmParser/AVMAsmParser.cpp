@@ -775,6 +775,32 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseF7PairArithmetic(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                              OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseProgramPair(Destination) || Parser.parseComma() ||
+        parseProgramPair(Source))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseF7PairUnary(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseProgramPair(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseF4FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                       OperandVector &Operands) {
     MCRegister Reg;
@@ -1080,6 +1106,16 @@ public:
       return parseF4FullReg(AVM::SEXT8, Name, NameLoc, Operands);
     if (Lower == "neg16")
       return parseF4FullReg(AVM::NEG16, Name, NameLoc, Operands);
+    if (Lower == "add32")
+      return parseF7PairArithmetic(AVM::ADD32, Name, NameLoc, Operands);
+    if (Lower == "sub32")
+      return parseF7PairArithmetic(AVM::SUB32, Name, NameLoc, Operands);
+    if (Lower == "lsr32.1")
+      return parseF7PairUnary(AVM::LSR32_1, Name, NameLoc, Operands);
+    if (Lower == "asr32.1")
+      return parseF7PairUnary(AVM::ASR32_1, Name, NameLoc, Operands);
+    if (Lower == "bool")
+      return parseF1FullReg(AVM::BOOL, Name, NameLoc, Operands);
     if (Lower == "add") {
       if (Parser.getTok().is(AsmToken::Identifier) &&
           Parser.getTok().getIdentifier().starts_with_insensitive("r"))

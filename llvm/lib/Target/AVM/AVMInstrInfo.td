@@ -80,6 +80,25 @@ class AVMF7StoreInst<string Asm>
   let Constraints = "$addr = $addr_in";
 }
 
+class AVMF7PairArithmeticInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMProgramPairReg:$src1,
+                           AVMProgramPairReg:$src2)> {
+  let OutOperandList = (outs AVMProgramPairReg:$dst);
+  let Constraints = "$dst = $src1";
+}
+
+class AVMF7PairUnaryInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMProgramPairReg:$src)> {
+  let OutOperandList = (outs AVMProgramPairReg:$dst);
+  let Constraints = "$dst = $src";
+}
+
+class AVMF7BoolInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src";
+}
+
 class AVMF3WideningMultiplyInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
@@ -265,6 +284,11 @@ def F5ST16 : AVMF5StoreInst<"st16 [$addr], $src">;
 def F7LD8U_POST : AVMF7LoadInst<"ld8u $dst, [$addr+]">;
 def F7LD16_POST : AVMF7LoadInst<"ld16 $dst, [$addr+]">;
 def F7ST16_POST : AVMF7StoreInst<"st16 [$addr+], $src">;
+def ADD32 : AVMF7PairArithmeticInst<"add32 $dst, $src2">;
+def SUB32 : AVMF7PairArithmeticInst<"sub32 $dst, $src2">;
+def LSR32_1 : AVMF7PairUnaryInst<"lsr32.1 $dst">;
+def ASR32_1 : AVMF7PairUnaryInst<"asr32.1 $dst">;
+def BOOL : AVMF7BoolInst<"bool $dst">;
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;

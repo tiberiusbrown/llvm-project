@@ -34,6 +34,15 @@ class AVMDisassembler final : public MCDisassembler {
     }
   }
 
+  static MCRegister programPairRegister(unsigned Index) {
+    switch (Index) {
+    case 0: return AVM::R0R1;
+    case 1: return AVM::R2R3;
+    case 2: return AVM::R4R5;
+    default: return AVM::R6R7;
+    }
+  }
+
   static bool decodePair48(unsigned Secondary, unsigned &Left,
                            unsigned &Right) {
     if (Secondary > 0x2f)
@@ -405,11 +414,38 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
-      if (Secondary > 0x5f) {
+      if (Secondary >= 0x60 && Secondary < 0x70) {
+        MI.setOpcode(AVM::ADD32);
+        MI.addOperand(MCOperand::createReg(programPairRegister((Secondary - 0x60) / 4)));
+        MI.addOperand(MCOperand::createReg(programPairRegister((Secondary - 0x60) & 3)));
+        Size = 2;
+        return Success;
+      } else if (Secondary >= 0x70 && Secondary < 0x80) {
+        MI.setOpcode(AVM::SUB32);
+        MI.addOperand(MCOperand::createReg(programPairRegister((Secondary - 0x70) / 4)));
+        MI.addOperand(MCOperand::createReg(programPairRegister((Secondary - 0x70) & 3)));
+        Size = 2;
+        return Success;
+      } else if (Secondary >= 0x80 && Secondary < 0x84) {
+        MI.setOpcode(AVM::LSR32_1);
+        MI.addOperand(MCOperand::createReg(programPairRegister(Secondary - 0x80)));
+        Size = 2;
+        return Success;
+      } else if (Secondary >= 0x84 && Secondary < 0x88) {
+        MI.setOpcode(AVM::ASR32_1);
+        MI.addOperand(MCOperand::createReg(programPairRegister(Secondary - 0x84)));
+        Size = 2;
+        return Success;
+      } else if (Secondary >= 0x88 && Secondary < 0x90) {
+        MI.setOpcode(AVM::BOOL);
+        MI.addOperand(MCOperand::createReg(generalPointerRegister(Secondary - 0x88)));
+        Size = 2;
+        return Success;
+      } else if (Secondary > 0x5f) {
         Size = 1;
         return Fail;
-      }
-      const unsigned PointerIndex = Secondary / 8;
+      } else {
+        const unsigned PointerIndex = Secondary / 8;
       const unsigned DataIndex = Secondary & 7;
       if (Secondary < 0x20 || (Secondary >= 0x20 && Secondary < 0x40)) {
         if (DataIndex == 4 + PointerIndex) {
@@ -429,6 +465,7 @@ public:
       }
       Size = 2;
       return Success;
+      }
     }
 
     if (Bytes[0] == 0xf3) {
