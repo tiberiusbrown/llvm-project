@@ -727,6 +727,24 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 0x30 + 4 * *D + *S);
   }
 
+  void emitCompactVariableShift(const MCInst &MI,
+                                SmallVectorImpl<char> &Out,
+                                unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg()) {
+      error(MI, "expected two compact register operands");
+      return;
+    }
+    const auto D = compactRegIndex(MI.getOperand(0).getReg());
+    const auto C = compactRegIndex(MI.getOperand(1).getReg());
+    if (!D || !C) {
+      error(MI, "expected compact register c0-c3");
+      return;
+    }
+    emit8(Out, 0xfa);
+    emit8(Out, SecondaryBase + 4 * *D + *C);
+  }
+
   void emitAbsoluteData(const MCInst &MI, SmallVectorImpl<char> &Out,
                         SmallVectorImpl<MCFixup> &Fixups, unsigned Family,
                         bool IsStore) const {
@@ -795,6 +813,9 @@ public:
     case AVM::CSET_UGE: emitCSet(MI, Out, 0x18); return;
     case AVM::CSET_SLT: emitCSet(MI, Out, 0x20); return;
     case AVM::CSET_SGE: emitCSet(MI, Out, 0x28); return;
+    case AVM::SHL16V: emitCompactVariableShift(MI, Out, 0x00); return;
+    case AVM::LSR16V: emitCompactVariableShift(MI, Out, 0x10); return;
+    case AVM::ASR16V: emitCompactVariableShift(MI, Out, 0x20); return;
     case AVM::STSP8_COMPACT: emitCompactStackStore(MI, Out); return;
     case AVM::LDSP8U_COMPACT: emitCompactStackLoad(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;

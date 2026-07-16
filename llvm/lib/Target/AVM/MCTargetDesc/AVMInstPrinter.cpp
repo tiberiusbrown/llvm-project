@@ -25,6 +25,9 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::LSL16_1: return {"lsl16.1", 0};
   case AVM::LSR16_1: return {"lsr16.1", 0};
   case AVM::ASR16_1: return {"asr16.1", 0};
+  case AVM::SHL16V: return {"shl16v", 0};
+  case AVM::LSR16V: return {"lsr16v", 0};
+  case AVM::ASR16V: return {"asr16v", 0};
   case AVM::NOT16: return {"not16", 0};
   case AVM::TST8: return {"tst8", 0};
   case AVM::INC16: return {"inc16", 0};
@@ -274,6 +277,9 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::AND:
   case AVM::OR:
   case AVM::XOR:
+  case AVM::SHL16V:
+  case AVM::LSR16V:
+  case AVM::ASR16V:
     OS << '\t';
     printCompactReg(MI->getOperand(0).getReg(), OS);
     OS << ", ";

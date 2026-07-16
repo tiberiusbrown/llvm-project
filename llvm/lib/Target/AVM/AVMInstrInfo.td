@@ -44,6 +44,16 @@ class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
   bits<4> CompactFamily = Family;
 }
 
+// FA compact variable shifts are MC-only.  The destination is an explicit
+// tied read/write operand; the count is read-only, including when both
+// operands name the same compact register.
+class AVMCompactVariableShiftInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$src1,
+                           AVMCompactSource:$count)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 class AVMF3StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
                            AVMGeneralReg:$src)>;
@@ -366,6 +376,10 @@ def CSET_ULT : AVMCSetInst<"cset.ult $dst">;
 def CSET_UGE : AVMCSetInst<"cset.uge $dst">;
 def CSET_SLT : AVMCSetInst<"cset.slt $dst">;
 def CSET_SGE : AVMCSetInst<"cset.sge $dst">;
+
+def SHL16V : AVMCompactVariableShiftInst<"shl16v $dst, $count">;
+def LSR16V : AVMCompactVariableShiftInst<"lsr16v $dst, $count">;
+def ASR16V : AVMCompactVariableShiftInst<"asr16v $dst, $count">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

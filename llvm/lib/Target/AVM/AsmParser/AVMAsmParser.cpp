@@ -1117,6 +1117,12 @@ public:
       return parseF4FullReg(AVM::LSR16_1, Name, NameLoc, Operands);
     if (Lower == "asr16.1")
       return parseF4FullReg(AVM::ASR16_1, Name, NameLoc, Operands);
+    if (Lower == "shl16v")
+      return parseCompactPair(AVM::SHL16V, Name, NameLoc, Operands);
+    if (Lower == "lsr16v")
+      return parseCompactPair(AVM::LSR16V, Name, NameLoc, Operands);
+    if (Lower == "asr16v")
+      return parseCompactPair(AVM::ASR16V, Name, NameLoc, Operands);
     if (Lower == "not16")
       return parseF4FullReg(AVM::NOT16, Name, NameLoc, Operands);
     if (Lower == "tst8")

@@ -342,6 +342,26 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xfa) {
+      if (Bytes.size() < 2)
+        return Fail;
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x30) {
+        Size = 1;
+        return Fail;
+      }
+      if (Secondary < 0x10)
+        MI.setOpcode(AVM::SHL16V);
+      else if (Secondary < 0x20)
+        MI.setOpcode(AVM::LSR16V);
+      else
+        MI.setOpcode(AVM::ASR16V);
+      MI.addOperand(MCOperand::createReg(compactRegister((Secondary & 0xf) / 4)));
+      MI.addOperand(MCOperand::createReg(compactRegister(Secondary & 3)));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf5) {
       if (Bytes.size() < 2) {
         Size = 1;
