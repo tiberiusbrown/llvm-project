@@ -10,6 +10,7 @@ add_llvm_component_library(LLVMAVMDesc
   LINK_COMPONENTS
   AVMInfo
   MC
+  MCDisassembler
   Support
   TargetParser
 
