@@ -153,6 +153,12 @@ class AVMF6TestFullRegInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$reg)> {
   let Defs = [CC];
 }
+// F8 condition materialization is MC-only.  The destination is a complete
+// define-only register, and CC is an implicit read that remains preserved.
+class AVMCSetInst<string Asm> : AVMInst<Asm, 2> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Uses = [CC];
+}
 class AVMF6MultiplyInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDest:$src1, AVMCompactSource:$src2)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
@@ -341,6 +347,13 @@ def TST16 : AVMF6TestFullRegInst<"tst16 $reg">;
 def MUL8 : AVMF6MultiplyInst<"mul8 $dst, $src2">;
 def SEXT8 : AVMF6UnaryFullRegInst<"sext8 $dst">;
 def NEG16 : AVMF6UnaryFullRegInst<"neg16 $dst">;
+
+def CSET_EQ : AVMCSetInst<"cset.eq $dst">;
+def CSET_NE : AVMCSetInst<"cset.ne $dst">;
+def CSET_ULT : AVMCSetInst<"cset.ult $dst">;
+def CSET_UGE : AVMCSetInst<"cset.uge $dst">;
+def CSET_SLT : AVMCSetInst<"cset.slt $dst">;
+def CSET_SGE : AVMCSetInst<"cset.sge $dst">;
 
 def LDM8U : AVMAbsoluteDataLoadInst<"ldm8u $reg, [$addr]">;
 def STM8 : AVMAbsoluteDataStoreInst<"stm8 [$addr], $reg">;

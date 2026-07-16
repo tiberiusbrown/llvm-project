@@ -468,6 +468,32 @@ public:
       }
     }
 
+    if (Bytes[0] == 0xf8) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x30) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned Family = Secondary & 0x38;
+      const unsigned Reg = Secondary & 7;
+      switch (Family) {
+      case 0x00: MI.setOpcode(AVM::CSET_EQ); break;
+      case 0x08: MI.setOpcode(AVM::CSET_NE); break;
+      case 0x10: MI.setOpcode(AVM::CSET_ULT); break;
+      case 0x18: MI.setOpcode(AVM::CSET_UGE); break;
+      case 0x20: MI.setOpcode(AVM::CSET_SLT); break;
+      default: MI.setOpcode(AVM::CSET_SGE); break;
+      }
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + Reg)));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf3) {
       if (Bytes.size() < 2) {
         Size = 1;

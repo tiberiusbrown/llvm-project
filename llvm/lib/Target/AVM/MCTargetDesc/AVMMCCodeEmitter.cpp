@@ -679,6 +679,21 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, SecondaryBase + *Reg);
   }
 
+  void emitCSet(const MCInst &MI, SmallVectorImpl<char> &Out,
+                unsigned SecondaryBase) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
+      error(MI, "expected one full register operand");
+      return;
+    }
+    const auto Reg = stackRegIndex(MI.getOperand(0).getReg());
+    if (!Reg) {
+      error(MI, "expected full register r0-r7");
+      return;
+    }
+    emit8(Out, 0xf8);
+    emit8(Out, SecondaryBase + *Reg);
+  }
+
   void emitF6Multiply(const MCInst &MI, SmallVectorImpl<char> &Out) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
         !MI.getOperand(1).isReg()) {
@@ -754,6 +769,12 @@ public:
     case AVM::MUL8: emitF6Multiply(MI, Out); return;
     case AVM::SEXT8: emitF6FullReg(MI, Out, 0x40); return;
     case AVM::NEG16: emitF6FullReg(MI, Out, 0x48); return;
+    case AVM::CSET_EQ: emitCSet(MI, Out, 0x00); return;
+    case AVM::CSET_NE: emitCSet(MI, Out, 0x08); return;
+    case AVM::CSET_ULT: emitCSet(MI, Out, 0x10); return;
+    case AVM::CSET_UGE: emitCSet(MI, Out, 0x18); return;
+    case AVM::CSET_SLT: emitCSet(MI, Out, 0x20); return;
+    case AVM::CSET_SGE: emitCSet(MI, Out, 0x28); return;
     case AVM::STSP8_COMPACT: emitCompactStackStore(MI, Out); return;
     case AVM::LDSP8U_COMPACT: emitCompactStackLoad(MI, Out); return;
     case AVM::ADD: emitCompactMatrix(MI, Out, 0x10); return;

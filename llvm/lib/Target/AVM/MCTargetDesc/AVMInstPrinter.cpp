@@ -31,6 +31,12 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::MUL8: return {"mul8", 0};
   case AVM::SEXT8: return {"sext8", 0};
   case AVM::NEG16: return {"neg16", 0};
+  case AVM::CSET_EQ: return {"cset.eq", 0};
+  case AVM::CSET_NE: return {"cset.ne", 0};
+  case AVM::CSET_ULT: return {"cset.ult", 0};
+  case AVM::CSET_UGE: return {"cset.uge", 0};
+  case AVM::CSET_SLT: return {"cset.slt", 0};
+  case AVM::CSET_SGE: return {"cset.sge", 0};
   case AVM::ADD: return {"add", 0};
   case AVM::SUB: return {"sub", 0};
   case AVM::CMP: return {"cmp", 0};
@@ -237,6 +243,15 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::LSR32_1:
   case AVM::ASR32_1:
   case AVM::BOOL:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    break;
+  case AVM::CSET_EQ:
+  case AVM::CSET_NE:
+  case AVM::CSET_ULT:
+  case AVM::CSET_UGE:
+  case AVM::CSET_SLT:
+  case AVM::CSET_SGE:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
     break;

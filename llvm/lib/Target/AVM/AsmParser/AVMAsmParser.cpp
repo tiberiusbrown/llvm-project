@@ -813,6 +813,18 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseCSet(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                 OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseFullReg(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseCompactImmediate(unsigned Opcode, bool IsSigned, unsigned Bits,
                              StringRef Name, SMLoc NameLoc,
                              OperandVector &Operands) {
@@ -1106,6 +1118,18 @@ public:
       return parseF4FullReg(AVM::SEXT8, Name, NameLoc, Operands);
     if (Lower == "neg16")
       return parseF4FullReg(AVM::NEG16, Name, NameLoc, Operands);
+    if (Lower == "cset.eq")
+      return parseCSet(AVM::CSET_EQ, Name, NameLoc, Operands);
+    if (Lower == "cset.ne")
+      return parseCSet(AVM::CSET_NE, Name, NameLoc, Operands);
+    if (Lower == "cset.ult")
+      return parseCSet(AVM::CSET_ULT, Name, NameLoc, Operands);
+    if (Lower == "cset.uge")
+      return parseCSet(AVM::CSET_UGE, Name, NameLoc, Operands);
+    if (Lower == "cset.slt")
+      return parseCSet(AVM::CSET_SLT, Name, NameLoc, Operands);
+    if (Lower == "cset.sge")
+      return parseCSet(AVM::CSET_SGE, Name, NameLoc, Operands);
     if (Lower == "add32")
       return parseF7PairArithmetic(AVM::ADD32, Name, NameLoc, Operands);
     if (Lower == "sub32")
