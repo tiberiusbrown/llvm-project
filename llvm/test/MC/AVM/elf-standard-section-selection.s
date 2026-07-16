@@ -11,10 +11,10 @@
   .zero 3
 
 # CHECK: Name: .text
-# CHECK: Flags [ (0x100006)
+# CHECK: Flags [ (0x10000006)
 # CHECK: Name: .rodata
-# CHECK: Flags [ (0x100002)
+# CHECK: Flags [ (0x10000002)
 # CHECK: Name: .data
-# CHECK: Flags [ (0x200003)
+# CHECK: Flags [ (0x20000003)
 # CHECK: Name: .bss
-# CHECK: Flags [ (0x200003)
+# CHECK: Flags [ (0x20000003)

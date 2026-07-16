@@ -1367,6 +1367,11 @@ const EnumEntry<unsigned> ElfAArch64SectionFlags[] = {
   ENUM_ENT(SHF_AARCH64_PURECODE, "y")
 };
 
+const EnumEntry<unsigned> ElfAVMSectionFlags[] = {
+  ENUM_ENT(SHF_AVM_PROGSPACE, ""),
+  ENUM_ENT(SHF_AVM_DATASPACE, "")
+};
+
 const EnumEntry<unsigned> ElfARMSectionFlags[] = {
   ENUM_ENT(SHF_ARM_PURECODE, "y")
 };
@@ -1403,6 +1408,9 @@ getSectionFlagsForTarget(unsigned EOSAbi, unsigned EMachine) {
     break;
   }
   switch (EMachine) {
+  case EM_AVM:
+    llvm::append_range(Ret, ElfAVMSectionFlags);
+    break;
   case EM_AARCH64:
     llvm::append_range(Ret, ElfAArch64SectionFlags);
     break;

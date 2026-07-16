@@ -41,7 +41,7 @@ data_object:
 
 # CHECK: Name: .text
 # CHECK: Type: SHT_PROGBITS
-# CHECK: Flags [ (0x100006)
+# CHECK: Flags [ (0x10000006)
 # CHECK: SHF_ALLOC
 # CHECK: SHF_EXECINSTR
 # CHECK: Name: .rela.text
@@ -50,12 +50,12 @@ data_object:
 
 # CHECK: Name: .rodata
 # CHECK: Type: SHT_PROGBITS
-# CHECK: Flags [ (0x100002)
+# CHECK: Flags [ (0x10000002)
 # CHECK: SHF_ALLOC
 
 # CHECK: Name: .data
 # CHECK: Type: SHT_PROGBITS
-# CHECK: Flags [ (0x200003)
+# CHECK: Flags [ (0x20000003)
 # CHECK: SHF_ALLOC
 # CHECK: SHF_WRITE
 # CHECK: Name: .rela.data
@@ -64,19 +64,19 @@ data_object:
 
 # CHECK: Name: .bss
 # CHECK: Type: SHT_NOBITS
-# CHECK: Flags [ (0x200003)
+# CHECK: Flags [ (0x20000003)
 # CHECK: SHF_ALLOC
 # CHECK: SHF_WRITE
 
 # CHECK: Name: .init_array
 # CHECK: Type: SHT_INIT_ARRAY
-# CHECK: Flags [ (0x100002)
+# CHECK: Flags [ (0x10000002)
 # CHECK: SHF_ALLOC
 # CHECK: EntrySize: 3
 
 # CHECK: Name: .fini_array
 # CHECK: Type: SHT_FINI_ARRAY
-# CHECK: Flags [ (0x100002)
+# CHECK: Flags [ (0x10000002)
 # CHECK: SHF_ALLOC
 # CHECK: EntrySize: 3
 
