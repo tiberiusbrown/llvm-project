@@ -398,17 +398,25 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
     EHSectionFlags |= ELF::SHF_WRITE;
 
   // ELF
+  const bool IsAVM = T.getArch() == Triple::avm;
+  const unsigned AVMProgSpace = IsAVM ? ELF::SHF_AVM_PROGSPACE : 0;
+  const unsigned AVMDataSpace = IsAVM ? ELF::SHF_AVM_DATASPACE : 0;
+
   BSSSection = Ctx->getELFSection(".bss", ELF::SHT_NOBITS,
-                                  ELF::SHF_WRITE | ELF::SHF_ALLOC);
+                                  ELF::SHF_WRITE | ELF::SHF_ALLOC |
+                                      AVMDataSpace);
 
   TextSection = Ctx->getELFSection(".text", ELF::SHT_PROGBITS,
-                                   ELF::SHF_EXECINSTR | ELF::SHF_ALLOC);
+                                   ELF::SHF_EXECINSTR | ELF::SHF_ALLOC |
+                                       AVMProgSpace);
 
   DataSection = Ctx->getELFSection(".data", ELF::SHT_PROGBITS,
-                                   ELF::SHF_WRITE | ELF::SHF_ALLOC);
+                                   ELF::SHF_WRITE | ELF::SHF_ALLOC |
+                                       AVMDataSpace);
 
   ReadOnlySection =
-      Ctx->getELFSection(".rodata", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
+      Ctx->getELFSection(".rodata", ELF::SHT_PROGBITS,
+                         ELF::SHF_ALLOC | AVMProgSpace);
 
   TLSDataSection =
       Ctx->getELFSection(".tdata", ELF::SHT_PROGBITS,

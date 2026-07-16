@@ -2,7 +2,10 @@
 #include "AVMInstPrinter.h"
 #include "AVMMCExpr.h"
 #include "TargetInfo/AVMTargetInfo.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCELFObjectWriter.h"
+#include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -20,6 +23,14 @@ using namespace llvm;
 #include "AVMGenSubtargetInfo.inc"
 
 namespace {
+
+class AVMObjectTargetStreamer final : public MCTargetStreamer {
+public:
+  explicit AVMObjectTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {
+    static_cast<MCELFStreamer &>(S).getWriter().setELFHeaderEFlags(
+        ELF::EF_AVM_ABI_V1);
+  }
+};
 
 class AVMMCAsmInfo final : public MCAsmInfo {
 public:
@@ -103,6 +114,11 @@ static MCInstPrinter *createAVMMCInstPrinter(const Triple &, unsigned Variant,
   return new AVMInstPrinter(MAI, MII, MRI);
 }
 
+static MCTargetStreamer *createAVMObjectTargetStreamer(MCStreamer &S,
+                                                        const MCSubtargetInfo &) {
+  return new AVMObjectTargetStreamer(S);
+}
+
 } // namespace
 
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
@@ -114,4 +130,6 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
   TargetRegistry::RegisterMCInstPrinter(T, createAVMMCInstPrinter);
   TargetRegistry::RegisterMCCodeEmitter(T, createAVMMCCodeEmitter);
   TargetRegistry::RegisterMCAsmBackend(T, createAVMAsmBackend);
+  TargetRegistry::RegisterObjectTargetStreamer(T,
+                                               createAVMObjectTargetStreamer);
 }
