@@ -1,0 +1,59 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/input.s -o %t/input.o
+# RUN: ld.lld %t/input.o -o %t/input.elf
+# RUN: llvm-avm-image %t/input.elf -o %t/image.bin
+# RUN: llvm-avm-image --output %t/image-again.bin %t/input.elf
+# RUN: cmp %t/image.bin %t/image-again.bin
+# RUN: %python %S/Inputs/check-image.py %t/image.bin 1 3
+# RUN: llvm-mc -triple=avm -filetype=obj %t/minimal.s -o %t/minimal.o
+# RUN: ld.lld %t/minimal.o -o %t/minimal.elf
+# RUN: llvm-avm-image %t/minimal.elf -o %t/minimal.bin
+# RUN: %python %S/Inputs/check-image.py %t/minimal.bin 0 0
+# RUN: not llvm-avm-image %t/input.o -o %t/object.bin 2>&1 | FileCheck %s --check-prefix=REL
+# RUN: llvm-mc -triple=avm -filetype=obj %t/high.s -o %t/high.o
+# RUN: ld.lld -T %t/exact.ld %t/high.o -o %t/exact.elf
+# RUN: llvm-avm-image %t/exact.elf -o %t/exact.bin
+# RUN: %python %S/Inputs/check-image.py %t/exact.bin 0 0 65535
+# RUN: ld.lld -T %t/too-large.ld %t/high.o -o %t/too-large.elf
+# RUN: not llvm-avm-image %t/too-large.elf -o %t/too-large.bin 2>&1 | FileCheck %s --check-prefix=TOO-LARGE
+
+# REL: must be a linked AVM ET_EXEC
+# TOO-LARGE: cannot be represented by a Version 1 flat image
+
+#--- input.s
+.text
+.globl _start
+_start:
+  .byte 0xaa, 0xbb
+.section .rodata.extra,"a",@progbits
+  .byte 0xcc
+.section .rodata.custom,"a",@progbits
+  .byte 0xdd
+.section .init_array,"a",@init_array
+  .progptr _start
+.section .fini_array,"a",@fini_array
+  .progptr _start
+.section .saved.settings,"aw",@progbits
+  .byte 0x11
+.section .data.runtime,"aw",@progbits
+  .byte 0x00, 0x22
+
+#--- minimal.s
+.text
+.globl _start
+_start:
+  .byte 0
+
+#--- high.s
+.text
+.globl _start
+_start:
+  .byte 0
+
+#--- exact.ld
+ENTRY(_start)
+SECTIONS { .text 0xfffef4 : { *(.text) } }
+
+#--- too-large.ld
+ENTRY(_start)
+SECTIONS { .text 0xfffef8 : { *(.text) } }

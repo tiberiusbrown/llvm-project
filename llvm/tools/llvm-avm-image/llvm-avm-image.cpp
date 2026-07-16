@@ -1,7 +1,7 @@
-//===-- llvm-avm-image.cpp - AVM early image utility ---------------------===//
+//===-- llvm-avm-image.cpp - AVM flat image packer -----------------------===//
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
@@ -9,37 +9,42 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileOutputBuffer.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/WithColor.h"
 #include <algorithm>
-#include <cstring>
-#include <optional>
 
 using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::support::endian;
 
-static cl::opt<std::string> Action(cl::Positional, cl::Required,
-                                  cl::desc("<create|validate|inspect>"));
 static cl::opt<std::string> Input(cl::Positional, cl::Required,
-                                 cl::desc("<input>"));
-static cl::opt<std::string> Output("o", cl::desc("Output image path"));
-static cl::opt<unsigned> SaveSize("save-size", cl::init(0),
-                                  cl::desc("Persistent save bytes (0..1024)"));
-static cl::opt<unsigned> RuntimeVersion(
-    "runtime-version", cl::init(1),
-    cl::desc("Required AVM runtime compatibility version"));
+                                  cl::desc("<input.elf>"));
+static cl::opt<std::string> Output("o", cl::value_desc("file"),
+                                   cl::desc("Write image to <file>"),
+                                   cl::Required);
+static cl::alias OutputLong("output", cl::desc("Alias for -o"),
+                            cl::aliasopt(Output));
+
+namespace {
+constexpr uint32_t HeaderSize = 0x100;
+constexpr uint32_t PageSize = 0x100;
+constexpr uint32_t MaxDataSize = 1024;
+constexpr uint32_t MaxProgramAddress = 0xffffff;
+constexpr uint32_t MaxPayloadEnd = 0xfffef8;
+constexpr uint32_t MaxFileSize = 0xffff00;
+constexpr uint32_t AVMProgSpace = 0x10000000;
+constexpr uint32_t AVMDataSpace = 0x20000000;
+
+struct PayloadSection {
+  StringRef Name;
+  uint32_t Address;
+  ArrayRef<uint8_t> Contents;
+  uint64_t Flags;
+};
 
 static Error bad(const Twine &Message) {
   return createStringError(inconvertibleErrorCode(), Message);
-}
-
-static uint32_t read24(ArrayRef<uint8_t> Bytes, size_t Offset) {
-  return Bytes[Offset] | uint32_t(Bytes[Offset + 1]) << 8 |
-         uint32_t(Bytes[Offset + 2]) << 16;
 }
 
 static void write24(MutableArrayRef<uint8_t> Bytes, size_t Offset,
@@ -49,419 +54,237 @@ static void write24(MutableArrayRef<uint8_t> Bytes, size_t Offset,
   Bytes[Offset + 2] = Value >> 16;
 }
 
-static bool hasMagic(ArrayRef<uint8_t> Bytes, ArrayRef<uint8_t> Magic) {
-  return Bytes.size() >= Magic.size() &&
-         std::equal(Magic.begin(), Magic.end(), Bytes.begin());
+static Expected<uint32_t> checkedEnd(uint64_t Address, uint64_t Size,
+                                     StringRef Name) {
+  if (Address > MaxProgramAddress || Size > MaxProgramAddress + 1ULL ||
+      Address + Size > MaxProgramAddress + 1ULL)
+    return bad(Twine("AVM section '") + Name +
+               "' exceeds the 24-bit program-space limit");
+  return static_cast<uint32_t>(Address + Size);
 }
 
-static Error validateImage(ArrayRef<uint8_t> Bytes, bool Print) {
-  static const uint8_t HeaderMagic[] = {0x41, 0x56, 0x4d, 0x01};
-  static const uint8_t TailMagic[] = {0x41, 0x56, 0x54, 0x01};
+static Expected<uint32_t> finalFileSize(uint32_t PayloadEnd) {
+  if (PayloadEnd > MaxPayloadEnd)
+    return bad("AVM payload cannot be represented by a Version 1 flat image");
+  uint64_t Size = alignTo(uint64_t(PayloadEnd) + 8, PageSize);
+  if (Size > MaxFileSize || Size / PageSize > 0xffff)
+    return bad("AVM image requires more than 0xFFFF pages");
+  return static_cast<uint32_t>(Size);
+}
 
-  if (Bytes.size() < 512 || Bytes.size() % 256 != 0)
-    return bad("image size must be at least 512 bytes and a multiple of 256");
-  if (!hasMagic(Bytes, HeaderMagic))
-    return bad("invalid AVM header magic");
-  if (Bytes[4] == 0)
-    return bad("runtimeVersion must be nonzero");
-
-  uint32_t Entry = read24(Bytes, 5);
-  uint16_t DataSize = read16le(Bytes.data() + 8);
-  uint16_t StaticSize = read16le(Bytes.data() + 10);
-  uint16_t PersistentSize = read16le(Bytes.data() + 12);
-  if (DataSize > StaticSize || StaticSize > 1024)
-    return bad("invalid dataSize/staticSize relationship");
-  if (PersistentSize > 1024)
-    return bad("saveSize exceeds 1024 bytes");
-  if (llvm::any_of(Bytes.slice(14, 238),
-                   [](uint8_t Byte) { return Byte != 0; }))
-    return bad("reserved header bytes are not zero");
-
-  uint32_t StoredCRC = read32le(Bytes.data() + 252);
-  uint32_t ComputedCRC = crc32(Bytes.take_front(252));
-  if (StoredCRC != ComputedCRC)
-    return bad("header CRC-32 mismatch");
-
-  ArrayRef<uint8_t> Tail = Bytes.take_back(8);
-  if (!hasMagic(Tail, TailMagic))
-    return bad("invalid AVM tail magic");
-  uint16_t PageCount = read16le(Tail.data() + 4);
-  if (PageCount == 0 || PageCount != Bytes.size() / 256)
-    return bad("tail imagePageCount does not match file size");
-  if (read16le(Tail.data() + 6) != 0)
-    return bad("tail reserved bytes are not zero");
-
-  uint32_t ProgramStart = alignTo(0x100u + DataSize, 0x100u);
-  uint32_t TailOffset = Bytes.size() - 8;
-  if ((Entry & 1) || Entry < ProgramStart || Entry >= TailOffset)
-    return bad("entry point is outside the program payload or is not even");
-  if (ProgramStart > TailOffset)
-    return bad("programStart lies beyond the image payload");
-  for (uint32_t I = 0x100u + DataSize; I < ProgramStart; ++I)
-    if (Bytes[I] != 0xff)
-      return bad("non-0xFF byte in data-to-program alignment padding");
-
-  if (Print) {
-    outs() << "AVM image\n"
-           << "  fileSize: " << Bytes.size() << "\n"
-           << "  imagePageCount: " << PageCount << "\n"
-           << "  runtimeVersion: " << unsigned(Bytes[4]) << "\n"
-           << "  entryPoint: 0x" << format_hex_no_prefix(Entry, 6) << "\n"
-           << "  dataSize: " << DataSize << "\n"
-           << "  staticSize: " << StaticSize << "\n"
-           << "  saveSize: " << PersistentSize << "\n"
-           << "  programStart: 0x"
-           << format_hex_no_prefix(ProgramStart, 6) << "\n"
-           << "  headerCrc32: 0x"
-           << format_hex_no_prefix(StoredCRC, 8) << " (valid)\n";
+static Error checkNoOverlap(ArrayRef<PayloadSection> Sections,
+                            uint32_t StaticEnd) {
+  SmallVector<PayloadSection, 8> Sorted(Sections.begin(), Sections.end());
+  llvm::sort(Sorted, [](const PayloadSection &A, const PayloadSection &B) {
+    return A.Address < B.Address;
+  });
+  uint32_t PreviousEnd = StaticEnd;
+  StringRef PreviousName = ".saved/.data initializer";
+  for (const PayloadSection &S : Sorted) {
+    if (S.Address < PreviousEnd)
+      return bad(Twine("AVM section '") + S.Name + "' overlaps '" +
+                 PreviousName + "' in the flat image");
+    Expected<uint32_t> End = checkedEnd(S.Address, S.Contents.size(), S.Name);
+    if (!End)
+      return End.takeError();
+    PreviousEnd = *End;
+    PreviousName = S.Name;
   }
   return Error::success();
 }
 
-struct InputSection {
-  SmallVector<uint8_t> Data;
-  uint64_t Size = 0;
-  bool Found = false;
-};
-
-static Expected<InputSection> findSection(const ObjectFile &Obj,
-                                          StringRef Wanted) {
-  InputSection Result;
-  for (SectionRef Section : Obj.sections()) {
-    Expected<StringRef> Name = Section.getName();
-    if (!Name)
-      return Name.takeError();
-    if (*Name != Wanted)
-      continue;
-    if (Result.Found)
-      return bad(Twine("multiple ") + Wanted + " sections are unsupported");
-    Result.Found = true;
-    Result.Size = Section.getSize();
-    if (!Section.isBSS()) {
-      Expected<StringRef> Contents = Section.getContents();
-      if (!Contents)
-        return Contents.takeError();
-      Result.Data.append(Contents->bytes_begin(), Contents->bytes_end());
-    }
-  }
-  return Result;
+static Expected<ArrayRef<uint8_t>> contents(const ELFFile<ELF32LE> &ELF,
+                                             const ELF32LE::Shdr &Sec,
+                                             StringRef Name) {
+  Expected<ArrayRef<uint8_t>> Bytes = ELF.getSectionContents(Sec);
+  if (!Bytes)
+    return Bytes.takeError();
+  if (Bytes->size() != Sec.sh_size)
+    return bad(Twine("AVM section '") + Name + "' has unavailable contents");
+  return *Bytes;
 }
 
-struct SectionLayout {
-  StringRef Name;
-  uint64_t Address;
-  uint64_t Size;
-};
-
-static Expected<uint64_t>
-getSymbolAddress(const ObjectFile &Obj, const SymbolRef &Symbol,
-                 ArrayRef<SectionLayout> Layout) {
-  Expected<section_iterator> SI = Symbol.getSection();
-  if (!SI)
-    return SI.takeError();
-  if (*SI == Obj.section_end())
-    return bad("relocation refers to an undefined or absolute symbol");
-  Expected<StringRef> Name = (**SI).getName();
-  if (!Name)
-    return Name.takeError();
-  Expected<uint64_t> Offset = Symbol.getAddress();
-  if (!Offset)
-    return Offset.takeError();
-  for (const SectionLayout &Section : Layout)
-    if (Section.Name == *Name) {
-      if (*Offset > Section.Size)
-        return bad(Twine("symbol lies outside section '") + *Name + "'");
-      return Section.Address + *Offset;
-    }
-  return bad(Twine("relocation refers to unsupported section '") + *Name +
-             "'");
-}
-
-static Error applyRelocations(const ObjectFile &Obj, StringRef SectionName,
-                              MutableArrayRef<uint8_t> Data,
-                              ArrayRef<SectionLayout> Layout) {
-  for (SectionRef Section : Obj.sections()) {
-    if (Section.relocation_begin() == Section.relocation_end())
-      continue;
-    Expected<section_iterator> Relocated = Section.getRelocatedSection();
-    if (!Relocated)
-      return Relocated.takeError();
-    if (*Relocated == Obj.section_end())
-      return bad("relocation section has no relocated section");
-    Expected<StringRef> Name = (**Relocated).getName();
-    if (!Name)
-      return Name.takeError();
-    if (*Name != SectionName)
-      continue;
-
-    uint64_t SectionAddress = 0;
-    for (const SectionLayout &Entry : Layout)
-      if (Entry.Name == SectionName)
-        SectionAddress = Entry.Address;
-
-    for (RelocationRef Reloc : Section.relocations()) {
-      uint64_t Type = Reloc.getType();
-      uint64_t Offset = Reloc.getOffset();
-      unsigned Width = Type == ELF::R_AVM_PCREL8 ||
-                               Type == ELF::R_AVM_PROG_HI8
-                           ? 1
-                           : Type == ELF::R_AVM_DATA16 ||
-                                     Type == ELF::R_AVM_PROG_LO16 ||
-                                     Type == ELF::R_AVM_PCREL16
-                                 ? 2
-                                 : 3;
-      if (Type == ELF::R_AVM_NONE || Type == ELF::R_AVM_RELAX)
-        continue;
-      if (Offset > Data.size() || Width > Data.size() - Offset)
-        return bad("relocation field extends beyond its input section");
-
-      symbol_iterator SymI = Reloc.getSymbol();
-      if (SymI == Obj.symbol_end())
-        return bad("relocation has no symbol");
-      Expected<uint64_t> SymbolAddress =
-          getSymbolAddress(Obj, *SymI, Layout);
-      if (!SymbolAddress)
-        return SymbolAddress.takeError();
-      Expected<int64_t> Addend = ELFRelocationRef(Reloc).getAddend();
-      if (!Addend)
-        return Addend.takeError();
-      int64_t SignedValue = static_cast<int64_t>(*SymbolAddress) + *Addend;
-      if (Type == ELF::R_AVM_PCREL8)
-        SignedValue -= static_cast<int64_t>(SectionAddress + Offset);
-      if (Type != ELF::R_AVM_PCREL8 && SignedValue < 0)
-        return bad("AVM relocation result is negative");
-      uint64_t Value = static_cast<uint64_t>(SignedValue);
-      uint8_t *Loc = Data.data() + Offset;
-
-      switch (Type) {
-      case ELF::R_AVM_DATA16:
-        if (!isUInt<16>(Value))
-          return bad("AVM data-space relocation is out of 16-bit range");
-        write16le(Loc, Value);
-        break;
-      case ELF::R_AVM_PROG24:
-        if (!isUInt<24>(Value))
-          return bad("AVM program-space relocation is out of 24-bit range");
-        Loc[0] = Value;
-        Loc[1] = Value >> 8;
-        Loc[2] = Value >> 16;
-        break;
-      case ELF::R_AVM_PROG_LO16:
-        if (!isUInt<24>(Value))
-          return bad("AVM program-space relocation is out of 24-bit range");
-        write16le(Loc, Value);
-        break;
-      case ELF::R_AVM_PROG_HI8:
-        if (!isUInt<24>(Value))
-          return bad("AVM program-space relocation is out of 24-bit range");
-        Loc[0] = Value >> 16;
-        break;
-      case ELF::R_AVM_PCREL16:
-        if (!isInt<16>(SignedValue))
-          return bad("AVM relative displacement is out of signed 16-bit range");
-        write16le(Loc, SignedValue);
-        break;
-      case ELF::R_AVM_FAR24: {
-        if (!isUInt<24>(Value))
-          return bad("AVM far target is out of 24-bit range");
-        if (Value & 1)
-          return bad("AVM far target must be two-byte aligned");
-        uint8_t Link = Loc[0] & 1;
-        Loc[0] = static_cast<uint8_t>(Value & 0xfe) | Link;
-        Loc[1] = Value >> 8;
-        Loc[2] = Value >> 16;
-        break;
-      }
-      case ELF::R_AVM_PCREL8:
-        if (!isInt<8>(SignedValue))
-          return bad("AVM relative displacement is out of signed 8-bit range");
-        Loc[0] = static_cast<uint8_t>(SignedValue);
-        break;
-      default:
-        return bad(Twine("unsupported AVM relocation type ") + Twine(Type));
-      }
-    }
-  }
-  return Error::success();
-}
-
-static Error checkObjectRestrictions(const ObjectFile &Obj) {
-  for (SectionRef Section : Obj.sections()) {
-    Expected<StringRef> Name = Section.getName();
-    if (!Name)
-      return Name.takeError();
-    if (*Name == ".text" || *Name == ".rodata" || *Name == ".data" ||
-        *Name == ".bss")
-      continue;
-    // Ignore normal ELF bookkeeping and debugging sections. Reject other
-    // allocatable-looking contents rather than silently dropping payload.
-    if (Name->empty() || Name->starts_with(".rel") ||
-        Name->starts_with(".symtab") || Name->starts_with(".strtab") ||
-        Name->starts_with(".shstrtab") || Name->starts_with(".debug") ||
-        *Name == ".comment" || *Name == ".note.GNU-stack" ||
-        *Name == ".llvm_addrsig")
-      continue;
-    if (Section.getSize() != 0)
-      return bad(Twine("unsupported input section '") + *Name + "'");
-  }
-  return Error::success();
-}
-
-static Error createImage() {
-  if (Output.empty())
-    return bad("create requires -o <output>");
-  if (SaveSize > 1024)
-    return bad("--save-size must be in range 0..1024");
-  if (RuntimeVersion == 0 || RuntimeVersion > 255)
-    return bad("--runtime-version must be in range 1..255");
-
-  Expected<OwningBinary<ObjectFile>> Binary =
-      ObjectFile::createObjectFile(Input);
+static Error packageELF(StringRef InputName) {
+  Expected<OwningBinary<ObjectFile>> Binary = ObjectFile::createObjectFile(Input);
   if (!Binary)
-    return Binary.takeError();
-  ObjectFile &Obj = *Binary->getBinary();
-  if (!Obj.isELF() || Obj.getArch() != Triple::avm)
-    return bad("input must be one AVM ELF relocatable object");
-
-  auto *ELFObj = dyn_cast<ELF32LEObjectFile>(&Obj);
+    return createFileError(InputName, Binary.takeError());
+  auto *ELFObj = dyn_cast<ELF32LEObjectFile>(Binary->getBinary());
   if (!ELFObj)
-    return bad("input must be little-endian ELF32");
-  if (ELFObj->getELFFile().getHeader().e_type != ELF::ET_REL)
-    return bad("early image mode requires an ET_REL object");
-  if (Error E = checkObjectRestrictions(Obj))
-    return E;
+    return bad(Twine("'") + InputName + "' is not a little-endian ELF32 file");
 
-  Expected<InputSection> Text = findSection(Obj, ".text");
-  if (!Text)
-    return Text.takeError();
-  Expected<InputSection> Rodata = findSection(Obj, ".rodata");
-  if (!Rodata)
-    return Rodata.takeError();
-  Expected<InputSection> Data = findSection(Obj, ".data");
-  if (!Data)
-    return Data.takeError();
-  Expected<InputSection> Bss = findSection(Obj, ".bss");
-  if (!Bss)
-    return Bss.takeError();
+  const ELFFile<ELF32LE> &ELF = ELFObj->getELFFile();
+  const ELF32LE::Ehdr &H = ELF.getHeader();
+  if (H.e_ident[ELF::EI_CLASS] != ELF::ELFCLASS32 ||
+      H.e_ident[ELF::EI_DATA] != ELF::ELFDATA2LSB ||
+      H.e_ident[ELF::EI_VERSION] != ELF::EV_CURRENT ||
+      H.e_ident[ELF::EI_OSABI] != ELF::ELFOSABI_NONE ||
+      H.e_ident[ELF::EI_ABIVERSION] != 0)
+    return bad(Twine("'") + InputName + "' must be ELFCLASS32 and ELFDATA2LSB");
+  if (H.e_type != ELF::ET_EXEC || H.e_version != ELF::EV_CURRENT)
+    return bad(Twine("'") + InputName + "' must be a linked AVM ET_EXEC");
+  if (H.e_machine != 0x4156 || H.e_flags != 1)
+    return bad(Twine("'") + InputName + "' has unsupported AVM ELF identity");
+  Expected<uint32_t> PhNum = ELF.getPhNum();
+  if (!PhNum)
+    return PhNum.takeError();
+  if (*PhNum != 0)
+    return bad(Twine("'") + InputName + "' has unsupported program headers");
 
-  if (!Text->Found || Text->Data.empty())
-    return bad("exactly one nonempty .text section is required");
-  if (Data->Size + Bss->Size > 1024)
-    return bad(".data plus .bss exceeds 1024 bytes");
+  Expected<ArrayRef<ELF32LE::Shdr>> SectionsOrErr = ELF.sections();
+  if (!SectionsOrErr)
+    return SectionsOrErr.takeError();
 
-  std::optional<uint64_t> StartOffset;
-  for (SymbolRef Symbol : Obj.symbols()) {
-    Expected<StringRef> Name = Symbol.getName();
-    if (!Name)
-      return Name.takeError();
-    if (*Name != "_start")
+  const ELF32LE::Shdr *Saved = nullptr;
+  const ELF32LE::Shdr *Data = nullptr;
+  SmallVector<PayloadSection, 8> Program;
+  for (const ELF32LE::Shdr &S : *SectionsOrErr) {
+    Expected<StringRef> NameOrErr = ELF.getSectionName(S);
+    if (!NameOrErr)
+      return NameOrErr.takeError();
+    StringRef Name = *NameOrErr;
+    bool Alloc = S.sh_flags & ELF::SHF_ALLOC;
+    bool Prog = S.sh_flags & AVMProgSpace;
+    bool DataSpace = S.sh_flags & AVMDataSpace;
+    if (Alloc && Prog == DataSpace)
+      return bad(Twine("allocated AVM section '") + Name +
+                 "' must have exactly one AVM address-space flag");
+    if (Alloc && S.sh_type == ELF::SHT_NOBITS)
+      return bad(Twine("allocated AVM section '") + Name +
+                 "' must not use SHT_NOBITS (.bss is unsupported)");
+    if (Alloc && (S.sh_flags & ELF::SHF_TLS))
+      return bad(Twine("allocated AVM section '") + Name + "' uses TLS");
+    if (S.sh_type == ELF::SHT_DYNAMIC || S.sh_type == ELF::SHT_DYNSYM)
+      return bad(Twine("'") + InputName + "' uses dynamic linking");
+    if (Alloc && (S.sh_flags & ELF::SHF_COMPRESSED))
+      return bad(Twine("allocated AVM section '") + Name + "' is compressed");
+    if (Alloc && (S.sh_type == ELF::SHT_REL || S.sh_type == ELF::SHT_RELA))
+      return bad(Twine("allocated relocation section '") + Name + "' is unsupported");
+    if (S.sh_type == ELF::SHT_SYMTAB) {
+      Expected<ArrayRef<ELF32LE::Sym>> Symbols =
+          ELF.getSectionContentsAsArray<ELF32LE::Sym>(S);
+      if (!Symbols)
+        return Symbols.takeError();
+      for (const ELF32LE::Sym &Sym : *Symbols)
+        if (Sym.st_shndx == ELF::SHN_UNDEF &&
+            Sym.getBinding() != ELF::STB_LOCAL &&
+            Sym.getBinding() != ELF::STB_WEAK)
+          return bad(Twine("'") + InputName + "' has an undefined symbol");
+    }
+    if (!Alloc)
       continue;
-    if (StartOffset)
-      return bad("multiple _start symbols are unsupported");
-    Expected<section_iterator> SI = Symbol.getSection();
-    if (!SI)
-      return SI.takeError();
-    if (*SI == Obj.section_end())
-      return bad("_start must be defined in .text");
-    Expected<StringRef> SectionName = (**SI).getName();
-    if (!SectionName)
-      return SectionName.takeError();
-    if (*SectionName != ".text")
-      return bad("_start must be defined in .text");
-    Expected<uint64_t> Address = Symbol.getAddress();
-    if (!Address)
-      return Address.takeError();
-    StartOffset = *Address;
+
+    if (DataSpace) {
+      if (Name != ".saved" && Name != ".data")
+        return bad(Twine("unsupported allocated data-space section '") + Name + "'");
+      if (S.sh_type != ELF::SHT_PROGBITS ||
+          (S.sh_flags & (ELF::SHF_WRITE | ELF::SHF_EXECINSTR)) != ELF::SHF_WRITE)
+        return bad(Twine("AVM data section '") + Name + "' has invalid type or flags");
+      if (Name == ".saved") {
+        if (Saved)
+          return bad("multiple .saved output sections are unsupported");
+        Saved = &S;
+      } else {
+        if (Data)
+          return bad("multiple .data output sections are unsupported");
+        Data = &S;
+      }
+      continue;
+    }
+
+    if (S.sh_flags & ELF::SHF_WRITE)
+      return bad(Twine("AVM program-space section '") + Name + "' is writable");
+    if (S.sh_type != ELF::SHT_PROGBITS && S.sh_type != ELF::SHT_INIT_ARRAY &&
+        S.sh_type != ELF::SHT_FINI_ARRAY)
+      return bad(Twine("unsupported allocated program-space section '") + Name + "'");
+    Expected<ArrayRef<uint8_t>> Bytes = contents(ELF, S, Name);
+    if (!Bytes)
+      return Bytes.takeError();
+    Expected<uint32_t> End = checkedEnd(S.sh_addr, S.sh_size, Name);
+    if (!End)
+      return End.takeError();
+    if (S.sh_addr < HeaderSize && S.sh_size)
+      return bad(Twine("AVM program-space section '") + Name +
+                 "' overlaps the reserved header range");
+    Program.push_back({Name, S.sh_addr, *Bytes, S.sh_flags});
   }
-  if (!StartOffset)
-    return bad("required symbol _start is not defined");
 
-  uint64_t ProgramStart = alignTo(0x100ull + Data->Size, 0x100ull);
-  uint64_t Entry = ProgramStart + *StartOffset;
-  if ((Entry & 1) || *StartOffset >= Text->Size)
-    return bad("_start must be within .text and even-aligned");
+  uint32_t SaveSize = Saved ? Saved->sh_size : 0;
+  uint32_t DataSuffixSize = Data ? Data->sh_size : 0;
+  if (SaveSize > MaxDataSize || DataSuffixSize > MaxDataSize - SaveSize)
+    return bad(".saved + .data exceeds the 1024-byte AVM static-storage limit");
+  uint32_t DataSize = SaveSize + DataSuffixSize;
+  if (Saved && Saved->sh_addr != HeaderSize)
+    return bad(".saved must begin at data address 0x100");
+  if (Data && Data->sh_addr != HeaderSize + SaveSize)
+    return bad(".data must immediately follow .saved at its AVM data address");
+  Expected<ArrayRef<uint8_t>> SavedBytes =
+      Saved ? contents(ELF, *Saved, ".saved") : ArrayRef<uint8_t>();
+  if (!SavedBytes)
+    return SavedBytes.takeError();
+  Expected<ArrayRef<uint8_t>> DataBytes =
+      Data ? contents(ELF, *Data, ".data") : ArrayRef<uint8_t>();
+  if (!DataBytes)
+    return DataBytes.takeError();
 
-  uint64_t PayloadEnd = ProgramStart + Text->Size + Rodata->Size;
-  if (PayloadEnd > 0x10000)
-    return bad("early image mode supports bank 0 only");
-  uint64_t FileSize = alignTo(PayloadEnd + 8, 0x100ull);
-  if (FileSize / 256 > 0xffff)
-    return bad("image exceeds tail page-count range");
-
-  const SectionLayout Layout[] = {
-      {".data", 0x100, Data->Size},
-      {".bss", 0x100 + Data->Size, Bss->Size},
-      {".text", ProgramStart, Text->Size},
-      {".rodata", ProgramStart + Text->Size, Rodata->Size},
-  };
-  if (Error E = applyRelocations(Obj, ".data", Data->Data, Layout))
+  uint32_t ProgramStart = alignTo(HeaderSize + DataSize, PageSize);
+  uint32_t PayloadEnd = HeaderSize + DataSize;
+  bool EntryIsLiveCode = false;
+  for (const PayloadSection &S : Program) {
+    if (S.Address < ProgramStart)
+      return bad(Twine("AVM program-space section '") + S.Name +
+                 "' begins before programStart");
+    Expected<uint32_t> End = checkedEnd(S.Address, S.Contents.size(), S.Name);
+    if (!End)
+      return End.takeError();
+    PayloadEnd = std::max(PayloadEnd, *End);
+    if ((S.Flags & ELF::SHF_EXECINSTR) && H.e_entry >= S.Address &&
+        H.e_entry < *End)
+      EntryIsLiveCode = true;
+  }
+  if (Error E = checkNoOverlap(Program, HeaderSize + DataSize))
     return E;
-  if (Error E = applyRelocations(Obj, ".text", Text->Data, Layout))
-    return E;
-  if (Error E = applyRelocations(Obj, ".rodata", Rodata->Data, Layout))
-    return E;
+  if (H.e_entry > MaxProgramAddress || H.e_entry < HeaderSize ||
+      !EntryIsLiveCode)
+    return bad("ELF entry point is not a byte in an executable AVM program-space section");
 
-  SmallVector<uint8_t> Image(FileSize, 0xff);
-  std::fill(Image.begin(), Image.begin() + 256, 0);
-  Image[0] = 0x41;
-  Image[1] = 0x56;
-  Image[2] = 0x4d;
-  Image[3] = 0x01;
-  Image[4] = RuntimeVersion;
-  write24(Image, 5, Entry);
-  write16le(Image.data() + 8, Data->Size);
-  write16le(Image.data() + 10, Data->Size + Bss->Size);
-  write16le(Image.data() + 12, SaveSize);
-
-  llvm::copy(Data->Data, Image.begin() + 0x100);
-  llvm::copy(Text->Data, Image.begin() + ProgramStart);
-  llvm::copy(Rodata->Data, Image.begin() + ProgramStart + Text->Size);
-  write32le(Image.data() + 252,
-            crc32(ArrayRef<uint8_t>(Image).take_front(252)));
-
-  size_t TailOffset = Image.size() - 8;
-  Image[TailOffset + 0] = 0x41;
-  Image[TailOffset + 1] = 0x56;
-  Image[TailOffset + 2] = 0x54;
-  Image[TailOffset + 3] = 0x01;
-  write16le(Image.data() + TailOffset + 4, Image.size() / 256);
-  write16le(Image.data() + TailOffset + 6, 0);
-
-  if (Error E = validateImage(Image, false))
-    return E;
+  Expected<uint32_t> FileSize = finalFileSize(PayloadEnd);
+  if (!FileSize)
+    return FileSize.takeError();
+  SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
+  std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
+  Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
+  Image[4] = 1;
+  write24(Image, 5, H.e_entry);
+  write16le(Image.data() + 8, DataSize);
+  write16le(Image.data() + 10, SaveSize);
+  llvm::copy(*SavedBytes, Image.begin() + HeaderSize);
+  llvm::copy(*DataBytes, Image.begin() + HeaderSize + SaveSize);
+  for (const PayloadSection &S : Program)
+    llvm::copy(S.Contents, Image.begin() + S.Address);
+  size_t Tail = Image.size() - 8;
+  Image[Tail] = 0x41; Image[Tail + 1] = 0x56;
+  Image[Tail + 2] = 0x54; Image[Tail + 3] = 0x01;
+  write16le(Image.data() + Tail + 4, *FileSize / PageSize);
+  write16le(Image.data() + Tail + 6, 0);
+  write32le(Image.data() + 0xfc, crc32(ArrayRef<uint8_t>(Image).take_front(0xfc)));
 
   Expected<std::unique_ptr<FileOutputBuffer>> Buffer =
       FileOutputBuffer::create(Output, Image.size());
   if (!Buffer)
     return Buffer.takeError();
-  std::copy(Image.begin(), Image.end(), (*Buffer)->getBufferStart());
+  llvm::copy(Image, (*Buffer)->getBufferStart());
   return (*Buffer)->commit();
 }
-
-static Error readAndValidate(bool Print) {
-  ErrorOr<std::unique_ptr<MemoryBuffer>> Buffer = MemoryBuffer::getFile(Input);
-  if (!Buffer)
-    return errorCodeToError(Buffer.getError());
-  ArrayRef<uint8_t> Bytes(
-      reinterpret_cast<const uint8_t *>((*Buffer)->getBufferStart()),
-      (*Buffer)->getBufferSize());
-  return validateImage(Bytes, Print);
-}
+} // namespace
 
 int main(int argc, char **argv) {
   InitLLVM X(argc, argv);
-  cl::ParseCommandLineOptions(argc, argv, "AVM image utility\n");
-
-  Error E = Action == "create"     ? createImage()
-            : Action == "validate" ? readAndValidate(false)
-            : Action == "inspect"  ? readAndValidate(true)
-                                     : bad("unknown action; expected create, validate, or inspect");
-  if (E) {
-    WithColor::error(errs(), "llvm-avm-image") << toString(std::move(E))
+  cl::ParseCommandLineOptions(argc, argv, "AVM ET_EXEC flat-image packer\n");
+  if (Error E = packageELF(Input)) {
+    WithColor::error(errs(), "llvm-avm-image") << Input << ": "
+                                                 << toString(std::move(E))
                                                  << '\n';
     return 1;
   }
-  if (Action == "validate")
-    outs() << Input << ": valid AVM image\n";
   return 0;
 }

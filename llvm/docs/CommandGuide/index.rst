@@ -33,6 +33,7 @@ Basic Commands
    llvm-link
    llvm-lipo
    llvm-mc
+   llvm-avm-image
    llvm-mca
    llvm-opt-report
    llvm-otool
