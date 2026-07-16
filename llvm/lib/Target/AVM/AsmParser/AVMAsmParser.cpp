@@ -747,6 +747,23 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFullBitwise(unsigned FullOpcode, unsigned CompactOpcode,
+                        StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    const bool CompactPair = Destination.id() >= AVM::R4 &&
+                             Source.id() >= AVM::R4;
+    MCInst Inst;
+    Inst.setOpcode(CompactPair ? CompactOpcode : FullOpcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseFullCompare(StringRef Name, SMLoc NameLoc,
                         OperandVector &Operands) {
     MCRegister Left, Right;
@@ -1237,12 +1254,27 @@ public:
       return parseCold32(AVM::LD32, false, false, Name, NameLoc, Operands);
     if (Lower == "st32")
       return parseCold32(AVM::ST32, true, false, Name, NameLoc, Operands);
-    if (Lower == "and")
+    if (Lower == "and") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullBitwise(AVM::AND_RR, AVM::AND, Name, NameLoc,
+                                Operands);
       return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
-    if (Lower == "or")
+    }
+    if (Lower == "or") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullBitwise(AVM::OR_RR, AVM::OR, Name, NameLoc,
+                                Operands);
       return parseCompactPair(AVM::OR, Name, NameLoc, Operands);
-    if (Lower == "xor")
+    }
+    if (Lower == "xor") {
+      if (Parser.getTok().is(AsmToken::Identifier) &&
+          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
+        return parseFullBitwise(AVM::XOR_RR, AVM::XOR, Name, NameLoc,
+                                Operands);
       return parseCompactPair(AVM::XOR, Name, NameLoc, Operands);
+    }
     if (Lower == "push16")
       return parseStackInstruction(AVM::PUSH16, Name, NameLoc, Operands);
     if (Lower == "pop16")

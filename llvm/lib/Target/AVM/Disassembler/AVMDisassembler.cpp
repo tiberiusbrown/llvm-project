@@ -322,6 +322,26 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xf9) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      switch (Secondary & 3) {
+      case 0: MI.setOpcode(AVM::AND_RR); break;
+      case 1: MI.setOpcode(AVM::OR_RR); break;
+      case 2: MI.setOpcode(AVM::XOR_RR); break;
+      default:
+        Size = 1;
+        return Fail;
+      }
+      MI.addOperand(MCOperand::createReg(generalPointerRegister(Secondary >> 5)));
+      MI.addOperand(MCOperand::createReg(generalPointerRegister((Secondary >> 2) & 7)));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xf5) {
       if (Bytes.size() < 2) {
         Size = 1;

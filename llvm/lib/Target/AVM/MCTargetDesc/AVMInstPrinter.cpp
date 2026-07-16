@@ -15,6 +15,9 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::CMP_RR: return {"cmp", 0};
   case AVM::ADD_RR: return {"add", 0};
   case AVM::SUB_RR: return {"sub", 0};
+  case AVM::AND_RR: return {"and", 0};
+  case AVM::OR_RR: return {"or", 0};
+  case AVM::XOR_RR: return {"xor", 0};
   case AVM::ZEXT8: return {"zext8", 0};
   case AVM::SWAP8: return {"swap8", 0};
   case AVM::GETSP: return {"getsp", 0};
@@ -280,6 +283,9 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::CMP_RR:
   case AVM::ADD_RR:
   case AVM::SUB_RR:
+  case AVM::AND_RR:
+  case AVM::OR_RR:
+  case AVM::XOR_RR:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
     OS << ", ";

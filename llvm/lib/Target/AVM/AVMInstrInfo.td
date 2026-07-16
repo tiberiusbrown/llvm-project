@@ -128,6 +128,15 @@ class AVMFullArithmeticInst<string Asm>
   let Constraints = "$dst = $src1";
 }
 
+// F9 full-register bitwise operations are MC-only. The explicit destination
+// is tied to its original value, while the source is read-only. These forms
+// intentionally have no implicit condition-code operands.
+class AVMFullBitwiseInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src1, AVMGeneralReg:$src2)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 // F1 unary and SP forms are MC-only.  The unary forms are two-address
 // operations; GETSP has an explicit definition and SETSP an explicit use.
 class AVMUnaryFullRegInst<string Asm>
@@ -266,6 +275,9 @@ def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
 def CMP_RR : AVMFullCompareInst<"cmp $left, $right">;
 def ADD_RR : AVMFullArithmeticInst<"add $src1, $src2">;
 def SUB_RR : AVMFullArithmeticInst<"sub $src1, $src2">;
+def AND_RR : AVMFullBitwiseInst<"and $src1, $src2">;
+def OR_RR : AVMFullBitwiseInst<"or $src1, $src2">;
+def XOR_RR : AVMFullBitwiseInst<"xor $src1, $src2">;
 def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;
 def SWAP8 : AVMUnaryFullRegInst<"swap8 $dst">;
 def GETSP : AVMGetSPInst<"getsp $dst">;
