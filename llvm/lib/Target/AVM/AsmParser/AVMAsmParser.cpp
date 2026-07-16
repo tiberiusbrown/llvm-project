@@ -82,6 +82,16 @@ class AVMAsmParser final : public MCTargetAsmParser {
       Inst.addOperand(MCOperand::createExpr(Expr));
   }
 
+  static bool isArchitecturalRegisterIdentifier(StringRef Identifier) {
+    return StringSwitch<bool>(Identifier.lower())
+        .Case("r0", true).Case("r1", true).Case("r2", true).Case("r3", true)
+        .Case("r4", true).Case("r5", true).Case("r6", true).Case("r7", true)
+        .Case("c0", true).Case("c1", true).Case("c2", true).Case("c3", true)
+        .Case("q0", true).Case("q1", true).Case("q2", true).Case("q3", true)
+        .Case("sp", true).Case("pc", true).Case("cc", true)
+        .Default(false);
+  }
+
   bool finishInstruction(MCInst &&Inst, SMLoc EndLoc,
                          OperandVector &Operands, StringRef Name,
                          SMLoc NameLoc) {
@@ -181,6 +191,9 @@ class AVMAsmParser final : public MCTargetAsmParser {
   bool parseRel8Control(unsigned Opcode, bool AllowSymbol, StringRef Name,
                         SMLoc NameLoc, OperandVector &Operands) {
     SMLoc ExprLoc = Parser.getTok().getLoc();
+    if (Parser.getTok().is(AsmToken::Identifier) &&
+        isArchitecturalRegisterIdentifier(Parser.getTok().getIdentifier()))
+      return error(ExprLoc, "expected relative displacement expression");
     const MCExpr *Expr = nullptr;
     if (Parser.parseExpression(Expr))
       return true;
@@ -196,6 +209,27 @@ class AVMAsmParser final : public MCTargetAsmParser {
     } else {
       return error(ExprLoc, "symbolic call is deferred to relaxable pseudo support");
     }
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseRelaxableTransfer(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                              OperandVector &Operands) {
+    SMLoc ExprLoc = Parser.getTok().getLoc();
+    if (Parser.getTok().is(AsmToken::Identifier)) {
+      if (isArchitecturalRegisterIdentifier(Parser.getTok().getIdentifier()))
+        return error(ExprLoc, "expected relocatable symbolic program target");
+    }
+    const MCExpr *Expr = nullptr;
+    if (Parser.parseExpression(Expr))
+      return true;
+    int64_t Value = 0;
+    if (Expr->evaluateAsAbsolute(Value))
+      return error(ExprLoc, Twine("relaxable '") + Name +
+                                "' requires a symbolic target; use the exact control-transfer mnemonic for constants");
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createExpr(Expr));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
                              Operands, Name, NameLoc);
   }
@@ -1377,6 +1411,22 @@ public:
       return parseFarTransfer(AVM::JMPF, Name, NameLoc, Operands);
     if (Lower == "callf")
       return parseFarTransfer(AVM::CALLF, Name, NameLoc, Operands);
+    if (Lower == "jmp")
+      return parseRelaxableTransfer(AVM::RELAX_JMP, Name, NameLoc, Operands);
+    if (Lower == "call")
+      return parseRelaxableTransfer(AVM::RELAX_CALL, Name, NameLoc, Operands);
+    if (Lower == "br.eq")
+      return parseRelaxableTransfer(AVM::RELAX_BR_EQ, Name, NameLoc, Operands);
+    if (Lower == "br.ne")
+      return parseRelaxableTransfer(AVM::RELAX_BR_NE, Name, NameLoc, Operands);
+    if (Lower == "br.ult")
+      return parseRelaxableTransfer(AVM::RELAX_BR_ULT, Name, NameLoc, Operands);
+    if (Lower == "br.uge")
+      return parseRelaxableTransfer(AVM::RELAX_BR_UGE, Name, NameLoc, Operands);
+    if (Lower == "br.slt")
+      return parseRelaxableTransfer(AVM::RELAX_BR_SLT, Name, NameLoc, Operands);
+    if (Lower == "br.sge")
+      return parseRelaxableTransfer(AVM::RELAX_BR_SGE, Name, NameLoc, Operands);
     if (Lower == "jmp16")
       return parseRel16Control(AVM::JMP16, Name, NameLoc, Operands);
     if (Lower == "call16")
@@ -1391,6 +1441,8 @@ public:
     if (Lower == "brne") return parseRel8Control(AVM::BRNE, true, Name, NameLoc, Operands);
     if (Lower == "brult") return parseRel8Control(AVM::BRULT, true, Name, NameLoc, Operands);
     if (Lower == "brslt") return parseRel8Control(AVM::BRSLT, true, Name, NameLoc, Operands);
+    if (Lower == "bruge") return parseRel8Control(AVM::BRUGE, true, Name, NameLoc, Operands);
+    if (Lower == "brsge") return parseRel8Control(AVM::BRSGE, true, Name, NameLoc, Operands);
     if (Lower == "jmp8") return parseRel8Control(AVM::JMP8, true, Name, NameLoc, Operands);
     if (Lower == "call8") return parseRel8Control(AVM::CALL8, true, Name, NameLoc, Operands);
     if (Lower == "adjsp") return parseSignedImmediate(AVM::ADJSP, Name, NameLoc, Operands);

@@ -28,6 +28,18 @@ brslt 0
 brslt 1
 brslt 126
 brslt 127
+bruge -128
+bruge -1
+bruge 0
+bruge 1
+bruge 127
+brsge -128
+brsge -1
+brsge 0
+brsge 1
+brsge 127
+BRUGE 0
+BRSGE 0
 jmp8 -128
 jmp8 -127
 jmp8 -1
@@ -82,6 +94,18 @@ sys 3
 # CHECK: brslt{{.*}}[0xd3,0x01]
 # CHECK: brslt{{.*}}[0xd3,0x7e]
 # CHECK: brslt{{.*}}[0xd3,0x7f]
+# CHECK: bruge{{.*}}[0xd8,0x80]
+# CHECK: bruge{{.*}}[0xd8,0xff]
+# CHECK: bruge{{.*}}[0xd8,0x00]
+# CHECK: bruge{{.*}}[0xd8,0x01]
+# CHECK: bruge{{.*}}[0xd8,0x7f]
+# CHECK: brsge{{.*}}[0xd9,0x80]
+# CHECK: brsge{{.*}}[0xd9,0xff]
+# CHECK: brsge{{.*}}[0xd9,0x00]
+# CHECK: brsge{{.*}}[0xd9,0x01]
+# CHECK: brsge{{.*}}[0xd9,0x7f]
+# CHECK: bruge{{.*}}[0xd8,0x00]
+# CHECK: brsge{{.*}}[0xd9,0x00]
 # CHECK: jmp8{{.*}}[0xd4,0x80]
 # CHECK: jmp8{{.*}}[0xd4,0x81]
 # CHECK: jmp8{{.*}}[0xd4,0xff]

@@ -5,6 +5,8 @@
 # CHECK: brne -1
 # CHECK: brult 0
 # CHECK: brslt 127
+# CHECK: bruge -128
+# CHECK: brsge 1
 # CHECK: jmp8 1
 # CHECK: call8 -2
 # CHECK: adjsp -1
@@ -13,4 +15,4 @@
 # CHECK: sys 2
 # CHECK: sys 3
 
-# INVALID-COUNT-11: warning: invalid instruction encoding
+# INVALID-COUNT-9: warning: invalid instruction encoding

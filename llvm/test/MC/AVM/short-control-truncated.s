@@ -6,5 +6,7 @@
 # RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/short-control-truncated-d5.txt 2>&1 | FileCheck %s
 # RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/short-control-truncated-d6.txt 2>&1 | FileCheck %s
 # RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/short-control-truncated-d7.txt 2>&1 | FileCheck %s
+# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/short-control-truncated-d8.txt 2>&1 | FileCheck %s
+# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/short-control-truncated-d9.txt 2>&1 | FileCheck %s
 
 # CHECK: warning: invalid instruction encoding

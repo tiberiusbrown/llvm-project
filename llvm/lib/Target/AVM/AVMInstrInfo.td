@@ -292,6 +292,15 @@ class AVMGeneralPointerStoreInst<string Asm>
 // patterns or scheduling state is attached to the short control instructions.
 class AVMRel8ControlInst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$rel)>;
 class AVMRel16ControlInst<string Asm> : AVMInst<Asm, 3, (ins AVMImm16:$rel)>;
+class AVMConditionalRel8ControlInst<string Asm>
+    : AVMRel8ControlInst<Asm> {
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+class AVMRelaxableTransferPseudo<string Asm, int Bytes>
+    : AVMInst<Asm, Bytes, (ins AVMImm24:$target)> {
+  let isPseudo = 1;
+}
 class AVMProgramPairControlInst<string Asm> : AVMInst<Asm, 1,
                                                    (ins AVMProgramPair:$pair)>;
 class AVMOperandlessInst<string Asm> : AVMInst<Asm, 1>;
@@ -438,10 +447,12 @@ def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
 def GPST8_POST : AVMGeneralPointerStoreInst<"st8 [$addr+], $src">;
 def GPST16_POST : AVMGeneralPointerStoreInst<"st16 [$addr+], $src">;
 
-def BREQ : AVMRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
-def BRNE : AVMRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
-def BRULT : AVMRel8ControlInst<"brult $rel"> { let Uses = [CC]; }
-def BRSLT : AVMRel8ControlInst<"brslt $rel"> { let Uses = [CC]; }
+def BREQ : AVMConditionalRel8ControlInst<"breq $rel"> { let Uses = [CC]; }
+def BRNE : AVMConditionalRel8ControlInst<"brne $rel"> { let Uses = [CC]; }
+def BRULT : AVMConditionalRel8ControlInst<"brult $rel"> { let Uses = [CC]; }
+def BRSLT : AVMConditionalRel8ControlInst<"brslt $rel"> { let Uses = [CC]; }
+def BRUGE : AVMConditionalRel8ControlInst<"bruge $rel"> { let Uses = [CC]; }
+def BRSGE : AVMConditionalRel8ControlInst<"brsge $rel"> { let Uses = [CC]; }
 def JMP8 : AVMRel8ControlInst<"jmp8 $rel"> {
   let isBranch = 1;
   let isTerminator = 1;
@@ -477,4 +488,43 @@ def RET : AVMOperandlessInst<"ret"> {
   let isReturn = 1;
   let isTerminator = 1;
   let isBarrier = 1;
+}
+
+// These are assembly-only pseudos.  The MC code emitter expands each to its
+// maximal encoding and emits the R_AVM_RELAX marker alongside R_AVM_FAR24.
+def RELAX_JMP : AVMRelaxableTransferPseudo<"jmp $target", 4> {
+  let isBranch = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+}
+def RELAX_CALL : AVMRelaxableTransferPseudo<"call $target", 4> { let isCall = 1; }
+def RELAX_BR_EQ : AVMRelaxableTransferPseudo<"br.eq $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+def RELAX_BR_NE : AVMRelaxableTransferPseudo<"br.ne $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+def RELAX_BR_ULT : AVMRelaxableTransferPseudo<"br.ult $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+def RELAX_BR_UGE : AVMRelaxableTransferPseudo<"br.uge $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+def RELAX_BR_SLT : AVMRelaxableTransferPseudo<"br.slt $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+def RELAX_BR_SGE : AVMRelaxableTransferPseudo<"br.sge $target", 6> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
 }

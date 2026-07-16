@@ -3,6 +3,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/MathExtras.h"
@@ -35,7 +36,8 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
   }
 
   void emitFarTarget(const MCInst &MI, SmallVectorImpl<char> &Out,
-                     SmallVectorImpl<MCFixup> &Fixups) const {
+                     SmallVectorImpl<MCFixup> &Fixups,
+                     unsigned FixupOffset = 1) const {
     const MCOperand &Operand = MI.getOperand(0);
     if (Operand.isImm()) {
       if (!isUInt<24>(Operand.getImm()))
@@ -49,8 +51,32 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       return;
     }
     Fixups.push_back(
-        MCFixup::create(1, Operand.getExpr(), AVM::fixup_avm_far24));
+        MCFixup::create(FixupOffset, Operand.getExpr(), AVM::fixup_avm_far24));
     emit24(Out, 0);
+  }
+
+  void emitRelaxMarker(SmallVectorImpl<MCFixup> &Fixups) const {
+    Fixups.push_back(MCFixup::create(
+        0, MCConstantExpr::create(0, Ctx), AVM::fixup_avm_relax));
+  }
+
+  void emitRelaxableTransfer(const MCInst &MI, SmallVectorImpl<char> &Out,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             unsigned InverseOpcode = 0) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isExpr()) {
+      error(MI, "relaxable transfer requires one symbolic target expression");
+      return;
+    }
+    emitRelaxMarker(Fixups);
+    if (InverseOpcode) {
+      emit8(Out, InverseOpcode);
+      emit8(Out, 4);
+      emit8(Out, 0xe2);
+      emitFarTarget(MI, Out, Fixups, 3);
+      return;
+    }
+    emit8(Out, MI.getOpcode() == AVM::RELAX_CALL ? 0xe3 : 0xe2);
+    emitFarTarget(MI, Out, Fixups);
   }
 
   void emitRel8(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -931,8 +957,10 @@ public:
     case AVM::BRNE: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT: emitRel8(MI, Out, Fixups, 0xd2); return;
     case AVM::BRSLT: emitRel8(MI, Out, Fixups, 0xd3); return;
+    case AVM::BRUGE: emitRel8(MI, Out, Fixups, 0xd8); return;
+    case AVM::BRSGE: emitRel8(MI, Out, Fixups, 0xd9); return;
     case AVM::JMP8: emitRel8(MI, Out, Fixups, 0xd4); return;
-    case AVM::CALL8: emitSigned8(MI, Out, 0xd5); return;
+    case AVM::CALL8: emitRel8(MI, Out, Fixups, 0xd5); return;
     case AVM::ADJSP: emitSigned8(MI, Out, 0xd6); return;
     case AVM::SYS: emitService(MI, Out); return;
     case AVM::JMP16: emitRel16(MI, Out, Fixups, 0xe0); return;
@@ -945,6 +973,16 @@ public:
       emit8(Out, 0xe3);
       emitFarTarget(MI, Out, Fixups);
       return;
+    case AVM::RELAX_JMP:
+    case AVM::RELAX_CALL:
+      emitRelaxableTransfer(MI, Out, Fixups);
+      return;
+    case AVM::RELAX_BR_EQ: emitRelaxableTransfer(MI, Out, Fixups, 0xd1); return;
+    case AVM::RELAX_BR_NE: emitRelaxableTransfer(MI, Out, Fixups, 0xd0); return;
+    case AVM::RELAX_BR_ULT: emitRelaxableTransfer(MI, Out, Fixups, 0xd8); return;
+    case AVM::RELAX_BR_UGE: emitRelaxableTransfer(MI, Out, Fixups, 0xd2); return;
+    case AVM::RELAX_BR_SLT: emitRelaxableTransfer(MI, Out, Fixups, 0xd9); return;
+    case AVM::RELAX_BR_SGE: emitRelaxableTransfer(MI, Out, Fixups, 0xd3); return;
     case AVM::JMPP: emitProgramPair(MI, Out, 0xe4); return;
     case AVM::CALLP: emitProgramPair(MI, Out, 0xe8); return;
     case AVM::RET: emit8(Out, 0xef); return;

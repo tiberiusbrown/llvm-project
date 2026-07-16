@@ -31,6 +31,8 @@ public:
       return ELF::R_AVM_FAR24;
     case AVM::fixup_avm_data16:
       return ELF::R_AVM_DATA16;
+    case AVM::fixup_avm_relax:
+      return ELF::R_AVM_RELAX;
     default:
       llvm_unreachable("unsupported AVM fixup kind");
     }
@@ -55,6 +57,7 @@ public:
         {"fixup_avm_pcrel16", 0, 16, 0},
         {"fixup_avm_far24", 0, 24, 0},
         {"fixup_avm_data16", 0, 16, 0},
+        {"fixup_avm_relax", 0, 0, 0},
     };
     if (Kind < FirstTargetFixupKind)
       return MCAsmBackend::getFixupKindInfo(Kind);
@@ -70,6 +73,8 @@ public:
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_far24)
       IsResolved = false;
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_data16)
+      IsResolved = false;
+    if (IsResolved && Fixup.getKind() == AVM::fixup_avm_relax)
       IsResolved = false;
     maybeAddReloc(F, Fixup, Target, Value, IsResolved);
     if (!IsResolved)
@@ -110,6 +115,8 @@ public:
         Error("AVM absolute data address is out of unsigned 16-bit range");
       Data[0] = static_cast<uint8_t>(Value);
       Data[1] = static_cast<uint8_t>(Value >> 8);
+      return;
+    case AVM::fixup_avm_relax:
       return;
     default:
       llvm_unreachable("unknown AVM fixup");
