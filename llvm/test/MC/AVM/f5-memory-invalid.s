@@ -22,4 +22,4 @@ st16 r0,[c0]
 st16 [c0]
 st16 [c0],r0,r1
 
-# CHECK-COUNT-21: error:
+# CHECK-COUNT-15: error:

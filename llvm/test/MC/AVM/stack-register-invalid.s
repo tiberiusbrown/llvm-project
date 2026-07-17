@@ -20,5 +20,5 @@ pop16
 push16 r0, r1
 pop16 r0, r1
 
-# CHECK-COUNT-16: error: expected full register r0-r7
+# CHECK-COUNT-8: error: expected full register r0-r7
 # CHECK-COUNT-2: error: unexpected token after AVM instruction

@@ -1,5 +1,5 @@
 # RUN: not llvm-mc -triple=avm %s 2>&1 | FileCheck %s
-# CHECK-COUNT-36: error:
+# CHECK-COUNT-32: error:
 shl16v r4,c0
 shl16v q0,c0
 shl16v sp,c0

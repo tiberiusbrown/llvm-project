@@ -163,10 +163,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
 
 void AVMInstPrinter::printCompactReg(MCRegister Reg, raw_ostream &OS) const {
   switch (Reg.id()) {
-  case AVM::R4: OS << "c0"; return;
-  case AVM::R5: OS << "c1"; return;
-  case AVM::R6: OS << "c2"; return;
-  case AVM::R7: OS << "c3"; return;
+  case AVM::R4: OS << "r4"; return;
+  case AVM::R5: OS << "r5"; return;
+  case AVM::R6: OS << "r6"; return;
+  case AVM::R7: OS << "r7"; return;
   default: OS << "<bad-compact-reg>"; return;
   }
 }

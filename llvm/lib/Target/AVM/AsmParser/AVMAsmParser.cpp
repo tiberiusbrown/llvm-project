@@ -46,6 +46,34 @@ class AVMAsmParser final : public MCTargetAsmParser {
   MCAsmParser &Parser;
   std::optional<MCInst> Pending;
 
+  static bool isScalarRegister(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R0:
+    case AVM::R1:
+    case AVM::R2:
+    case AVM::R3:
+    case AVM::R4:
+    case AVM::R5:
+    case AVM::R6:
+    case AVM::R7:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  static bool isCompactRegister(MCRegister Reg) {
+    switch (Reg.id()) {
+    case AVM::R4:
+    case AVM::R5:
+    case AVM::R6:
+    case AVM::R7:
+      return true;
+    default:
+      return false;
+    }
+  }
+
   bool error(SMLoc Loc, const Twine &Message) {
     return Parser.Error(Loc, Message);
   }
@@ -303,66 +331,32 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseCompactReg(MCRegister &Reg) {
     SMLoc Loc = Parser.getTok().getLoc();
-    if (Parser.getTok().is(AsmToken::Identifier) &&
-        !Parser.getTok().getIdentifier().starts_with_insensitive("c"))
-      return error(Loc, "expected compact register c0-c3");
     if (parseArchitecturalReg(Reg))
       return true;
-    switch (Reg.id()) {
-    case AVM::R4:
-    case AVM::R5:
-    case AVM::R6:
-    case AVM::R7:
-      return false;
-    default:
-      return error(Loc, "expected compact register c0-c3");
-    }
+    return isCompactRegister(Reg)
+               ? false
+               : error(Loc, "expected compact register r4-r7");
   }
 
   bool parseStackReg(MCRegister &Reg) {
-    const AsmToken &Tok = Parser.getTok();
-    if (!Tok.is(AsmToken::Identifier))
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
-              .Case("r0", AVM::R0).Case("r1", AVM::R1)
-              .Case("r2", AVM::R2).Case("r3", AVM::R3)
-              .Case("r4", AVM::R4).Case("r5", AVM::R5)
-              .Case("r6", AVM::R6).Case("r7", AVM::R7)
-              .Default(MCRegister());
-    if (!Reg)
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Parser.Lex();
-    return false;
+    SMLoc Loc = Parser.getTok().getLoc();
+    if (parseArchitecturalReg(Reg))
+      return true;
+    return isScalarRegister(Reg) ? false
+                                 : error(Loc, "expected full register r0-r7");
   }
 
   bool parseColdReg(MCRegister &Reg) {
-    const AsmToken &Tok = Parser.getTok();
-    if (!Tok.is(AsmToken::Identifier))
-      return error(Tok.getLoc(), "expected cold register r0-r3");
-    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
-              .Case("r0", AVM::R0).Case("r1", AVM::R1)
-              .Case("r2", AVM::R2).Case("r3", AVM::R3)
-              .Default(MCRegister());
-    if (!Reg)
-      return error(Tok.getLoc(), "expected cold register r0-r3");
-    Parser.Lex();
-    return false;
+    SMLoc Loc = Parser.getTok().getLoc();
+    if (parseArchitecturalReg(Reg))
+      return true;
+    return Reg.id() >= AVM::R0 && Reg.id() <= AVM::R3
+               ? false
+               : error(Loc, "expected cold register r0-r3");
   }
 
   bool parseAbsoluteDataReg(MCRegister &Reg) {
-    const AsmToken &Tok = Parser.getTok();
-    if (!Tok.is(AsmToken::Identifier))
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
-              .Case("r0", AVM::R0).Case("r1", AVM::R1)
-              .Case("r2", AVM::R2).Case("r3", AVM::R3)
-              .Case("r4", AVM::R4).Case("r5", AVM::R5)
-              .Case("r6", AVM::R6).Case("r7", AVM::R7)
-              .Default(MCRegister());
-    if (!Reg)
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Parser.Lex();
-    return false;
+    return parseStackReg(Reg);
   }
 
   bool parseAbsoluteDataAddress(const MCExpr *&Expr, SMLoc &ExprLoc) {
@@ -485,18 +479,14 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (parseSPMemory(Offset) || Parser.parseComma())
       return true;
     MCInst Inst;
-    const AsmToken &Tok = Parser.getTok();
-    const bool IsCompact = Tok.is(AsmToken::Identifier) &&
-                           Tok.getIdentifier().starts_with_insensitive("c");
+    if (parseStackReg(Reg))
+      return true;
+    const bool IsCompact = isCompactRegister(Reg);
     if (IsCompact) {
       if (Offset > 15)
-        return error(Tok.getLoc(), "compact stack offset is out of unsigned 4-bit range");
-      if (parseCompactReg(Reg))
-        return true;
+        return error(NameLoc, "compact stack offset is out of unsigned 4-bit range");
       Inst.setOpcode(AVM::STSP8_COMPACT);
     } else {
-      if (parseStackReg(Reg))
-        return true;
       Inst.setOpcode(AVM::STSP8);
     }
     Inst.addOperand(MCOperand::createImm(Offset));
@@ -545,19 +535,15 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseLDSP8U(StringRef Name, SMLoc NameLoc,
                    OperandVector &Operands) {
-    const bool IsCompact = Parser.getTok().is(AsmToken::Identifier) &&
-                           Parser.getTok().getIdentifier().starts_with_insensitive("c");
     MCRegister Reg;
     unsigned Offset = 0;
+    if (parseStackReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
+      return true;
+    const bool IsCompact = isCompactRegister(Reg);
     if (IsCompact) {
-      if (parseCompactReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
-        return true;
       if (Offset > 15)
-        return error(Parser.getTok().getLoc(),
+        return error(NameLoc,
                      "compact stack offset is out of unsigned 4-bit range");
-    } else {
-      if (parseStackReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
-        return true;
     }
     MCInst Inst;
     Inst.setOpcode(IsCompact ? AVM::LDSP8U_COMPACT : AVM::LDSP8U);
@@ -574,17 +560,13 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (IsStore) {
       if (parseSPMemory(Offset) || Parser.parseComma())
         return true;
-      const AsmToken &Tok = Parser.getTok();
-      const bool IsCompact = Tok.is(AsmToken::Identifier) &&
-                             Tok.getIdentifier().starts_with_insensitive("c");
+      if (parseStackReg(Reg))
+        return true;
+      const bool IsCompact = isCompactRegister(Reg);
       if (IsCompact) {
         if (Offset > 15)
-          return error(Tok.getLoc(),
+          return error(NameLoc,
                        "compact stack offset is out of unsigned 4-bit range");
-        if (parseCompactReg(Reg))
-          return true;
-      } else if (parseStackReg(Reg)) {
-        return true;
       }
       MCInst Inst;
       Inst.setOpcode(IsCompact ? AVM::STSP16_COMPACT : AVM::STSP16);
@@ -594,18 +576,13 @@ class AVMAsmParser final : public MCTargetAsmParser {
                                Operands, Name, NameLoc);
     }
 
-    const AsmToken &Tok = Parser.getTok();
-    const bool IsCompact = Tok.is(AsmToken::Identifier) &&
-                           Tok.getIdentifier().starts_with_insensitive("c");
-    if (IsCompact) {
-      if (parseCompactReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
-        return true;
-      if (Offset > 15)
-        return error(Tok.getLoc(),
-                     "compact stack offset is out of unsigned 4-bit range");
-    } else if (parseStackReg(Reg) || Parser.parseComma() ||
-               parseSPMemory(Offset)) {
+    if (parseStackReg(Reg) || Parser.parseComma() || parseSPMemory(Offset))
       return true;
+    const bool IsCompact = isCompactRegister(Reg);
+    if (IsCompact) {
+      if (Offset > 15)
+        return error(NameLoc,
+                     "compact stack offset is out of unsigned 4-bit range");
     }
     MCInst Inst;
     Inst.setOpcode(IsCompact ? AVM::LDSP16_COMPACT : AVM::LDSP16);
@@ -629,7 +606,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseCompactMemory(MCRegister &Reg) {
     if (!Parser.getTok().is(AsmToken::LBrac))
-      return error(Parser.getTok().getLoc(), "expected compact memory operand '[cN]'");
+      return error(Parser.getTok().getLoc(), "expected compact memory operand '[r4-r7]'");
     Parser.Lex();
     if (parseCompactReg(Reg))
       return true;
@@ -780,59 +757,21 @@ class AVMAsmParser final : public MCTargetAsmParser {
   }
 
   bool parseFullReg(MCRegister &Reg) {
-    const AsmToken &Tok = Parser.getTok();
-    if (!Tok.is(AsmToken::Identifier))
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Reg = StringSwitch<MCRegister>(Tok.getIdentifier().lower())
-              .Case("r0", AVM::R0).Case("r1", AVM::R1)
-              .Case("r2", AVM::R2).Case("r3", AVM::R3)
-              .Case("r4", AVM::R4).Case("r5", AVM::R5)
-              .Case("r6", AVM::R6).Case("r7", AVM::R7)
-              .Default(MCRegister());
-    if (!Reg)
-      return error(Tok.getLoc(), "expected full register r0-r7");
-    Parser.Lex();
-    return false;
+    return parseStackReg(Reg);
   }
 
-  static std::optional<unsigned> pair48Index(MCRegister Left,
-                                              MCRegister Right) {
-    const unsigned L = Left.id() - AVM::R0;
-    const unsigned R = Right.id() - AVM::R0;
-    if (L > 7 || R > 7 || (L >= 4 && R >= 4))
-      return std::nullopt;
-    return L < 4 ? 8 * L + R : 0x20 + 4 * (L - 4) + R;
-  }
-
-  bool parseFullMove(StringRef Name, SMLoc NameLoc,
-                     OperandVector &Operands) {
+  bool parseRegisterPair(unsigned CompactOpcode, unsigned FullOpcode,
+                         StringRef Name, SMLoc NameLoc,
+                         OperandVector &Operands) {
     MCRegister Destination, Source;
     if (parseFullReg(Destination) || Parser.parseComma() ||
         parseFullReg(Source))
       return true;
-    if (!pair48Index(Destination, Source))
-      return error(NameLoc,
-                   "full-register MOV pairing is not encodable; use compact cN spelling");
     MCInst Inst;
-    Inst.setOpcode(AVM::MOV_RR);
-    Inst.addOperand(MCOperand::createReg(Destination));
-    Inst.addOperand(MCOperand::createReg(Source));
-    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
-                             Operands, Name, NameLoc);
-  }
-
-  bool parseFullArithmetic(unsigned Opcode, StringRef Mnemonic,
-                           StringRef Name, SMLoc NameLoc,
-                           OperandVector &Operands) {
-    MCRegister Destination, Source;
-    if (parseFullReg(Destination) || Parser.parseComma() ||
-        parseFullReg(Source))
-      return true;
-    if (!pair48Index(Destination, Source))
-      return error(NameLoc, (Mnemonic +
-                   " full-register pairing is not encodable; use compact cN spelling").str());
-    MCInst Inst;
-    Inst.setOpcode(Opcode);
+    Inst.setOpcode(isCompactRegister(Destination) &&
+                           isCompactRegister(Source)
+                       ? CompactOpcode
+                       : FullOpcode);
     Inst.addOperand(MCOperand::createReg(Destination));
     Inst.addOperand(MCOperand::createReg(Source));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
@@ -849,39 +788,6 @@ class AVMAsmParser final : public MCTargetAsmParser {
     Inst.setOpcode(AVM::MUL16);
     Inst.addOperand(MCOperand::createReg(Destination));
     Inst.addOperand(MCOperand::createReg(Source));
-    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
-                             Operands, Name, NameLoc);
-  }
-
-  bool parseFullBitwise(unsigned FullOpcode, unsigned CompactOpcode,
-                        StringRef Name, SMLoc NameLoc,
-                        OperandVector &Operands) {
-    MCRegister Destination, Source;
-    if (parseFullReg(Destination) || Parser.parseComma() ||
-        parseFullReg(Source))
-      return true;
-    const bool CompactPair = Destination.id() >= AVM::R4 &&
-                             Source.id() >= AVM::R4;
-    MCInst Inst;
-    Inst.setOpcode(CompactPair ? CompactOpcode : FullOpcode);
-    Inst.addOperand(MCOperand::createReg(Destination));
-    Inst.addOperand(MCOperand::createReg(Source));
-    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
-                             Operands, Name, NameLoc);
-  }
-
-  bool parseFullCompare(StringRef Name, SMLoc NameLoc,
-                        OperandVector &Operands) {
-    MCRegister Left, Right;
-    if (parseFullReg(Left) || Parser.parseComma() || parseFullReg(Right))
-      return true;
-    if (!pair48Index(Left, Right))
-      return error(NameLoc,
-                   "cmp full-register pairing is not encodable; use compact cN spelling");
-    MCInst Inst;
-    Inst.setOpcode(AVM::CMP_RR);
-    Inst.addOperand(MCOperand::createReg(Left));
-    Inst.addOperand(MCOperand::createReg(Right));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
                              Operands, Name, NameLoc);
   }
@@ -1041,19 +947,13 @@ class AVMAsmParser final : public MCTargetAsmParser {
   }
 
   bool parseSpelledDataReg(MCRegister &Reg, bool &IsFull) {
-    const AsmToken &Tok = Parser.getTok();
-    if (!Tok.is(AsmToken::Identifier))
-      return parseArchitecturalReg(Reg);
-    if (Tok.getIdentifier().starts_with_insensitive("r")) {
-      IsFull = true;
-      return parseStackReg(Reg);
-    }
-    if (Tok.getIdentifier().starts_with_insensitive("c")) {
-      IsFull = false;
-      return parseCompactReg(Reg);
-    }
-    return error(Tok.getLoc(),
-                 "expected full register r0-r7 or compact register c0-c3");
+    SMLoc Loc = Parser.getTok().getLoc();
+    if (parseArchitecturalReg(Reg))
+      return true;
+    if (!isScalarRegister(Reg))
+      return error(Loc, "expected data register r0-r7");
+    IsFull = !isCompactRegister(Reg);
+    return false;
   }
 
   bool parseSpelledDataMemory(MCRegister &Reg, bool &IsFull,
@@ -1064,7 +964,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
       return error(Parser.getTok().getLoc(),
                    ExpectedClass && *ExpectedClass
                        ? "expected data memory operand '[rN]'"
-                       : "expected compact memory operand '[cN]'");
+                       : "expected compact memory operand '[r4-r7]'");
     Parser.Lex();
     if (ExpectedClass) {
       IsFull = *ExpectedClass;
@@ -1105,18 +1005,14 @@ class AVMAsmParser final : public MCTargetAsmParser {
     } else {
       if (parseSpelledDataReg(Data, DataIsFull) || Parser.parseComma() ||
           parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
-                                 DataIsFull))
+                               std::nullopt, CompactPostOpcode != 0))
         return true;
     }
     if (!AddressIsFull && DataIsFull && MixedOpcode && !PostIncrement) {
       const auto Source = scalarRegisterIndex(Data);
       if (!Source || *Source > 3)
         return error(NameLoc, "expected source register r0-r3");
-    } else if (DataIsFull != AddressIsFull &&
-               !(CompactPostOpcode && PostIncrement && !AddressIsFull))
-      return error(NameLoc, "expected compact register c0-c3");
-    if (!AddressIsFull && PostIncrement && CompactPostOpcode && !DataIsFull)
-      return error(NameLoc, "expected full register r0-r7");
+    }
     if (!AddressIsFull && PostIncrement && !CompactPostOpcode)
       return error(NameLoc, "compact memory operands do not support postincrement");
     if (DataIsFull && !IsStore && PostIncrement && Data == Address)
@@ -1124,13 +1020,12 @@ class AVMAsmParser final : public MCTargetAsmParser {
                    "postincrement destination must not overlap address register");
 
     MCInst Inst;
-    Inst.setOpcode(!AddressIsFull && PostIncrement && CompactPostOpcode
-                       ? CompactPostOpcode
-                       : !AddressIsFull && DataIsFull && MixedOpcode
-                       ? MixedOpcode
-                       : DataIsFull
-                       ? (PostIncrement ? GeneralPostOpcode : GeneralOpcode)
-                       : CompactOpcode);
+    Inst.setOpcode(!AddressIsFull
+                       ? (PostIncrement
+                              ? CompactPostOpcode
+                              : (DataIsFull && MixedOpcode ? MixedOpcode
+                                                           : CompactOpcode))
+                       : (PostIncrement ? GeneralPostOpcode : GeneralOpcode));
     if (IsStore) {
       Inst.addOperand(MCOperand::createReg(Address));
       Inst.addOperand(MCOperand::createReg(Data));
@@ -1138,34 +1033,6 @@ class AVMAsmParser final : public MCTargetAsmParser {
       Inst.addOperand(MCOperand::createReg(Data));
       Inst.addOperand(MCOperand::createReg(Address));
     }
-    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
-                             Operands, Name, NameLoc);
-  }
-
-  bool parseF5LoadInstruction(unsigned F5Opcode, unsigned CompactPostOpcode,
-                              unsigned GeneralOpcode,
-                              unsigned GeneralPostOpcode, StringRef Name,
-                              SMLoc NameLoc, OperandVector &Operands) {
-    MCRegister Data, Address;
-    bool DataIsFull = false;
-    bool AddressIsFull = false, PostIncrement = false;
-    if (parseSpelledDataReg(Data, DataIsFull) || !DataIsFull ||
-        Parser.parseComma() ||
-        parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
-                               std::nullopt, CompactPostOpcode != 0))
-      return true;
-    const auto Index = scalarRegisterIndex(Data);
-    if (!AddressIsFull && !PostIncrement && (!Index || *Index > 3))
-      return error(NameLoc, "expected destination register r0-r3");
-    if (!AddressIsFull && PostIncrement && Data == Address)
-      return error(NameLoc,
-                   "postincrement destination must not overlap address register");
-    MCInst Inst;
-    Inst.setOpcode(!AddressIsFull
-                       ? (PostIncrement ? CompactPostOpcode : F5Opcode)
-                       : (PostIncrement ? GeneralPostOpcode : GeneralOpcode));
-    Inst.addOperand(MCOperand::createReg(Data));
-    Inst.addOperand(MCOperand::createReg(Address));
     return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
                              Operands, Name, NameLoc);
   }
@@ -1293,10 +1160,8 @@ public:
     Pending.reset();
     std::string Lower = Name.lower();
     if (Lower == "mov") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullMove(Name, NameLoc, Operands);
-      return parseCompactPair(AVM::MOV, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::MOV, AVM::MOV_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "zext8")
       return parseF1FullReg(AVM::ZEXT8, Name, NameLoc, Operands);
@@ -1382,42 +1247,22 @@ public:
     if (Lower == "bool")
       return parseF1FullReg(AVM::BOOL, Name, NameLoc, Operands);
     if (Lower == "add") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullArithmetic(AVM::ADD_RR, "add", Name, NameLoc,
-                                   Operands);
-      return parseCompactPair(AVM::ADD, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::ADD, AVM::ADD_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "sub") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullArithmetic(AVM::SUB_RR, "sub", Name, NameLoc,
-                                   Operands);
-      return parseCompactPair(AVM::SUB, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::SUB, AVM::SUB_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "cmp") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullCompare(Name, NameLoc, Operands);
-      return parseCompactPair(AVM::CMP, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::CMP, AVM::CMP_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "ld8u") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseF5LoadInstruction(AVM::F5LD8U, AVM::F7LD8U_POST,
-                                      AVM::GPLD8U,
-                                      AVM::GPLD8U_POST, Name, NameLoc,
-                                      Operands);
       return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
                                               AVM::GPLD8U_POST, false, Name,
-                                              NameLoc, Operands);
-    }
-    if (Lower == "st8" && Parser.getTok().is(AsmToken::LBrac)) {
-      // Select the compact postincrement form by its cN spelling. The
-      // general overloaded parser remains responsible for [rN+] and all
-      // existing ordinary forms.
-      const auto Saved = Parser.getTok();
-      (void)Saved;
+                                              NameLoc, Operands, AVM::F5LD8U,
+                                              AVM::F7LD8U_POST);
     }
     if (Lower == "st8")
       return parseOverloadedMemoryInstruction(AVM::ST8, AVM::GPST8,
@@ -1431,15 +1276,10 @@ public:
     if (Lower == "mulsu8.w")
       return parseF3Multiply(AVM::MULSU8W, Name, NameLoc, Operands);
     if (Lower == "ld16") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseF5LoadInstruction(AVM::F5LD16, AVM::F7LD16_POST,
-                                      AVM::GPLD16,
-                                      AVM::GPLD16_POST, Name, NameLoc,
-                                      Operands);
       return parseOverloadedMemoryInstruction(AVM::LD16, AVM::GPLD16,
                                               AVM::GPLD16_POST, false, Name,
-                                              NameLoc, Operands);
+                                              NameLoc, Operands, AVM::F5LD16,
+                                              AVM::F7LD16_POST);
     }
     if (Lower == "st16")
       return parseOverloadedMemoryInstruction(AVM::ST16, AVM::GPST16,
@@ -1479,25 +1319,16 @@ public:
     if (Lower == "st32")
       return parseCold32(AVM::ST32, true, false, Name, NameLoc, Operands);
     if (Lower == "and") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullBitwise(AVM::AND_RR, AVM::AND, Name, NameLoc,
-                                Operands);
-      return parseCompactPair(AVM::AND, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::AND, AVM::AND_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "or") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullBitwise(AVM::OR_RR, AVM::OR, Name, NameLoc,
-                                Operands);
-      return parseCompactPair(AVM::OR, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::OR, AVM::OR_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "xor") {
-      if (Parser.getTok().is(AsmToken::Identifier) &&
-          Parser.getTok().getIdentifier().starts_with_insensitive("r"))
-        return parseFullBitwise(AVM::XOR_RR, AVM::XOR, Name, NameLoc,
-                                Operands);
-      return parseCompactPair(AVM::XOR, Name, NameLoc, Operands);
+      return parseRegisterPair(AVM::XOR, AVM::XOR_RR, Name, NameLoc,
+                               Operands);
     }
     if (Lower == "push16")
       return parseStackInstruction(AVM::PUSH16, Name, NameLoc, Operands);

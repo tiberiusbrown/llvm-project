@@ -3,5 +3,5 @@
 
 # CHECK: warning: invalid instruction encoding
 # ADJ: cmp{{[ \t]+}}r0, r0
-# ADJ: mov{{[ \t]+}}c0, c1
+# ADJ: mov{{[ \t]+}}r4, r5
 # ADJ: cmp{{[ \t]+}}r7, r3

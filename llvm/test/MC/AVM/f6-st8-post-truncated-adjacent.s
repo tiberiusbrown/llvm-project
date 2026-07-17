@@ -3,4 +3,4 @@
 
 # TRUNC: invalid instruction encoding
 # ADJ: nop
-# ADJ: st8 [c0+], r0
+# ADJ: st8 [r4+], r0

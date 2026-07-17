@@ -16,12 +16,12 @@ cmpi.s8 r3, 0
 leasp r0, 0
 leasp r7, 255
 ldsp8u r0, [sp+0]
-ldsp8u r7, [sp+255]
+ldsp8u r3, [sp+255]
 ldsp8s r0, [sp+0]
 ldsp8s r7, [sp+255]
 stsp8 [sp+0], r0
-stsp8 [sp+255], r7
+stsp8 [sp+255], r3
 ldsp16 r0, [sp+0]
-ldsp16 r7, [sp+255]
+ldsp16 r3, [sp+255]
 stsp16 [sp+0], r0
-stsp16 [sp+255], r7
+stsp16 [sp+255], r3

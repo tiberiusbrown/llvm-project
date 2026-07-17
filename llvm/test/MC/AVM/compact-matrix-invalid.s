@@ -28,20 +28,15 @@ nop [r0]
 nop ,
 
 # CHECK: error: expected full register r0-r7
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
+# CHECK: error: expected full register r0-r7
 # CHECK: error: expected comma
 # CHECK: error: unexpected token after AVM instruction
-# CHECK: error: expected compact memory operand '[cN]'
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: postincrement memory operands are not supported
+# CHECK: error: expected compact memory operand '[r4-r7]'
+# CHECK: error: expected data register r0-r7
 # CHECK: error: expected AVM register
-# CHECK: error: expected compact memory operand '[cN]'
-# CHECK: error: expected compact register c0-c3
+# CHECK: error: expected compact memory operand '[r4-r7]'
 # CHECK: error: expected comma
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
+# CHECK: error: expected compact register r4-r7
+# CHECK: error: expected compact register r4-r7
 # CHECK: error: expected AVM register
-# CHECK: error: unexpected token after AVM instruction
+# CHECK-COUNT-6: error: unexpected token after AVM instruction

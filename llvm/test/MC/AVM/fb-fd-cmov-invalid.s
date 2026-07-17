@@ -22,4 +22,4 @@ cmov.eq [r0], r1
 cmov.eq
 cmov.eq r0
 cmov.eq r0, r1, r2
-# CHECK-COUNT-22: error:
+# CHECK-COUNT-20: error:

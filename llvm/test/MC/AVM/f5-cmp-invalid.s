@@ -21,19 +21,17 @@ cmp
 cmp r0
 cmp r0,r1,r2
 
-# CHECK-DAG: error: expected compact register c0-c3
-# CHECK-DAG: error: expected compact register c0-c3
-# CHECK-DAG: error: expected compact register c0-c3
-# CHECK-DAG: error: expected compact register c0-c3
 # CHECK-DAG: error: expected full register r0-r7
 # CHECK-DAG: error: expected full register r0-r7
 # CHECK-DAG: error: expected full register r0-r7
 # CHECK-DAG: error: expected full register r0-r7
-# CHECK-DAG: error: cmp full-register pairing is not encodable
-# CHECK-DAG: error: cmp full-register pairing is not encodable
-# CHECK-DAG: error: cmp full-register pairing is not encodable
-# CHECK-DAG: error: cmp full-register pairing is not encodable
+# CHECK-DAG: error: expected full register r0-r7
+# CHECK-DAG: error: expected full register r0-r7
 # CHECK-DAG: error: expected AVM register
+# CHECK-DAG: error: expected AVM register
+# CHECK-DAG: error: expected AVM register
+# CHECK-DAG: error: expected AVM register
+# CHECK-DAG: error: unknown AVM register
 # CHECK-DAG: error: expected AVM register
 # CHECK-DAG: error: expected comma
 # CHECK-DAG: error: unexpected token after AVM instruction

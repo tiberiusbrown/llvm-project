@@ -33,4 +33,4 @@ cset. r0
 cset.eq. r0
 cseteq r0
 
-# CHECK-COUNT-32: error:
+# CHECK-COUNT-31: error:

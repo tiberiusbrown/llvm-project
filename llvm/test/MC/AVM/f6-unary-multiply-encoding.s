@@ -17,22 +17,22 @@
 # CHECK: tst16 r5{{.*}}encoding: [0xf6,0x2d]
 # CHECK: tst16 r6{{.*}}encoding: [0xf6,0x2e]
 # CHECK: tst16 r7{{.*}}encoding: [0xf6,0x2f]
-# CHECK: mul8 c0, c0{{.*}}encoding: [0xf6,0x30]
-# CHECK: mul8 c0, c1{{.*}}encoding: [0xf6,0x31]
-# CHECK: mul8 c0, c2{{.*}}encoding: [0xf6,0x32]
-# CHECK: mul8 c0, c3{{.*}}encoding: [0xf6,0x33]
-# CHECK: mul8 c1, c0{{.*}}encoding: [0xf6,0x34]
-# CHECK: mul8 c1, c1{{.*}}encoding: [0xf6,0x35]
-# CHECK: mul8 c1, c2{{.*}}encoding: [0xf6,0x36]
-# CHECK: mul8 c1, c3{{.*}}encoding: [0xf6,0x37]
-# CHECK: mul8 c2, c0{{.*}}encoding: [0xf6,0x38]
-# CHECK: mul8 c2, c1{{.*}}encoding: [0xf6,0x39]
-# CHECK: mul8 c2, c2{{.*}}encoding: [0xf6,0x3a]
-# CHECK: mul8 c2, c3{{.*}}encoding: [0xf6,0x3b]
-# CHECK: mul8 c3, c0{{.*}}encoding: [0xf6,0x3c]
-# CHECK: mul8 c3, c1{{.*}}encoding: [0xf6,0x3d]
-# CHECK: mul8 c3, c2{{.*}}encoding: [0xf6,0x3e]
-# CHECK: mul8 c3, c3{{.*}}encoding: [0xf6,0x3f]
+# CHECK: mul8 r4, r4{{.*}}encoding: [0xf6,0x30]
+# CHECK: mul8 r4, r5{{.*}}encoding: [0xf6,0x31]
+# CHECK: mul8 r4, r6{{.*}}encoding: [0xf6,0x32]
+# CHECK: mul8 r4, r7{{.*}}encoding: [0xf6,0x33]
+# CHECK: mul8 r5, r4{{.*}}encoding: [0xf6,0x34]
+# CHECK: mul8 r5, r5{{.*}}encoding: [0xf6,0x35]
+# CHECK: mul8 r5, r6{{.*}}encoding: [0xf6,0x36]
+# CHECK: mul8 r5, r7{{.*}}encoding: [0xf6,0x37]
+# CHECK: mul8 r6, r4{{.*}}encoding: [0xf6,0x38]
+# CHECK: mul8 r6, r5{{.*}}encoding: [0xf6,0x39]
+# CHECK: mul8 r6, r6{{.*}}encoding: [0xf6,0x3a]
+# CHECK: mul8 r6, r7{{.*}}encoding: [0xf6,0x3b]
+# CHECK: mul8 r7, r4{{.*}}encoding: [0xf6,0x3c]
+# CHECK: mul8 r7, r5{{.*}}encoding: [0xf6,0x3d]
+# CHECK: mul8 r7, r6{{.*}}encoding: [0xf6,0x3e]
+# CHECK: mul8 r7, r7{{.*}}encoding: [0xf6,0x3f]
 # CHECK: sext8 r0{{.*}}encoding: [0xf6,0x40]
 # CHECK: sext8 r1{{.*}}encoding: [0xf6,0x41]
 # CHECK: sext8 r2{{.*}}encoding: [0xf6,0x42]
@@ -51,8 +51,8 @@
 # CHECK: neg16 r7{{.*}}encoding: [0xf6,0x4f]
 # DIS: bswap16 r0
 # DIS: tst16 r7
-# DIS: mul8 c0, c0
-# DIS: mul8 c3, c3
+# DIS: mul8 r4, r4
+# DIS: mul8 r7, r7
 # DIS: sext8 r0
 # DIS: neg16 r7
 

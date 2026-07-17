@@ -20,22 +20,13 @@ mov
 mov r0
 mov r0, r1, r2
 
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected full register r0-r7
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected full register r0-r7
-# CHECK: error: expected compact register c0-c3
 # CHECK: error: expected full register r0-r7
 # CHECK: error: expected full register r0-r7
-# CHECK: error: full-register MOV pairing is not encodable
-# CHECK: error: full-register MOV pairing is not encodable
-# CHECK: error: full-register MOV pairing is not encodable
-# CHECK: error: full-register MOV pairing is not encodable
+# CHECK: error: expected full register r0-r7
+# CHECK: error: expected full register r0-r7
 # CHECK: error: expected full register r0-r7
 # CHECK: error: expected AVM register
-# CHECK: error: expected full register r0-r7
 # CHECK: error: expected AVM register
-# CHECK: error: expected full register r0-r7
 # CHECK: error: expected AVM register
 # CHECK: error: expected comma
 # CHECK: error: unexpected token after AVM instruction

@@ -31,4 +31,4 @@ inc16 r0, r1
 dec16
 dec16 r0, r1
 
-# CHECK-COUNT-30: error:
+# CHECK-COUNT-27: error:

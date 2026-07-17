@@ -10,7 +10,7 @@ clr c2
 clr c3
 
 # CHECK-COUNT-4: nop{{.*}}encoding: [0x00]
-# CHECK: xor{{.*}}c0, c0{{.*}}encoding: [0xa0]
-# CHECK: xor{{.*}}c1, c1{{.*}}encoding: [0xa5]
-# CHECK: xor{{.*}}c2, c2{{.*}}encoding: [0xaa]
-# CHECK: xor{{.*}}c3, c3{{.*}}encoding: [0xaf]
+# CHECK: xor{{.*}}r4, r4{{.*}}encoding: [0xa0]
+# CHECK: xor{{.*}}r5, r5{{.*}}encoding: [0xa5]
+# CHECK: xor{{.*}}r6, r6{{.*}}encoding: [0xaa]
+# CHECK: xor{{.*}}r7, r7{{.*}}encoding: [0xaf]

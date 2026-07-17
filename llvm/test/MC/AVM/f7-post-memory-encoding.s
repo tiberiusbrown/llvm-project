@@ -89,7 +89,7 @@ st16 [c3+], r5
 st16 [c3+], r6
 st16 [c3+], r7
 
-# CHECK: ld8u r0, [c0+]{{.*}}encoding: [0xf7,0x00]
-# CHECK: ld16 r0, [c0+]{{.*}}encoding: [0xf7,0x20]
-# CHECK: st16 [c0+], r0{{.*}}encoding: [0xf7,0x40]
-# CHECK: st16 [c3+], r7{{.*}}encoding: [0xf7,0x5f]
+# CHECK: ld8u r0, [r4+]{{.*}}encoding: [0xf7,0x00]
+# CHECK: ld16 r0, [r4+]{{.*}}encoding: [0xf7,0x20]
+# CHECK: st16 [r4+], r0{{.*}}encoding: [0xf7,0x40]
+# CHECK: st16 [r7+], r7{{.*}}encoding: [0xf7,0x5f]

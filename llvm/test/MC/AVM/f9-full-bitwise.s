@@ -86,13 +86,13 @@ and r4, r2
 and r4, r3
 # CHECK: and r4, r3{{.*}}encoding: [0xf9,0x8c]
 and r4, r4
-# CHECK: and c0, c0{{.*}}encoding: [0x80]
+# CHECK: and r4, r4{{.*}}encoding: [0x80]
 and r4, r5
-# CHECK: and c0, c1{{.*}}encoding: [0x81]
+# CHECK: and r4, r5{{.*}}encoding: [0x81]
 and r4, r6
-# CHECK: and c0, c2{{.*}}encoding: [0x82]
+# CHECK: and r4, r6{{.*}}encoding: [0x82]
 and r4, r7
-# CHECK: and c0, c3{{.*}}encoding: [0x83]
+# CHECK: and r4, r7{{.*}}encoding: [0x83]
 and r5, r0
 # CHECK: and r5, r0{{.*}}encoding: [0xf9,0xa0]
 and r5, r1
@@ -102,13 +102,13 @@ and r5, r2
 and r5, r3
 # CHECK: and r5, r3{{.*}}encoding: [0xf9,0xac]
 and r5, r4
-# CHECK: and c1, c0{{.*}}encoding: [0x84]
+# CHECK: and r5, r4{{.*}}encoding: [0x84]
 and r5, r5
-# CHECK: and c1, c1{{.*}}encoding: [0x85]
+# CHECK: and r5, r5{{.*}}encoding: [0x85]
 and r5, r6
-# CHECK: and c1, c2{{.*}}encoding: [0x86]
+# CHECK: and r5, r6{{.*}}encoding: [0x86]
 and r5, r7
-# CHECK: and c1, c3{{.*}}encoding: [0x87]
+# CHECK: and r5, r7{{.*}}encoding: [0x87]
 and r6, r0
 # CHECK: and r6, r0{{.*}}encoding: [0xf9,0xc0]
 and r6, r1
@@ -118,13 +118,13 @@ and r6, r2
 and r6, r3
 # CHECK: and r6, r3{{.*}}encoding: [0xf9,0xcc]
 and r6, r4
-# CHECK: and c2, c0{{.*}}encoding: [0x88]
+# CHECK: and r6, r4{{.*}}encoding: [0x88]
 and r6, r5
-# CHECK: and c2, c1{{.*}}encoding: [0x89]
+# CHECK: and r6, r5{{.*}}encoding: [0x89]
 and r6, r6
-# CHECK: and c2, c2{{.*}}encoding: [0x8a]
+# CHECK: and r6, r6{{.*}}encoding: [0x8a]
 and r6, r7
-# CHECK: and c2, c3{{.*}}encoding: [0x8b]
+# CHECK: and r6, r7{{.*}}encoding: [0x8b]
 and r7, r0
 # CHECK: and r7, r0{{.*}}encoding: [0xf9,0xe0]
 and r7, r1
@@ -134,13 +134,13 @@ and r7, r2
 and r7, r3
 # CHECK: and r7, r3{{.*}}encoding: [0xf9,0xec]
 and r7, r4
-# CHECK: and c3, c0{{.*}}encoding: [0x8c]
+# CHECK: and r7, r4{{.*}}encoding: [0x8c]
 and r7, r5
-# CHECK: and c3, c1{{.*}}encoding: [0x8d]
+# CHECK: and r7, r5{{.*}}encoding: [0x8d]
 and r7, r6
-# CHECK: and c3, c2{{.*}}encoding: [0x8e]
+# CHECK: and r7, r6{{.*}}encoding: [0x8e]
 and r7, r7
-# CHECK: and c3, c3{{.*}}encoding: [0x8f]
+# CHECK: and r7, r7{{.*}}encoding: [0x8f]
 or r0, r0
 # CHECK: or r0, r0{{.*}}encoding: [0xf9,0x01]
 or r0, r1
@@ -214,13 +214,13 @@ or r4, r2
 or r4, r3
 # CHECK: or r4, r3{{.*}}encoding: [0xf9,0x8d]
 or r4, r4
-# CHECK: or c0, c0{{.*}}encoding: [0x90]
+# CHECK: or r4, r4{{.*}}encoding: [0x90]
 or r4, r5
-# CHECK: or c0, c1{{.*}}encoding: [0x91]
+# CHECK: or r4, r5{{.*}}encoding: [0x91]
 or r4, r6
-# CHECK: or c0, c2{{.*}}encoding: [0x92]
+# CHECK: or r4, r6{{.*}}encoding: [0x92]
 or r4, r7
-# CHECK: or c0, c3{{.*}}encoding: [0x93]
+# CHECK: or r4, r7{{.*}}encoding: [0x93]
 or r5, r0
 # CHECK: or r5, r0{{.*}}encoding: [0xf9,0xa1]
 or r5, r1
@@ -230,13 +230,13 @@ or r5, r2
 or r5, r3
 # CHECK: or r5, r3{{.*}}encoding: [0xf9,0xad]
 or r5, r4
-# CHECK: or c1, c0{{.*}}encoding: [0x94]
+# CHECK: or r5, r4{{.*}}encoding: [0x94]
 or r5, r5
-# CHECK: or c1, c1{{.*}}encoding: [0x95]
+# CHECK: or r5, r5{{.*}}encoding: [0x95]
 or r5, r6
-# CHECK: or c1, c2{{.*}}encoding: [0x96]
+# CHECK: or r5, r6{{.*}}encoding: [0x96]
 or r5, r7
-# CHECK: or c1, c3{{.*}}encoding: [0x97]
+# CHECK: or r5, r7{{.*}}encoding: [0x97]
 or r6, r0
 # CHECK: or r6, r0{{.*}}encoding: [0xf9,0xc1]
 or r6, r1
@@ -246,13 +246,13 @@ or r6, r2
 or r6, r3
 # CHECK: or r6, r3{{.*}}encoding: [0xf9,0xcd]
 or r6, r4
-# CHECK: or c2, c0{{.*}}encoding: [0x98]
+# CHECK: or r6, r4{{.*}}encoding: [0x98]
 or r6, r5
-# CHECK: or c2, c1{{.*}}encoding: [0x99]
+# CHECK: or r6, r5{{.*}}encoding: [0x99]
 or r6, r6
-# CHECK: or c2, c2{{.*}}encoding: [0x9a]
+# CHECK: or r6, r6{{.*}}encoding: [0x9a]
 or r6, r7
-# CHECK: or c2, c3{{.*}}encoding: [0x9b]
+# CHECK: or r6, r7{{.*}}encoding: [0x9b]
 or r7, r0
 # CHECK: or r7, r0{{.*}}encoding: [0xf9,0xe1]
 or r7, r1
@@ -262,13 +262,13 @@ or r7, r2
 or r7, r3
 # CHECK: or r7, r3{{.*}}encoding: [0xf9,0xed]
 or r7, r4
-# CHECK: or c3, c0{{.*}}encoding: [0x9c]
+# CHECK: or r7, r4{{.*}}encoding: [0x9c]
 or r7, r5
-# CHECK: or c3, c1{{.*}}encoding: [0x9d]
+# CHECK: or r7, r5{{.*}}encoding: [0x9d]
 or r7, r6
-# CHECK: or c3, c2{{.*}}encoding: [0x9e]
+# CHECK: or r7, r6{{.*}}encoding: [0x9e]
 or r7, r7
-# CHECK: or c3, c3{{.*}}encoding: [0x9f]
+# CHECK: or r7, r7{{.*}}encoding: [0x9f]
 xor r0, r0
 # CHECK: xor r0, r0{{.*}}encoding: [0xf9,0x02]
 xor r0, r1
@@ -342,13 +342,13 @@ xor r4, r2
 xor r4, r3
 # CHECK: xor r4, r3{{.*}}encoding: [0xf9,0x8e]
 xor r4, r4
-# CHECK: xor c0, c0{{.*}}encoding: [0xa0]
+# CHECK: xor r4, r4{{.*}}encoding: [0xa0]
 xor r4, r5
-# CHECK: xor c0, c1{{.*}}encoding: [0xa1]
+# CHECK: xor r4, r5{{.*}}encoding: [0xa1]
 xor r4, r6
-# CHECK: xor c0, c2{{.*}}encoding: [0xa2]
+# CHECK: xor r4, r6{{.*}}encoding: [0xa2]
 xor r4, r7
-# CHECK: xor c0, c3{{.*}}encoding: [0xa3]
+# CHECK: xor r4, r7{{.*}}encoding: [0xa3]
 xor r5, r0
 # CHECK: xor r5, r0{{.*}}encoding: [0xf9,0xa2]
 xor r5, r1
@@ -358,13 +358,13 @@ xor r5, r2
 xor r5, r3
 # CHECK: xor r5, r3{{.*}}encoding: [0xf9,0xae]
 xor r5, r4
-# CHECK: xor c1, c0{{.*}}encoding: [0xa4]
+# CHECK: xor r5, r4{{.*}}encoding: [0xa4]
 xor r5, r5
-# CHECK: xor c1, c1{{.*}}encoding: [0xa5]
+# CHECK: xor r5, r5{{.*}}encoding: [0xa5]
 xor r5, r6
-# CHECK: xor c1, c2{{.*}}encoding: [0xa6]
+# CHECK: xor r5, r6{{.*}}encoding: [0xa6]
 xor r5, r7
-# CHECK: xor c1, c3{{.*}}encoding: [0xa7]
+# CHECK: xor r5, r7{{.*}}encoding: [0xa7]
 xor r6, r0
 # CHECK: xor r6, r0{{.*}}encoding: [0xf9,0xc2]
 xor r6, r1
@@ -374,13 +374,13 @@ xor r6, r2
 xor r6, r3
 # CHECK: xor r6, r3{{.*}}encoding: [0xf9,0xce]
 xor r6, r4
-# CHECK: xor c2, c0{{.*}}encoding: [0xa8]
+# CHECK: xor r6, r4{{.*}}encoding: [0xa8]
 xor r6, r5
-# CHECK: xor c2, c1{{.*}}encoding: [0xa9]
+# CHECK: xor r6, r5{{.*}}encoding: [0xa9]
 xor r6, r6
-# CHECK: xor c2, c2{{.*}}encoding: [0xaa]
+# CHECK: xor r6, r6{{.*}}encoding: [0xaa]
 xor r6, r7
-# CHECK: xor c2, c3{{.*}}encoding: [0xab]
+# CHECK: xor r6, r7{{.*}}encoding: [0xab]
 xor r7, r0
 # CHECK: xor r7, r0{{.*}}encoding: [0xf9,0xe2]
 xor r7, r1
@@ -390,107 +390,107 @@ xor r7, r2
 xor r7, r3
 # CHECK: xor r7, r3{{.*}}encoding: [0xf9,0xee]
 xor r7, r4
-# CHECK: xor c3, c0{{.*}}encoding: [0xac]
+# CHECK: xor r7, r4{{.*}}encoding: [0xac]
 xor r7, r5
-# CHECK: xor c3, c1{{.*}}encoding: [0xad]
+# CHECK: xor r7, r5{{.*}}encoding: [0xad]
 xor r7, r6
-# CHECK: xor c3, c2{{.*}}encoding: [0xae]
+# CHECK: xor r7, r6{{.*}}encoding: [0xae]
 xor r7, r7
-# CHECK: xor c3, c3{{.*}}encoding: [0xaf]
+# CHECK: xor r7, r7{{.*}}encoding: [0xaf]
 and c0, c0
-# CHECK: and c0, c0{{.*}}encoding: [0x80]
+# CHECK: and r4, r4{{.*}}encoding: [0x80]
 and c0, c1
-# CHECK: and c0, c1{{.*}}encoding: [0x81]
+# CHECK: and r4, r5{{.*}}encoding: [0x81]
 and c0, c2
-# CHECK: and c0, c2{{.*}}encoding: [0x82]
+# CHECK: and r4, r6{{.*}}encoding: [0x82]
 and c0, c3
-# CHECK: and c0, c3{{.*}}encoding: [0x83]
+# CHECK: and r4, r7{{.*}}encoding: [0x83]
 and c1, c0
-# CHECK: and c1, c0{{.*}}encoding: [0x84]
+# CHECK: and r5, r4{{.*}}encoding: [0x84]
 and c1, c1
-# CHECK: and c1, c1{{.*}}encoding: [0x85]
+# CHECK: and r5, r5{{.*}}encoding: [0x85]
 and c1, c2
-# CHECK: and c1, c2{{.*}}encoding: [0x86]
+# CHECK: and r5, r6{{.*}}encoding: [0x86]
 and c1, c3
-# CHECK: and c1, c3{{.*}}encoding: [0x87]
+# CHECK: and r5, r7{{.*}}encoding: [0x87]
 and c2, c0
-# CHECK: and c2, c0{{.*}}encoding: [0x88]
+# CHECK: and r6, r4{{.*}}encoding: [0x88]
 and c2, c1
-# CHECK: and c2, c1{{.*}}encoding: [0x89]
+# CHECK: and r6, r5{{.*}}encoding: [0x89]
 and c2, c2
-# CHECK: and c2, c2{{.*}}encoding: [0x8a]
+# CHECK: and r6, r6{{.*}}encoding: [0x8a]
 and c2, c3
-# CHECK: and c2, c3{{.*}}encoding: [0x8b]
+# CHECK: and r6, r7{{.*}}encoding: [0x8b]
 and c3, c0
-# CHECK: and c3, c0{{.*}}encoding: [0x8c]
+# CHECK: and r7, r4{{.*}}encoding: [0x8c]
 and c3, c1
-# CHECK: and c3, c1{{.*}}encoding: [0x8d]
+# CHECK: and r7, r5{{.*}}encoding: [0x8d]
 and c3, c2
-# CHECK: and c3, c2{{.*}}encoding: [0x8e]
+# CHECK: and r7, r6{{.*}}encoding: [0x8e]
 and c3, c3
-# CHECK: and c3, c3{{.*}}encoding: [0x8f]
+# CHECK: and r7, r7{{.*}}encoding: [0x8f]
 or c0, c0
-# CHECK: or c0, c0{{.*}}encoding: [0x90]
+# CHECK: or r4, r4{{.*}}encoding: [0x90]
 or c0, c1
-# CHECK: or c0, c1{{.*}}encoding: [0x91]
+# CHECK: or r4, r5{{.*}}encoding: [0x91]
 or c0, c2
-# CHECK: or c0, c2{{.*}}encoding: [0x92]
+# CHECK: or r4, r6{{.*}}encoding: [0x92]
 or c0, c3
-# CHECK: or c0, c3{{.*}}encoding: [0x93]
+# CHECK: or r4, r7{{.*}}encoding: [0x93]
 or c1, c0
-# CHECK: or c1, c0{{.*}}encoding: [0x94]
+# CHECK: or r5, r4{{.*}}encoding: [0x94]
 or c1, c1
-# CHECK: or c1, c1{{.*}}encoding: [0x95]
+# CHECK: or r5, r5{{.*}}encoding: [0x95]
 or c1, c2
-# CHECK: or c1, c2{{.*}}encoding: [0x96]
+# CHECK: or r5, r6{{.*}}encoding: [0x96]
 or c1, c3
-# CHECK: or c1, c3{{.*}}encoding: [0x97]
+# CHECK: or r5, r7{{.*}}encoding: [0x97]
 or c2, c0
-# CHECK: or c2, c0{{.*}}encoding: [0x98]
+# CHECK: or r6, r4{{.*}}encoding: [0x98]
 or c2, c1
-# CHECK: or c2, c1{{.*}}encoding: [0x99]
+# CHECK: or r6, r5{{.*}}encoding: [0x99]
 or c2, c2
-# CHECK: or c2, c2{{.*}}encoding: [0x9a]
+# CHECK: or r6, r6{{.*}}encoding: [0x9a]
 or c2, c3
-# CHECK: or c2, c3{{.*}}encoding: [0x9b]
+# CHECK: or r6, r7{{.*}}encoding: [0x9b]
 or c3, c0
-# CHECK: or c3, c0{{.*}}encoding: [0x9c]
+# CHECK: or r7, r4{{.*}}encoding: [0x9c]
 or c3, c1
-# CHECK: or c3, c1{{.*}}encoding: [0x9d]
+# CHECK: or r7, r5{{.*}}encoding: [0x9d]
 or c3, c2
-# CHECK: or c3, c2{{.*}}encoding: [0x9e]
+# CHECK: or r7, r6{{.*}}encoding: [0x9e]
 or c3, c3
-# CHECK: or c3, c3{{.*}}encoding: [0x9f]
+# CHECK: or r7, r7{{.*}}encoding: [0x9f]
 xor c0, c0
-# CHECK: xor c0, c0{{.*}}encoding: [0xa0]
+# CHECK: xor r4, r4{{.*}}encoding: [0xa0]
 xor c0, c1
-# CHECK: xor c0, c1{{.*}}encoding: [0xa1]
+# CHECK: xor r4, r5{{.*}}encoding: [0xa1]
 xor c0, c2
-# CHECK: xor c0, c2{{.*}}encoding: [0xa2]
+# CHECK: xor r4, r6{{.*}}encoding: [0xa2]
 xor c0, c3
-# CHECK: xor c0, c3{{.*}}encoding: [0xa3]
+# CHECK: xor r4, r7{{.*}}encoding: [0xa3]
 xor c1, c0
-# CHECK: xor c1, c0{{.*}}encoding: [0xa4]
+# CHECK: xor r5, r4{{.*}}encoding: [0xa4]
 xor c1, c1
-# CHECK: xor c1, c1{{.*}}encoding: [0xa5]
+# CHECK: xor r5, r5{{.*}}encoding: [0xa5]
 xor c1, c2
-# CHECK: xor c1, c2{{.*}}encoding: [0xa6]
+# CHECK: xor r5, r6{{.*}}encoding: [0xa6]
 xor c1, c3
-# CHECK: xor c1, c3{{.*}}encoding: [0xa7]
+# CHECK: xor r5, r7{{.*}}encoding: [0xa7]
 xor c2, c0
-# CHECK: xor c2, c0{{.*}}encoding: [0xa8]
+# CHECK: xor r6, r4{{.*}}encoding: [0xa8]
 xor c2, c1
-# CHECK: xor c2, c1{{.*}}encoding: [0xa9]
+# CHECK: xor r6, r5{{.*}}encoding: [0xa9]
 xor c2, c2
-# CHECK: xor c2, c2{{.*}}encoding: [0xaa]
+# CHECK: xor r6, r6{{.*}}encoding: [0xaa]
 xor c2, c3
-# CHECK: xor c2, c3{{.*}}encoding: [0xab]
+# CHECK: xor r6, r7{{.*}}encoding: [0xab]
 xor c3, c0
-# CHECK: xor c3, c0{{.*}}encoding: [0xac]
+# CHECK: xor r7, r4{{.*}}encoding: [0xac]
 xor c3, c1
-# CHECK: xor c3, c1{{.*}}encoding: [0xad]
+# CHECK: xor r7, r5{{.*}}encoding: [0xad]
 xor c3, c2
-# CHECK: xor c3, c2{{.*}}encoding: [0xae]
+# CHECK: xor r7, r6{{.*}}encoding: [0xae]
 xor c3, c3
-# CHECK: xor c3, c3{{.*}}encoding: [0xaf]
+# CHECK: xor r7, r7{{.*}}encoding: [0xaf]
 

@@ -200,389 +200,389 @@ asr16i c3, 13
 asr16i c3, 14
 asr16i c3, 15
 
-# ENC: lsl16i{{[ \t]+}}c0, 0{{.*}}encoding: [0xfa,0x30]
-# ENC: lsl16i{{[ \t]+}}c0, 1{{.*}}encoding: [0xfa,0x31]
-# ENC: lsl16i{{[ \t]+}}c0, 2{{.*}}encoding: [0xfa,0x32]
-# ENC: lsl16i{{[ \t]+}}c0, 3{{.*}}encoding: [0xfa,0x33]
-# ENC: lsl16i{{[ \t]+}}c0, 4{{.*}}encoding: [0xfa,0x34]
-# ENC: lsl16i{{[ \t]+}}c0, 5{{.*}}encoding: [0xfa,0x35]
-# ENC: lsl16i{{[ \t]+}}c0, 6{{.*}}encoding: [0xfa,0x36]
-# ENC: lsl16i{{[ \t]+}}c0, 7{{.*}}encoding: [0xfa,0x37]
-# ENC: lsl16i{{[ \t]+}}c0, 8{{.*}}encoding: [0xfa,0x38]
-# ENC: lsl16i{{[ \t]+}}c0, 9{{.*}}encoding: [0xfa,0x39]
-# ENC: lsl16i{{[ \t]+}}c0, 10{{.*}}encoding: [0xfa,0x3a]
-# ENC: lsl16i{{[ \t]+}}c0, 11{{.*}}encoding: [0xfa,0x3b]
-# ENC: lsl16i{{[ \t]+}}c0, 12{{.*}}encoding: [0xfa,0x3c]
-# ENC: lsl16i{{[ \t]+}}c0, 13{{.*}}encoding: [0xfa,0x3d]
-# ENC: lsl16i{{[ \t]+}}c0, 14{{.*}}encoding: [0xfa,0x3e]
-# ENC: lsl16i{{[ \t]+}}c0, 15{{.*}}encoding: [0xfa,0x3f]
-# ENC: lsl16i{{[ \t]+}}c1, 0{{.*}}encoding: [0xfa,0x40]
-# ENC: lsl16i{{[ \t]+}}c1, 1{{.*}}encoding: [0xfa,0x41]
-# ENC: lsl16i{{[ \t]+}}c1, 2{{.*}}encoding: [0xfa,0x42]
-# ENC: lsl16i{{[ \t]+}}c1, 3{{.*}}encoding: [0xfa,0x43]
-# ENC: lsl16i{{[ \t]+}}c1, 4{{.*}}encoding: [0xfa,0x44]
-# ENC: lsl16i{{[ \t]+}}c1, 5{{.*}}encoding: [0xfa,0x45]
-# ENC: lsl16i{{[ \t]+}}c1, 6{{.*}}encoding: [0xfa,0x46]
-# ENC: lsl16i{{[ \t]+}}c1, 7{{.*}}encoding: [0xfa,0x47]
-# ENC: lsl16i{{[ \t]+}}c1, 8{{.*}}encoding: [0xfa,0x48]
-# ENC: lsl16i{{[ \t]+}}c1, 9{{.*}}encoding: [0xfa,0x49]
-# ENC: lsl16i{{[ \t]+}}c1, 10{{.*}}encoding: [0xfa,0x4a]
-# ENC: lsl16i{{[ \t]+}}c1, 11{{.*}}encoding: [0xfa,0x4b]
-# ENC: lsl16i{{[ \t]+}}c1, 12{{.*}}encoding: [0xfa,0x4c]
-# ENC: lsl16i{{[ \t]+}}c1, 13{{.*}}encoding: [0xfa,0x4d]
-# ENC: lsl16i{{[ \t]+}}c1, 14{{.*}}encoding: [0xfa,0x4e]
-# ENC: lsl16i{{[ \t]+}}c1, 15{{.*}}encoding: [0xfa,0x4f]
-# ENC: lsl16i{{[ \t]+}}c2, 0{{.*}}encoding: [0xfa,0x50]
-# ENC: lsl16i{{[ \t]+}}c2, 1{{.*}}encoding: [0xfa,0x51]
-# ENC: lsl16i{{[ \t]+}}c2, 2{{.*}}encoding: [0xfa,0x52]
-# ENC: lsl16i{{[ \t]+}}c2, 3{{.*}}encoding: [0xfa,0x53]
-# ENC: lsl16i{{[ \t]+}}c2, 4{{.*}}encoding: [0xfa,0x54]
-# ENC: lsl16i{{[ \t]+}}c2, 5{{.*}}encoding: [0xfa,0x55]
-# ENC: lsl16i{{[ \t]+}}c2, 6{{.*}}encoding: [0xfa,0x56]
-# ENC: lsl16i{{[ \t]+}}c2, 7{{.*}}encoding: [0xfa,0x57]
-# ENC: lsl16i{{[ \t]+}}c2, 8{{.*}}encoding: [0xfa,0x58]
-# ENC: lsl16i{{[ \t]+}}c2, 9{{.*}}encoding: [0xfa,0x59]
-# ENC: lsl16i{{[ \t]+}}c2, 10{{.*}}encoding: [0xfa,0x5a]
-# ENC: lsl16i{{[ \t]+}}c2, 11{{.*}}encoding: [0xfa,0x5b]
-# ENC: lsl16i{{[ \t]+}}c2, 12{{.*}}encoding: [0xfa,0x5c]
-# ENC: lsl16i{{[ \t]+}}c2, 13{{.*}}encoding: [0xfa,0x5d]
-# ENC: lsl16i{{[ \t]+}}c2, 14{{.*}}encoding: [0xfa,0x5e]
-# ENC: lsl16i{{[ \t]+}}c2, 15{{.*}}encoding: [0xfa,0x5f]
-# ENC: lsl16i{{[ \t]+}}c3, 0{{.*}}encoding: [0xfa,0x60]
-# ENC: lsl16i{{[ \t]+}}c3, 1{{.*}}encoding: [0xfa,0x61]
-# ENC: lsl16i{{[ \t]+}}c3, 2{{.*}}encoding: [0xfa,0x62]
-# ENC: lsl16i{{[ \t]+}}c3, 3{{.*}}encoding: [0xfa,0x63]
-# ENC: lsl16i{{[ \t]+}}c3, 4{{.*}}encoding: [0xfa,0x64]
-# ENC: lsl16i{{[ \t]+}}c3, 5{{.*}}encoding: [0xfa,0x65]
-# ENC: lsl16i{{[ \t]+}}c3, 6{{.*}}encoding: [0xfa,0x66]
-# ENC: lsl16i{{[ \t]+}}c3, 7{{.*}}encoding: [0xfa,0x67]
-# ENC: lsl16i{{[ \t]+}}c3, 8{{.*}}encoding: [0xfa,0x68]
-# ENC: lsl16i{{[ \t]+}}c3, 9{{.*}}encoding: [0xfa,0x69]
-# ENC: lsl16i{{[ \t]+}}c3, 10{{.*}}encoding: [0xfa,0x6a]
-# ENC: lsl16i{{[ \t]+}}c3, 11{{.*}}encoding: [0xfa,0x6b]
-# ENC: lsl16i{{[ \t]+}}c3, 12{{.*}}encoding: [0xfa,0x6c]
-# ENC: lsl16i{{[ \t]+}}c3, 13{{.*}}encoding: [0xfa,0x6d]
-# ENC: lsl16i{{[ \t]+}}c3, 14{{.*}}encoding: [0xfa,0x6e]
-# ENC: lsl16i{{[ \t]+}}c3, 15{{.*}}encoding: [0xfa,0x6f]
-# ENC: lsr16i{{[ \t]+}}c0, 0{{.*}}encoding: [0xfa,0x70]
-# ENC: lsr16i{{[ \t]+}}c0, 1{{.*}}encoding: [0xfa,0x71]
-# ENC: lsr16i{{[ \t]+}}c0, 2{{.*}}encoding: [0xfa,0x72]
-# ENC: lsr16i{{[ \t]+}}c0, 3{{.*}}encoding: [0xfa,0x73]
-# ENC: lsr16i{{[ \t]+}}c0, 4{{.*}}encoding: [0xfa,0x74]
-# ENC: lsr16i{{[ \t]+}}c0, 5{{.*}}encoding: [0xfa,0x75]
-# ENC: lsr16i{{[ \t]+}}c0, 6{{.*}}encoding: [0xfa,0x76]
-# ENC: lsr16i{{[ \t]+}}c0, 7{{.*}}encoding: [0xfa,0x77]
-# ENC: lsr16i{{[ \t]+}}c0, 8{{.*}}encoding: [0xfa,0x78]
-# ENC: lsr16i{{[ \t]+}}c0, 9{{.*}}encoding: [0xfa,0x79]
-# ENC: lsr16i{{[ \t]+}}c0, 10{{.*}}encoding: [0xfa,0x7a]
-# ENC: lsr16i{{[ \t]+}}c0, 11{{.*}}encoding: [0xfa,0x7b]
-# ENC: lsr16i{{[ \t]+}}c0, 12{{.*}}encoding: [0xfa,0x7c]
-# ENC: lsr16i{{[ \t]+}}c0, 13{{.*}}encoding: [0xfa,0x7d]
-# ENC: lsr16i{{[ \t]+}}c0, 14{{.*}}encoding: [0xfa,0x7e]
-# ENC: lsr16i{{[ \t]+}}c0, 15{{.*}}encoding: [0xfa,0x7f]
-# ENC: lsr16i{{[ \t]+}}c1, 0{{.*}}encoding: [0xfa,0x80]
-# ENC: lsr16i{{[ \t]+}}c1, 1{{.*}}encoding: [0xfa,0x81]
-# ENC: lsr16i{{[ \t]+}}c1, 2{{.*}}encoding: [0xfa,0x82]
-# ENC: lsr16i{{[ \t]+}}c1, 3{{.*}}encoding: [0xfa,0x83]
-# ENC: lsr16i{{[ \t]+}}c1, 4{{.*}}encoding: [0xfa,0x84]
-# ENC: lsr16i{{[ \t]+}}c1, 5{{.*}}encoding: [0xfa,0x85]
-# ENC: lsr16i{{[ \t]+}}c1, 6{{.*}}encoding: [0xfa,0x86]
-# ENC: lsr16i{{[ \t]+}}c1, 7{{.*}}encoding: [0xfa,0x87]
-# ENC: lsr16i{{[ \t]+}}c1, 8{{.*}}encoding: [0xfa,0x88]
-# ENC: lsr16i{{[ \t]+}}c1, 9{{.*}}encoding: [0xfa,0x89]
-# ENC: lsr16i{{[ \t]+}}c1, 10{{.*}}encoding: [0xfa,0x8a]
-# ENC: lsr16i{{[ \t]+}}c1, 11{{.*}}encoding: [0xfa,0x8b]
-# ENC: lsr16i{{[ \t]+}}c1, 12{{.*}}encoding: [0xfa,0x8c]
-# ENC: lsr16i{{[ \t]+}}c1, 13{{.*}}encoding: [0xfa,0x8d]
-# ENC: lsr16i{{[ \t]+}}c1, 14{{.*}}encoding: [0xfa,0x8e]
-# ENC: lsr16i{{[ \t]+}}c1, 15{{.*}}encoding: [0xfa,0x8f]
-# ENC: lsr16i{{[ \t]+}}c2, 0{{.*}}encoding: [0xfa,0x90]
-# ENC: lsr16i{{[ \t]+}}c2, 1{{.*}}encoding: [0xfa,0x91]
-# ENC: lsr16i{{[ \t]+}}c2, 2{{.*}}encoding: [0xfa,0x92]
-# ENC: lsr16i{{[ \t]+}}c2, 3{{.*}}encoding: [0xfa,0x93]
-# ENC: lsr16i{{[ \t]+}}c2, 4{{.*}}encoding: [0xfa,0x94]
-# ENC: lsr16i{{[ \t]+}}c2, 5{{.*}}encoding: [0xfa,0x95]
-# ENC: lsr16i{{[ \t]+}}c2, 6{{.*}}encoding: [0xfa,0x96]
-# ENC: lsr16i{{[ \t]+}}c2, 7{{.*}}encoding: [0xfa,0x97]
-# ENC: lsr16i{{[ \t]+}}c2, 8{{.*}}encoding: [0xfa,0x98]
-# ENC: lsr16i{{[ \t]+}}c2, 9{{.*}}encoding: [0xfa,0x99]
-# ENC: lsr16i{{[ \t]+}}c2, 10{{.*}}encoding: [0xfa,0x9a]
-# ENC: lsr16i{{[ \t]+}}c2, 11{{.*}}encoding: [0xfa,0x9b]
-# ENC: lsr16i{{[ \t]+}}c2, 12{{.*}}encoding: [0xfa,0x9c]
-# ENC: lsr16i{{[ \t]+}}c2, 13{{.*}}encoding: [0xfa,0x9d]
-# ENC: lsr16i{{[ \t]+}}c2, 14{{.*}}encoding: [0xfa,0x9e]
-# ENC: lsr16i{{[ \t]+}}c2, 15{{.*}}encoding: [0xfa,0x9f]
-# ENC: lsr16i{{[ \t]+}}c3, 0{{.*}}encoding: [0xfa,0xa0]
-# ENC: lsr16i{{[ \t]+}}c3, 1{{.*}}encoding: [0xfa,0xa1]
-# ENC: lsr16i{{[ \t]+}}c3, 2{{.*}}encoding: [0xfa,0xa2]
-# ENC: lsr16i{{[ \t]+}}c3, 3{{.*}}encoding: [0xfa,0xa3]
-# ENC: lsr16i{{[ \t]+}}c3, 4{{.*}}encoding: [0xfa,0xa4]
-# ENC: lsr16i{{[ \t]+}}c3, 5{{.*}}encoding: [0xfa,0xa5]
-# ENC: lsr16i{{[ \t]+}}c3, 6{{.*}}encoding: [0xfa,0xa6]
-# ENC: lsr16i{{[ \t]+}}c3, 7{{.*}}encoding: [0xfa,0xa7]
-# ENC: lsr16i{{[ \t]+}}c3, 8{{.*}}encoding: [0xfa,0xa8]
-# ENC: lsr16i{{[ \t]+}}c3, 9{{.*}}encoding: [0xfa,0xa9]
-# ENC: lsr16i{{[ \t]+}}c3, 10{{.*}}encoding: [0xfa,0xaa]
-# ENC: lsr16i{{[ \t]+}}c3, 11{{.*}}encoding: [0xfa,0xab]
-# ENC: lsr16i{{[ \t]+}}c3, 12{{.*}}encoding: [0xfa,0xac]
-# ENC: lsr16i{{[ \t]+}}c3, 13{{.*}}encoding: [0xfa,0xad]
-# ENC: lsr16i{{[ \t]+}}c3, 14{{.*}}encoding: [0xfa,0xae]
-# ENC: lsr16i{{[ \t]+}}c3, 15{{.*}}encoding: [0xfa,0xaf]
-# ENC: asr16i{{[ \t]+}}c0, 0{{.*}}encoding: [0xfa,0xb0]
-# ENC: asr16i{{[ \t]+}}c0, 1{{.*}}encoding: [0xfa,0xb1]
-# ENC: asr16i{{[ \t]+}}c0, 2{{.*}}encoding: [0xfa,0xb2]
-# ENC: asr16i{{[ \t]+}}c0, 3{{.*}}encoding: [0xfa,0xb3]
-# ENC: asr16i{{[ \t]+}}c0, 4{{.*}}encoding: [0xfa,0xb4]
-# ENC: asr16i{{[ \t]+}}c0, 5{{.*}}encoding: [0xfa,0xb5]
-# ENC: asr16i{{[ \t]+}}c0, 6{{.*}}encoding: [0xfa,0xb6]
-# ENC: asr16i{{[ \t]+}}c0, 7{{.*}}encoding: [0xfa,0xb7]
-# ENC: asr16i{{[ \t]+}}c0, 8{{.*}}encoding: [0xfa,0xb8]
-# ENC: asr16i{{[ \t]+}}c0, 9{{.*}}encoding: [0xfa,0xb9]
-# ENC: asr16i{{[ \t]+}}c0, 10{{.*}}encoding: [0xfa,0xba]
-# ENC: asr16i{{[ \t]+}}c0, 11{{.*}}encoding: [0xfa,0xbb]
-# ENC: asr16i{{[ \t]+}}c0, 12{{.*}}encoding: [0xfa,0xbc]
-# ENC: asr16i{{[ \t]+}}c0, 13{{.*}}encoding: [0xfa,0xbd]
-# ENC: asr16i{{[ \t]+}}c0, 14{{.*}}encoding: [0xfa,0xbe]
-# ENC: asr16i{{[ \t]+}}c0, 15{{.*}}encoding: [0xfa,0xbf]
-# ENC: asr16i{{[ \t]+}}c1, 0{{.*}}encoding: [0xfa,0xc0]
-# ENC: asr16i{{[ \t]+}}c1, 1{{.*}}encoding: [0xfa,0xc1]
-# ENC: asr16i{{[ \t]+}}c1, 2{{.*}}encoding: [0xfa,0xc2]
-# ENC: asr16i{{[ \t]+}}c1, 3{{.*}}encoding: [0xfa,0xc3]
-# ENC: asr16i{{[ \t]+}}c1, 4{{.*}}encoding: [0xfa,0xc4]
-# ENC: asr16i{{[ \t]+}}c1, 5{{.*}}encoding: [0xfa,0xc5]
-# ENC: asr16i{{[ \t]+}}c1, 6{{.*}}encoding: [0xfa,0xc6]
-# ENC: asr16i{{[ \t]+}}c1, 7{{.*}}encoding: [0xfa,0xc7]
-# ENC: asr16i{{[ \t]+}}c1, 8{{.*}}encoding: [0xfa,0xc8]
-# ENC: asr16i{{[ \t]+}}c1, 9{{.*}}encoding: [0xfa,0xc9]
-# ENC: asr16i{{[ \t]+}}c1, 10{{.*}}encoding: [0xfa,0xca]
-# ENC: asr16i{{[ \t]+}}c1, 11{{.*}}encoding: [0xfa,0xcb]
-# ENC: asr16i{{[ \t]+}}c1, 12{{.*}}encoding: [0xfa,0xcc]
-# ENC: asr16i{{[ \t]+}}c1, 13{{.*}}encoding: [0xfa,0xcd]
-# ENC: asr16i{{[ \t]+}}c1, 14{{.*}}encoding: [0xfa,0xce]
-# ENC: asr16i{{[ \t]+}}c1, 15{{.*}}encoding: [0xfa,0xcf]
-# ENC: asr16i{{[ \t]+}}c2, 0{{.*}}encoding: [0xfa,0xd0]
-# ENC: asr16i{{[ \t]+}}c2, 1{{.*}}encoding: [0xfa,0xd1]
-# ENC: asr16i{{[ \t]+}}c2, 2{{.*}}encoding: [0xfa,0xd2]
-# ENC: asr16i{{[ \t]+}}c2, 3{{.*}}encoding: [0xfa,0xd3]
-# ENC: asr16i{{[ \t]+}}c2, 4{{.*}}encoding: [0xfa,0xd4]
-# ENC: asr16i{{[ \t]+}}c2, 5{{.*}}encoding: [0xfa,0xd5]
-# ENC: asr16i{{[ \t]+}}c2, 6{{.*}}encoding: [0xfa,0xd6]
-# ENC: asr16i{{[ \t]+}}c2, 7{{.*}}encoding: [0xfa,0xd7]
-# ENC: asr16i{{[ \t]+}}c2, 8{{.*}}encoding: [0xfa,0xd8]
-# ENC: asr16i{{[ \t]+}}c2, 9{{.*}}encoding: [0xfa,0xd9]
-# ENC: asr16i{{[ \t]+}}c2, 10{{.*}}encoding: [0xfa,0xda]
-# ENC: asr16i{{[ \t]+}}c2, 11{{.*}}encoding: [0xfa,0xdb]
-# ENC: asr16i{{[ \t]+}}c2, 12{{.*}}encoding: [0xfa,0xdc]
-# ENC: asr16i{{[ \t]+}}c2, 13{{.*}}encoding: [0xfa,0xdd]
-# ENC: asr16i{{[ \t]+}}c2, 14{{.*}}encoding: [0xfa,0xde]
-# ENC: asr16i{{[ \t]+}}c2, 15{{.*}}encoding: [0xfa,0xdf]
-# ENC: asr16i{{[ \t]+}}c3, 0{{.*}}encoding: [0xfa,0xe0]
-# ENC: asr16i{{[ \t]+}}c3, 1{{.*}}encoding: [0xfa,0xe1]
-# ENC: asr16i{{[ \t]+}}c3, 2{{.*}}encoding: [0xfa,0xe2]
-# ENC: asr16i{{[ \t]+}}c3, 3{{.*}}encoding: [0xfa,0xe3]
-# ENC: asr16i{{[ \t]+}}c3, 4{{.*}}encoding: [0xfa,0xe4]
-# ENC: asr16i{{[ \t]+}}c3, 5{{.*}}encoding: [0xfa,0xe5]
-# ENC: asr16i{{[ \t]+}}c3, 6{{.*}}encoding: [0xfa,0xe6]
-# ENC: asr16i{{[ \t]+}}c3, 7{{.*}}encoding: [0xfa,0xe7]
-# ENC: asr16i{{[ \t]+}}c3, 8{{.*}}encoding: [0xfa,0xe8]
-# ENC: asr16i{{[ \t]+}}c3, 9{{.*}}encoding: [0xfa,0xe9]
-# ENC: asr16i{{[ \t]+}}c3, 10{{.*}}encoding: [0xfa,0xea]
-# ENC: asr16i{{[ \t]+}}c3, 11{{.*}}encoding: [0xfa,0xeb]
-# ENC: asr16i{{[ \t]+}}c3, 12{{.*}}encoding: [0xfa,0xec]
-# ENC: asr16i{{[ \t]+}}c3, 13{{.*}}encoding: [0xfa,0xed]
-# ENC: asr16i{{[ \t]+}}c3, 14{{.*}}encoding: [0xfa,0xee]
-# ENC: asr16i{{[ \t]+}}c3, 15{{.*}}encoding: [0xfa,0xef]
+# ENC: lsl16i{{[ \t]+}}r4, 0{{.*}}encoding: [0xfa,0x30]
+# ENC: lsl16i{{[ \t]+}}r4, 1{{.*}}encoding: [0xfa,0x31]
+# ENC: lsl16i{{[ \t]+}}r4, 2{{.*}}encoding: [0xfa,0x32]
+# ENC: lsl16i{{[ \t]+}}r4, 3{{.*}}encoding: [0xfa,0x33]
+# ENC: lsl16i{{[ \t]+}}r4, 4{{.*}}encoding: [0xfa,0x34]
+# ENC: lsl16i{{[ \t]+}}r4, 5{{.*}}encoding: [0xfa,0x35]
+# ENC: lsl16i{{[ \t]+}}r4, 6{{.*}}encoding: [0xfa,0x36]
+# ENC: lsl16i{{[ \t]+}}r4, 7{{.*}}encoding: [0xfa,0x37]
+# ENC: lsl16i{{[ \t]+}}r4, 8{{.*}}encoding: [0xfa,0x38]
+# ENC: lsl16i{{[ \t]+}}r4, 9{{.*}}encoding: [0xfa,0x39]
+# ENC: lsl16i{{[ \t]+}}r4, 10{{.*}}encoding: [0xfa,0x3a]
+# ENC: lsl16i{{[ \t]+}}r4, 11{{.*}}encoding: [0xfa,0x3b]
+# ENC: lsl16i{{[ \t]+}}r4, 12{{.*}}encoding: [0xfa,0x3c]
+# ENC: lsl16i{{[ \t]+}}r4, 13{{.*}}encoding: [0xfa,0x3d]
+# ENC: lsl16i{{[ \t]+}}r4, 14{{.*}}encoding: [0xfa,0x3e]
+# ENC: lsl16i{{[ \t]+}}r4, 15{{.*}}encoding: [0xfa,0x3f]
+# ENC: lsl16i{{[ \t]+}}r5, 0{{.*}}encoding: [0xfa,0x40]
+# ENC: lsl16i{{[ \t]+}}r5, 1{{.*}}encoding: [0xfa,0x41]
+# ENC: lsl16i{{[ \t]+}}r5, 2{{.*}}encoding: [0xfa,0x42]
+# ENC: lsl16i{{[ \t]+}}r5, 3{{.*}}encoding: [0xfa,0x43]
+# ENC: lsl16i{{[ \t]+}}r5, 4{{.*}}encoding: [0xfa,0x44]
+# ENC: lsl16i{{[ \t]+}}r5, 5{{.*}}encoding: [0xfa,0x45]
+# ENC: lsl16i{{[ \t]+}}r5, 6{{.*}}encoding: [0xfa,0x46]
+# ENC: lsl16i{{[ \t]+}}r5, 7{{.*}}encoding: [0xfa,0x47]
+# ENC: lsl16i{{[ \t]+}}r5, 8{{.*}}encoding: [0xfa,0x48]
+# ENC: lsl16i{{[ \t]+}}r5, 9{{.*}}encoding: [0xfa,0x49]
+# ENC: lsl16i{{[ \t]+}}r5, 10{{.*}}encoding: [0xfa,0x4a]
+# ENC: lsl16i{{[ \t]+}}r5, 11{{.*}}encoding: [0xfa,0x4b]
+# ENC: lsl16i{{[ \t]+}}r5, 12{{.*}}encoding: [0xfa,0x4c]
+# ENC: lsl16i{{[ \t]+}}r5, 13{{.*}}encoding: [0xfa,0x4d]
+# ENC: lsl16i{{[ \t]+}}r5, 14{{.*}}encoding: [0xfa,0x4e]
+# ENC: lsl16i{{[ \t]+}}r5, 15{{.*}}encoding: [0xfa,0x4f]
+# ENC: lsl16i{{[ \t]+}}r6, 0{{.*}}encoding: [0xfa,0x50]
+# ENC: lsl16i{{[ \t]+}}r6, 1{{.*}}encoding: [0xfa,0x51]
+# ENC: lsl16i{{[ \t]+}}r6, 2{{.*}}encoding: [0xfa,0x52]
+# ENC: lsl16i{{[ \t]+}}r6, 3{{.*}}encoding: [0xfa,0x53]
+# ENC: lsl16i{{[ \t]+}}r6, 4{{.*}}encoding: [0xfa,0x54]
+# ENC: lsl16i{{[ \t]+}}r6, 5{{.*}}encoding: [0xfa,0x55]
+# ENC: lsl16i{{[ \t]+}}r6, 6{{.*}}encoding: [0xfa,0x56]
+# ENC: lsl16i{{[ \t]+}}r6, 7{{.*}}encoding: [0xfa,0x57]
+# ENC: lsl16i{{[ \t]+}}r6, 8{{.*}}encoding: [0xfa,0x58]
+# ENC: lsl16i{{[ \t]+}}r6, 9{{.*}}encoding: [0xfa,0x59]
+# ENC: lsl16i{{[ \t]+}}r6, 10{{.*}}encoding: [0xfa,0x5a]
+# ENC: lsl16i{{[ \t]+}}r6, 11{{.*}}encoding: [0xfa,0x5b]
+# ENC: lsl16i{{[ \t]+}}r6, 12{{.*}}encoding: [0xfa,0x5c]
+# ENC: lsl16i{{[ \t]+}}r6, 13{{.*}}encoding: [0xfa,0x5d]
+# ENC: lsl16i{{[ \t]+}}r6, 14{{.*}}encoding: [0xfa,0x5e]
+# ENC: lsl16i{{[ \t]+}}r6, 15{{.*}}encoding: [0xfa,0x5f]
+# ENC: lsl16i{{[ \t]+}}r7, 0{{.*}}encoding: [0xfa,0x60]
+# ENC: lsl16i{{[ \t]+}}r7, 1{{.*}}encoding: [0xfa,0x61]
+# ENC: lsl16i{{[ \t]+}}r7, 2{{.*}}encoding: [0xfa,0x62]
+# ENC: lsl16i{{[ \t]+}}r7, 3{{.*}}encoding: [0xfa,0x63]
+# ENC: lsl16i{{[ \t]+}}r7, 4{{.*}}encoding: [0xfa,0x64]
+# ENC: lsl16i{{[ \t]+}}r7, 5{{.*}}encoding: [0xfa,0x65]
+# ENC: lsl16i{{[ \t]+}}r7, 6{{.*}}encoding: [0xfa,0x66]
+# ENC: lsl16i{{[ \t]+}}r7, 7{{.*}}encoding: [0xfa,0x67]
+# ENC: lsl16i{{[ \t]+}}r7, 8{{.*}}encoding: [0xfa,0x68]
+# ENC: lsl16i{{[ \t]+}}r7, 9{{.*}}encoding: [0xfa,0x69]
+# ENC: lsl16i{{[ \t]+}}r7, 10{{.*}}encoding: [0xfa,0x6a]
+# ENC: lsl16i{{[ \t]+}}r7, 11{{.*}}encoding: [0xfa,0x6b]
+# ENC: lsl16i{{[ \t]+}}r7, 12{{.*}}encoding: [0xfa,0x6c]
+# ENC: lsl16i{{[ \t]+}}r7, 13{{.*}}encoding: [0xfa,0x6d]
+# ENC: lsl16i{{[ \t]+}}r7, 14{{.*}}encoding: [0xfa,0x6e]
+# ENC: lsl16i{{[ \t]+}}r7, 15{{.*}}encoding: [0xfa,0x6f]
+# ENC: lsr16i{{[ \t]+}}r4, 0{{.*}}encoding: [0xfa,0x70]
+# ENC: lsr16i{{[ \t]+}}r4, 1{{.*}}encoding: [0xfa,0x71]
+# ENC: lsr16i{{[ \t]+}}r4, 2{{.*}}encoding: [0xfa,0x72]
+# ENC: lsr16i{{[ \t]+}}r4, 3{{.*}}encoding: [0xfa,0x73]
+# ENC: lsr16i{{[ \t]+}}r4, 4{{.*}}encoding: [0xfa,0x74]
+# ENC: lsr16i{{[ \t]+}}r4, 5{{.*}}encoding: [0xfa,0x75]
+# ENC: lsr16i{{[ \t]+}}r4, 6{{.*}}encoding: [0xfa,0x76]
+# ENC: lsr16i{{[ \t]+}}r4, 7{{.*}}encoding: [0xfa,0x77]
+# ENC: lsr16i{{[ \t]+}}r4, 8{{.*}}encoding: [0xfa,0x78]
+# ENC: lsr16i{{[ \t]+}}r4, 9{{.*}}encoding: [0xfa,0x79]
+# ENC: lsr16i{{[ \t]+}}r4, 10{{.*}}encoding: [0xfa,0x7a]
+# ENC: lsr16i{{[ \t]+}}r4, 11{{.*}}encoding: [0xfa,0x7b]
+# ENC: lsr16i{{[ \t]+}}r4, 12{{.*}}encoding: [0xfa,0x7c]
+# ENC: lsr16i{{[ \t]+}}r4, 13{{.*}}encoding: [0xfa,0x7d]
+# ENC: lsr16i{{[ \t]+}}r4, 14{{.*}}encoding: [0xfa,0x7e]
+# ENC: lsr16i{{[ \t]+}}r4, 15{{.*}}encoding: [0xfa,0x7f]
+# ENC: lsr16i{{[ \t]+}}r5, 0{{.*}}encoding: [0xfa,0x80]
+# ENC: lsr16i{{[ \t]+}}r5, 1{{.*}}encoding: [0xfa,0x81]
+# ENC: lsr16i{{[ \t]+}}r5, 2{{.*}}encoding: [0xfa,0x82]
+# ENC: lsr16i{{[ \t]+}}r5, 3{{.*}}encoding: [0xfa,0x83]
+# ENC: lsr16i{{[ \t]+}}r5, 4{{.*}}encoding: [0xfa,0x84]
+# ENC: lsr16i{{[ \t]+}}r5, 5{{.*}}encoding: [0xfa,0x85]
+# ENC: lsr16i{{[ \t]+}}r5, 6{{.*}}encoding: [0xfa,0x86]
+# ENC: lsr16i{{[ \t]+}}r5, 7{{.*}}encoding: [0xfa,0x87]
+# ENC: lsr16i{{[ \t]+}}r5, 8{{.*}}encoding: [0xfa,0x88]
+# ENC: lsr16i{{[ \t]+}}r5, 9{{.*}}encoding: [0xfa,0x89]
+# ENC: lsr16i{{[ \t]+}}r5, 10{{.*}}encoding: [0xfa,0x8a]
+# ENC: lsr16i{{[ \t]+}}r5, 11{{.*}}encoding: [0xfa,0x8b]
+# ENC: lsr16i{{[ \t]+}}r5, 12{{.*}}encoding: [0xfa,0x8c]
+# ENC: lsr16i{{[ \t]+}}r5, 13{{.*}}encoding: [0xfa,0x8d]
+# ENC: lsr16i{{[ \t]+}}r5, 14{{.*}}encoding: [0xfa,0x8e]
+# ENC: lsr16i{{[ \t]+}}r5, 15{{.*}}encoding: [0xfa,0x8f]
+# ENC: lsr16i{{[ \t]+}}r6, 0{{.*}}encoding: [0xfa,0x90]
+# ENC: lsr16i{{[ \t]+}}r6, 1{{.*}}encoding: [0xfa,0x91]
+# ENC: lsr16i{{[ \t]+}}r6, 2{{.*}}encoding: [0xfa,0x92]
+# ENC: lsr16i{{[ \t]+}}r6, 3{{.*}}encoding: [0xfa,0x93]
+# ENC: lsr16i{{[ \t]+}}r6, 4{{.*}}encoding: [0xfa,0x94]
+# ENC: lsr16i{{[ \t]+}}r6, 5{{.*}}encoding: [0xfa,0x95]
+# ENC: lsr16i{{[ \t]+}}r6, 6{{.*}}encoding: [0xfa,0x96]
+# ENC: lsr16i{{[ \t]+}}r6, 7{{.*}}encoding: [0xfa,0x97]
+# ENC: lsr16i{{[ \t]+}}r6, 8{{.*}}encoding: [0xfa,0x98]
+# ENC: lsr16i{{[ \t]+}}r6, 9{{.*}}encoding: [0xfa,0x99]
+# ENC: lsr16i{{[ \t]+}}r6, 10{{.*}}encoding: [0xfa,0x9a]
+# ENC: lsr16i{{[ \t]+}}r6, 11{{.*}}encoding: [0xfa,0x9b]
+# ENC: lsr16i{{[ \t]+}}r6, 12{{.*}}encoding: [0xfa,0x9c]
+# ENC: lsr16i{{[ \t]+}}r6, 13{{.*}}encoding: [0xfa,0x9d]
+# ENC: lsr16i{{[ \t]+}}r6, 14{{.*}}encoding: [0xfa,0x9e]
+# ENC: lsr16i{{[ \t]+}}r6, 15{{.*}}encoding: [0xfa,0x9f]
+# ENC: lsr16i{{[ \t]+}}r7, 0{{.*}}encoding: [0xfa,0xa0]
+# ENC: lsr16i{{[ \t]+}}r7, 1{{.*}}encoding: [0xfa,0xa1]
+# ENC: lsr16i{{[ \t]+}}r7, 2{{.*}}encoding: [0xfa,0xa2]
+# ENC: lsr16i{{[ \t]+}}r7, 3{{.*}}encoding: [0xfa,0xa3]
+# ENC: lsr16i{{[ \t]+}}r7, 4{{.*}}encoding: [0xfa,0xa4]
+# ENC: lsr16i{{[ \t]+}}r7, 5{{.*}}encoding: [0xfa,0xa5]
+# ENC: lsr16i{{[ \t]+}}r7, 6{{.*}}encoding: [0xfa,0xa6]
+# ENC: lsr16i{{[ \t]+}}r7, 7{{.*}}encoding: [0xfa,0xa7]
+# ENC: lsr16i{{[ \t]+}}r7, 8{{.*}}encoding: [0xfa,0xa8]
+# ENC: lsr16i{{[ \t]+}}r7, 9{{.*}}encoding: [0xfa,0xa9]
+# ENC: lsr16i{{[ \t]+}}r7, 10{{.*}}encoding: [0xfa,0xaa]
+# ENC: lsr16i{{[ \t]+}}r7, 11{{.*}}encoding: [0xfa,0xab]
+# ENC: lsr16i{{[ \t]+}}r7, 12{{.*}}encoding: [0xfa,0xac]
+# ENC: lsr16i{{[ \t]+}}r7, 13{{.*}}encoding: [0xfa,0xad]
+# ENC: lsr16i{{[ \t]+}}r7, 14{{.*}}encoding: [0xfa,0xae]
+# ENC: lsr16i{{[ \t]+}}r7, 15{{.*}}encoding: [0xfa,0xaf]
+# ENC: asr16i{{[ \t]+}}r4, 0{{.*}}encoding: [0xfa,0xb0]
+# ENC: asr16i{{[ \t]+}}r4, 1{{.*}}encoding: [0xfa,0xb1]
+# ENC: asr16i{{[ \t]+}}r4, 2{{.*}}encoding: [0xfa,0xb2]
+# ENC: asr16i{{[ \t]+}}r4, 3{{.*}}encoding: [0xfa,0xb3]
+# ENC: asr16i{{[ \t]+}}r4, 4{{.*}}encoding: [0xfa,0xb4]
+# ENC: asr16i{{[ \t]+}}r4, 5{{.*}}encoding: [0xfa,0xb5]
+# ENC: asr16i{{[ \t]+}}r4, 6{{.*}}encoding: [0xfa,0xb6]
+# ENC: asr16i{{[ \t]+}}r4, 7{{.*}}encoding: [0xfa,0xb7]
+# ENC: asr16i{{[ \t]+}}r4, 8{{.*}}encoding: [0xfa,0xb8]
+# ENC: asr16i{{[ \t]+}}r4, 9{{.*}}encoding: [0xfa,0xb9]
+# ENC: asr16i{{[ \t]+}}r4, 10{{.*}}encoding: [0xfa,0xba]
+# ENC: asr16i{{[ \t]+}}r4, 11{{.*}}encoding: [0xfa,0xbb]
+# ENC: asr16i{{[ \t]+}}r4, 12{{.*}}encoding: [0xfa,0xbc]
+# ENC: asr16i{{[ \t]+}}r4, 13{{.*}}encoding: [0xfa,0xbd]
+# ENC: asr16i{{[ \t]+}}r4, 14{{.*}}encoding: [0xfa,0xbe]
+# ENC: asr16i{{[ \t]+}}r4, 15{{.*}}encoding: [0xfa,0xbf]
+# ENC: asr16i{{[ \t]+}}r5, 0{{.*}}encoding: [0xfa,0xc0]
+# ENC: asr16i{{[ \t]+}}r5, 1{{.*}}encoding: [0xfa,0xc1]
+# ENC: asr16i{{[ \t]+}}r5, 2{{.*}}encoding: [0xfa,0xc2]
+# ENC: asr16i{{[ \t]+}}r5, 3{{.*}}encoding: [0xfa,0xc3]
+# ENC: asr16i{{[ \t]+}}r5, 4{{.*}}encoding: [0xfa,0xc4]
+# ENC: asr16i{{[ \t]+}}r5, 5{{.*}}encoding: [0xfa,0xc5]
+# ENC: asr16i{{[ \t]+}}r5, 6{{.*}}encoding: [0xfa,0xc6]
+# ENC: asr16i{{[ \t]+}}r5, 7{{.*}}encoding: [0xfa,0xc7]
+# ENC: asr16i{{[ \t]+}}r5, 8{{.*}}encoding: [0xfa,0xc8]
+# ENC: asr16i{{[ \t]+}}r5, 9{{.*}}encoding: [0xfa,0xc9]
+# ENC: asr16i{{[ \t]+}}r5, 10{{.*}}encoding: [0xfa,0xca]
+# ENC: asr16i{{[ \t]+}}r5, 11{{.*}}encoding: [0xfa,0xcb]
+# ENC: asr16i{{[ \t]+}}r5, 12{{.*}}encoding: [0xfa,0xcc]
+# ENC: asr16i{{[ \t]+}}r5, 13{{.*}}encoding: [0xfa,0xcd]
+# ENC: asr16i{{[ \t]+}}r5, 14{{.*}}encoding: [0xfa,0xce]
+# ENC: asr16i{{[ \t]+}}r5, 15{{.*}}encoding: [0xfa,0xcf]
+# ENC: asr16i{{[ \t]+}}r6, 0{{.*}}encoding: [0xfa,0xd0]
+# ENC: asr16i{{[ \t]+}}r6, 1{{.*}}encoding: [0xfa,0xd1]
+# ENC: asr16i{{[ \t]+}}r6, 2{{.*}}encoding: [0xfa,0xd2]
+# ENC: asr16i{{[ \t]+}}r6, 3{{.*}}encoding: [0xfa,0xd3]
+# ENC: asr16i{{[ \t]+}}r6, 4{{.*}}encoding: [0xfa,0xd4]
+# ENC: asr16i{{[ \t]+}}r6, 5{{.*}}encoding: [0xfa,0xd5]
+# ENC: asr16i{{[ \t]+}}r6, 6{{.*}}encoding: [0xfa,0xd6]
+# ENC: asr16i{{[ \t]+}}r6, 7{{.*}}encoding: [0xfa,0xd7]
+# ENC: asr16i{{[ \t]+}}r6, 8{{.*}}encoding: [0xfa,0xd8]
+# ENC: asr16i{{[ \t]+}}r6, 9{{.*}}encoding: [0xfa,0xd9]
+# ENC: asr16i{{[ \t]+}}r6, 10{{.*}}encoding: [0xfa,0xda]
+# ENC: asr16i{{[ \t]+}}r6, 11{{.*}}encoding: [0xfa,0xdb]
+# ENC: asr16i{{[ \t]+}}r6, 12{{.*}}encoding: [0xfa,0xdc]
+# ENC: asr16i{{[ \t]+}}r6, 13{{.*}}encoding: [0xfa,0xdd]
+# ENC: asr16i{{[ \t]+}}r6, 14{{.*}}encoding: [0xfa,0xde]
+# ENC: asr16i{{[ \t]+}}r6, 15{{.*}}encoding: [0xfa,0xdf]
+# ENC: asr16i{{[ \t]+}}r7, 0{{.*}}encoding: [0xfa,0xe0]
+# ENC: asr16i{{[ \t]+}}r7, 1{{.*}}encoding: [0xfa,0xe1]
+# ENC: asr16i{{[ \t]+}}r7, 2{{.*}}encoding: [0xfa,0xe2]
+# ENC: asr16i{{[ \t]+}}r7, 3{{.*}}encoding: [0xfa,0xe3]
+# ENC: asr16i{{[ \t]+}}r7, 4{{.*}}encoding: [0xfa,0xe4]
+# ENC: asr16i{{[ \t]+}}r7, 5{{.*}}encoding: [0xfa,0xe5]
+# ENC: asr16i{{[ \t]+}}r7, 6{{.*}}encoding: [0xfa,0xe6]
+# ENC: asr16i{{[ \t]+}}r7, 7{{.*}}encoding: [0xfa,0xe7]
+# ENC: asr16i{{[ \t]+}}r7, 8{{.*}}encoding: [0xfa,0xe8]
+# ENC: asr16i{{[ \t]+}}r7, 9{{.*}}encoding: [0xfa,0xe9]
+# ENC: asr16i{{[ \t]+}}r7, 10{{.*}}encoding: [0xfa,0xea]
+# ENC: asr16i{{[ \t]+}}r7, 11{{.*}}encoding: [0xfa,0xeb]
+# ENC: asr16i{{[ \t]+}}r7, 12{{.*}}encoding: [0xfa,0xec]
+# ENC: asr16i{{[ \t]+}}r7, 13{{.*}}encoding: [0xfa,0xed]
+# ENC: asr16i{{[ \t]+}}r7, 14{{.*}}encoding: [0xfa,0xee]
+# ENC: asr16i{{[ \t]+}}r7, 15{{.*}}encoding: [0xfa,0xef]
 
-# DIS: lsl16i{{[ \t]+}}c0, 0
-# DIS: lsl16i{{[ \t]+}}c0, 1
-# DIS: lsl16i{{[ \t]+}}c0, 2
-# DIS: lsl16i{{[ \t]+}}c0, 3
-# DIS: lsl16i{{[ \t]+}}c0, 4
-# DIS: lsl16i{{[ \t]+}}c0, 5
-# DIS: lsl16i{{[ \t]+}}c0, 6
-# DIS: lsl16i{{[ \t]+}}c0, 7
-# DIS: lsl16i{{[ \t]+}}c0, 8
-# DIS: lsl16i{{[ \t]+}}c0, 9
-# DIS: lsl16i{{[ \t]+}}c0, 10
-# DIS: lsl16i{{[ \t]+}}c0, 11
-# DIS: lsl16i{{[ \t]+}}c0, 12
-# DIS: lsl16i{{[ \t]+}}c0, 13
-# DIS: lsl16i{{[ \t]+}}c0, 14
-# DIS: lsl16i{{[ \t]+}}c0, 15
-# DIS: lsl16i{{[ \t]+}}c1, 0
-# DIS: lsl16i{{[ \t]+}}c1, 1
-# DIS: lsl16i{{[ \t]+}}c1, 2
-# DIS: lsl16i{{[ \t]+}}c1, 3
-# DIS: lsl16i{{[ \t]+}}c1, 4
-# DIS: lsl16i{{[ \t]+}}c1, 5
-# DIS: lsl16i{{[ \t]+}}c1, 6
-# DIS: lsl16i{{[ \t]+}}c1, 7
-# DIS: lsl16i{{[ \t]+}}c1, 8
-# DIS: lsl16i{{[ \t]+}}c1, 9
-# DIS: lsl16i{{[ \t]+}}c1, 10
-# DIS: lsl16i{{[ \t]+}}c1, 11
-# DIS: lsl16i{{[ \t]+}}c1, 12
-# DIS: lsl16i{{[ \t]+}}c1, 13
-# DIS: lsl16i{{[ \t]+}}c1, 14
-# DIS: lsl16i{{[ \t]+}}c1, 15
-# DIS: lsl16i{{[ \t]+}}c2, 0
-# DIS: lsl16i{{[ \t]+}}c2, 1
-# DIS: lsl16i{{[ \t]+}}c2, 2
-# DIS: lsl16i{{[ \t]+}}c2, 3
-# DIS: lsl16i{{[ \t]+}}c2, 4
-# DIS: lsl16i{{[ \t]+}}c2, 5
-# DIS: lsl16i{{[ \t]+}}c2, 6
-# DIS: lsl16i{{[ \t]+}}c2, 7
-# DIS: lsl16i{{[ \t]+}}c2, 8
-# DIS: lsl16i{{[ \t]+}}c2, 9
-# DIS: lsl16i{{[ \t]+}}c2, 10
-# DIS: lsl16i{{[ \t]+}}c2, 11
-# DIS: lsl16i{{[ \t]+}}c2, 12
-# DIS: lsl16i{{[ \t]+}}c2, 13
-# DIS: lsl16i{{[ \t]+}}c2, 14
-# DIS: lsl16i{{[ \t]+}}c2, 15
-# DIS: lsl16i{{[ \t]+}}c3, 0
-# DIS: lsl16i{{[ \t]+}}c3, 1
-# DIS: lsl16i{{[ \t]+}}c3, 2
-# DIS: lsl16i{{[ \t]+}}c3, 3
-# DIS: lsl16i{{[ \t]+}}c3, 4
-# DIS: lsl16i{{[ \t]+}}c3, 5
-# DIS: lsl16i{{[ \t]+}}c3, 6
-# DIS: lsl16i{{[ \t]+}}c3, 7
-# DIS: lsl16i{{[ \t]+}}c3, 8
-# DIS: lsl16i{{[ \t]+}}c3, 9
-# DIS: lsl16i{{[ \t]+}}c3, 10
-# DIS: lsl16i{{[ \t]+}}c3, 11
-# DIS: lsl16i{{[ \t]+}}c3, 12
-# DIS: lsl16i{{[ \t]+}}c3, 13
-# DIS: lsl16i{{[ \t]+}}c3, 14
-# DIS: lsl16i{{[ \t]+}}c3, 15
-# DIS: lsr16i{{[ \t]+}}c0, 0
-# DIS: lsr16i{{[ \t]+}}c0, 1
-# DIS: lsr16i{{[ \t]+}}c0, 2
-# DIS: lsr16i{{[ \t]+}}c0, 3
-# DIS: lsr16i{{[ \t]+}}c0, 4
-# DIS: lsr16i{{[ \t]+}}c0, 5
-# DIS: lsr16i{{[ \t]+}}c0, 6
-# DIS: lsr16i{{[ \t]+}}c0, 7
-# DIS: lsr16i{{[ \t]+}}c0, 8
-# DIS: lsr16i{{[ \t]+}}c0, 9
-# DIS: lsr16i{{[ \t]+}}c0, 10
-# DIS: lsr16i{{[ \t]+}}c0, 11
-# DIS: lsr16i{{[ \t]+}}c0, 12
-# DIS: lsr16i{{[ \t]+}}c0, 13
-# DIS: lsr16i{{[ \t]+}}c0, 14
-# DIS: lsr16i{{[ \t]+}}c0, 15
-# DIS: lsr16i{{[ \t]+}}c1, 0
-# DIS: lsr16i{{[ \t]+}}c1, 1
-# DIS: lsr16i{{[ \t]+}}c1, 2
-# DIS: lsr16i{{[ \t]+}}c1, 3
-# DIS: lsr16i{{[ \t]+}}c1, 4
-# DIS: lsr16i{{[ \t]+}}c1, 5
-# DIS: lsr16i{{[ \t]+}}c1, 6
-# DIS: lsr16i{{[ \t]+}}c1, 7
-# DIS: lsr16i{{[ \t]+}}c1, 8
-# DIS: lsr16i{{[ \t]+}}c1, 9
-# DIS: lsr16i{{[ \t]+}}c1, 10
-# DIS: lsr16i{{[ \t]+}}c1, 11
-# DIS: lsr16i{{[ \t]+}}c1, 12
-# DIS: lsr16i{{[ \t]+}}c1, 13
-# DIS: lsr16i{{[ \t]+}}c1, 14
-# DIS: lsr16i{{[ \t]+}}c1, 15
-# DIS: lsr16i{{[ \t]+}}c2, 0
-# DIS: lsr16i{{[ \t]+}}c2, 1
-# DIS: lsr16i{{[ \t]+}}c2, 2
-# DIS: lsr16i{{[ \t]+}}c2, 3
-# DIS: lsr16i{{[ \t]+}}c2, 4
-# DIS: lsr16i{{[ \t]+}}c2, 5
-# DIS: lsr16i{{[ \t]+}}c2, 6
-# DIS: lsr16i{{[ \t]+}}c2, 7
-# DIS: lsr16i{{[ \t]+}}c2, 8
-# DIS: lsr16i{{[ \t]+}}c2, 9
-# DIS: lsr16i{{[ \t]+}}c2, 10
-# DIS: lsr16i{{[ \t]+}}c2, 11
-# DIS: lsr16i{{[ \t]+}}c2, 12
-# DIS: lsr16i{{[ \t]+}}c2, 13
-# DIS: lsr16i{{[ \t]+}}c2, 14
-# DIS: lsr16i{{[ \t]+}}c2, 15
-# DIS: lsr16i{{[ \t]+}}c3, 0
-# DIS: lsr16i{{[ \t]+}}c3, 1
-# DIS: lsr16i{{[ \t]+}}c3, 2
-# DIS: lsr16i{{[ \t]+}}c3, 3
-# DIS: lsr16i{{[ \t]+}}c3, 4
-# DIS: lsr16i{{[ \t]+}}c3, 5
-# DIS: lsr16i{{[ \t]+}}c3, 6
-# DIS: lsr16i{{[ \t]+}}c3, 7
-# DIS: lsr16i{{[ \t]+}}c3, 8
-# DIS: lsr16i{{[ \t]+}}c3, 9
-# DIS: lsr16i{{[ \t]+}}c3, 10
-# DIS: lsr16i{{[ \t]+}}c3, 11
-# DIS: lsr16i{{[ \t]+}}c3, 12
-# DIS: lsr16i{{[ \t]+}}c3, 13
-# DIS: lsr16i{{[ \t]+}}c3, 14
-# DIS: lsr16i{{[ \t]+}}c3, 15
-# DIS: asr16i{{[ \t]+}}c0, 0
-# DIS: asr16i{{[ \t]+}}c0, 1
-# DIS: asr16i{{[ \t]+}}c0, 2
-# DIS: asr16i{{[ \t]+}}c0, 3
-# DIS: asr16i{{[ \t]+}}c0, 4
-# DIS: asr16i{{[ \t]+}}c0, 5
-# DIS: asr16i{{[ \t]+}}c0, 6
-# DIS: asr16i{{[ \t]+}}c0, 7
-# DIS: asr16i{{[ \t]+}}c0, 8
-# DIS: asr16i{{[ \t]+}}c0, 9
-# DIS: asr16i{{[ \t]+}}c0, 10
-# DIS: asr16i{{[ \t]+}}c0, 11
-# DIS: asr16i{{[ \t]+}}c0, 12
-# DIS: asr16i{{[ \t]+}}c0, 13
-# DIS: asr16i{{[ \t]+}}c0, 14
-# DIS: asr16i{{[ \t]+}}c0, 15
-# DIS: asr16i{{[ \t]+}}c1, 0
-# DIS: asr16i{{[ \t]+}}c1, 1
-# DIS: asr16i{{[ \t]+}}c1, 2
-# DIS: asr16i{{[ \t]+}}c1, 3
-# DIS: asr16i{{[ \t]+}}c1, 4
-# DIS: asr16i{{[ \t]+}}c1, 5
-# DIS: asr16i{{[ \t]+}}c1, 6
-# DIS: asr16i{{[ \t]+}}c1, 7
-# DIS: asr16i{{[ \t]+}}c1, 8
-# DIS: asr16i{{[ \t]+}}c1, 9
-# DIS: asr16i{{[ \t]+}}c1, 10
-# DIS: asr16i{{[ \t]+}}c1, 11
-# DIS: asr16i{{[ \t]+}}c1, 12
-# DIS: asr16i{{[ \t]+}}c1, 13
-# DIS: asr16i{{[ \t]+}}c1, 14
-# DIS: asr16i{{[ \t]+}}c1, 15
-# DIS: asr16i{{[ \t]+}}c2, 0
-# DIS: asr16i{{[ \t]+}}c2, 1
-# DIS: asr16i{{[ \t]+}}c2, 2
-# DIS: asr16i{{[ \t]+}}c2, 3
-# DIS: asr16i{{[ \t]+}}c2, 4
-# DIS: asr16i{{[ \t]+}}c2, 5
-# DIS: asr16i{{[ \t]+}}c2, 6
-# DIS: asr16i{{[ \t]+}}c2, 7
-# DIS: asr16i{{[ \t]+}}c2, 8
-# DIS: asr16i{{[ \t]+}}c2, 9
-# DIS: asr16i{{[ \t]+}}c2, 10
-# DIS: asr16i{{[ \t]+}}c2, 11
-# DIS: asr16i{{[ \t]+}}c2, 12
-# DIS: asr16i{{[ \t]+}}c2, 13
-# DIS: asr16i{{[ \t]+}}c2, 14
-# DIS: asr16i{{[ \t]+}}c2, 15
-# DIS: asr16i{{[ \t]+}}c3, 0
-# DIS: asr16i{{[ \t]+}}c3, 1
-# DIS: asr16i{{[ \t]+}}c3, 2
-# DIS: asr16i{{[ \t]+}}c3, 3
-# DIS: asr16i{{[ \t]+}}c3, 4
-# DIS: asr16i{{[ \t]+}}c3, 5
-# DIS: asr16i{{[ \t]+}}c3, 6
-# DIS: asr16i{{[ \t]+}}c3, 7
-# DIS: asr16i{{[ \t]+}}c3, 8
-# DIS: asr16i{{[ \t]+}}c3, 9
-# DIS: asr16i{{[ \t]+}}c3, 10
-# DIS: asr16i{{[ \t]+}}c3, 11
-# DIS: asr16i{{[ \t]+}}c3, 12
-# DIS: asr16i{{[ \t]+}}c3, 13
-# DIS: asr16i{{[ \t]+}}c3, 14
-# DIS: asr16i{{[ \t]+}}c3, 15
+# DIS: lsl16i{{[ \t]+}}r4, 0
+# DIS: lsl16i{{[ \t]+}}r4, 1
+# DIS: lsl16i{{[ \t]+}}r4, 2
+# DIS: lsl16i{{[ \t]+}}r4, 3
+# DIS: lsl16i{{[ \t]+}}r4, 4
+# DIS: lsl16i{{[ \t]+}}r4, 5
+# DIS: lsl16i{{[ \t]+}}r4, 6
+# DIS: lsl16i{{[ \t]+}}r4, 7
+# DIS: lsl16i{{[ \t]+}}r4, 8
+# DIS: lsl16i{{[ \t]+}}r4, 9
+# DIS: lsl16i{{[ \t]+}}r4, 10
+# DIS: lsl16i{{[ \t]+}}r4, 11
+# DIS: lsl16i{{[ \t]+}}r4, 12
+# DIS: lsl16i{{[ \t]+}}r4, 13
+# DIS: lsl16i{{[ \t]+}}r4, 14
+# DIS: lsl16i{{[ \t]+}}r4, 15
+# DIS: lsl16i{{[ \t]+}}r5, 0
+# DIS: lsl16i{{[ \t]+}}r5, 1
+# DIS: lsl16i{{[ \t]+}}r5, 2
+# DIS: lsl16i{{[ \t]+}}r5, 3
+# DIS: lsl16i{{[ \t]+}}r5, 4
+# DIS: lsl16i{{[ \t]+}}r5, 5
+# DIS: lsl16i{{[ \t]+}}r5, 6
+# DIS: lsl16i{{[ \t]+}}r5, 7
+# DIS: lsl16i{{[ \t]+}}r5, 8
+# DIS: lsl16i{{[ \t]+}}r5, 9
+# DIS: lsl16i{{[ \t]+}}r5, 10
+# DIS: lsl16i{{[ \t]+}}r5, 11
+# DIS: lsl16i{{[ \t]+}}r5, 12
+# DIS: lsl16i{{[ \t]+}}r5, 13
+# DIS: lsl16i{{[ \t]+}}r5, 14
+# DIS: lsl16i{{[ \t]+}}r5, 15
+# DIS: lsl16i{{[ \t]+}}r6, 0
+# DIS: lsl16i{{[ \t]+}}r6, 1
+# DIS: lsl16i{{[ \t]+}}r6, 2
+# DIS: lsl16i{{[ \t]+}}r6, 3
+# DIS: lsl16i{{[ \t]+}}r6, 4
+# DIS: lsl16i{{[ \t]+}}r6, 5
+# DIS: lsl16i{{[ \t]+}}r6, 6
+# DIS: lsl16i{{[ \t]+}}r6, 7
+# DIS: lsl16i{{[ \t]+}}r6, 8
+# DIS: lsl16i{{[ \t]+}}r6, 9
+# DIS: lsl16i{{[ \t]+}}r6, 10
+# DIS: lsl16i{{[ \t]+}}r6, 11
+# DIS: lsl16i{{[ \t]+}}r6, 12
+# DIS: lsl16i{{[ \t]+}}r6, 13
+# DIS: lsl16i{{[ \t]+}}r6, 14
+# DIS: lsl16i{{[ \t]+}}r6, 15
+# DIS: lsl16i{{[ \t]+}}r7, 0
+# DIS: lsl16i{{[ \t]+}}r7, 1
+# DIS: lsl16i{{[ \t]+}}r7, 2
+# DIS: lsl16i{{[ \t]+}}r7, 3
+# DIS: lsl16i{{[ \t]+}}r7, 4
+# DIS: lsl16i{{[ \t]+}}r7, 5
+# DIS: lsl16i{{[ \t]+}}r7, 6
+# DIS: lsl16i{{[ \t]+}}r7, 7
+# DIS: lsl16i{{[ \t]+}}r7, 8
+# DIS: lsl16i{{[ \t]+}}r7, 9
+# DIS: lsl16i{{[ \t]+}}r7, 10
+# DIS: lsl16i{{[ \t]+}}r7, 11
+# DIS: lsl16i{{[ \t]+}}r7, 12
+# DIS: lsl16i{{[ \t]+}}r7, 13
+# DIS: lsl16i{{[ \t]+}}r7, 14
+# DIS: lsl16i{{[ \t]+}}r7, 15
+# DIS: lsr16i{{[ \t]+}}r4, 0
+# DIS: lsr16i{{[ \t]+}}r4, 1
+# DIS: lsr16i{{[ \t]+}}r4, 2
+# DIS: lsr16i{{[ \t]+}}r4, 3
+# DIS: lsr16i{{[ \t]+}}r4, 4
+# DIS: lsr16i{{[ \t]+}}r4, 5
+# DIS: lsr16i{{[ \t]+}}r4, 6
+# DIS: lsr16i{{[ \t]+}}r4, 7
+# DIS: lsr16i{{[ \t]+}}r4, 8
+# DIS: lsr16i{{[ \t]+}}r4, 9
+# DIS: lsr16i{{[ \t]+}}r4, 10
+# DIS: lsr16i{{[ \t]+}}r4, 11
+# DIS: lsr16i{{[ \t]+}}r4, 12
+# DIS: lsr16i{{[ \t]+}}r4, 13
+# DIS: lsr16i{{[ \t]+}}r4, 14
+# DIS: lsr16i{{[ \t]+}}r4, 15
+# DIS: lsr16i{{[ \t]+}}r5, 0
+# DIS: lsr16i{{[ \t]+}}r5, 1
+# DIS: lsr16i{{[ \t]+}}r5, 2
+# DIS: lsr16i{{[ \t]+}}r5, 3
+# DIS: lsr16i{{[ \t]+}}r5, 4
+# DIS: lsr16i{{[ \t]+}}r5, 5
+# DIS: lsr16i{{[ \t]+}}r5, 6
+# DIS: lsr16i{{[ \t]+}}r5, 7
+# DIS: lsr16i{{[ \t]+}}r5, 8
+# DIS: lsr16i{{[ \t]+}}r5, 9
+# DIS: lsr16i{{[ \t]+}}r5, 10
+# DIS: lsr16i{{[ \t]+}}r5, 11
+# DIS: lsr16i{{[ \t]+}}r5, 12
+# DIS: lsr16i{{[ \t]+}}r5, 13
+# DIS: lsr16i{{[ \t]+}}r5, 14
+# DIS: lsr16i{{[ \t]+}}r5, 15
+# DIS: lsr16i{{[ \t]+}}r6, 0
+# DIS: lsr16i{{[ \t]+}}r6, 1
+# DIS: lsr16i{{[ \t]+}}r6, 2
+# DIS: lsr16i{{[ \t]+}}r6, 3
+# DIS: lsr16i{{[ \t]+}}r6, 4
+# DIS: lsr16i{{[ \t]+}}r6, 5
+# DIS: lsr16i{{[ \t]+}}r6, 6
+# DIS: lsr16i{{[ \t]+}}r6, 7
+# DIS: lsr16i{{[ \t]+}}r6, 8
+# DIS: lsr16i{{[ \t]+}}r6, 9
+# DIS: lsr16i{{[ \t]+}}r6, 10
+# DIS: lsr16i{{[ \t]+}}r6, 11
+# DIS: lsr16i{{[ \t]+}}r6, 12
+# DIS: lsr16i{{[ \t]+}}r6, 13
+# DIS: lsr16i{{[ \t]+}}r6, 14
+# DIS: lsr16i{{[ \t]+}}r6, 15
+# DIS: lsr16i{{[ \t]+}}r7, 0
+# DIS: lsr16i{{[ \t]+}}r7, 1
+# DIS: lsr16i{{[ \t]+}}r7, 2
+# DIS: lsr16i{{[ \t]+}}r7, 3
+# DIS: lsr16i{{[ \t]+}}r7, 4
+# DIS: lsr16i{{[ \t]+}}r7, 5
+# DIS: lsr16i{{[ \t]+}}r7, 6
+# DIS: lsr16i{{[ \t]+}}r7, 7
+# DIS: lsr16i{{[ \t]+}}r7, 8
+# DIS: lsr16i{{[ \t]+}}r7, 9
+# DIS: lsr16i{{[ \t]+}}r7, 10
+# DIS: lsr16i{{[ \t]+}}r7, 11
+# DIS: lsr16i{{[ \t]+}}r7, 12
+# DIS: lsr16i{{[ \t]+}}r7, 13
+# DIS: lsr16i{{[ \t]+}}r7, 14
+# DIS: lsr16i{{[ \t]+}}r7, 15
+# DIS: asr16i{{[ \t]+}}r4, 0
+# DIS: asr16i{{[ \t]+}}r4, 1
+# DIS: asr16i{{[ \t]+}}r4, 2
+# DIS: asr16i{{[ \t]+}}r4, 3
+# DIS: asr16i{{[ \t]+}}r4, 4
+# DIS: asr16i{{[ \t]+}}r4, 5
+# DIS: asr16i{{[ \t]+}}r4, 6
+# DIS: asr16i{{[ \t]+}}r4, 7
+# DIS: asr16i{{[ \t]+}}r4, 8
+# DIS: asr16i{{[ \t]+}}r4, 9
+# DIS: asr16i{{[ \t]+}}r4, 10
+# DIS: asr16i{{[ \t]+}}r4, 11
+# DIS: asr16i{{[ \t]+}}r4, 12
+# DIS: asr16i{{[ \t]+}}r4, 13
+# DIS: asr16i{{[ \t]+}}r4, 14
+# DIS: asr16i{{[ \t]+}}r4, 15
+# DIS: asr16i{{[ \t]+}}r5, 0
+# DIS: asr16i{{[ \t]+}}r5, 1
+# DIS: asr16i{{[ \t]+}}r5, 2
+# DIS: asr16i{{[ \t]+}}r5, 3
+# DIS: asr16i{{[ \t]+}}r5, 4
+# DIS: asr16i{{[ \t]+}}r5, 5
+# DIS: asr16i{{[ \t]+}}r5, 6
+# DIS: asr16i{{[ \t]+}}r5, 7
+# DIS: asr16i{{[ \t]+}}r5, 8
+# DIS: asr16i{{[ \t]+}}r5, 9
+# DIS: asr16i{{[ \t]+}}r5, 10
+# DIS: asr16i{{[ \t]+}}r5, 11
+# DIS: asr16i{{[ \t]+}}r5, 12
+# DIS: asr16i{{[ \t]+}}r5, 13
+# DIS: asr16i{{[ \t]+}}r5, 14
+# DIS: asr16i{{[ \t]+}}r5, 15
+# DIS: asr16i{{[ \t]+}}r6, 0
+# DIS: asr16i{{[ \t]+}}r6, 1
+# DIS: asr16i{{[ \t]+}}r6, 2
+# DIS: asr16i{{[ \t]+}}r6, 3
+# DIS: asr16i{{[ \t]+}}r6, 4
+# DIS: asr16i{{[ \t]+}}r6, 5
+# DIS: asr16i{{[ \t]+}}r6, 6
+# DIS: asr16i{{[ \t]+}}r6, 7
+# DIS: asr16i{{[ \t]+}}r6, 8
+# DIS: asr16i{{[ \t]+}}r6, 9
+# DIS: asr16i{{[ \t]+}}r6, 10
+# DIS: asr16i{{[ \t]+}}r6, 11
+# DIS: asr16i{{[ \t]+}}r6, 12
+# DIS: asr16i{{[ \t]+}}r6, 13
+# DIS: asr16i{{[ \t]+}}r6, 14
+# DIS: asr16i{{[ \t]+}}r6, 15
+# DIS: asr16i{{[ \t]+}}r7, 0
+# DIS: asr16i{{[ \t]+}}r7, 1
+# DIS: asr16i{{[ \t]+}}r7, 2
+# DIS: asr16i{{[ \t]+}}r7, 3
+# DIS: asr16i{{[ \t]+}}r7, 4
+# DIS: asr16i{{[ \t]+}}r7, 5
+# DIS: asr16i{{[ \t]+}}r7, 6
+# DIS: asr16i{{[ \t]+}}r7, 7
+# DIS: asr16i{{[ \t]+}}r7, 8
+# DIS: asr16i{{[ \t]+}}r7, 9
+# DIS: asr16i{{[ \t]+}}r7, 10
+# DIS: asr16i{{[ \t]+}}r7, 11
+# DIS: asr16i{{[ \t]+}}r7, 12
+# DIS: asr16i{{[ \t]+}}r7, 13
+# DIS: asr16i{{[ \t]+}}r7, 14
+# DIS: asr16i{{[ \t]+}}r7, 15
 

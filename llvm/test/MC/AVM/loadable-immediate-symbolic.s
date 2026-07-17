@@ -22,21 +22,21 @@ ldi16 r1, %lo16(symbol)
 ldi16 r2, %lo16(symbol)
 ldi16 r3, %lo16(symbol)
 
-# ENC: ldi8{{[ \t]+}}c0, %hi8(symbol){{.*}}encoding: [0xc0,A]
+# ENC: ldi8{{[ \t]+}}r4, %hi8(symbol){{.*}}encoding: [0xc0,A]
 # ENC-NEXT: fixup A - offset: 1, value: %hi8(symbol), kind: fixup_avm_prog_hi8
-# ENC: ldi8{{[ \t]+}}c1, %hi8(symbol){{.*}}encoding: [0xc1,A]
+# ENC: ldi8{{[ \t]+}}r5, %hi8(symbol){{.*}}encoding: [0xc1,A]
 # ENC-NEXT: fixup A - offset: 1, value: %hi8(symbol), kind: fixup_avm_prog_hi8
-# ENC: ldi8{{[ \t]+}}c2, %hi8(symbol){{.*}}encoding: [0xc2,A]
+# ENC: ldi8{{[ \t]+}}r6, %hi8(symbol){{.*}}encoding: [0xc2,A]
 # ENC-NEXT: fixup A - offset: 1, value: %hi8(symbol), kind: fixup_avm_prog_hi8
-# ENC: ldi8{{[ \t]+}}c3, %hi8(symbol){{.*}}encoding: [0xc3,A]
+# ENC: ldi8{{[ \t]+}}r7, %hi8(symbol){{.*}}encoding: [0xc3,A]
 # ENC-NEXT: fixup A - offset: 1, value: %hi8(symbol), kind: fixup_avm_prog_hi8
-# ENC: ldi16{{[ \t]+}}c0, %lo16(symbol){{.*}}encoding: [0xc4,A,A]
+# ENC: ldi16{{[ \t]+}}r4, %lo16(symbol){{.*}}encoding: [0xc4,A,A]
 # ENC-NEXT: fixup A - offset: 1, value: %lo16(symbol), kind: fixup_avm_prog_lo16
-# ENC: ldi16{{[ \t]+}}c1, %lo16(symbol){{.*}}encoding: [0xc5,A,A]
+# ENC: ldi16{{[ \t]+}}r5, %lo16(symbol){{.*}}encoding: [0xc5,A,A]
 # ENC-NEXT: fixup A - offset: 1, value: %lo16(symbol), kind: fixup_avm_prog_lo16
-# ENC: ldi16{{[ \t]+}}c2, %lo16(symbol){{.*}}encoding: [0xc6,A,A]
+# ENC: ldi16{{[ \t]+}}r6, %lo16(symbol){{.*}}encoding: [0xc6,A,A]
 # ENC-NEXT: fixup A - offset: 1, value: %lo16(symbol), kind: fixup_avm_prog_lo16
-# ENC: ldi16{{[ \t]+}}c3, %lo16(symbol){{.*}}encoding: [0xc7,A,A]
+# ENC: ldi16{{[ \t]+}}r7, %lo16(symbol){{.*}}encoding: [0xc7,A,A]
 # ENC-NEXT: fixup A - offset: 1, value: %lo16(symbol), kind: fixup_avm_prog_lo16
 
 # ENC: ldi8{{[ \t]+}}r0, %hi8(symbol){{.*}}encoding: [0xf0,0x00,A]
@@ -77,7 +77,7 @@ ldi16 r3, %lo16(symbol)
 # RELOC-NEXT: }
 # RELOC-NEXT: ]
 
-# DIS: c3 00{{ *}}ldi8{{[ \t]+}}c3, 0x0
-# DIS: c6 00 00{{ *}}ldi16{{[ \t]+}}c2, 0x0
+# DIS: c3 00{{ *}}ldi8{{[ \t]+}}r7, 0x0
+# DIS: c6 00 00{{ *}}ldi16{{[ \t]+}}r6, 0x0
 # DIS: f0 03 00{{ *}}ldi8{{[ \t]+}}r3, 0x0
 # DIS: f0 06 00 00{{ *}}ldi16{{[ \t]+}}r2, 0x0

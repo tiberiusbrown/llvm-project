@@ -1,5 +1,5 @@
 # RUN: not llvm-mc -triple=avm -filetype=null %s 2>&1 | FileCheck %s
-# CHECK-COUNT-22: error:
+# CHECK-COUNT-20: error:
 mul16 c0,r0
 mul16 q0,r0
 mul16 sp,r0

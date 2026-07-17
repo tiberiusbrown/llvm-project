@@ -17,9 +17,8 @@ cmpi.s8 c0, -129
 cmpi.s8 c0, 128
 cmpi.s8 c0, 255
 
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
-# CHECK: error: expected compact register c0-c3
+# CHECK: error: expected compact register r4-r7
+# CHECK: error: expected compact register r4-r7
 # CHECK: error: expected comma
 # CHECK: error: unexpected token after AVM instruction
 # CHECK: error: immediate expression must be fully resolvable

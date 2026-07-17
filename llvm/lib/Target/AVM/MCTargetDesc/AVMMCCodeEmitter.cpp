@@ -85,7 +85,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
     if (!Reg)
       return error(MI, Cold ? "expected register r0-r3"
-                            : "expected compact register c0-c3");
+                            : "expected compact register r4-r7");
 
     if (Cold) {
       emit8(Out, 0xf0);
@@ -274,7 +274,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Pair = pair48Index(MI.getOperand(0).getReg(),
                                   MI.getOperand(1).getReg());
     if (!Pair) {
-      error(MI, "full-register arithmetic pairing is not encodable; use compact cN spelling");
+      error(MI, "full-register arithmetic pairing is not encodable");
       return;
     }
     emit8(Out, 0xf2);
@@ -324,7 +324,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Pair = pair48Index(MI.getOperand(0).getReg(),
                                   MI.getOperand(1).getReg());
     if (!Pair) {
-      error(MI, "cmp full-register pairing is not encodable; use compact cN spelling");
+      error(MI, "cmp register pairing is not encodable");
       return;
     }
     emit8(Out, 0xf5);
@@ -449,8 +449,8 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto DataIndex = stackRegIndex(Data);
     const auto AddressIndex = compactRegIndex(Address);
     if (!DataIndex || !AddressIndex) {
-      error(MI, IsStore ? "expected compact pointer c0-c3 and source r0-r7"
-                        : "expected compact pointer c0-c3 and destination r0-r7");
+      error(MI, IsStore ? "expected compact pointer r4-r7 and source r0-r7"
+                        : "expected compact pointer r4-r7 and destination r0-r7");
       return;
     }
     if (!IsStore && *DataIndex == 4 + *AddressIndex) {
@@ -549,7 +549,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const std::optional<unsigned> Second =
         compactRegIndex(MI.getOperand(1).getReg());
     if (!First || !Second) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     emit8(Out, Family | (*First << 2) | *Second);
@@ -564,7 +564,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Address = compactRegIndex(MI.getOperand(0).getReg());
     const auto Source = stackRegIndex(MI.getOperand(1).getReg());
     if (!Address || !Source || *Source > 3) {
-      error(MI, "expected compact pointer c0-c3 and source r0-r3");
+      error(MI, "expected compact pointer r4-r7 and source r0-r3");
       return;
     }
     emit8(Out, 0xf3);
@@ -581,7 +581,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Address = compactRegIndex(MI.getOperand(0).getReg());
     const auto Source = stackRegIndex(MI.getOperand(1).getReg());
     if (!Address || !Source) {
-      error(MI, "expected compact pointer c0-c3 and source r0-r7");
+      error(MI, "expected compact pointer r4-r7 and source r0-r7");
       return;
     }
     emit8(Out, 0xf6);
@@ -603,8 +603,8 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Address = compactRegIndex(AddressReg);
     const auto Data = stackRegIndex(DataReg);
     if (!Address || !Data || *Data > 3) {
-      error(MI, IsStore ? "expected compact pointer c0-c3 and source r0-r3"
-                        : "expected destination register r0-r3 and compact pointer c0-c3");
+      error(MI, IsStore ? "expected compact pointer r4-r7 and source r0-r3"
+                        : "expected destination register r0-r3 and compact pointer r4-r7");
       return;
     }
     emit8(Out, 0xf5);
@@ -621,7 +621,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Destination = compactRegIndex(MI.getOperand(0).getReg());
     const auto Source = compactRegIndex(MI.getOperand(1).getReg());
     if (!Destination || !Source) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     emit8(Out, 0xf3);
@@ -637,7 +637,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     }
     const std::optional<unsigned> Reg = compactRegIndex(MI.getOperand(0).getReg());
     if (!Reg) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     const int64_t Value = MI.getOperand(1).getImm();
@@ -714,7 +714,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Reg = compactRegIndex(MI.getOperand(1).getReg());
     const int64_t Offset = MI.getOperand(0).getImm();
     if (!Reg || Offset < 0 || Offset > 15) {
-      error(MI, "expected compact register c0-c3 and unsigned 4-bit offset");
+      error(MI, "expected compact register r4-r7 and unsigned 4-bit offset");
       return;
     }
     emit8(Out, 0xf1);
@@ -731,7 +731,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Reg = compactRegIndex(MI.getOperand(0).getReg());
     const int64_t Offset = MI.getOperand(1).getImm();
     if (!Reg || Offset < 0 || Offset > 15) {
-      error(MI, "expected compact register c0-c3 and unsigned 4-bit offset");
+      error(MI, "expected compact register r4-r7 and unsigned 4-bit offset");
       return;
     }
     emit8(Out, 0xf3);
@@ -749,7 +749,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto Reg = compactRegIndex(RegOperand.getReg());
     const int64_t Offset = ValueOperand.getImm();
     if (!Reg || Offset < 0 || Offset > 15)
-      return error(MI, "expected compact register c0-c3 and unsigned 4-bit offset");
+      return error(MI, "expected compact register r4-r7 and unsigned 4-bit offset");
     emit8(Out, 0xf4);
     emit8(Out, (IsStore ? 0x40 : 0) + 4 * unsigned(Offset) + *Reg);
   }
@@ -840,7 +840,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto D = compactRegIndex(MI.getOperand(0).getReg());
     const auto S = compactRegIndex(MI.getOperand(1).getReg());
     if (!D || !S) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     emit8(Out, 0xf6);
@@ -858,7 +858,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto D = compactRegIndex(MI.getOperand(0).getReg());
     const auto C = compactRegIndex(MI.getOperand(1).getReg());
     if (!D || !C) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     emit8(Out, 0xfa);
@@ -876,7 +876,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     const auto D = compactRegIndex(MI.getOperand(0).getReg());
     const int64_t I = MI.getOperand(1).getImm();
     if (!D) {
-      error(MI, "expected compact register c0-c3");
+      error(MI, "expected compact register r4-r7");
       return;
     }
     if (!isUInt<4>(I)) {

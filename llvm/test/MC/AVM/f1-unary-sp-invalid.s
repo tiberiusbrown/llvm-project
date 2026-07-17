@@ -29,4 +29,4 @@ getsp r0,r1
 setsp
 setsp r0,r1
 
-# CHECK-COUNT-28: error:
+# CHECK-COUNT-24: error:

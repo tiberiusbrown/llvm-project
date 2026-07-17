@@ -32,4 +32,4 @@ sext8
 sext8 r0,r1
 neg16
 neg16 r0,r1
-# CHECK-COUNT-33: error:
+# CHECK-COUNT-27: error:

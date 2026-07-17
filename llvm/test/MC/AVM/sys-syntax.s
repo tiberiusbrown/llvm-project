@@ -29,7 +29,7 @@ _start:
 # ENCODING: sys{{.*}}encoding: [0xd7,0x02]
 # ENCODING: sys{{.*}}encoding: [0xd7,0x03]
 
-# DISASM: ldi8 c0, 0x50
+# DISASM: ldi8 r4, 0x50
 # DISASM-COUNT-5: sys debug_putc
 # DISASM-COUNT-5: sys debug_break
 # DISASM: sys 2

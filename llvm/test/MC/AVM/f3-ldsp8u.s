@@ -75,4 +75,4 @@ ldsp8u c3, [sp+15]
 # CHECK: encoding: [0xf3,0x6f]
 # CHECK: encoding: [0xf3,0x7c]
 # CHECK: encoding: [0xf3,0x7f]
-# ROUNDTRIP-COUNT-64: ldsp8u c
+# ROUNDTRIP-COUNT-64: ldsp8u r

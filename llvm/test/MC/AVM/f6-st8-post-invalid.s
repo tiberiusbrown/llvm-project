@@ -19,4 +19,4 @@ st8
 st8 [c0+]
 st8 [c0+], r0, r1
 
-# CHECK-COUNT-18: error:
+# CHECK-COUNT-17: error:
