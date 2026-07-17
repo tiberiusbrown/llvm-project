@@ -165,6 +165,15 @@ class AVMFullMultiply16Inst<string Asm>
   let Constraints = "$dst = $src1";
 }
 
+// EC division and remainder are MC-only. The destination is both the original
+// dividend use and the result definition, while the divisor is read-only.
+// CC is preserved, so it deliberately has no implicit use or definition.
+class AVMFullDivide16Inst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src1, AVMGeneralReg:$src2)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Constraints = "$dst = $src1";
+}
+
 // F1 unary and SP forms are MC-only.  The unary forms are two-address
 // operations; GETSP has an explicit definition and SETSP an explicit use.
 class AVMUnaryFullRegInst<string Asm>
@@ -337,6 +346,10 @@ def AND_RR : AVMFullBitwiseInst<"and $src1, $src2">;
 def OR_RR : AVMFullBitwiseInst<"or $src1, $src2">;
 def XOR_RR : AVMFullBitwiseInst<"xor $src1, $src2">;
 def MUL16 : AVMFullMultiply16Inst<"mul16 $src1, $src2">;
+def UDIV16 : AVMFullDivide16Inst<"udiv16 $src1, $src2">;
+def UREM16 : AVMFullDivide16Inst<"urem16 $src1, $src2">;
+def SDIV16 : AVMFullDivide16Inst<"sdiv16 $src1, $src2">;
+def SREM16 : AVMFullDivide16Inst<"srem16 $src1, $src2">;
 def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;
 def SWAP8 : AVMUnaryFullRegInst<"swap8 $dst">;
 def GETSP : AVMGetSPInst<"getsp $dst">;

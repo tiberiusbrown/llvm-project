@@ -1,2 +1,2 @@
 # RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/f5-memory-reserved.txt 2>&1 | FileCheck %s
-# CHECK-COUNT-149: warning: invalid instruction encoding
+# CHECK-COUNT-147: warning: invalid instruction encoding

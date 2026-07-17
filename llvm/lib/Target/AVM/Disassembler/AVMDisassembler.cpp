@@ -879,6 +879,21 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xec) {
+      if (Bytes.size() < 2)
+        return Fail;
+      const uint8_t Secondary = Bytes[1];
+      static constexpr unsigned Opcodes[4] = {AVM::UDIV16, AVM::UREM16,
+                                              AVM::SDIV16, AVM::SREM16};
+      MI.setOpcode(Opcodes[Secondary >> 6]);
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + ((Secondary >> 3) & 7))));
+      MI.addOperand(MCOperand::createReg(
+          static_cast<MCRegister>(AVM::R0 + (Secondary & 7))));
+      Size = 2;
+      return Success;
+    }
+
     if (Bytes[0] == 0xef) {
       MI.setOpcode(AVM::RET);
       Size = 1;

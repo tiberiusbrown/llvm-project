@@ -12,7 +12,7 @@
 # CHECK: adjsp -1
 # CHECK: sys debug_putc
 # CHECK: sys debug_break
-# CHECK: sys 2
-# CHECK: sys 3
+# CHECK: sys millis
+# CHECK: sys millis32
 
 # INVALID-COUNT-4: warning: invalid instruction encoding

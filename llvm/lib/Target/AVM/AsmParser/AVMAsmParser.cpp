@@ -794,6 +794,20 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFullDivide16(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                         OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseFullReg(Source))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseF1FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                       OperandVector &Operands) {
     MCRegister Reg;
@@ -1210,6 +1224,14 @@ public:
       return parseCompactPair(AVM::MUL8, Name, NameLoc, Operands);
     if (Lower == "mul16")
       return parseFullMultiply16(Name, NameLoc, Operands);
+    if (Lower == "udiv16")
+      return parseFullDivide16(AVM::UDIV16, Name, NameLoc, Operands);
+    if (Lower == "urem16")
+      return parseFullDivide16(AVM::UREM16, Name, NameLoc, Operands);
+    if (Lower == "sdiv16")
+      return parseFullDivide16(AVM::SDIV16, Name, NameLoc, Operands);
+    if (Lower == "srem16")
+      return parseFullDivide16(AVM::SREM16, Name, NameLoc, Operands);
     if (Lower == "sext8")
       return parseF4FullReg(AVM::SEXT8, Name, NameLoc, Operands);
     if (Lower == "neg16")

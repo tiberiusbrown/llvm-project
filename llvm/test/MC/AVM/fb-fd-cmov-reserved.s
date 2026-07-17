@@ -384,4 +384,4 @@
 0xfd 0xfd
 0xfd 0xfe
 0xfd 0xff
-# CHECK-COUNT-353: warning: invalid instruction encoding
+# CHECK-COUNT-347: warning: invalid instruction encoding

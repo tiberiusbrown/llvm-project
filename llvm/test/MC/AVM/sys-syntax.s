@@ -32,5 +32,5 @@ _start:
 # DISASM: ldi8 r4, 0x50
 # DISASM-COUNT-5: sys debug_putc
 # DISASM-COUNT-5: sys debug_break
-# DISASM: sys 2
-# DISASM: sys 3
+# DISASM: sys millis
+# DISASM: sys millis32
