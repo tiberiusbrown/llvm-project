@@ -539,6 +539,124 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, 0x88 + *D);
   }
 
+  static std::optional<unsigned> qpair12(unsigned D, unsigned S) {
+    if (D >= 4 || S >= 4 || (D >= 2 && S >= 2))
+      return std::nullopt;
+    return D < 2 ? 4 * D + S : 8 + 2 * (D - 2) + S;
+  }
+
+  static std::optional<MCRegister> pairScalarRegister(unsigned Pair,
+                                                       bool High) {
+    static constexpr MCRegister Low[] = {AVM::R0, AVM::R2, AVM::R4, AVM::R6};
+    static constexpr MCRegister HighRegs[] = {AVM::R1, AVM::R3, AVM::R5, AVM::R7};
+    if (Pair >= 4)
+      return std::nullopt;
+    return High ? HighRegs[Pair] : Low[Pair];
+  }
+
+  void emitMOV32(const MCInst &MI, SmallVectorImpl<char> &Out,
+                 bool NativeOnly) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg())
+      return error(MI, "expected two pair operands q0-q3");
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    const auto S = programPairIndex(MI.getOperand(1).getReg());
+    if (!D || !S)
+      return error(MI, "expected pair operands q0-q3");
+    if (const auto Pair = qpair12(*D, *S)) {
+      emit8(Out, 0xf2);
+      emit8(Out, 0x60 + *Pair);
+      return;
+    }
+    if (NativeOnly)
+      return error(MI, "MOV32_F2 requires q0 or q1");
+    const auto DL = pairScalarRegister(*D, false);
+    const auto DH = pairScalarRegister(*D, true);
+    const auto SL = pairScalarRegister(*S, false);
+    const auto SH = pairScalarRegister(*S, true);
+    const auto DLI = compactRegIndex(*DL);
+    const auto DHI = compactRegIndex(*DH);
+    const auto SLI = compactRegIndex(*SL);
+    const auto SHI = compactRegIndex(*SH);
+    if (!DLI || !DHI || !SLI || !SHI)
+      return error(MI, "MOV32 compact expansion requires q2 or q3");
+    emit8(Out, (*DLI << 2) | *SLI);
+    emit8(Out, (*DHI << 2) | *SHI);
+  }
+
+  void emitFFPairBinary(const MCInst &MI, SmallVectorImpl<char> &Out,
+                        unsigned Base) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg())
+      return error(MI, "expected two pair operands q0-q3");
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    const auto S = programPairIndex(MI.getOperand(1).getReg());
+    if (!D || !S)
+      return error(MI, "expected pair operands q0-q3");
+    emit8(Out, 0xff);
+    emit8(Out, Base | (*D << 2) | *S);
+  }
+
+  void emitFFPairUnary(const MCInst &MI, SmallVectorImpl<char> &Out,
+                       unsigned Base) const {
+    if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg())
+      return error(MI, "expected one pair operand q0-q3");
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    if (!D)
+      return error(MI, "expected pair operand q0-q3");
+    emit8(Out, 0xff);
+    emit8(Out, Base | *D);
+  }
+
+  void emitFFPairScalar(const MCInst &MI, SmallVectorImpl<char> &Out,
+                        unsigned Secondary) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg())
+      return error(MI, "expected pair and scalar operands");
+    const auto Q = programPairIndex(MI.getOperand(0).getReg());
+    const auto R = stackRegIndex(MI.getOperand(1).getReg());
+    if (!Q || !R)
+      return error(MI, "expected pair q0-q3 and scalar r0-r7");
+    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*R << 4) | *Q);
+  }
+
+  void emitFFScalarPair(const MCInst &MI, SmallVectorImpl<char> &Out,
+                        unsigned Secondary) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg())
+      return error(MI, "expected scalar and pair operands");
+    const auto R = stackRegIndex(MI.getOperand(0).getReg());
+    const auto Q = programPairIndex(MI.getOperand(1).getReg());
+    if (!R || !Q)
+      return error(MI, "expected scalar r0-r7 and pair q0-q3");
+    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*R << 4) | *Q);
+  }
+
+  void emitFFPairPair(const MCInst &MI, SmallVectorImpl<char> &Out,
+                      unsigned Secondary) const {
+    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg())
+      return error(MI, "expected two pair operands q0-q3");
+    const auto D = programPairIndex(MI.getOperand(0).getReg());
+    const auto S = programPairIndex(MI.getOperand(1).getReg());
+    if (!D || !S)
+      return error(MI, "expected pair operands q0-q3");
+    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*D << 2) | *S);
+  }
+
+  void emitFCmp(const MCInst &MI, SmallVectorImpl<char> &Out) const {
+    if (MI.getNumOperands() != 3 || !MI.getOperand(0).isReg() ||
+        !MI.getOperand(1).isReg() || !MI.getOperand(2).isReg())
+      return error(MI, "expected scalar and two pair operands");
+    const auto R = stackRegIndex(MI.getOperand(0).getReg());
+    const auto L = programPairIndex(MI.getOperand(1).getReg());
+    const auto S = programPairIndex(MI.getOperand(2).getReg());
+    if (!R || !L || !S)
+      return error(MI, "expected scalar r0-r7 and pair operands q0-q3");
+    emit8(Out, 0xff); emit8(Out, 0xc8);
+    emit8(Out, (*R << 4) | (*L << 2) | *S);
+  }
+
   void emitStackReg(const MCInst &MI, SmallVectorImpl<char> &Out,
                     unsigned Family) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg()) {
@@ -943,6 +1061,31 @@ public:
                          const MCSubtargetInfo &) const override {
     switch (MI.getOpcode()) {
     case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
+    case AVM::MOV32: emitMOV32(MI, Out, false); return;
+    case AVM::MOV32_F2: emitMOV32(MI, Out, true); return;
+    case AVM::FADD: emitFFPairBinary(MI, Out, 0x00); return;
+    case AVM::FSUB: emitFFPairBinary(MI, Out, 0x10); return;
+    case AVM::FMUL: emitFFPairBinary(MI, Out, 0x20); return;
+    case AVM::FDIV: emitFFPairBinary(MI, Out, 0x30); return;
+    case AVM::FMIN: emitFFPairBinary(MI, Out, 0x40); return;
+    case AVM::FMAX: emitFFPairBinary(MI, Out, 0x50); return;
+    case AVM::FNEG: emitFFPairUnary(MI, Out, 0x60); return;
+    case AVM::FABS: emitFFPairUnary(MI, Out, 0x64); return;
+    case AVM::FSQRT: emitFFPairUnary(MI, Out, 0x68); return;
+    case AVM::FTRUNC: emitFFPairUnary(MI, Out, 0x6c); return;
+    case AVM::FFLOOR: emitFFPairUnary(MI, Out, 0x70); return;
+    case AVM::FCEIL: emitFFPairUnary(MI, Out, 0x74); return;
+    case AVM::FROUND: emitFFPairUnary(MI, Out, 0x78); return;
+    case AVM::S16TOF: emitFFPairScalar(MI, Out, 0xc0); return;
+    case AVM::U16TOF: emitFFPairScalar(MI, Out, 0xc1); return;
+    case AVM::FTOS16: emitFFScalarPair(MI, Out, 0xc2); return;
+    case AVM::FTOU16: emitFFScalarPair(MI, Out, 0xc3); return;
+    case AVM::S32TOF: emitFFPairPair(MI, Out, 0xc4); return;
+    case AVM::U32TOF: emitFFPairPair(MI, Out, 0xc5); return;
+    case AVM::FTOS32: emitFFPairPair(MI, Out, 0xc6); return;
+    case AVM::FTOU32: emitFFPairPair(MI, Out, 0xc7); return;
+    case AVM::FCMP: emitFCmp(MI, Out); return;
+    case AVM::FCLASS: emitFFScalarPair(MI, Out, 0xc9); return;
     case AVM::MOV_RR: emitFullMove(MI, Out); return;
     case AVM::CMP_RR: emitFullCompare(MI, Out); return;
     case AVM::ADD_RR: emitFullArithmetic(MI, Out, 0x00); return;

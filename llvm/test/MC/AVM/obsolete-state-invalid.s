@@ -36,4 +36,3 @@ sys 0
 # CHECK: error: unknown AVM instruction 'ldpbi'
 # CHECK: error: unknown AVM instruction 'cmpi6'
 # CHECK: error: unknown AVM instruction 'ld8'
-# CHECK: error: unknown AVM instruction 'mov32'

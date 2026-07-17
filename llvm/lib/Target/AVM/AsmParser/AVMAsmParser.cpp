@@ -846,6 +846,67 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFFPairBinary(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                         OperandVector &Operands) {
+    MCRegister Destination, Source;
+    if (parseProgramPair(Destination) || Parser.parseComma() ||
+        parseProgramPair(Source))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Source));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseFFPairUnary(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                        OperandVector &Operands) {
+    MCRegister Reg;
+    if (parseProgramPair(Reg))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(Reg));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseFFPairScalar(unsigned Opcode, bool PairFirst, StringRef Name,
+                         SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Pair, Scalar;
+    if ((PairFirst ? parseProgramPair(Pair) : parseFullReg(Scalar)) ||
+        Parser.parseComma() ||
+        (PairFirst ? parseFullReg(Scalar) : parseProgramPair(Pair)))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(Opcode);
+    Inst.addOperand(MCOperand::createReg(PairFirst ? Pair : Scalar));
+    Inst.addOperand(MCOperand::createReg(PairFirst ? Scalar : Pair));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
+  bool parseFFPairPair(unsigned Opcode, StringRef Name, SMLoc NameLoc,
+                       OperandVector &Operands) {
+    return parseFFPairBinary(Opcode, Name, NameLoc, Operands);
+  }
+
+  bool parseFCmp(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    MCRegister Destination, Left, Right;
+    if (parseFullReg(Destination) || Parser.parseComma() ||
+        parseProgramPair(Left) || Parser.parseComma() ||
+        parseProgramPair(Right))
+      return true;
+    MCInst Inst;
+    Inst.setOpcode(AVM::FCMP);
+    Inst.addOperand(MCOperand::createReg(Destination));
+    Inst.addOperand(MCOperand::createReg(Left));
+    Inst.addOperand(MCOperand::createReg(Right));
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseF4FullReg(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                       OperandVector &Operands) {
     MCRegister Reg;
@@ -1179,6 +1240,31 @@ public:
       return parseRegisterPair(AVM::MOV, AVM::MOV_RR, Name, NameLoc,
                                Operands);
     }
+    if (Lower == "mov32")
+      return parseFFPairBinary(AVM::MOV32, Name, NameLoc, Operands);
+    if (Lower == "fadd") return parseFFPairBinary(AVM::FADD, Name, NameLoc, Operands);
+    if (Lower == "fsub") return parseFFPairBinary(AVM::FSUB, Name, NameLoc, Operands);
+    if (Lower == "fmul") return parseFFPairBinary(AVM::FMUL, Name, NameLoc, Operands);
+    if (Lower == "fdiv") return parseFFPairBinary(AVM::FDIV, Name, NameLoc, Operands);
+    if (Lower == "fmin") return parseFFPairBinary(AVM::FMIN, Name, NameLoc, Operands);
+    if (Lower == "fmax") return parseFFPairBinary(AVM::FMAX, Name, NameLoc, Operands);
+    if (Lower == "fneg") return parseFFPairUnary(AVM::FNEG, Name, NameLoc, Operands);
+    if (Lower == "fabs") return parseFFPairUnary(AVM::FABS, Name, NameLoc, Operands);
+    if (Lower == "fsqrt") return parseFFPairUnary(AVM::FSQRT, Name, NameLoc, Operands);
+    if (Lower == "ftrunc") return parseFFPairUnary(AVM::FTRUNC, Name, NameLoc, Operands);
+    if (Lower == "ffloor") return parseFFPairUnary(AVM::FFLOOR, Name, NameLoc, Operands);
+    if (Lower == "fceil") return parseFFPairUnary(AVM::FCEIL, Name, NameLoc, Operands);
+    if (Lower == "fround") return parseFFPairUnary(AVM::FROUND, Name, NameLoc, Operands);
+    if (Lower == "s16tof") return parseFFPairScalar(AVM::S16TOF, true, Name, NameLoc, Operands);
+    if (Lower == "u16tof") return parseFFPairScalar(AVM::U16TOF, true, Name, NameLoc, Operands);
+    if (Lower == "ftos16") return parseFFPairScalar(AVM::FTOS16, false, Name, NameLoc, Operands);
+    if (Lower == "ftou16") return parseFFPairScalar(AVM::FTOU16, false, Name, NameLoc, Operands);
+    if (Lower == "s32tof") return parseFFPairPair(AVM::S32TOF, Name, NameLoc, Operands);
+    if (Lower == "u32tof") return parseFFPairPair(AVM::U32TOF, Name, NameLoc, Operands);
+    if (Lower == "ftos32") return parseFFPairPair(AVM::FTOS32, Name, NameLoc, Operands);
+    if (Lower == "ftou32") return parseFFPairPair(AVM::FTOU32, Name, NameLoc, Operands);
+    if (Lower == "fcmp") return parseFCmp(Name, NameLoc, Operands);
+    if (Lower == "fclass") return parseFFPairScalar(AVM::FCLASS, false, Name, NameLoc, Operands);
     if (Lower == "zext8")
       return parseF1FullReg(AVM::ZEXT8, Name, NameLoc, Operands);
     if (Lower == "swap8")

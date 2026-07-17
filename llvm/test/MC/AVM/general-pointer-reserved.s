@@ -2,4 +2,4 @@
 
 # All F0 6e-ff secondaries are reserved and consume no operand byte. The
 # standalone EC byte in the exhaustive stream is now a valid two-byte form.
-# CHECK-COUNT-135: warning: invalid instruction encoding
+# CHECK-COUNT-134: warning: invalid instruction encoding

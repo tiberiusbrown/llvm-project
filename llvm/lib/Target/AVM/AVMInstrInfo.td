@@ -112,6 +112,38 @@ class AVMF7PairUnaryInst<string Asm>
   let Constraints = "$dst = $src";
 }
 
+// Floating-point forms are MC-only.  The binary and unary forms are
+// two-address operations; conversions use the explicit architectural operand
+// order and deliberately have no condition-code operands.
+class AVMMov32Inst<string Asm> : AVMInst<Asm, 2, (ins AVMProgramPair:$src)> {
+  let OutOperandList = (outs AVMProgramPair:$dst);
+}
+class AVMFFBinaryInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMProgramPair:$src1, AVMProgramPair:$src2)> {
+  let OutOperandList = (outs AVMProgramPair:$dst);
+  let Constraints = "$dst = $src1";
+}
+class AVMFFUnaryInst<string Asm> : AVMInst<Asm, 2, (ins AVMProgramPair:$src)> {
+  let OutOperandList = (outs AVMProgramPair:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMFFPairScalarInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMGeneralReg:$scalar)> {
+  let OutOperandList = (outs AVMProgramPair:$pair);
+}
+class AVMFFScalarPairInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMProgramPair:$pair)> {
+  let OutOperandList = (outs AVMGeneralReg:$scalar);
+}
+class AVMFFPairPairInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMProgramPair:$src)> {
+  let OutOperandList = (outs AVMProgramPair:$dst);
+}
+class AVMFFCompareInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMProgramPair:$left, AVMProgramPair:$right)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+}
+
 class AVMF7BoolInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
   let OutOperandList = (outs AVMGeneralReg:$dst);
@@ -379,6 +411,31 @@ def SUB32 : AVMF7PairArithmeticInst<"sub32 $dst, $src2">;
 def LSR32_1 : AVMF7PairUnaryInst<"lsr32.1 $dst">;
 def ASR32_1 : AVMF7PairUnaryInst<"asr32.1 $dst">;
 def BOOL : AVMF7BoolInst<"bool $dst">;
+def MOV32 : AVMMov32Inst<"mov32 $dst, $src"> { let isPseudo = 1; }
+def MOV32_F2 : AVMMov32Inst<"mov32 $dst, $src">;
+def FADD : AVMFFBinaryInst<"fadd $dst, $src2">;
+def FSUB : AVMFFBinaryInst<"fsub $dst, $src2">;
+def FMUL : AVMFFBinaryInst<"fmul $dst, $src2">;
+def FDIV : AVMFFBinaryInst<"fdiv $dst, $src2">;
+def FMIN : AVMFFBinaryInst<"fmin $dst, $src2">;
+def FMAX : AVMFFBinaryInst<"fmax $dst, $src2">;
+def FNEG : AVMFFUnaryInst<"fneg $dst">;
+def FABS : AVMFFUnaryInst<"fabs $dst">;
+def FSQRT : AVMFFUnaryInst<"fsqrt $dst">;
+def FTRUNC : AVMFFUnaryInst<"ftrunc $dst">;
+def FFLOOR : AVMFFUnaryInst<"ffloor $dst">;
+def FCEIL : AVMFFUnaryInst<"fceil $dst">;
+def FROUND : AVMFFUnaryInst<"fround $dst">;
+def S16TOF : AVMFFPairScalarInst<"s16tof $pair, $scalar">;
+def U16TOF : AVMFFPairScalarInst<"u16tof $pair, $scalar">;
+def FTOS16 : AVMFFScalarPairInst<"ftos16 $scalar, $pair">;
+def FTOU16 : AVMFFScalarPairInst<"ftou16 $scalar, $pair">;
+def S32TOF : AVMFFPairPairInst<"s32tof $dst, $src">;
+def U32TOF : AVMFFPairPairInst<"u32tof $dst, $src">;
+def FTOS32 : AVMFFPairPairInst<"ftos32 $dst, $src">;
+def FTOU32 : AVMFFPairPairInst<"ftou32 $dst, $src">;
+def FCMP : AVMFFCompareInst<"fcmp $dst, $left, $right">;
+def FCLASS : AVMFFScalarPairInst<"fclass $scalar, $pair">;
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;

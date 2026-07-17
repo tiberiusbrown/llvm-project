@@ -113,6 +113,19 @@ class AVMDisassembler final : public MCDisassembler {
     }
   }
 
+  static bool decodeQPair12(unsigned Encoded, unsigned &D, unsigned &S) {
+    if (Encoded >= 12)
+      return false;
+    if (Encoded < 8) {
+      D = Encoded / 4;
+      S = Encoded & 3;
+    } else {
+      D = 2 + (Encoded - 8) / 2;
+      S = (Encoded - 8) & 1;
+    }
+    return true;
+  }
+
   static bool decodePair48(unsigned Secondary, unsigned &Left,
                            unsigned &Right) {
     if (Secondary > 0x2f)
@@ -376,6 +389,18 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
+      if (Secondary >= 0x60 && Secondary < 0x6c) {
+        unsigned D, S;
+        if (!decodeQPair12(Secondary - 0x60, D, S)) {
+          Size = 1;
+          return Fail;
+        }
+        MI.setOpcode(AVM::MOV32_F2);
+        MI.addOperand(MCOperand::createReg(programPairRegister(D)));
+        MI.addOperand(MCOperand::createReg(programPairRegister(S)));
+        Size = 2;
+        return Success;
+      }
       if (Secondary > 0x5f) {
         Size = 1;
         return Fail;
@@ -390,6 +415,83 @@ public:
       MI.addOperand(MCOperand::createReg(
           static_cast<MCRegister>(AVM::R0 + S)));
       Size = 2;
+      return Success;
+    }
+
+    if (Bytes[0] == 0xff) {
+      if (Bytes.size() < 2) {
+        Size = 1;
+        return Fail;
+      }
+      const uint8_t Secondary = Bytes[1];
+      if (Secondary < 0x60) {
+        static constexpr unsigned Opcodes[] = {AVM::FADD, AVM::FSUB,
+                                                AVM::FMUL, AVM::FDIV,
+                                                AVM::FMIN, AVM::FMAX};
+        MI.setOpcode(Opcodes[Secondary >> 4]);
+        MI.addOperand(MCOperand::createReg(programPairRegister((Secondary >> 2) & 3)));
+        MI.addOperand(MCOperand::createReg(programPairRegister(Secondary & 3)));
+        Size = 2;
+        return Success;
+      }
+      if (Secondary >= 0x60 && Secondary < 0x7c) {
+        static constexpr unsigned Opcodes[] = {AVM::FNEG, AVM::FABS,
+                                                AVM::FSQRT, AVM::FTRUNC,
+                                                AVM::FFLOOR, AVM::FCEIL,
+                                                AVM::FROUND};
+        MI.setOpcode(Opcodes[(Secondary - 0x60) >> 2]);
+        MI.addOperand(MCOperand::createReg(programPairRegister(Secondary & 3)));
+        Size = 2;
+        return Success;
+      }
+      if (Secondary < 0xc0 || Secondary > 0xc9) {
+        Size = 1;
+        return Fail;
+      }
+      if (Bytes.size() < 3) {
+        Size = 2;
+        return Fail;
+      }
+      const uint8_t Spec = Bytes[2];
+      if ((Secondary <= 0xc3 || Secondary == 0xc9) && (Spec & 0x8c)) {
+        Size = 1;
+        return Fail;
+      }
+      if (Secondary >= 0xc4 && Secondary <= 0xc7 && (Spec & 0xf0)) {
+        Size = 1;
+        return Fail;
+      }
+      if (Secondary == 0xc8 && (Spec & 0x80)) {
+        Size = 1;
+        return Fail;
+      }
+      switch (Secondary) {
+      case 0xc0: MI.setOpcode(AVM::S16TOF); break;
+      case 0xc1: MI.setOpcode(AVM::U16TOF); break;
+      case 0xc2: MI.setOpcode(AVM::FTOS16); break;
+      case 0xc3: MI.setOpcode(AVM::FTOU16); break;
+      case 0xc4: MI.setOpcode(AVM::S32TOF); break;
+      case 0xc5: MI.setOpcode(AVM::U32TOF); break;
+      case 0xc6: MI.setOpcode(AVM::FTOS32); break;
+      case 0xc7: MI.setOpcode(AVM::FTOU32); break;
+      case 0xc8: MI.setOpcode(AVM::FCMP); break;
+      default: MI.setOpcode(AVM::FCLASS); break;
+      }
+      if (Secondary <= 0xc1) {
+        MI.addOperand(MCOperand::createReg(programPairRegister(Spec & 3)));
+        MI.addOperand(MCOperand::createReg(generalPointerRegister(Spec >> 4)));
+      } else if (Secondary <= 0xc3 || Secondary == 0xc9) {
+        MI.addOperand(MCOperand::createReg(generalPointerRegister(Spec >> 4)));
+        MI.addOperand(MCOperand::createReg(programPairRegister(Spec & 3)));
+      } else if (Secondary <= 0xc7) {
+        MI.addOperand(MCOperand::createReg(programPairRegister((Spec >> 2) & 3)));
+        MI.addOperand(MCOperand::createReg(programPairRegister(Spec & 3)));
+      } else {
+        MI.addOperand(MCOperand::createReg(generalPointerRegister((Spec >> 4) & 7)));
+        MI.addOperand(MCOperand::createReg(programPairRegister((Spec >> 2) & 3)));
+        MI.addOperand(MCOperand::createReg(programPairRegister(Spec & 3)));
+      }
+      Size = 3;
       return Success;
     }
 
