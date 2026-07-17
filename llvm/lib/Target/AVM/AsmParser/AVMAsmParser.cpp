@@ -302,6 +302,8 @@ class AVMAsmParser final : public MCTargetAsmParser {
           StringSwitch<std::optional<int64_t>>(Identifier.lower())
               .Case("debug_putc", 0)
               .Case("debug_break", 1)
+              .Case("millis", 2)
+              .Case("millis32", 3)
               .Default(std::nullopt);
       if (!Service)
         return error(ExprLoc,

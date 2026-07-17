@@ -520,6 +520,8 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     switch (MI->getOperand(0).getImm()) {
     case 0: OS << "debug_putc"; break;
     case 1: OS << "debug_break"; break;
+    case 2: OS << "millis"; break;
+    case 3: OS << "millis32"; break;
     default: OS << MI->getOperand(0).getImm(); break;
     }
     break;
