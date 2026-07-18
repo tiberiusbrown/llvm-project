@@ -207,7 +207,7 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
 
   void emitService(const MCInst &MI, SmallVectorImpl<char> &Out) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isImm() ||
-        MI.getOperand(0).getImm() < 0 || MI.getOperand(0).getImm() > 3) {
+        MI.getOperand(0).getImm() < 0 || MI.getOperand(0).getImm() > 255) {
       error(MI, "invalid AVM version 1 service identifier");
       return;
     }

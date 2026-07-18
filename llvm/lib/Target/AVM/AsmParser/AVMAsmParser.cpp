@@ -300,10 +300,9 @@ class AVMAsmParser final : public MCTargetAsmParser {
       StringRef Identifier = Parser.getTok().getIdentifier();
       std::optional<int64_t> Service =
           StringSwitch<std::optional<int64_t>>(Identifier.lower())
-              .Case("debug_putc", 0)
-              .Case("debug_break", 1)
-              .Case("millis", 2)
-              .Case("millis32", 3)
+#define AVM_SYS_DEF(ID, NAME) .Case(#NAME, ID)
+#include "AVMSystemCalls.inc"
+#undef AVM_SYS_DEF
               .Default(std::nullopt);
       if (!Service)
         return error(ExprLoc,
@@ -322,7 +321,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
     int64_t Value = 0;
     if (!Expr->evaluateAsAbsolute(Value))
       return error(ExprLoc, "service expression must be fully resolvable");
-    if (Value < 0 || Value > 3)
+    if (Value < 0 || Value > 255)
       return error(ExprLoc, "invalid AVM version 1 service identifier");
     MCInst Inst;
     Inst.setOpcode(AVM::SYS);
