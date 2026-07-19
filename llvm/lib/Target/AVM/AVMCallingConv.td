@@ -1,9 +1,5 @@
 //===-- AVMCallingConv.td - AVM calling conventions ---------*- tablegen -*-===//
 
-def CC_AVM : CallingConv<[
-  CCIfType<[i16], CCAssignToReg<[R4, R5, R6, R7]>>
-]>;
-
-def RetCC_AVM : CallingConv<[
-  CCIfType<[i16], CCAssignToReg<[R4]>>
-]>;
+// AVM's no-split, close-on-first-stack-argument allocator is implemented in
+// AVMISelLowering.cpp.  It cannot be expressed faithfully as a declarative
+// sequence of independent TableGen assignments.

@@ -5,8 +5,10 @@
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/IR/Function.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
 
@@ -37,6 +39,8 @@ public:
         return TII.get(CompactOpcode).getSize() <= TII.get(FullOpcode).getSize()
                    ? CompactOpcode
                    : FullOpcode;
+      // Both choices replace the same instruction in the same block, so its
+      // block frequency is a common factor in their measured cycle costs.
       return AVM::getFixedCycles(CompactCost) <= AVM::getFixedCycles(FullCost)
                  ? CompactOpcode
                  : FullOpcode;
@@ -51,6 +55,30 @@ public:
                                         IsUpper(MI.getOperand(1).getReg()),
                                     AVM::MOV, AVM::AVMCostKind::MovUpper,
                                     AVM::MOV_RR, AVM::AVMCostKind::MovFull);
+          break;
+        case AVM::COPY32_PSEUDO: {
+          Register Dest = MI.getOperand(0).getReg();
+          Register Src = MI.getOperand(1).getReg();
+          if (AVM::UpperGPR32RegClass.contains(Dest, Src)) {
+            const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+            Register DestLo = TRI.getSubReg(Dest, AVM::sub_lo16);
+            Register DestHi = TRI.getSubReg(Dest, AVM::sub_hi16);
+            Register SrcLo = TRI.getSubReg(Src, AVM::sub_lo16);
+            Register SrcHi = TRI.getSubReg(Src, AVM::sub_hi16);
+            unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::MOV), DestLo)
+                .addReg(SrcLo, Kill);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::MOV), DestHi)
+                .addReg(SrcHi, Kill);
+            MI.eraseFromParent();
+            Changed = true;
+            continue;
+          }
+          NewOpcode = AVM::MOV32_F2;
+          break;
+        }
+        case AVM::SEXT8_PSEUDO:
+          NewOpcode = AVM::SEXT8;
           break;
         case AVM::LDI8_PSEUDO:
           NewOpcode =
@@ -98,6 +126,90 @@ public:
         case AVM::RET_PSEUDO:
           NewOpcode = AVM::RET;
           break;
+        case AVM::CALL_DIRECT_PSEUDO:
+          NewOpcode = AVM::RELAX_CALL;
+          for (unsigned I = 1; I != MI.getNumOperands(); ++I)
+            if (MachineOperand &MO = MI.getOperand(I);
+                MO.isReg() && !MO.isImplicit())
+              MO.setImplicit();
+          break;
+        case AVM::CALL_INDIRECT_PSEUDO:
+          NewOpcode = AVM::CALLP;
+          for (unsigned I = 1; I != MI.getNumOperands(); ++I)
+            if (MachineOperand &MO = MI.getOperand(I);
+                MO.isReg() && !MO.isImplicit())
+              MO.setImplicit();
+          break;
+        case AVM::OUT_STORE8_PSEUDO: {
+          bool Compact = IsUpper(MI.getOperand(1).getReg()) &&
+                         isUInt<4>(MI.getOperand(0).getImm());
+          NewOpcode = PreferCompact(Compact, AVM::STSP8_COMPACT,
+                                    AVM::AVMCostKind::StSp8Short, AVM::STSP8,
+                                    AVM::AVMCostKind::StSp8Cold);
+          break;
+        }
+        case AVM::OUT_STORE16_PSEUDO: {
+          bool Compact = IsUpper(MI.getOperand(1).getReg()) &&
+                         isUInt<4>(MI.getOperand(0).getImm());
+          NewOpcode = PreferCompact(Compact, AVM::STSP16_COMPACT,
+                                    AVM::AVMCostKind::StSp16Short, AVM::STSP16,
+                                    AVM::AVMCostKind::StSp16Cold);
+          break;
+        }
+        case AVM::OUT_STORE24_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Pair = MI.getOperand(1).getReg();
+          Register Lo = TRI.getSubReg(Pair, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Pair, AVM::sub_hi16);
+          uint64_t Offset = MI.getOperand(0).getImm();
+          if (!isUInt<8>(Offset + 2))
+            report_fatal_error("AVM outgoing pointer offset exceeds u8");
+          unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+          unsigned LoOpcode =
+              PreferCompact(IsUpper(Lo) && isUInt<4>(Offset),
+                            AVM::STSP16_COMPACT, AVM::AVMCostKind::StSp16Short,
+                            AVM::STSP16, AVM::AVMCostKind::StSp16Cold);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(LoOpcode))
+              .addImm(Offset)
+              .addReg(Lo, Kill)
+              .cloneMemRefs(MI);
+          unsigned HiOpcode =
+              PreferCompact(IsUpper(Hi) && isUInt<4>(Offset + 2),
+                            AVM::STSP8_COMPACT, AVM::AVMCostKind::StSp8Short,
+                            AVM::STSP8, AVM::AVMCostKind::StSp8Cold);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(HiOpcode))
+              .addImm(Offset + 2)
+              .addReg(Hi, Kill)
+              .cloneMemRefs(MI);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::OUT_STORE32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Pair = MI.getOperand(1).getReg();
+          Register Lo = TRI.getSubReg(Pair, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Pair, AVM::sub_hi16);
+          uint64_t Offset = MI.getOperand(0).getImm();
+          if (!isUInt<8>(Offset + 2))
+            report_fatal_error("AVM outgoing i32 argument offset exceeds u8");
+          unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+          auto EmitWord = [&](Register Reg, uint64_t WordOffset) {
+            unsigned Opcode = PreferCompact(
+                IsUpper(Reg) && isUInt<4>(WordOffset), AVM::STSP16_COMPACT,
+                AVM::AVMCostKind::StSp16Short, AVM::STSP16,
+                AVM::AVMCostKind::StSp16Cold);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode))
+                .addImm(WordOffset)
+                .addReg(Reg, Kill)
+                .cloneMemRefs(MI);
+          };
+          EmitWord(Lo, Offset);
+          EmitWord(Hi, Offset + 2);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         default:
           continue;
         }

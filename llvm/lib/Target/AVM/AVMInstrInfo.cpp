@@ -4,6 +4,7 @@
 #include "AVM.h"
 #include "AVMCostModel.h"
 #include "AVMSubtarget.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -13,32 +14,89 @@ using namespace llvm;
 #include "AVMGenInstrInfo.inc"
 
 AVMInstrInfo::AVMInstrInfo(const AVMSubtarget &STI)
-    : AVMGenInstrInfo(STI, RI), RI() {}
+    : AVMGenInstrInfo(STI, RI, AVM::ADJCALLSTACKDOWN, AVM::ADJCALLSTACKUP),
+      RI() {}
 
 void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator MI,
                                const DebugLoc &DL, Register DestReg,
                                Register SrcReg, bool KillSrc, bool,
                                bool) const {
-  if (!AVM::GPR16RegClass.contains(DestReg, SrcReg))
-    report_fatal_error("unsupported AVM physical-register copy");
-  BuildMI(MBB, MI, DL, get(AVM::COPY16_PSEUDO), DestReg)
-      .addReg(SrcReg, getKillRegState(KillSrc));
+  if (AVM::GPR16RegClass.contains(DestReg, SrcReg)) {
+    BuildMI(MBB, MI, DL, get(AVM::COPY16_PSEUDO), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+  if (AVM::GPR32RegClass.contains(DestReg, SrcReg)) {
+    BuildMI(MBB, MI, DL, get(AVM::COPY32_PSEUDO), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+  if (SrcReg == AVM::SP && AVM::GPR16RegClass.contains(DestReg)) {
+    BuildMI(MBB, MI, DL, get(AVM::GETSP), DestReg);
+    return;
+  }
+  if (DestReg == AVM::SP && AVM::GPR16RegClass.contains(SrcReg)) {
+    BuildMI(MBB, MI, DL, get(AVM::SETSP))
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+  report_fatal_error("unsupported AVM physical-register copy");
 }
 
-void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &,
-                                       MachineBasicBlock::iterator, Register,
-                                       bool, int, const TargetRegisterClass *,
-                                       Register, MachineInstr::MIFlag) const {
-  report_fatal_error("AVM spills are not implemented yet");
+void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
+                                       MachineBasicBlock::iterator MI,
+                                       Register SrcReg, bool IsKill,
+                                       int FrameIndex,
+                                       const TargetRegisterClass *RC, Register,
+                                       MachineInstr::MIFlag Flags) const {
+  MachineFunction &MF = *MBB.getParent();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineMemOperand *MMO = MF.getMachineMemOperand(
+      MachinePointerInfo::getFixedStack(MF, FrameIndex),
+      MachineMemOperand::MOStore, MFI.getObjectSize(FrameIndex), Align(1));
+  unsigned Opcode;
+  if (AVM::GPR16RegClass.hasSubClassEq(RC))
+    Opcode = AVM::STACK_STORE16_PSEUDO;
+  else if (AVM::GPR32RegClass.hasSubClassEq(RC))
+    Opcode = AVM::STACK_STORE32_PSEUDO;
+  else
+    report_fatal_error("unsupported AVM spill register class");
+  DebugLoc DL = MI == MBB.end() ? DebugLoc() : MI->getDebugLoc();
+  BuildMI(MBB, MI, DL, get(Opcode))
+      .addFrameIndex(FrameIndex)
+      .addImm(0)
+      .addReg(SrcReg, getKillRegState(IsKill))
+      .addMemOperand(MMO)
+      .setMIFlag(Flags);
 }
 
-void AVMInstrInfo::loadRegFromStackSlot(MachineBasicBlock &,
-                                        MachineBasicBlock::iterator, Register,
-                                        int, const TargetRegisterClass *,
-                                        Register, unsigned,
-                                        MachineInstr::MIFlag) const {
-  report_fatal_error("AVM reloads are not implemented yet");
+void AVMInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
+                                        MachineBasicBlock::iterator MI,
+                                        Register DestReg, int FrameIndex,
+                                        const TargetRegisterClass *RC, Register,
+                                        unsigned SubReg,
+                                        MachineInstr::MIFlag Flags) const {
+  if (SubReg)
+    report_fatal_error("AVM subregister reloads are not supported");
+  MachineFunction &MF = *MBB.getParent();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineMemOperand *MMO = MF.getMachineMemOperand(
+      MachinePointerInfo::getFixedStack(MF, FrameIndex),
+      MachineMemOperand::MOLoad, MFI.getObjectSize(FrameIndex), Align(1));
+  unsigned Opcode;
+  if (AVM::GPR16RegClass.hasSubClassEq(RC))
+    Opcode = AVM::STACK_LOAD16_PSEUDO;
+  else if (AVM::GPR32RegClass.hasSubClassEq(RC))
+    Opcode = AVM::STACK_LOAD32_PSEUDO;
+  else
+    report_fatal_error("unsupported AVM reload register class");
+  DebugLoc DL = MI == MBB.end() ? DebugLoc() : MI->getDebugLoc();
+  BuildMI(MBB, MI, DL, get(Opcode), DestReg)
+      .addFrameIndex(FrameIndex)
+      .addImm(0)
+      .addMemOperand(MMO)
+      .setMIFlag(Flags);
 }
 
 unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,

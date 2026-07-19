@@ -10,16 +10,28 @@ namespace llvm {
 class AVMSubtarget;
 
 namespace AVMISD {
-enum NodeType : unsigned { FIRST_NUMBER = ISD::BUILTIN_OP_END, RET_GLUE };
+enum NodeType : unsigned {
+  FIRST_NUMBER = ISD::BUILTIN_OP_END,
+  CALL,
+  LOAD24,
+  STORE24,
+  RET_GLUE
+};
 } // namespace AVMISD
 
 class AVMTargetLowering final : public TargetLowering {
 public:
   AVMTargetLowering(const TargetMachine &TM, const AVMSubtarget &STI);
 
+  MVT getPointerTy(const DataLayout &DL, uint32_t AS = 0) const override;
+  EVT getTypeForExtReturn(LLVMContext &Context, EVT VT,
+                          ISD::NodeType ExtendKind) const override;
   const char *getTargetNodeName(unsigned Opcode) const override;
 
 private:
+  SDValue LowerCall(CallLoweringInfo &CLI,
+                    SmallVectorImpl<SDValue> &InVals) const override;
+
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool IsVarArg,
                                const SmallVectorImpl<ISD::InputArg> &Ins,

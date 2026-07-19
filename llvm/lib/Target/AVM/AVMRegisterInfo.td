@@ -36,19 +36,19 @@ def CC : AVMReg<10, "cc">;
 // Allocation order favors the compact upper-register encodings.  GPR8 names
 // the low byte of the same physical registers; it does not create byte
 // registers with independent allocation or storage.
-def GPR16 : RegisterClass<"AVM", [i16], 16,
+def GPR16 : RegisterClass<"AVM", [i16], 8,
                           (add R4, R5, R6, R7, R0, R1, R2, R3)>;
-def UpperGPR16 : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
-def LowGPR16 : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
-def PTR16 : RegisterClass<"AVM", [i16], 16,
+def UpperGPR16 : RegisterClass<"AVM", [i16], 8, (add R4, R5, R6, R7)>;
+def LowGPR16 : RegisterClass<"AVM", [i16], 8, (add R0, R1, R2, R3)>;
+def PTR16 : RegisterClass<"AVM", [i16], 8,
                           (add R4, R5, R6, R7, R0, R1, R2, R3)>;
-def UpperPTR16 : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
-def GPR8 : RegisterClass<"AVM", [i8], 16,
+def UpperPTR16 : RegisterClass<"AVM", [i16], 8, (add R4, R5, R6, R7)>;
+def GPR8 : RegisterClass<"AVM", [i8], 8,
                          (add R4, R5, R6, R7, R0, R1, R2, R3)>;
-def UpperGPR8 : RegisterClass<"AVM", [i8], 16, (add R4, R5, R6, R7)>;
-def GPR32 : RegisterClass<"AVM", [i32, f32], 32,
+def UpperGPR8 : RegisterClass<"AVM", [i8], 8, (add R4, R5, R6, R7)>;
+def GPR32 : RegisterClass<"AVM", [i32, f32], 8,
                           (add R4R5, R6R7, R0R1, R2R3)>;
-def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 32, (add R4R5, R6R7)>;
+def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 8, (add R4R5, R6R7)>;
 
 // Keep the MC-facing class names so the parser, emitter, printer, and their
 // established tests retain their spelling and register acceptance.
@@ -61,3 +61,4 @@ def AVMProgramPairReg : RegisterClass<"AVM", [i32, f32], 32,
                                       (add R4R5, R6R7, R0R1, R2R3)>;
 
 def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)>;
+def CSR_AVM_CALL : CalleeSavedRegs<(add R0, R1, R2, R3, SP)>;

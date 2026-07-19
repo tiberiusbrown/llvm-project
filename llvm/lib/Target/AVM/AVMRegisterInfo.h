@@ -17,6 +17,13 @@ public:
   getCalleeSavedRegs(const MachineFunction *MF = nullptr) const override;
   const uint32_t *getCallPreservedMask(const MachineFunction &MF,
                                        CallingConv::ID CC) const override;
+  bool requiresRegisterScavenging(const MachineFunction &) const override {
+    return true;
+  }
+  bool requiresFrameIndexReplacementScavenging(
+      const MachineFunction &) const override {
+    return true;
+  }
   BitVector getReservedRegs(const MachineFunction &MF) const override;
   bool eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
                            unsigned FIOperandNum,

@@ -9,8 +9,29 @@ def AVMImm16 : Operand<i32>;
 def AVMSImm8 : Operand<i32>;
 def AVMService8 : Operand<i32>;
 
+def SDT_AVMCall : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
+def SDT_AVMLoad24 : SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
+                                         SDTCisVT<1, i16>]>;
+def SDT_AVMStore24 : SDTypeProfile<0, 2, [SDTCisVT<0, i32>,
+                                           SDTCisVT<1, i16>]>;
+def SDT_AVMCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>,
+                                          SDTCisVT<1, i16>]>;
+def SDT_AVMCallSeqEnd : SDCallSeqEnd<[SDTCisVT<0, i16>,
+                                      SDTCisVT<1, i16>]>;
+
 def AVMretglue : SDNode<"AVMISD::RET_GLUE", SDTNone,
                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+def AVMcall : SDNode<"AVMISD::CALL", SDT_AVMCall,
+                     [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
+                      SDNPVariadic]>;
+def AVMload24 : SDNode<"AVMISD::LOAD24", SDT_AVMLoad24,
+                       [SDNPHasChain]>;
+def AVMstore24 : SDNode<"AVMISD::STORE24", SDT_AVMStore24,
+                        [SDNPHasChain]>;
+def AVMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_AVMCallSeqStart,
+                              [SDNPHasChain, SDNPOutGlue]>;
+def AVMcallseq_end : SDNode<"ISD::CALLSEQ_END", SDT_AVMCallSeqEnd,
+                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
 def AVMImmZExt8 : PatLeaf<(i16 imm), [{
   return isUInt<8>(N->getZExtValue());
@@ -494,6 +515,14 @@ class AVMBinary16Pseudo<SDPatternOperator Op>
 
 def COPY16_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)>;
+def COPY32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+def SEXT8_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src),
+                       [(set GPR16:$dst,
+                             (sext_inreg GPR16:$src, i8))]> {
+  let Constraints = "$dst = $src";
+}
 def LDI8_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
                        [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
@@ -513,6 +542,62 @@ def RET_PSEUDO : AVMCodeGenPseudo<(outs), (ins), [(AVMretglue)]> {
   let Defs = [SP];
   let mayLoad = 1;
 }
+
+let Defs = [SP], Uses = [SP] in {
+def ADJCALLSTACKDOWN
+    : AVMCodeGenPseudo<(outs), (ins i16imm:$amt, i16imm:$amt2),
+                       [(AVMcallseq_start timm:$amt, timm:$amt2)]>;
+def ADJCALLSTACKUP
+    : AVMCodeGenPseudo<(outs), (ins i16imm:$amt, i16imm:$amt2),
+                       [(AVMcallseq_end timm:$amt, timm:$amt2)]>;
+}
+
+class AVMCallPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
+  let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
+
+def CALL_DIRECT_PSEUDO
+    : AVMCallPseudo<(ins AVMImm24:$target, variable_ops)>;
+def CALL_INDIRECT_PSEUDO
+    : AVMCallPseudo<(ins GPR32:$target, variable_ops)>;
+
+def FRAMEADDR_PSEUDO
+    : AVMCodeGenPseudo<(outs PTR16:$dst),
+                       (ins i16imm:$fi, i16imm:$offset)>;
+
+class AVMStackLoadPseudo<RegisterClass RC>
+    : AVMCodeGenPseudo<(outs RC:$dst),
+                       (ins i16imm:$fi, i16imm:$offset)> {
+  let mayLoad = 1;
+}
+class AVMStackStorePseudo<RegisterClass RC>
+    : AVMCodeGenPseudo<(outs),
+                       (ins i16imm:$fi, i16imm:$offset, RC:$src)> {
+  let mayStore = 1;
+}
+
+def STACK_LOAD8U_PSEUDO : AVMStackLoadPseudo<GPR16>;
+def STACK_LOAD8S_PSEUDO : AVMStackLoadPseudo<GPR16>;
+def STACK_LOAD16_PSEUDO : AVMStackLoadPseudo<GPR16>;
+def STACK_LOAD24_PSEUDO : AVMStackLoadPseudo<GPR32>;
+def STACK_LOAD32_PSEUDO : AVMStackLoadPseudo<GPR32>;
+def STACK_STORE8_PSEUDO : AVMStackStorePseudo<GPR16>;
+def STACK_STORE16_PSEUDO : AVMStackStorePseudo<GPR16>;
+def STACK_STORE32_PSEUDO : AVMStackStorePseudo<GPR32>;
+
+class AVMOutgoingStorePseudo<RegisterClass RC>
+    : AVMCodeGenPseudo<(outs), (ins i16imm:$offset, RC:$src)> {
+  let Uses = [SP];
+  let mayStore = 1;
+}
+
+def OUT_STORE8_PSEUDO : AVMOutgoingStorePseudo<GPR16>;
+def OUT_STORE16_PSEUDO : AVMOutgoingStorePseudo<GPR16>;
+def OUT_STORE24_PSEUDO : AVMOutgoingStorePseudo<GPR32>;
+def OUT_STORE32_PSEUDO : AVMOutgoingStorePseudo<GPR32>;
 
 def MOV : AVMCompactMoveInst<"mov $dst, $src", 0x0>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
