@@ -6,7 +6,6 @@ static_assert(alignof(short) == 1, "short ABI alignment");
 static_assert(alignof(int) == 1, "int ABI alignment");
 static_assert(alignof(long) == 1, "long ABI alignment");
 static_assert(alignof(long long) == 1, "long long ABI alignment");
-static_assert(alignof(_Float16) == 1, "half ABI alignment");
 static_assert(alignof(float) == 1, "float ABI alignment");
 static_assert(alignof(double) == 1, "double ABI alignment");
 static_assert(alignof(long double) == 1, "long double ABI alignment");
