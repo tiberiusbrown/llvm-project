@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
 
 include_directories(
   ${LLVM_MAIN_SRC_DIR}/lib/Target/AVM
+  ${LLVM_BINARY_DIR}/lib/Target/AVM
   )
 
 add_llvm_target_unittest(AVMCostModelTests

@@ -11,23 +11,40 @@ set(LLVM_TARGET_DEFINITIONS AVM.td)
 tablegen(LLVM AVMGenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM AVMGenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM AVMGenSubtargetInfo.inc -gen-subtarget)
+tablegen(LLVM AVMGenCallingConv.inc -gen-callingconv)
+tablegen(LLVM AVMGenDAGISel.inc -gen-dag-isel)
 add_public_tablegen_target(AVMCommonTableGen)
 
-# This is deliberately an MC-only target aggregate. LLVM's component mapping
-# needs a target library for tools that link `${LLVM_TARGETS_TO_BUILD}`, while
-# AVM must not register or pull in any code-generation implementation.
-add_llvm_component_library(LLVMAVM
-  AVMMCOnly.cpp
+add_llvm_target(AVMCodeGen
+  AVMAsmPrinter.cpp
   AVMCostModel.cpp
+  AVMExpandPseudoInsts.cpp
+  AVMFrameLowering.cpp
+  AVMISelDAGToDAG.cpp
+  AVMISelLowering.cpp
+  AVMInstrInfo.cpp
+  AVMMachineFunctionInfo.cpp
+  AVMMCInstLower.cpp
+  AVMRegisterInfo.cpp
+  AVMSelectionDAGInfo.cpp
+  AVMSubtarget.cpp
+  AVMTargetMachine.cpp
 
   DEPENDS
   AVMCommonTableGen
 
   LINK_COMPONENTS
+  AsmPrinter
   AVMDesc
   AVMInfo
+  CodeGen
+  CodeGenTypes
+  Core
   MC
+  SelectionDAG
   Support
+  Target
+  TargetParser
 
   ADD_TO_COMPONENT
   AVM

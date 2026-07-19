@@ -6,6 +6,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCELFStreamer.h"
+#include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
@@ -17,6 +18,8 @@
 using namespace llvm;
 
 #define GET_INSTRINFO_MC_DESC
+#define GET_INSTRINFO_MC_HELPERS
+#define ENABLE_INSTR_PREDICATE_VERIFIER
 #include "AVMGenInstrInfo.inc"
 #define GET_REGINFO_MC_DESC
 #include "AVMGenRegisterInfo.inc"
@@ -103,7 +106,12 @@ static MCSubtargetInfo *createAVMMCSubtargetInfo(const Triple &TT,
                                                  StringRef CPU,
                                                  StringRef FS) {
   StringRef EffectiveCPU = CPU.empty() ? "avm1" : CPU;
-  return createAVMMCSubtargetInfoImpl(TT, EffectiveCPU, EffectiveCPU, FS);
+  return createAVMMCSubtargetInfoImpl(TT, EffectiveCPU,
+                                      "avm-interpreter-32u4-v1", FS);
+}
+
+static MCInstrAnalysis *createAVMMCInstrAnalysis(const MCInstrInfo *Info) {
+  return new MCInstrAnalysis(Info);
 }
 
 static MCInstPrinter *createAVMMCInstPrinter(const Triple &, unsigned Variant,
@@ -131,6 +139,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
   Target &T = getTheAVMTarget();
   TargetRegistry::RegisterMCAsmInfo(T, createAVMMCAsmInfo);
   TargetRegistry::RegisterMCInstrInfo(T, createAVMMCInstrInfo);
+  TargetRegistry::RegisterMCInstrAnalysis(T, createAVMMCInstrAnalysis);
   TargetRegistry::RegisterMCRegInfo(T, createAVMMCRegisterInfo);
   TargetRegistry::RegisterMCSubtargetInfo(T, createAVMMCSubtargetInfo);
   TargetRegistry::RegisterMCInstPrinter(T, createAVMMCInstPrinter);

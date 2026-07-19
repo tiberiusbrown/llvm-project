@@ -3,6 +3,7 @@
 include "llvm/Target/Target.td"
 include "AVMRegisterInfo.td"
 include "AVMInstrInfo.td"
+include "AVMCallingConv.td"
 
 // Target.td requires a pointer-like register remapping while it generates MC
 // metadata.  This creates no AVM source mnemonic, parser rule, or encoding.

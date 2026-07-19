@@ -9,6 +9,13 @@ def AVMImm16 : Operand<i32>;
 def AVMSImm8 : Operand<i32>;
 def AVMService8 : Operand<i32>;
 
+def AVMretglue : SDNode<"AVMISD::RET_GLUE", SDTNone,
+                        [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+def AVMImmZExt8 : PatLeaf<(i16 imm), [{
+  return isUInt<8>(N->getZExtValue());
+}]>;
+
 def AVMCompactDest : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactSource : RegisterOperand<AVMCompactReg, "printCompactReg">;
 def AVMCompactCompareLeft
@@ -464,6 +471,48 @@ class AVMProgramPairControlInst<string Asm> : AVMInst<Asm, 1,
 class AVMOperandlessInst<string Asm> : AVMInst<Asm, 1>;
 class AVMSImm8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$imm)>;
 class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
+
+class AVMCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
+    : Instruction {
+  let Namespace = "AVM";
+  let OutOperandList = Outs;
+  let InOperandList = Ins;
+  let AsmString = "";
+  let Pattern = Pat;
+  let Size = 0;
+  let isPseudo = 1;
+  let isCodeGenOnly = 1;
+  let hasNoSchedulingInfo = 1;
+}
+
+class AVMBinary16Pseudo<SDPatternOperator Op>
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR16:$lhs, GPR16:$rhs),
+                       [(set GPR16:$dst, (Op GPR16:$lhs, GPR16:$rhs))]> {
+  let Constraints = "$dst = $lhs";
+}
+
+def COPY16_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)>;
+def LDI8_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+                       [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
+def LDI16_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+                       [(set GPR16:$dst, (i16 imm:$imm))]>;
+def ADD16_PSEUDO : AVMBinary16Pseudo<add> { let isCommutable = 1; }
+def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
+def AND16_PSEUDO : AVMBinary16Pseudo<and> { let isCommutable = 1; }
+def OR16_PSEUDO : AVMBinary16Pseudo<or> { let isCommutable = 1; }
+def XOR16_PSEUDO : AVMBinary16Pseudo<xor> { let isCommutable = 1; }
+def RET_PSEUDO : AVMCodeGenPseudo<(outs), (ins), [(AVMretglue)]> {
+  let isReturn = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayLoad = 1;
+}
 
 def MOV : AVMCompactMoveInst<"mov $dst, $src", 0x0>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;

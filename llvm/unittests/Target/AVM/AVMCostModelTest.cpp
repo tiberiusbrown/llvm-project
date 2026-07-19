@@ -6,7 +6,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "AVMCostModel.h"
+#include "AVM.h"
 
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "gtest/gtest.h"
 
 #include <array>
@@ -60,4 +67,40 @@ TEST(AVMCostModelTest, BranchCostsAndTTINormalization) {
   EXPECT_EQ(normalizeCyclesForTTI(17), 1U);
   EXPECT_EQ(normalizeCyclesForTTI(18), 1U);
   EXPECT_EQ(normalizeCyclesForTTI(26), 2U);
+}
+
+TEST(AVMCostModelTest, SchedulingModelUsesEncodedAddForm) {
+  LLVMInitializeAVMTargetInfo();
+  LLVMInitializeAVMTarget();
+  LLVMInitializeAVMTargetMC();
+
+  Triple TT("avm-unknown-arduboyfx");
+  std::string Error;
+  const Target *T = TargetRegistry::lookupTarget(TT, Error);
+  ASSERT_NE(T, nullptr) << Error;
+
+  std::unique_ptr<TargetMachine> TM(
+      T->createTargetMachine(TT, "avm1", "", TargetOptions(), std::nullopt,
+                             std::nullopt, CodeGenOptLevel::Default));
+  ASSERT_NE(TM, nullptr);
+
+  const MCSubtargetInfo *STI = TM->getMCSubtargetInfo();
+  const MCInstrInfo *MII = TM->getMCInstrInfo();
+  ASSERT_NE(STI, nullptr);
+  ASSERT_NE(MII, nullptr);
+
+  auto GetLatency = [&](unsigned Opcode) {
+    const MCSchedModel &Model = STI->getSchedModel();
+    const MCSchedClassDesc *SC =
+        Model.getSchedClassDesc(MII->get(Opcode).getSchedClass());
+    unsigned Latency = 0;
+    for (unsigned I = 0; I != SC->NumWriteLatencyEntries; ++I)
+      Latency = std::max(
+          Latency,
+          static_cast<unsigned>(STI->getWriteLatencyEntry(SC, I)->Cycles));
+    return Latency;
+  };
+
+  EXPECT_EQ(GetLatency(AVM::ADD), 17U);
+  EXPECT_EQ(GetLatency(AVM::ADD_RR), 38U);
 }

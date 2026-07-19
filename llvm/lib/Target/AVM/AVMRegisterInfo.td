@@ -59,3 +59,5 @@ def AVMLowRegClass : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
 def AVMCompactReg : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
 def AVMProgramPairReg : RegisterClass<"AVM", [i32, f32], 32,
                                       (add R4R5, R6R7, R0R1, R2R3)>;
+
+def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)>;
