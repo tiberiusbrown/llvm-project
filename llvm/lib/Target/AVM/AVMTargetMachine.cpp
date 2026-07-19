@@ -3,8 +3,8 @@
 #include "AVMTargetMachine.h"
 #include "AVM.h"
 #include "AVMMachineFunctionInfo.h"
+#include "AVMTargetObjectFile.h"
 #include "TargetInfo/AVMTargetInfo.h"
-#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -34,7 +34,7 @@ AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
                                    CodeGenOptLevel OL, bool)
     : CodeGenTargetMachineImpl(T, TT.computeDataLayout(), TT, CPU, FS, Options,
                                Reloc::Static, CodeModel::Large, OL),
-      TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
+      TLOF(std::make_unique<AVMTargetObjectFile>()) {
   initAsmInfo();
 }
 

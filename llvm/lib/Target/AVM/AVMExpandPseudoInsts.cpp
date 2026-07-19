@@ -80,6 +80,9 @@ public:
         case AVM::SEXT8_PSEUDO:
           NewOpcode = AVM::SEXT8;
           break;
+        case AVM::ZEXT8_PSEUDO:
+          NewOpcode = AVM::ZEXT8;
+          break;
         case AVM::LDI8_PSEUDO:
           NewOpcode =
               IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI8 : AVM::COLDLDI8;
@@ -139,6 +142,72 @@ public:
             if (MachineOperand &MO = MI.getOperand(I);
                 MO.isReg() && !MO.isImplicit())
               MO.setImplicit();
+          break;
+        case AVM::DATA_ADDR_PSEUDO:
+          NewOpcode =
+              IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI16 : AVM::COLDLDI16;
+          break;
+        case AVM::LOAD8U_PSEUDO: {
+          Register Dest = MI.getOperand(0).getReg();
+          Register Addr = MI.getOperand(1).getReg();
+          NewOpcode = IsUpper(Addr) ? (IsUpper(Dest) ? AVM::LD8U : AVM::F5LD8U)
+                                    : AVM::GPLD8U;
+          break;
+        }
+        case AVM::LOAD16_PSEUDO: {
+          Register Dest = MI.getOperand(0).getReg();
+          Register Addr = MI.getOperand(1).getReg();
+          NewOpcode = IsUpper(Addr) ? (IsUpper(Dest) ? AVM::LD16 : AVM::F5LD16)
+                                    : AVM::GPLD16;
+          break;
+        }
+        case AVM::STORE8_PSEUDO: {
+          Register Addr = MI.getOperand(0).getReg();
+          Register Src = MI.getOperand(1).getReg();
+          NewOpcode = IsUpper(Addr) ? (IsUpper(Src) ? AVM::ST8 : AVM::F3ST8)
+                                    : AVM::GPST8;
+          break;
+        }
+        case AVM::STORE16_PSEUDO: {
+          Register Addr = MI.getOperand(0).getReg();
+          Register Src = MI.getOperand(1).getReg();
+          NewOpcode = IsUpper(Addr) ? (IsUpper(Src) ? AVM::ST16 : AVM::F5ST16)
+                                    : AVM::GPST16;
+          break;
+        }
+        case AVM::LOAD32_PSEUDO:
+          NewOpcode = AVM::LD32;
+          break;
+        case AVM::STORE32_PSEUDO:
+          NewOpcode = AVM::ST32;
+          break;
+        case AVM::LOAD8U_POST_PSEUDO:
+          NewOpcode = IsUpper(MI.getOperand(2).getReg()) ? AVM::F7LD8U_POST
+                                                         : AVM::GPLD8U_POST;
+          break;
+        case AVM::LOAD16_POST_PSEUDO:
+          NewOpcode = IsUpper(MI.getOperand(2).getReg()) ? AVM::F7LD16_POST
+                                                         : AVM::GPLD16_POST;
+          break;
+        case AVM::STORE8_POST_PSEUDO:
+          NewOpcode = IsUpper(MI.getOperand(1).getReg()) ? AVM::F6ST8_POST
+                                                         : AVM::GPST8_POST;
+          break;
+        case AVM::STORE16_POST_PSEUDO:
+          NewOpcode = IsUpper(MI.getOperand(1).getReg()) ? AVM::F7ST16_POST
+                                                         : AVM::GPST16_POST;
+          break;
+        case AVM::ABS_LOAD8U_PSEUDO:
+          NewOpcode = AVM::LDM8U;
+          break;
+        case AVM::ABS_LOAD16_PSEUDO:
+          NewOpcode = AVM::LDM16;
+          break;
+        case AVM::ABS_STORE8_PSEUDO:
+          NewOpcode = AVM::STM8;
+          break;
+        case AVM::ABS_STORE16_PSEUDO:
+          NewOpcode = AVM::STM16;
           break;
         case AVM::OUT_STORE8_PSEUDO: {
           bool Compact = IsUpper(MI.getOperand(1).getReg()) &&

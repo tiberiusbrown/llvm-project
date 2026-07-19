@@ -1,0 +1,75 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 -O2 \
+# RUN:   -run-pass=avm-expand-pseudo -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  @data = global i16 0
+  define void @expand_memory() { ret void }
+...
+---
+name: expand_memory
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: expand_memory
+    ; CHECK: $r5 = LD8U $r4
+    ; CHECK-NEXT: $r0 = F5LD8U $r4
+    ; CHECK-NEXT: $r5 = GPLD8U $r0
+    ; CHECK-NEXT: $r5 = LD16 $r4
+    ; CHECK-NEXT: $r0 = F5LD16 $r4
+    ; CHECK-NEXT: $r5 = GPLD16 $r0
+    ; CHECK-NEXT: ST8 $r4, $r5
+    ; CHECK-NEXT: F3ST8 $r4, $r0
+    ; CHECK-NEXT: GPST8 $r0, $r5
+    ; CHECK-NEXT: ST16 $r4, $r5
+    ; CHECK-NEXT: F5ST16 $r4, $r0
+    ; CHECK-NEXT: GPST16 $r0, $r5
+    ; CHECK-NEXT: early-clobber $r5, $r4 = F7LD8U_POST $r4
+    ; CHECK-NEXT: early-clobber $r5, $r0 = GPLD8U_POST $r0
+    ; CHECK-NEXT: early-clobber $r5, $r4 = F7LD16_POST $r4
+    ; CHECK-NEXT: early-clobber $r5, $r0 = GPLD16_POST $r0
+    ; CHECK-NEXT: $r4 = F6ST8_POST $r4, $r0
+    ; CHECK-NEXT: $r0 = GPST8_POST $r0, $r5
+    ; CHECK-NEXT: $r4 = F7ST16_POST $r4, $r0
+    ; CHECK-NEXT: $r0 = GPST16_POST $r0, $r5
+    ; CHECK-NEXT: $r6r7 = LD32 $r0
+    ; CHECK-NEXT: ST32 $r0, $r6r7
+    ; CHECK-NEXT: $r4 = LDM8U @data
+    ; CHECK-NEXT: STM8 @data, $r4
+    ; CHECK-NEXT: $r0 = LDM16 @data
+    ; CHECK-NEXT: STM16 @data, $r0
+    ; CHECK-NEXT: $r4 = LDI16 @data
+    ; CHECK-NEXT: $r0 = COLDLDI16 @data
+    ; CHECK-NEXT: $r4 = ZEXT8 $r4
+    ; CHECK-NEXT: RET
+    $r5 = LOAD8U_PSEUDO $r4
+    $r0 = LOAD8U_PSEUDO $r4
+    $r5 = LOAD8U_PSEUDO $r0
+    $r5 = LOAD16_PSEUDO $r4
+    $r0 = LOAD16_PSEUDO $r4
+    $r5 = LOAD16_PSEUDO $r0
+    STORE8_PSEUDO $r4, $r5
+    STORE8_PSEUDO $r4, $r0
+    STORE8_PSEUDO $r0, $r5
+    STORE16_PSEUDO $r4, $r5
+    STORE16_PSEUDO $r4, $r0
+    STORE16_PSEUDO $r0, $r5
+    $r5, $r4 = LOAD8U_POST_PSEUDO $r4
+    $r5, $r0 = LOAD8U_POST_PSEUDO $r0
+    $r5, $r4 = LOAD16_POST_PSEUDO $r4
+    $r5, $r0 = LOAD16_POST_PSEUDO $r0
+    $r4 = STORE8_POST_PSEUDO $r4, $r0
+    $r0 = STORE8_POST_PSEUDO $r0, $r5
+    $r4 = STORE16_POST_PSEUDO $r4, $r0
+    $r0 = STORE16_POST_PSEUDO $r0, $r5
+    $r6r7 = LOAD32_PSEUDO $r0
+    STORE32_PSEUDO $r0, $r6r7
+    $r4 = ABS_LOAD8U_PSEUDO @data
+    ABS_STORE8_PSEUDO @data, $r4
+    $r0 = ABS_LOAD16_PSEUDO @data
+    ABS_STORE16_PSEUDO @data, $r0
+    $r4 = DATA_ADDR_PSEUDO @data
+    $r0 = DATA_ADDR_PSEUDO @data
+    $r4 = ZEXT8_PSEUDO $r4
+    RET implicit-def dead $sp, implicit $sp
+...

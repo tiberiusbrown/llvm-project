@@ -36,6 +36,167 @@ private:
     return true;
   }
 
+  bool matchDataSymbol(SDValue Address, SDValue &Symbol) {
+    int64_t ExtraOffset = 0;
+    if (Address.getOpcode() == ISD::ADD) {
+      const auto *Offset = dyn_cast<ConstantSDNode>(Address.getOperand(1));
+      if (!Offset)
+        return false;
+      ExtraOffset = Offset->getSExtValue();
+      Address = Address.getOperand(0);
+    }
+    if (Address.getOpcode() != AVMISD::WRAPPER)
+      return false;
+    const auto *GA = dyn_cast<GlobalAddressSDNode>(Address.getOperand(0));
+    if (!GA)
+      return false;
+    Symbol = CurDAG->getTargetGlobalAddress(
+        GA->getGlobal(), SDLoc(Address), MVT::i16,
+        GA->getOffset() + ExtraOffset, GA->getTargetFlags());
+    return true;
+  }
+
+  SDValue selectSignExtend8(SDValue Value, const SDLoc &DL) {
+    SDNode *Sext =
+        CurDAG->getMachineNode(AVM::SEXT8_PSEUDO, DL, MVT::i16, Value);
+    return SDValue(Sext, 0);
+  }
+
+  bool selectDataLoad(SDNode *Node) {
+    const auto *Load = cast<LoadSDNode>(Node);
+    if (Load->getAddressSpace() != 0)
+      return false;
+
+    EVT MemoryVT = Load->getMemoryVT();
+    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i32)
+      return false;
+    bool IsByte = MemoryVT == MVT::i8;
+    bool IsPair = MemoryVT == MVT::i32;
+    if (Load->getValueType(0) != (IsPair ? MVT::i32 : MVT::i16))
+      return false;
+    bool IsSigned = IsByte && Load->getExtensionType() == ISD::SEXTLOAD;
+    bool IsPostInc = Load->getAddressingMode() == ISD::POST_INC;
+
+    SDValue Address = Load->getBasePtr();
+    unsigned Opcode;
+    SmallVector<EVT, 3> ResultVTs;
+    SmallVector<SDValue, 3> Ops;
+    SDValue Symbol;
+
+    if (!IsPair && Load->getAddressingMode() == ISD::UNINDEXED &&
+        matchDataSymbol(Address, Symbol)) {
+      Opcode = IsByte ? AVM::ABS_LOAD8U_PSEUDO : AVM::ABS_LOAD16_PSEUDO;
+      ResultVTs = {MVT::i16, MVT::Other};
+      Ops = {Symbol, Load->getChain()};
+    } else if (IsPostInc && !IsPair) {
+      const auto *Increment = dyn_cast<ConstantSDNode>(Load->getOffset());
+      if (!Increment || Increment->getSExtValue() != (IsByte ? 1 : 2))
+        return false;
+      Opcode = IsByte ? AVM::LOAD8U_POST_PSEUDO : AVM::LOAD16_POST_PSEUDO;
+      ResultVTs = {MVT::i16, MVT::i16, MVT::Other};
+      Ops = {Address, Load->getChain()};
+    } else if (Load->getAddressingMode() == ISD::UNINDEXED) {
+      Opcode = IsPair ? AVM::LOAD32_PSEUDO
+                      : (IsByte ? AVM::LOAD8U_PSEUDO : AVM::LOAD16_PSEUDO);
+      ResultVTs = {IsPair ? EVT(MVT::i32) : EVT(MVT::i16), MVT::Other};
+      Ops = {Address, Load->getChain()};
+    } else {
+      return false;
+    }
+
+    SDNode *Result =
+        CurDAG->getMachineNode(Opcode, SDLoc(Node), ResultVTs, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
+                           {Load->getMemOperand()});
+    SDValue Value(Result, 0);
+    if (IsSigned)
+      Value = selectSignExtend8(Value, SDLoc(Node));
+    ReplaceUses(SDValue(Node, 0), Value);
+    if (IsPostInc) {
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+      ReplaceUses(SDValue(Node, 2), SDValue(Result, 2));
+    } else {
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+    }
+    CurDAG->RemoveDeadNode(Node);
+    return true;
+  }
+
+  bool selectDataStore(SDNode *Node) {
+    const auto *Store = cast<StoreSDNode>(Node);
+    if (Store->getAddressSpace() != 0)
+      return false;
+
+    EVT MemoryVT = Store->getMemoryVT();
+    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i32)
+      return false;
+    bool IsByte = MemoryVT == MVT::i8;
+    bool IsPair = MemoryVT == MVT::i32;
+    bool IsPostInc = Store->getAddressingMode() == ISD::POST_INC;
+
+    SDValue Address = Store->getBasePtr();
+    unsigned Opcode;
+    SmallVector<EVT, 2> ResultVTs;
+    SmallVector<SDValue, 4> Ops;
+    SDValue Symbol;
+    if (!IsPair && Store->getAddressingMode() == ISD::UNINDEXED &&
+        matchDataSymbol(Address, Symbol)) {
+      Opcode = IsByte ? AVM::ABS_STORE8_PSEUDO : AVM::ABS_STORE16_PSEUDO;
+      ResultVTs = {MVT::Other};
+      Ops = {Symbol, Store->getValue(), Store->getChain()};
+    } else if (IsPostInc && !IsPair) {
+      const auto *Increment = dyn_cast<ConstantSDNode>(Store->getOffset());
+      if (!Increment || Increment->getSExtValue() != (IsByte ? 1 : 2))
+        return false;
+      Opcode = IsByte ? AVM::STORE8_POST_PSEUDO : AVM::STORE16_POST_PSEUDO;
+      ResultVTs = {MVT::i16, MVT::Other};
+      Ops = {Address, Store->getValue(), Store->getChain()};
+    } else if (Store->getAddressingMode() == ISD::UNINDEXED) {
+      Opcode = IsPair ? AVM::STORE32_PSEUDO
+                      : (IsByte ? AVM::STORE8_PSEUDO : AVM::STORE16_PSEUDO);
+      ResultVTs = {MVT::Other};
+      Ops = {Address, Store->getValue(), Store->getChain()};
+    } else {
+      return false;
+    }
+
+    SDNode *Result =
+        CurDAG->getMachineNode(Opcode, SDLoc(Node), ResultVTs, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
+                           {Store->getMemOperand()});
+    if (IsPostInc) {
+      ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+    } else {
+      ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
+    }
+    CurDAG->RemoveDeadNode(Node);
+    return true;
+  }
+
+  bool selectDataAddress(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::WRAPPER)
+      return false;
+    CurDAG->SelectNodeTo(Node, AVM::DATA_ADDR_PSEUDO, MVT::i16,
+                         Node->getOperand(0));
+    return true;
+  }
+
+  bool selectZeroExtend8(SDNode *Node) {
+    if (Node->getOpcode() != ISD::AND || Node->getValueType(0) != MVT::i16)
+      return false;
+    SDValue Value = Node->getOperand(0);
+    const auto *Mask = dyn_cast<ConstantSDNode>(Node->getOperand(1));
+    if (!Mask) {
+      Mask = dyn_cast<ConstantSDNode>(Value);
+      Value = Node->getOperand(1);
+    }
+    if (!Mask || Mask->getZExtValue() != 0xff)
+      return false;
+    CurDAG->SelectNodeTo(Node, AVM::ZEXT8_PSEUDO, MVT::i16, Value);
+    return true;
+  }
+
   bool selectCall(SDNode *Node) {
     SDValue Callee = Node->getOperand(1);
     bool IsDirect = Callee.getOpcode() == ISD::TargetGlobalAddress ||
@@ -239,11 +400,16 @@ private:
       selectStore24(Node);
       return;
     case ISD::LOAD:
-      if (selectStackLoad(Node))
+      if (selectStackLoad(Node) || selectDataLoad(Node))
         return;
       break;
     case ISD::STORE:
-      if (selectStackStore(Node) || selectOutgoingStore(Node))
+      if (selectStackStore(Node) || selectOutgoingStore(Node) ||
+          selectDataStore(Node))
+        return;
+      break;
+    case ISD::AND:
+      if (selectZeroExtend8(Node))
         return;
       break;
     case ISD::ADD:
@@ -252,6 +418,9 @@ private:
       break;
     case ISD::FrameIndex:
       selectFrameIndex(Node);
+      return;
+    case AVMISD::WRAPPER:
+      selectDataAddress(Node);
       return;
     default:
       break;

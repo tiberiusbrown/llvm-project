@@ -1,0 +1,52 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=prologepilog -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @stack_forms() { ret void }
+...
+---
+name: stack_forms
+tracksRegLiveness: true
+liveins:
+  - { reg: '$r4' }
+stack:
+  - { id: 0, type: default, offset: 0, size: 32, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: stack_forms
+    ; CHECK: $r0 = COLDLDI8 1
+    ; CHECK-NEXT: STSP8_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP8 16, $r4
+    ; CHECK-NEXT: STSP8 0, $r0
+    ; CHECK-NEXT: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP16 16, $r4
+    ; CHECK-NEXT: STSP16 0, $r0
+    ; CHECK-NEXT: $r4 = LDSP8U_COMPACT 0
+    ; CHECK-NEXT: $r4 = LDSP8U 16
+    ; CHECK-NEXT: $r0 = LDSP8U 0
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 0
+    ; CHECK-NEXT: $r4 = LDSP16 16
+    ; CHECK-NEXT: $r0 = LDSP16 0
+    ; CHECK-NEXT: $r4 = LDSP8U_COMPACT 0
+    ; CHECK-NEXT: $r4 = SEXT8 $r4
+    ; CHECK-NEXT: $r0 = LDSP8S 0
+    $r0 = COLDLDI8 1
+    STACK_STORE8_PSEUDO %stack.0, 0, $r4
+    STACK_STORE8_PSEUDO %stack.0, 16, $r4
+    STACK_STORE8_PSEUDO %stack.0, 0, $r0
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4
+    STACK_STORE16_PSEUDO %stack.0, 16, $r4
+    STACK_STORE16_PSEUDO %stack.0, 0, $r0
+    $r4 = STACK_LOAD8U_PSEUDO %stack.0, 0
+    $r4 = STACK_LOAD8U_PSEUDO %stack.0, 16
+    $r0 = STACK_LOAD8U_PSEUDO %stack.0, 0
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 16
+    $r0 = STACK_LOAD16_PSEUDO %stack.0, 0
+    $r4 = STACK_LOAD8S_PSEUDO %stack.0, 0
+    $r0 = STACK_LOAD8S_PSEUDO %stack.0, 0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

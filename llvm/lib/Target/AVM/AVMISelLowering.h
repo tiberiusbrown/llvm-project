@@ -15,6 +15,7 @@ enum NodeType : unsigned {
   CALL,
   LOAD24,
   STORE24,
+  WRAPPER,
   RET_GLUE
 };
 } // namespace AVMISD
@@ -27,8 +28,20 @@ public:
   EVT getTypeForExtReturn(LLVMContext &Context, EVT VT,
                           ISD::NodeType ExtendKind) const override;
   const char *getTargetNodeName(unsigned Opcode) const override;
+  bool allowsMisalignedMemoryAccesses(
+      EVT VT, unsigned AddrSpace = 0, Align Alignment = Align(1),
+      MachineMemOperand::Flags Flags = MachineMemOperand::MONone,
+      unsigned *Fast = nullptr) const override;
+  bool getPostIndexedAddressParts(SDNode *N, SDNode *Op, SDValue &Base,
+                                  SDValue &Offset, ISD::MemIndexedMode &AM,
+                                  SelectionDAG &DAG) const override;
+  EVT getOptimalMemOpType(LLVMContext &Context, const MemOp &Op,
+                          const AttributeList &FuncAttributes) const override;
 
 private:
+  SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+  SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+
   SDValue LowerCall(CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;
 

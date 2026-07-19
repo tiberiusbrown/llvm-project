@@ -33,10 +33,14 @@ void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
       OutMI.addOperand(MCOperand::createExpr(
           MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), Ctx)));
       break;
-    case MachineOperand::MO_GlobalAddress:
-      OutMI.addOperand(MCOperand::createExpr(
-          MCSymbolRefExpr::create(Printer.getSymbol(MO.getGlobal()), Ctx)));
-      break;
+    case MachineOperand::MO_GlobalAddress: {
+      const MCExpr *Expr =
+          MCSymbolRefExpr::create(Printer.getSymbol(MO.getGlobal()), Ctx);
+      if (MO.getOffset())
+        Expr = MCBinaryExpr::createAdd(
+            Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+      OutMI.addOperand(MCOperand::createExpr(Expr));
+    } break;
     case MachineOperand::MO_ExternalSymbol:
       OutMI.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(
           Printer.GetExternalSymbolSymbol(MO.getSymbolName()), Ctx)));

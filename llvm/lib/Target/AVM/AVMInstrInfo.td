@@ -142,7 +142,7 @@ class AVMF7LoadInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr_in)> {
   let OutOperandList = (outs AVMGeneralReg:$dst,
                              AVMCompactDataPointer:$addr);
-  let Constraints = "$addr = $addr_in";
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
 }
 
@@ -461,6 +461,23 @@ class AVMGeneralPointerStoreInst<string Asm>
               (ins AVMGeneralPointerAddressReg:$addr,
                    AVMGeneralPointerDataReg:$src)> { let mayStore = 1; }
 
+class AVMGeneralPointerPostLoadInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr_in)> {
+  let OutOperandList = (outs AVMGeneralPointerDataReg:$dst,
+                             AVMGeneralPointerAddressReg:$addr);
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+
+class AVMGeneralPointerPostStoreInst<string Asm>
+    : AVMInst<Asm, 3,
+              (ins AVMGeneralPointerAddressReg:$addr_in,
+                   AVMGeneralPointerDataReg:$src)> {
+  let OutOperandList = (outs AVMGeneralPointerAddressReg:$addr);
+  let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
+}
+
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
 class AVMRel8ControlInst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$rel)>;
@@ -567,6 +584,66 @@ def CALL_INDIRECT_PSEUDO
 def FRAMEADDR_PSEUDO
     : AVMCodeGenPseudo<(outs PTR16:$dst),
                        (ins i16imm:$fi, i16imm:$offset)>;
+
+def DATA_ADDR_PSEUDO
+    : AVMCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
+
+class AVMIndirectLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins PTR16:$addr)> {
+  let mayLoad = 1;
+}
+class AVMIndirectStorePseudo
+    : AVMCodeGenPseudo<(outs), (ins PTR16:$addr, GPR16:$src)> {
+  let mayStore = 1;
+}
+class AVMIndirectPairLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins PTR16:$addr)> {
+  let mayLoad = 1;
+}
+class AVMIndirectPairStorePseudo
+    : AVMCodeGenPseudo<(outs), (ins PTR16:$addr, GPR32:$src)> {
+  let mayStore = 1;
+}
+class AVMPostIncLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
+                       (ins PTR16:$addr_in)> {
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+class AVMPostIncStorePseudo
+    : AVMCodeGenPseudo<(outs PTR16:$addr),
+                       (ins PTR16:$addr_in, GPR16:$src)> {
+  let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
+}
+class AVMAbsoluteLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins AVMDataAddr16:$addr)> {
+  let mayLoad = 1;
+}
+class AVMAbsoluteStorePseudo
+    : AVMCodeGenPseudo<(outs), (ins AVMDataAddr16:$addr, GPR16:$src)> {
+  let mayStore = 1;
+}
+
+def LOAD8U_PSEUDO : AVMIndirectLoadPseudo;
+def LOAD16_PSEUDO : AVMIndirectLoadPseudo;
+def STORE8_PSEUDO : AVMIndirectStorePseudo;
+def STORE16_PSEUDO : AVMIndirectStorePseudo;
+def LOAD32_PSEUDO : AVMIndirectPairLoadPseudo;
+def STORE32_PSEUDO : AVMIndirectPairStorePseudo;
+def LOAD8U_POST_PSEUDO : AVMPostIncLoadPseudo;
+def LOAD16_POST_PSEUDO : AVMPostIncLoadPseudo;
+def STORE8_POST_PSEUDO : AVMPostIncStorePseudo;
+def STORE16_POST_PSEUDO : AVMPostIncStorePseudo;
+def ABS_LOAD8U_PSEUDO : AVMAbsoluteLoadPseudo;
+def ABS_LOAD16_PSEUDO : AVMAbsoluteLoadPseudo;
+def ABS_STORE8_PSEUDO : AVMAbsoluteStorePseudo;
+def ABS_STORE16_PSEUDO : AVMAbsoluteStorePseudo;
+
+def ZEXT8_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
+  let Constraints = "$dst = $src";
+}
 
 class AVMStackLoadPseudo<RegisterClass RC>
     : AVMCodeGenPseudo<(outs RC:$dst),
@@ -750,12 +827,12 @@ def ST32 : AVMColdPairStoreInst<"st32 [$addr], $src">;
 
 def GPLD8U : AVMGeneralPointerLoadInst<"ld8u $dst, [$addr]">;
 def GPLD16 : AVMGeneralPointerLoadInst<"ld16 $dst, [$addr]">;
-def GPLD8U_POST : AVMGeneralPointerLoadInst<"ld8u $dst, [$addr+]">;
-def GPLD16_POST : AVMGeneralPointerLoadInst<"ld16 $dst, [$addr+]">;
+def GPLD8U_POST : AVMGeneralPointerPostLoadInst<"ld8u $dst, [$addr_in+]">;
+def GPLD16_POST : AVMGeneralPointerPostLoadInst<"ld16 $dst, [$addr_in+]">;
 def GPST8 : AVMGeneralPointerStoreInst<"st8 [$addr], $src">;
 def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
-def GPST8_POST : AVMGeneralPointerStoreInst<"st8 [$addr+], $src">;
-def GPST16_POST : AVMGeneralPointerStoreInst<"st16 [$addr+], $src">;
+def GPST8_POST : AVMGeneralPointerPostStoreInst<"st8 [$addr_in+], $src">;
+def GPST16_POST : AVMGeneralPointerPostStoreInst<"st16 [$addr_in+], $src">;
 
 def BREQ8 : AVMConditionalRel8ControlInst<"breq8 $rel"> { let Uses = [CC]; }
 def BRNE8 : AVMConditionalRel8ControlInst<"brne8 $rel"> { let Uses = [CC]; }

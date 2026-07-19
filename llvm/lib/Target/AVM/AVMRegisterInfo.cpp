@@ -158,15 +158,18 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       (!IsPair || isUInt<8>(Offset + 2))) {
     if (!IsPair) {
       unsigned NewOpcode;
+      bool SignExtendAfterLoad = false;
       if (Opcode == AVM::STACK_LOAD8U_PSEUDO)
         NewOpcode = preferCompact(
             MF, TII,
             AVM::UpperGPR16RegClass.contains(ValueReg) && isUInt<4>(Offset),
             AVM::LDSP8U_COMPACT, AVM::AVMCostKind::LdSp8UShort, AVM::LDSP8U,
             AVM::AVMCostKind::LdSp8UCold);
-      else if (Opcode == AVM::STACK_LOAD8S_PSEUDO)
-        NewOpcode = AVM::LDSP8S;
-      else if (IsLoad)
+      else if (Opcode == AVM::STACK_LOAD8S_PSEUDO) {
+        SignExtendAfterLoad =
+            AVM::UpperGPR16RegClass.contains(ValueReg) && isUInt<4>(Offset);
+        NewOpcode = SignExtendAfterLoad ? AVM::LDSP8U_COMPACT : AVM::LDSP8S;
+      } else if (IsLoad)
         NewOpcode = getStackLoadOpcode(MF, TII, ValueReg, Offset);
       else if (Opcode == AVM::STACK_STORE8_PSEUDO)
         NewOpcode = preferCompact(
@@ -184,6 +187,8 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       if (!IsLoad)
         MIB.addReg(ValueReg, getKillRegState(IsKill));
       CloneMemRefs(MIB);
+      if (SignExtendAfterLoad)
+        BuildMI(MBB, MI, DL, TII.get(AVM::SEXT8), ValueReg).addReg(ValueReg);
       Old.eraseFromParent();
       return true;
     }

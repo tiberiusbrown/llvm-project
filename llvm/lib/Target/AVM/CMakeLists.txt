@@ -29,6 +29,7 @@ add_llvm_target(AVMCodeGen
   AVMSelectionDAGInfo.cpp
   AVMSubtarget.cpp
   AVMTargetMachine.cpp
+  AVMTargetObjectFile.cpp
 
   DEPENDS
   AVMCommonTableGen

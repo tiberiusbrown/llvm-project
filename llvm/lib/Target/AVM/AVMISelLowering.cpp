@@ -152,9 +152,22 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(Align(1));
 
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+
+  setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
+                   MVT::i8, Legal);
+  setTruncStoreAction(MVT::i16, MVT::i8, Legal);
+  setIndexedLoadAction(ISD::POST_INC, MVT::i8, Legal);
+  setIndexedLoadAction(ISD::POST_INC, MVT::i16, Legal);
+  setIndexedStoreAction(ISD::POST_INC, MVT::i8, Legal);
+  setIndexedStoreAction(ISD::POST_INC, MVT::i16, Legal);
+
+  MaxStoresPerMemset = MaxStoresPerMemcpy = MaxStoresPerMemmove = 8;
+  MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize =
+      MaxStoresPerMemmoveOptSize = 4;
 }
 
 MVT AVMTargetLowering::getPointerTy(const DataLayout &DL, uint32_t AS) const {
@@ -175,9 +188,78 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::LOAD24";
   if (Opcode == AVMISD::STORE24)
     return "AVMISD::STORE24";
+  if (Opcode == AVMISD::WRAPPER)
+    return "AVMISD::WRAPPER";
   if (Opcode == AVMISD::RET_GLUE)
     return "AVMISD::RET_GLUE";
   return nullptr;
+}
+
+bool AVMTargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
+                                                       unsigned AddrSpace,
+                                                       Align,
+                                                       MachineMemOperand::Flags,
+                                                       unsigned *Fast) const {
+  if (AddrSpace != 0 || (VT != MVT::i8 && VT != MVT::i16 && VT != MVT::i32))
+    return false;
+  if (Fast)
+    *Fast = 1;
+  return true;
+}
+
+bool AVMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
+                                                   SDValue &Base,
+                                                   SDValue &Offset,
+                                                   ISD::MemIndexedMode &AM,
+                                                   SelectionDAG &DAG) const {
+  EVT MemoryVT;
+  SDValue Pointer;
+  unsigned AddressSpace;
+  if (const auto *Load = dyn_cast<LoadSDNode>(N)) {
+    MemoryVT = Load->getMemoryVT();
+    Pointer = Load->getBasePtr();
+    AddressSpace = Load->getAddressSpace();
+  } else if (const auto *Store = dyn_cast<StoreSDNode>(N)) {
+    MemoryVT = Store->getMemoryVT();
+    Pointer = Store->getBasePtr();
+    AddressSpace = Store->getAddressSpace();
+  } else {
+    return false;
+  }
+  if (AddressSpace != 0 || (MemoryVT != MVT::i8 && MemoryVT != MVT::i16) ||
+      Op->getOpcode() != ISD::ADD)
+    return false;
+  const auto *Increment = dyn_cast<ConstantSDNode>(Op->getOperand(1));
+  int64_t Width = MemoryVT == MVT::i8 ? 1 : 2;
+  if (!Increment || Increment->getSExtValue() != Width ||
+      Pointer != Op->getOperand(0))
+    return false;
+  Base = Pointer;
+  Offset = DAG.getConstant(Width, SDLoc(N), MVT::i16);
+  AM = ISD::POST_INC;
+  return true;
+}
+
+EVT AVMTargetLowering::getOptimalMemOpType(LLVMContext &, const MemOp &,
+                                           const AttributeList &) const {
+  // Byte stores preserve memset's value without constructing an i16/i32 splat,
+  // and make overlap-safe memmove expansion independent of word alignment.
+  return MVT::i8;
+}
+
+SDValue AVMTargetLowering::LowerGlobalAddress(SDValue Op,
+                                              SelectionDAG &DAG) const {
+  const auto *GA = cast<GlobalAddressSDNode>(Op);
+  SDLoc DL(Op);
+  SDValue Target = DAG.getTargetGlobalAddress(
+      GA->getGlobal(), DL, MVT::i16, GA->getOffset(), GA->getTargetFlags());
+  return DAG.getNode(AVMISD::WRAPPER, DL, MVT::i16, Target);
+}
+
+SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
+  if (Op.getOpcode() == ISD::GlobalAddress)
+    return LowerGlobalAddress(Op, DAG);
+  llvm_unreachable("unexpected AVM custom-lowered operation");
 }
 
 SDValue AVMTargetLowering::LowerFormalArguments(
