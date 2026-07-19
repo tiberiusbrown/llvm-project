@@ -495,6 +495,10 @@ public:
                                         : getPointerAlignV(AddrSpace);
   }
 
+  virtual uint64_t getFunctionPointerWidth() const { return PointerWidth; }
+
+  virtual uint64_t getFunctionPointerAlign() const { return PointerAlign; }
+
   /// Return the maximum width of pointers on this target.
   virtual uint64_t getMaxPointerWidth() const {
     return PointerWidth;

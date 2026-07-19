@@ -1586,6 +1586,10 @@ void Clang::RenderTargetOptions(const llvm::Triple &EffectiveTriple,
     AddLanaiTargetArgs(Args, CmdArgs);
     break;
 
+  case llvm::Triple::avm:
+    AddAVMTargetArgs(Args, CmdArgs);
+    break;
+
   case llvm::Triple::hexagon:
     AddHexagonTargetArgs(Args, CmdArgs);
     break;
@@ -2259,6 +2263,16 @@ void Clang::AddLanaiTargetArgs(const ArgList &Args,
       }
     }
   }
+}
+
+void Clang::AddAVMTargetArgs(const ArgList &Args,
+                             ArgStringList &CmdArgs) const {
+  StringRef TuneCPU = "avm-interpreter-32u4-v1";
+  if (const Arg *A = Args.getLastArg(options::OPT_mtune_EQ))
+    TuneCPU = A->getValue();
+
+  CmdArgs.push_back("-tune-cpu");
+  CmdArgs.push_back(Args.MakeArgString(TuneCPU));
 }
 
 void Clang::AddWebAssemblyTargetArgs(const ArgList &Args,

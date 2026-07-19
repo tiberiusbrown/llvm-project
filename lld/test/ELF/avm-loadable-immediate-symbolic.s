@@ -14,7 +14,7 @@ _start:
 # BYTES: Contents of section .text:
 # BYTES: 10000 c112c7ab 34f00212 f007ab34
 
-# DIS: ldi8{{[ \t]+}}c1, 0x12
-# DIS: ldi16{{[ \t]+}}c3, 0x34ab
+# DIS: ldi8{{[ \t]+}}r5, 0x12
+# DIS: ldi16{{[ \t]+}}r7, 0x34ab
 # DIS: ldi8{{[ \t]+}}r2, 0x12
 # DIS: ldi16{{[ \t]+}}r3, 0x34ab

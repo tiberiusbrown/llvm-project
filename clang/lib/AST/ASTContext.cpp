@@ -2344,9 +2344,15 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(AS);
     break;
   case Type::Pointer:
-    AS = cast<PointerType>(T)->getPointeeType().getAddressSpace();
-    Width = Target->getPointerWidth(AS);
-    Align = Target->getPointerAlign(AS);
+    if (QualType Pointee = cast<PointerType>(T)->getPointeeType();
+        Pointee->isFunctionType() && !Pointee.hasAddressSpace()) {
+      Width = Target->getFunctionPointerWidth();
+      Align = Target->getFunctionPointerAlign();
+    } else {
+      AS = cast<PointerType>(T)->getPointeeType().getAddressSpace();
+      Width = Target->getPointerWidth(AS);
+      Align = Target->getPointerAlign(AS);
+    }
     break;
   case Type::MemberPointer: {
     const auto *MPT = cast<MemberPointerType>(T);

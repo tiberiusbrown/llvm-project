@@ -812,6 +812,14 @@ TargetInfo *TargetInfo::CreateTargetInfo(DiagnosticsEngine &Diags,
 
   llvm::Triple Triple(llvm::Triple::normalize(Opts->Triple));
 
+  // Keep direct cc1 invocations on the same AVM defaults as the driver.
+  if (Triple.getArch() == llvm::Triple::avm) {
+    if (Opts->CPU.empty())
+      Opts->CPU = "avm1";
+    if (Opts->TuneCPU.empty())
+      Opts->TuneCPU = "avm-interpreter-32u4-v1";
+  }
+
   // Construct the target
   std::unique_ptr<TargetInfo> Target = AllocateTarget(Triple, *Opts);
   if (!Target) {

@@ -155,10 +155,11 @@ public:
     }
   }
 
-  bool writeNopData(raw_ostream &, uint64_t Count,
+  bool writeNopData(raw_ostream &OS, uint64_t Count,
                     const MCSubtargetInfo *) const override {
     // There is no retained NOP encoding before the opcode-map implementation.
-    return Count == 0;
+    OS.write_zeros(Count);
+    return true;
   }
 };
 

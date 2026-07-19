@@ -40,7 +40,7 @@ public:
     SeparatorString = "\n";
     CodePointerSize = 3;
     CalleeSaveStackSlotSize = 2;
-    MaxInstLength = 4;
+    MaxInstLength = 6;
     MinInstAlignment = 1;
     SupportsDebugInformation = false;
   }
@@ -102,7 +102,7 @@ static MCRegisterInfo *createAVMMCRegisterInfo(const Triple &) {
 static MCSubtargetInfo *createAVMMCSubtargetInfo(const Triple &TT,
                                                  StringRef CPU,
                                                  StringRef FS) {
-  StringRef EffectiveCPU = CPU.empty() ? "generic" : CPU;
+  StringRef EffectiveCPU = CPU.empty() ? "avm1" : CPU;
   return createAVMMCSubtargetInfoImpl(TT, EffectiveCPU, EffectiveCPU, FS);
 }
 

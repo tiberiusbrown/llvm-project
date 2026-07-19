@@ -28,7 +28,7 @@ adjsp
 sys 0, 1
 
 # CHECK-COUNT-11: error: {{(relative displacement|immediate) is out of signed 8-bit range}}
-# CHECK-COUNT-3: error: invalid AVM version 1 service identifier
+# CHECK-COUNT-1: error: invalid AVM version 1 service identifier
 # CHECK: error: unknown AVM system function 'symbol'
 # CHECK: error: unknown AVM system function 'debug_unknown'
 # CHECK: error: unknown AVM system function 'putc'

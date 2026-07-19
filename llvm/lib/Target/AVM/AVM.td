@@ -10,6 +10,7 @@ defm : RemapAllTargetPseudoPointerOperands<AVMGeneralReg>;
 
 def FeatureV1 : SubtargetFeature<"v1", "IsV1", "true",
                                   "AVM Version 1 ISA">;
+def : Processor<"avm1", NoItineraries, [FeatureV1]>;
 def : Processor<"generic", NoItineraries, [FeatureV1]>;
 
 def AVMInstrInfo : InstrInfo;

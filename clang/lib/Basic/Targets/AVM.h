@@ -5,6 +5,7 @@
 
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
 
 namespace clang {
@@ -26,7 +27,7 @@ public:
     LongLongAlign = 8;
     HalfWidth = 16;
     HalfAlign = 8;
-    HasFloat16 = true;
+    HasFloat16 = false;
     FloatWidth = DoubleWidth = LongDoubleWidth = 32;
     FloatAlign = DoubleAlign = LongDoubleAlign = 8;
     DoubleFormat = LongDoubleFormat = &llvm::APFloat::IEEEsingle();
@@ -41,8 +42,32 @@ public:
     Char32Type = UnsignedLong;
     Int16Type = SignedInt;
     SigAtomicType = SignedChar;
-    resetDataLayout();
+    resetDataLayout(
+        "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0");
   }
+
+  bool isValidCPUName(StringRef Name) const override {
+    return Name == "avm1" || Name == "generic";
+  }
+
+  void fillValidCPUList(SmallVectorImpl<StringRef> &Values) const override {
+    Values.push_back("avm1");
+    Values.push_back("generic");
+  }
+
+  bool setCPU(const std::string &Name) override { return isValidCPUName(Name); }
+
+  bool isValidTuneCPUName(StringRef Name) const override {
+    return Name == "avm-interpreter-32u4-v1";
+  }
+
+  void fillValidTuneCPUList(SmallVectorImpl<StringRef> &Values) const override {
+    Values.push_back("avm-interpreter-32u4-v1");
+  }
+
+  uint64_t getFunctionPointerWidth() const override { return 24; }
+
+  uint64_t getFunctionPointerAlign() const override { return 8; }
 
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override;
