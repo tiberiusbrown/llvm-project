@@ -33,22 +33,29 @@ def SP : AVMReg<8, "sp">;
 def PC : AVMReg<9, "pc">;
 def CC : AVMReg<10, "cc">;
 
-// Required by TableGen's MC register metadata.  It has no instruction or
-// code-generation semantics and contains only general architectural words.
+// Allocation order favors the compact upper-register encodings.  GPR8 names
+// the low byte of the same physical registers; it does not create byte
+// registers with independent allocation or storage.
+def GPR16 : RegisterClass<"AVM", [i16], 16,
+                          (add R4, R5, R6, R7, R0, R1, R2, R3)>;
+def UpperGPR16 : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
+def LowGPR16 : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
+def PTR16 : RegisterClass<"AVM", [i16], 16,
+                          (add R4, R5, R6, R7, R0, R1, R2, R3)>;
+def UpperPTR16 : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
+def GPR8 : RegisterClass<"AVM", [i8], 16,
+                         (add R4, R5, R6, R7, R0, R1, R2, R3)>;
+def UpperGPR8 : RegisterClass<"AVM", [i8], 16, (add R4, R5, R6, R7)>;
+def GPR32 : RegisterClass<"AVM", [i32, f32], 32,
+                          (add R4R5, R6R7, R0R1, R2R3)>;
+def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 32, (add R4R5, R6R7)>;
+
+// Keep the MC-facing class names so the parser, emitter, printer, and their
+// established tests retain their spelling and register acceptance.
 def AVMGeneralReg : RegisterClass<"AVM", [i16], 16,
-  (add R0, R1, R2, R3, R4, R5, R6, R7)>;
+  (add R4, R5, R6, R7, R0, R1, R2, R3)>;
 def AVMColdRegClass : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
-
-def AVMLowRegClass : RegisterClass<"AVM", [i16], 16,
-                                   (add R0, R1, R2, R3)>;
-
-// r4-r7 are the compact subset of the architectural register file.  The
-// parser accepts c0-c3 as compatibility aliases for these same registers;
-// there are no duplicate physical registers for the aliases.
+def AVMLowRegClass : RegisterClass<"AVM", [i16], 16, (add R0, R1, R2, R3)>;
 def AVMCompactReg : RegisterClass<"AVM", [i16], 16, (add R4, R5, R6, R7)>;
-
-// Aligned 32-bit register pairs are MC-only program pointers.  Their
-// architectural encoding is deliberately supplied by the code emitter rather
-// than inferred from physical-register enum values.
-def AVMProgramPairReg : RegisterClass<"AVM", [i32], 32,
-                                      (add R0R1, R2R3, R4R5, R6R7)>;
+def AVMProgramPairReg : RegisterClass<"AVM", [i32, f32], 32,
+                                      (add R4R5, R6R7, R0R1, R2R3)>;

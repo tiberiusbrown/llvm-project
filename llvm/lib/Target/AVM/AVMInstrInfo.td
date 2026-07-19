@@ -36,11 +36,34 @@ class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let isCodeGenOnly = 0;
 }
 
-// The one-byte compact matrix is deliberately MC-only. The high nibble is
-// fixed per family; the encoder supplies the two compact-register indices in
-// the low nibble. No selection pattern or scheduling metadata belongs here.
-class AVMCompactMatrixInst<string Asm, bits<4> Family, dag Operands>
-    : AVMInst<Asm, 1, Operands> {
+class AVMCompactMoveInst<string Asm, bits<4> Family>
+    : AVMInst<Asm, 1, (ins AVMCompactSource:$src)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  bits<4> CompactFamily = Family;
+}
+class AVMCompactTwoAddrInst<string Asm, bits<4> Family>
+    : AVMInst<Asm, 1, (ins AVMCompactDest:$src1,
+                           AVMCompactSource:$src2)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src1";
+  bits<4> CompactFamily = Family;
+}
+class AVMCompactCompareInst<string Asm, bits<4> Family>
+    : AVMInst<Asm, 1, (ins AVMCompactCompareLeft:$left,
+                           AVMCompactCompareRight:$right)> {
+  let Defs = [CC];
+  bits<4> CompactFamily = Family;
+}
+class AVMCompactLoadInst<string Asm, bits<4> Family>
+    : AVMInst<Asm, 1, (ins AVMCompactDataPointer:$addr)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let mayLoad = 1;
+  bits<4> CompactFamily = Family;
+}
+class AVMCompactStoreInst<string Asm, bits<4> Family>
+    : AVMInst<Asm, 1, (ins AVMCompactDataPointer:$addr,
+                           AVMCompactSource:$src)> {
+  let mayStore = 1;
   bits<4> CompactFamily = Family;
 }
 
@@ -65,23 +88,25 @@ class AVMCompactImmediateShiftInst<string Asm>
 
 class AVMF3StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
-                           AVMGeneralReg:$src)>;
+                           AVMGeneralReg:$src)> { let mayStore = 1; }
 
 class AVMF6PostStoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr_in,
                            AVMGeneralReg:$src)> {
   let OutOperandList = (outs AVMCompactDataPointer:$addr);
   let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
 }
 
 class AVMF5LoadInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr)> {
   let OutOperandList = (outs AVMLowRegClass:$dst);
+  let mayLoad = 1;
 }
 
 class AVMF5StoreInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMCompactDataPointer:$addr,
-                           AVMLowRegClass:$src)>;
+                           AVMLowRegClass:$src)> { let mayStore = 1; }
 
 // F7 compact-pointer postincrement memory is MC-only. The pointer is an
 // explicit tied read/write operand, while load destinations are define-only.
@@ -90,6 +115,7 @@ class AVMF7LoadInst<string Asm>
   let OutOperandList = (outs AVMGeneralReg:$dst,
                              AVMCompactDataPointer:$addr);
   let Constraints = "$addr = $addr_in";
+  let mayLoad = 1;
 }
 
 class AVMF7StoreInst<string Asm>
@@ -97,6 +123,7 @@ class AVMF7StoreInst<string Asm>
                            AVMGeneralReg:$src)> {
   let OutOperandList = (outs AVMCompactDataPointer:$addr);
   let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
 }
 
 class AVMF7PairArithmeticInst<string Asm>
@@ -160,7 +187,9 @@ class AVMF3WideningMultiplyInst<string Asm>
 // MC-only family: the encoder supplies explicit ISA register indices and no
 // code-generation or scheduling metadata is attached.
 class AVMFullMoveInst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMGeneralReg:$dst, AVMGeneralReg:$src)>;
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> {
+  let OutOperandList = (outs AVMGeneralReg:$dst);
+}
 
 // F5 full-register compare is MC-only. Both operands are read-only and the
 // architectural condition-code register is replaced; there is no tied
@@ -255,9 +284,10 @@ class AVMF6MultiplyInst<string Asm>
 class AVMGetSPInst<string Asm>
     : AVMInst<Asm, 2> {
   let OutOperandList = (outs AVMGeneralReg:$dst);
+  let Uses = [SP];
 }
 class AVMSetSPInst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)>;
+    : AVMInst<Asm, 2, (ins AVMGeneralReg:$src)> { let Defs = [SP]; }
 
 // Stack-register operations are MC-only and encode the explicit architectural
 // register number in the low three bits of their one-byte opcode.
@@ -265,62 +295,126 @@ class AVMStackRegInst<string Asm, bits<8> Family>
     : AVMInst<Asm, 1, (ins AVMStackReg:$reg)> {
   bits<8> StackFamily = Family;
 }
+class AVMPush16Inst<string Asm, bits<8> Family>
+    : AVMStackRegInst<Asm, Family> {
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
+class AVMPop16Inst<string Asm, bits<8> Family>
+    : AVMInst<Asm, 1> {
+  let OutOperandList = (outs AVMStackReg:$reg);
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayLoad = 1;
+  bits<8> StackFamily = Family;
+}
 
 class AVMCompactRegU8Inst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMImm8:$imm)>;
+    : AVMInst<Asm, 2, (ins AVMImm8:$imm)> {
+  let OutOperandList = (outs AVMCompactDest:$reg);
+}
 class AVMCompactRegU16Inst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMCompactDest:$reg, AVMImm16:$imm)>;
-class AVMCompactRegS8Inst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMSImm8:$imm)>;
+    : AVMInst<Asm, 3, (ins AVMImm16:$imm)> {
+  let OutOperandList = (outs AVMCompactDest:$reg);
+}
+class AVMCompactRegS8TwoAddrInst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$src, AVMSImm8:$imm)> {
+  let OutOperandList = (outs AVMCompactDest:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMCompactCompareIS8Inst<string Asm>
+    : AVMInst<Asm, 2, (ins AVMCompactDest:$reg, AVMSImm8:$imm)> {
+  let Defs = [CC];
+}
 
 // Cold-page operands are MC-only.  The encoder supplies an explicit ISA
 // register index in the secondary byte; these definitions do not imply any
 // code-generation pattern or physical-register enum layout.
 class AVMColdRegImm8Inst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMColdReg:$reg, AVMImm8:$imm)>;
+    : AVMInst<Asm, 3, (ins AVMImm8:$imm)> {
+  let OutOperandList = (outs AVMColdReg:$reg);
+}
 class AVMColdRegImm16Inst<string Asm>
-    : AVMInst<Asm, 4, (ins AVMColdReg:$reg, AVMImm16:$imm)>;
-class AVMColdRegS8Inst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMColdReg:$reg, AVMSImm8:$imm)>;
+    : AVMInst<Asm, 4, (ins AVMImm16:$imm)> {
+  let OutOperandList = (outs AVMColdReg:$reg);
+}
+class AVMColdRegS8TwoAddrInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdReg:$src, AVMSImm8:$imm)> {
+  let OutOperandList = (outs AVMColdReg:$dst);
+  let Constraints = "$dst = $src";
+}
+class AVMColdCompareIS8Inst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMColdReg:$reg, AVMSImm8:$imm)> {
+  let Defs = [CC];
+}
 class AVMStackRegU8Inst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$imm)>;
+    : AVMInst<Asm, 3, (ins AVMImm8:$imm)> {
+  let OutOperandList = (outs AVMStackReg:$reg);
+}
 class AVMStackLoadInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMStackReg:$reg, AVMImm8:$offset)>;
+    : AVMInst<Asm, 3, (ins AVMImm8:$offset)> {
+  let OutOperandList = (outs AVMStackReg:$reg);
+  let mayLoad = 1;
+  let Uses = [SP];
+}
 class AVMStackStoreInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)>;
+    : AVMInst<Asm, 3, (ins AVMImm8:$offset, AVMStackReg:$reg)> {
+  let mayStore = 1;
+  let Uses = [SP];
+}
 class AVMCompactStackStoreInst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMImm4:$offset, AVMCompactSource:$reg)>;
+    : AVMInst<Asm, 2, (ins AVMImm4:$offset, AVMCompactSource:$reg)> {
+  let mayStore = 1;
+  let Uses = [SP];
+}
 class AVMCompactStackLoadInst<string Asm>
     : AVMInst<Asm, 2, (ins AVMImm4:$offset)> {
   let OutOperandList = (outs AVMCompactDest:$dst);
+  let mayLoad = 1;
+  let Uses = [SP];
 }
 
 // These cold-page absolute data-space forms are MC-only.  The encoder emits
 // the F0 prefix, family secondary byte, explicit ISA register index, and a
 // DATA16 address field; they carry no code-generation metadata.
 class AVMAbsoluteDataLoadInst<string Asm>
-    : AVMInst<Asm, 4, (ins AVMAbsoluteDataReg:$reg, AVMDataAddr16:$addr)>;
+    : AVMInst<Asm, 4, (ins AVMDataAddr16:$addr)> {
+  let OutOperandList = (outs AVMAbsoluteDataReg:$reg);
+  let mayLoad = 1;
+}
 class AVMAbsoluteDataStoreInst<string Asm>
-    : AVMInst<Asm, 4, (ins AVMDataAddr16:$addr, AVMAbsoluteDataReg:$reg)>;
+    : AVMInst<Asm, 4, (ins AVMDataAddr16:$addr, AVMAbsoluteDataReg:$reg)> {
+  let mayStore = 1;
+}
 
 // Program-space load forms are MC-only.  Their memory operands are canonical
 // program-pointer pairs parsed as a separate address register; the encoder
 // supplies the PSPEC register codes explicitly.
 class AVMProgramLoadScalarInst<string Asm>
-    : AVMInst<Asm, 3,
-              (ins AVMProgramLoadScalarReg:$dst, AVMProgramLoadPairReg:$addr)>;
+    : AVMInst<Asm, 3, (ins AVMProgramLoadPairReg:$addr)> {
+  let OutOperandList = (outs AVMProgramLoadScalarReg:$dst);
+  let mayLoad = 1;
+}
 class AVMProgramLoadPairInst<string Asm>
-    : AVMInst<Asm, 3,
-              (ins AVMProgramLoadPairReg:$dst, AVMProgramLoadPairReg:$addr)>;
+    : AVMInst<Asm, 3, (ins AVMProgramLoadPairReg:$addr)> {
+  let OutOperandList = (outs AVMProgramLoadPairReg:$dst);
+  let mayLoad = 1;
+}
 
 // Cold 32-bit forms are MC-only.  Their RRSPEC32 byte is encoded explicitly
 // from the architectural q/r mappings; it is not derived from register enums.
 class AVMColdPairPairInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMColdPair:$left, AVMColdPair:$right)>;
 class AVMColdPairLoadInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMColdPair:$dst, AVMColdDataPointer:$addr)>;
+    : AVMInst<Asm, 3, (ins AVMColdDataPointer:$addr)> {
+  let OutOperandList = (outs AVMColdPair:$dst);
+  let mayLoad = 1;
+}
 class AVMColdPairStoreInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMColdDataPointer:$addr, AVMColdPair:$src)>;
+    : AVMInst<Asm, 3, (ins AVMColdDataPointer:$addr, AVMColdPair:$src)> {
+  let mayStore = 1;
+}
 
 // General-pointer forms are MC-only.  They encode the explicit architectural
 // r0-r7 indices in the dddWaaaP operand byte, independent of LLVM physical
@@ -330,13 +424,14 @@ def AVMGeneralPointerDataReg
 def AVMGeneralPointerAddressReg
     : RegisterOperand<AVMGeneralReg, "printFullReg">;
 class AVMGeneralPointerLoadInst<string Asm>
-    : AVMInst<Asm, 3,
-              (ins AVMGeneralPointerDataReg:$dst,
-                   AVMGeneralPointerAddressReg:$addr)>;
+    : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr)> {
+  let OutOperandList = (outs AVMGeneralPointerDataReg:$dst);
+  let mayLoad = 1;
+}
 class AVMGeneralPointerStoreInst<string Asm>
     : AVMInst<Asm, 3,
               (ins AVMGeneralPointerAddressReg:$addr,
-                   AVMGeneralPointerDataReg:$src)>;
+                   AVMGeneralPointerDataReg:$src)> { let mayStore = 1; }
 
 // These direct forms are MC-only.  In particular, no code-generation
 // patterns or scheduling state is attached to the short control instructions.
@@ -355,12 +450,14 @@ class AVMConditionalRel16ControlInst<string Asm>
 class AVMRelaxableTransferPseudo<string Asm, int Bytes>
     : AVMInst<Asm, Bytes, (ins AVMImm24:$target)> {
   let isPseudo = 1;
+  let hasNoSchedulingInfo = 1;
 }
 // This assembly-only pseudo is the implementation vehicle for .progptr; it
 // emits data, not an architectural instruction.
 def AVMProgPtr : Operand<i32>;
 class AVMProgPtrPseudo : AVMInst<"", 3, (ins AVMProgPtr:$value)> {
   let isPseudo = 1;
+  let hasNoSchedulingInfo = 1;
 }
 class AVMProgramPairControlInst<string Asm> : AVMInst<Asm, 1,
                                                    (ins AVMProgramPair:$pair)>;
@@ -368,8 +465,7 @@ class AVMOperandlessInst<string Asm> : AVMInst<Asm, 1>;
 class AVMSImm8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMSImm8:$imm)>;
 class AVMService8Inst<string Asm> : AVMInst<Asm, 2, (ins AVMService8:$service)>;
 
-def MOV : AVMCompactMatrixInst<"mov $dst, $src", 0x0,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
+def MOV : AVMCompactMoveInst<"mov $dst, $src", 0x0>;
 def MOV_RR : AVMFullMoveInst<"mov $dst, $src">;
 def CMP_RR : AVMFullCompareInst<"cmp $left, $right">;
 def ADD_RR : AVMFullArithmeticInst<"add $src1, $src2">;
@@ -386,18 +482,11 @@ def ZEXT8 : AVMUnaryFullRegInst<"zext8 $dst">;
 def SWAP8 : AVMUnaryFullRegInst<"swap8 $dst">;
 def GETSP : AVMGetSPInst<"getsp $dst">;
 def SETSP : AVMSetSPInst<"setsp $src">;
-def ADD : AVMCompactMatrixInst<"add $dst, $src", 0x1,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
-def SUB : AVMCompactMatrixInst<"sub $dst, $src", 0x2,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
-def CMP : AVMCompactMatrixInst<"cmp $left, $right", 0x3,
-    (ins AVMCompactCompareLeft:$left, AVMCompactCompareRight:$right)> {
-  let Defs = [CC];
-}
-def LD8U : AVMCompactMatrixInst<"ld8u $dst, [$addr]", 0x4,
-    (ins AVMCompactDest:$dst, AVMCompactDataPointer:$addr)>;
-def ST8 : AVMCompactMatrixInst<"st8 [$addr], $src", 0x5,
-    (ins AVMCompactDataPointer:$addr, AVMCompactSource:$src)>;
+def ADD : AVMCompactTwoAddrInst<"add $dst, $src", 0x1>;
+def SUB : AVMCompactTwoAddrInst<"sub $dst, $src", 0x2>;
+def CMP : AVMCompactCompareInst<"cmp $left, $right", 0x3>;
+def LD8U : AVMCompactLoadInst<"ld8u $dst, [$addr]", 0x4>;
+def ST8 : AVMCompactStoreInst<"st8 [$addr], $src", 0x5>;
 def F3ST8 : AVMF3StoreInst<"st8 [$addr], $src">;
 def F6ST8_POST : AVMF6PostStoreInst<"st8 [$addr_in+], $src">;
 def F5LD8U : AVMF5LoadInst<"ld8u $dst, [$addr]">;
@@ -411,7 +500,10 @@ def SUB32 : AVMF7PairArithmeticInst<"sub32 $dst, $src2">;
 def LSR32_1 : AVMF7PairUnaryInst<"lsr32.1 $dst">;
 def ASR32_1 : AVMF7PairUnaryInst<"asr32.1 $dst">;
 def BOOL : AVMF7BoolInst<"bool $dst">;
-def MOV32 : AVMMov32Inst<"mov32 $dst, $src"> { let isPseudo = 1; }
+def MOV32 : AVMMov32Inst<"mov32 $dst, $src"> {
+  let isPseudo = 1;
+  let hasNoSchedulingInfo = 1;
+}
 def MOV32_F2 : AVMMov32Inst<"mov32 $dst, $src">;
 def FADD : AVMFFBinaryInst<"fadd $dst, $src2">;
 def FSUB : AVMFFBinaryInst<"fsub $dst, $src2">;
@@ -439,34 +531,25 @@ def FCLASS : AVMFFScalarPairInst<"fclass $scalar, $pair">;
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;
-def LD16 : AVMCompactMatrixInst<"ld16 $dst, [$addr]", 0x6,
-    (ins AVMCompactDest:$dst, AVMCompactDataPointer:$addr)>;
-def ST16 : AVMCompactMatrixInst<"st16 [$addr], $src", 0x7,
-    (ins AVMCompactDataPointer:$addr, AVMCompactSource:$src)>;
-def AND : AVMCompactMatrixInst<"and $dst, $src", 0x8,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
-def OR : AVMCompactMatrixInst<"or $dst, $src", 0x9,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
-def XOR : AVMCompactMatrixInst<"xor $dst, $src", 0xa,
-    (ins AVMCompactDest:$dst, AVMCompactSource:$src)>;
+def LD16 : AVMCompactLoadInst<"ld16 $dst, [$addr]", 0x6>;
+def ST16 : AVMCompactStoreInst<"st16 [$addr], $src", 0x7>;
+def AND : AVMCompactTwoAddrInst<"and $dst, $src", 0x8>;
+def OR : AVMCompactTwoAddrInst<"or $dst, $src", 0x9>;
+def XOR : AVMCompactTwoAddrInst<"xor $dst, $src", 0xa>;
 
-def PUSH16 : AVMStackRegInst<"push16 $reg", 0xb0>;
-def POP16 : AVMStackRegInst<"pop16 $reg", 0xb8>;
+def PUSH16 : AVMPush16Inst<"push16 $reg", 0xb0>;
+def POP16 : AVMPop16Inst<"pop16 $reg", 0xb8>;
 
 def LDI8 : AVMCompactRegU8Inst<"ldi8 $reg, $imm">;
 def LDI16 : AVMCompactRegU16Inst<"ldi16 $reg, $imm">;
-def ADDIS8 : AVMCompactRegS8Inst<"addi.s8 $reg, $imm">;
-def CMPIS8 : AVMCompactRegS8Inst<"cmpi.s8 $reg, $imm"> {
-  let Defs = [CC];
-}
+def ADDIS8 : AVMCompactRegS8TwoAddrInst<"addi.s8 $dst, $imm">;
+def CMPIS8 : AVMCompactCompareIS8Inst<"cmpi.s8 $reg, $imm">;
 
 def COLDLDI8 : AVMColdRegImm8Inst<"ldi8 $reg, $imm">;
 def COLDLDI16 : AVMColdRegImm16Inst<"ldi16 $reg, $imm">;
-def COLDADDIS8 : AVMColdRegS8Inst<"addi.s8 $reg, $imm">;
-def COLDCMPIS8 : AVMColdRegS8Inst<"cmpi.s8 $reg, $imm"> {
-  let Defs = [CC];
-}
-def LEASP : AVMStackRegU8Inst<"leasp $reg, $imm">;
+def COLDADDIS8 : AVMColdRegS8TwoAddrInst<"addi.s8 $dst, $imm">;
+def COLDCMPIS8 : AVMColdCompareIS8Inst<"cmpi.s8 $reg, $imm">;
+def LEASP : AVMStackRegU8Inst<"leasp $reg, $imm"> { let Uses = [SP]; }
 def LDSP8U : AVMStackLoadInst<"ldsp8u $reg, [sp+$offset]">;
 def LDSP8U_COMPACT : AVMCompactStackLoadInst<"ldsp8u $dst, [sp+$offset]">;
 def LDSP8S : AVMStackLoadInst<"ldsp8s $reg, [sp+$offset]">;
@@ -557,9 +640,14 @@ def JMP8 : AVMRel8ControlInst<"jmp8 $rel"> {
   let isTerminator = 1;
   let isBarrier = 1;
 }
-def CALL8 : AVMRel8ControlInst<"call8 $rel"> { let isCall = 1; }
-def ADJSP : AVMSImm8Inst<"adjsp $imm">;
-def SYS : AVMService8Inst<"sys $service">;
+def CALL8 : AVMRel8ControlInst<"call8 $rel"> {
+  let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
+def ADJSP : AVMSImm8Inst<"adjsp $imm"> { let Defs = [SP]; let Uses = [SP]; }
+def SYS : AVMService8Inst<"sys $service"> { let hasSideEffects = 1; }
 
 def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
   let isBranch = 1;
@@ -569,6 +657,9 @@ def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
 
 def CALLF : AVMInst<"callf $target", 4, (ins AVMImm24:$target)> {
   let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
 }
 
 def JMP16 : AVMRel16ControlInst<"jmp16 $rel"> {
@@ -576,17 +667,30 @@ def JMP16 : AVMRel16ControlInst<"jmp16 $rel"> {
   let isTerminator = 1;
   let isBarrier = 1;
 }
-def CALL16 : AVMRel16ControlInst<"call16 $rel"> { let isCall = 1; }
+def CALL16 : AVMRel16ControlInst<"call16 $rel"> {
+  let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
 def JMPP : AVMProgramPairControlInst<"jmpp $pair"> {
   let isBranch = 1;
   let isTerminator = 1;
   let isBarrier = 1;
 }
-def CALLP : AVMProgramPairControlInst<"callp $pair"> { let isCall = 1; }
+def CALLP : AVMProgramPairControlInst<"callp $pair"> {
+  let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
 def RET : AVMOperandlessInst<"ret"> {
   let isReturn = 1;
   let isTerminator = 1;
   let isBarrier = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayLoad = 1;
 }
 def PROGPTR : AVMProgPtrPseudo;
 
@@ -597,7 +701,12 @@ def RELAX_JMP : AVMRelaxableTransferPseudo<"jmp $target", 4> {
   let isTerminator = 1;
   let isBarrier = 1;
 }
-def RELAX_CALL : AVMRelaxableTransferPseudo<"call $target", 4> { let isCall = 1; }
+def RELAX_CALL : AVMRelaxableTransferPseudo<"call $target", 4> {
+  let isCall = 1;
+  let Uses = [SP];
+  let Defs = [SP];
+  let mayStore = 1;
+}
 def RELAX_BR_EQ : AVMRelaxableTransferPseudo<"breq $target", 6> {
   let Uses = [CC];
   let isBranch = 1;

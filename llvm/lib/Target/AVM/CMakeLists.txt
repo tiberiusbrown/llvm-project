@@ -18,6 +18,7 @@ add_public_tablegen_target(AVMCommonTableGen)
 # AVM must not register or pull in any code-generation implementation.
 add_llvm_component_library(LLVMAVM
   AVMMCOnly.cpp
+  AVMCostModel.cpp
 
   DEPENDS
   AVMCommonTableGen
