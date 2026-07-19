@@ -14,5 +14,9 @@ AVM_SYS_DEF(0x0c, powf)
 AVM_SYS_DEF(0x0d, hypotf)
 AVM_SYS_DEF(0x0e, fmodf)
 AVM_SYS_DEF(0x0f, memcpy)
-AVM_SYS_DEF(0x10, memcpy_P)
+AVM_SYS_DEF(0x10, memcpy_p)
 AVM_SYS_DEF(0x11, memset)
+
+#ifdef AVM_SYS_DEF
+#undef AVM_SYS_DEF
+#endif

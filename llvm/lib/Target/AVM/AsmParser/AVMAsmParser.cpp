@@ -302,7 +302,6 @@ class AVMAsmParser final : public MCTargetAsmParser {
           StringSwitch<std::optional<int64_t>>(Identifier.lower())
 #define AVM_SYS_DEF(ID, NAME) .Case(#NAME, ID)
 #include "AVMSystemCalls.inc"
-#undef AVM_SYS_DEF
               .Default(std::nullopt);
       if (!Service)
         return error(ExprLoc,
