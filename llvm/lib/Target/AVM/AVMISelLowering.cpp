@@ -137,6 +137,93 @@ static SDValue canonicalizeNarrowOutgoing(SDValue Value,
   return DAG.getNode(ISD::AND, DL, MVT::i16, Value,
                      DAG.getConstant(0xff, DL, MVT::i16));
 }
+
+static AVMCC::CondCode canonicalizeCondCode(ISD::CondCode CC, SDValue &LHS,
+                                            SDValue &RHS) {
+  switch (CC) {
+  case ISD::SETEQ:
+    return AVMCC::EQ;
+  case ISD::SETNE:
+    return AVMCC::NE;
+  case ISD::SETULT:
+    return AVMCC::ULT;
+  case ISD::SETUGE:
+    return AVMCC::UGE;
+  case ISD::SETLT:
+    return AVMCC::SLT;
+  case ISD::SETGE:
+    return AVMCC::SGE;
+  case ISD::SETULE:
+    std::swap(LHS, RHS);
+    return AVMCC::UGE;
+  case ISD::SETUGT:
+    std::swap(LHS, RHS);
+    return AVMCC::ULT;
+  case ISD::SETLE:
+    std::swap(LHS, RHS);
+    return AVMCC::SGE;
+  case ISD::SETGT:
+    std::swap(LHS, RHS);
+    return AVMCC::SLT;
+  default:
+    report_fatal_error("unsupported AVM integer condition code");
+  }
+}
+
+static bool stripByteValue(SDValue Value, SDValue &ByteValue) {
+  if (Value.getOpcode() == ISD::AssertZext &&
+      cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+    ByteValue = Value.getOperand(0);
+    return true;
+  }
+  if (Value.getOpcode() == ISD::SIGN_EXTEND_INREG &&
+      cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+    ByteValue = Value.getOperand(0);
+    return true;
+  }
+
+  if (Value.getOpcode() == ISD::AND) {
+    if (const auto *Mask = dyn_cast<ConstantSDNode>(Value.getOperand(1));
+        Mask && Mask->getZExtValue() == 0xff) {
+      ByteValue = Value.getOperand(0);
+      return true;
+    }
+  }
+
+  if (const auto *Load = dyn_cast<LoadSDNode>(Value);
+      Load && Load->getMemoryVT() == MVT::i8) {
+    ByteValue = Value;
+    return true;
+  }
+
+  return false;
+}
+
+static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
+                                                 ISD::CondCode CC,
+                                                 const SDLoc &DL,
+                                                 SelectionDAG &DAG) {
+  AVMCC::CondCode TargetCond = canonicalizeCondCode(CC, LHS, RHS);
+  SDValue TargetCC = DAG.getTargetConstant(TargetCond, DL, MVT::i16);
+
+  if (const auto *C = dyn_cast<ConstantSDNode>(RHS); C && C->isZero()) {
+    SDValue ByteValue;
+    SDValue Glue = stripByteValue(LHS, ByteValue)
+                       ? DAG.getNode(AVMISD::TST8, DL, MVT::Glue, ByteValue)
+                       : DAG.getNode(AVMISD::TST16, DL, MVT::Glue, LHS);
+    return {TargetCC, Glue};
+  }
+
+  if (const auto *C = dyn_cast<ConstantSDNode>(RHS);
+      C && isInt<8>(C->getSExtValue())) {
+    SDValue Imm = DAG.getSignedTargetConstant(C->getSExtValue(), DL, MVT::i16);
+    SDValue Glue = DAG.getNode(AVMISD::CMPI, DL, MVT::Glue, LHS, Imm);
+    return {TargetCC, Glue};
+  }
+
+  SDValue Glue = DAG.getNode(AVMISD::CMP, DL, MVT::Glue, LHS, RHS);
+  return {TargetCC, Glue};
+}
 } // namespace
 
 AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
@@ -152,7 +239,20 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(Align(1));
 
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::BR_CC, MVT::i16, Custom);
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
+  setOperationAction(ISD::SETCC, MVT::i16, Custom);
+  if (TM.getOptLevel() == CodeGenOptLevel::None) {
+    setOperationAction(ISD::SELECT, MVT::i16, Custom);
+    setOperationAction(ISD::SELECT, MVT::i32, Custom);
+    setOperationAction(ISD::SELECT_CC, MVT::i16, Expand);
+    setOperationAction(ISD::SELECT_CC, MVT::i32, Expand);
+  } else {
+    setOperationAction(ISD::SELECT, MVT::i16, Custom);
+    setOperationAction(ISD::SELECT, MVT::i32, Custom);
+    setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
+    setOperationAction(ISD::SELECT_CC, MVT::i32, Custom);
+  }
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
@@ -182,12 +282,26 @@ EVT AVMTargetLowering::getTypeForExtReturn(LLVMContext &, EVT VT,
 }
 
 const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
+  if (Opcode == AVMISD::BR_CC)
+    return "AVMISD::BR_CC";
   if (Opcode == AVMISD::CALL)
     return "AVMISD::CALL";
+  if (Opcode == AVMISD::CMOV)
+    return "AVMISD::CMOV";
+  if (Opcode == AVMISD::CMP)
+    return "AVMISD::CMP";
+  if (Opcode == AVMISD::CMPI)
+    return "AVMISD::CMPI";
+  if (Opcode == AVMISD::CSET)
+    return "AVMISD::CSET";
   if (Opcode == AVMISD::LOAD24)
     return "AVMISD::LOAD24";
   if (Opcode == AVMISD::STORE24)
     return "AVMISD::STORE24";
+  if (Opcode == AVMISD::TST8)
+    return "AVMISD::TST8";
+  if (Opcode == AVMISD::TST16)
+    return "AVMISD::TST16";
   if (Opcode == AVMISD::WRAPPER)
     return "AVMISD::WRAPPER";
   if (Opcode == AVMISD::RET_GLUE)
@@ -256,9 +370,64 @@ SDValue AVMTargetLowering::LowerGlobalAddress(SDValue Op,
   return DAG.getNode(AVMISD::WRAPPER, DL, MVT::i16, Target);
 }
 
+SDValue AVMTargetLowering::LowerBRCC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  auto [TargetCC, Glue] =
+      getAVMCompare(Op.getOperand(2), Op.getOperand(3), CC, DL, DAG);
+  return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
+                     Op.getOperand(4), TargetCC, Glue);
+}
+
+SDValue AVMTargetLowering::LowerSetCC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+  auto [TargetCC, Glue] =
+      getAVMCompare(Op.getOperand(0), Op.getOperand(1), CC, DL, DAG);
+  return DAG.getNode(AVMISD::CSET, DL, Op.getValueType(), TargetCC, Glue);
+}
+
+SDValue AVMTargetLowering::LowerSelectCC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
+  auto [TargetCC, Glue] =
+      getAVMCompare(Op.getOperand(0), Op.getOperand(1), CC, DL, DAG);
+  return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(2),
+                     Op.getOperand(3), TargetCC, Glue);
+}
+
+SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  SDValue Cond = Op.getOperand(0);
+  SDValue TargetCC;
+  SDValue Glue;
+  if (Cond.getOpcode() == ISD::SETCC) {
+    ISD::CondCode CC = cast<CondCodeSDNode>(Cond.getOperand(2))->get();
+    std::tie(TargetCC, Glue) =
+        getAVMCompare(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
+  } else {
+    std::tie(TargetCC, Glue) = getAVMCompare(
+        Cond, DAG.getConstant(0, DL, Cond.getValueType()), ISD::SETNE, DL, DAG);
+  }
+  return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(1),
+                     Op.getOperand(2), TargetCC, Glue);
+}
+
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
-  if (Op.getOpcode() == ISD::GlobalAddress)
+  switch (Op.getOpcode()) {
+  case ISD::BR_CC:
+    return LowerBRCC(Op, DAG);
+  case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::SELECT:
+    return LowerSelect(Op, DAG);
+  case ISD::SELECT_CC:
+    return LowerSelectCC(Op, DAG);
+  case ISD::SETCC:
+    return LowerSetCC(Op, DAG);
+  default:
+    break;
+  }
   llvm_unreachable("unexpected AVM custom-lowered operation");
 }
 

@@ -8,6 +8,7 @@ def AVMImm4 : Operand<i32>;
 def AVMImm16 : Operand<i32>;
 def AVMSImm8 : Operand<i32>;
 def AVMService8 : Operand<i32>;
+def AVMBranchTarget : Operand<OtherVT>;
 
 def SDT_AVMCall : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
 def SDT_AVMLoad24 : SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
@@ -493,7 +494,7 @@ class AVMConditionalRel16ControlInst<string Asm>
   let isTerminator = 1;
 }
 class AVMRelaxableTransferPseudo<string Asm, int Bytes>
-    : AVMInst<Asm, Bytes, (ins AVMImm24:$target)> {
+    : AVMInst<Asm, Bytes, (ins AVMBranchTarget:$target)> {
   let isPseudo = 1;
   let hasNoSchedulingInfo = 1;
 }
@@ -530,6 +531,29 @@ class AVMBinary16Pseudo<SDPatternOperator Op>
   let Constraints = "$dst = $lhs";
 }
 
+class AVMTwoAddr16Pseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR16:$src1, GPR16:$src2)> {
+  let Constraints = "$dst = $src1";
+}
+
+class AVMUpperTwoAddr16Pseudo
+    : AVMCodeGenPseudo<(outs UpperGPR16:$dst),
+                       (ins UpperGPR16:$src1, UpperGPR16:$src2)> {
+  let Constraints = "$dst = $src1";
+}
+
+class AVMUnary16Pseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
+  let Constraints = "$dst = $src";
+}
+
+class AVMUpperUnary16ImmPseudo
+    : AVMCodeGenPseudo<(outs UpperGPR16:$dst),
+                       (ins UpperGPR16:$src, i16imm:$count)> {
+  let Constraints = "$dst = $src";
+}
+
 def COPY16_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)>;
 def COPY32_PSEUDO
@@ -551,6 +575,87 @@ def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
 def AND16_PSEUDO : AVMBinary16Pseudo<and> { let isCommutable = 1; }
 def OR16_PSEUDO : AVMBinary16Pseudo<or> { let isCommutable = 1; }
 def XOR16_PSEUDO : AVMBinary16Pseudo<xor> { let isCommutable = 1; }
+
+def INC16_PSEUDO : AVMUnary16Pseudo;
+def DEC16_PSEUDO : AVMUnary16Pseudo;
+def ADDIS8_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR16:$src, i16imm:$imm)> {
+  let Constraints = "$dst = $src";
+}
+
+def MUL8_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def MULU8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def MULS8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def MULSU8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def MUL16_PSEUDO : AVMTwoAddr16Pseudo;
+def UDIV16_PSEUDO : AVMTwoAddr16Pseudo;
+def UREM16_PSEUDO : AVMTwoAddr16Pseudo;
+def SDIV16_PSEUDO : AVMTwoAddr16Pseudo;
+def SREM16_PSEUDO : AVMTwoAddr16Pseudo;
+
+def SHL16_SMALL_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR16:$src, i16imm:$count)> {
+  let Constraints = "$dst = $src";
+}
+def LSR16_1_PSEUDO : AVMUnary16Pseudo;
+def ASR16_1_PSEUDO : AVMUnary16Pseudo;
+def LSL16I_PSEUDO : AVMUpperUnary16ImmPseudo;
+def LSR16I_PSEUDO : AVMUpperUnary16ImmPseudo;
+def ASR16I_PSEUDO : AVMUpperUnary16ImmPseudo;
+def SHL16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def LSR16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
+def ASR16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
+
+class AVMCCProducerPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
+  let Defs = [CC];
+}
+
+def CMP16_PSEUDO
+    : AVMCCProducerPseudo<(ins GPR16:$left, GPR16:$right)>;
+def CMPIS8_PSEUDO
+    : AVMCCProducerPseudo<(ins GPR16:$left, i16imm:$right)>;
+def TST8_PSEUDO : AVMCCProducerPseudo<(ins GPR16:$value)>;
+def TST16_PSEUDO : AVMCCProducerPseudo<(ins GPR16:$value)>;
+
+def CSET_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$cond)> {
+  let Uses = [CC];
+}
+
+def CMOV16_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR16:$true_value, GPR16:$false_value,
+                            i16imm:$cond)> {
+  let Constraints = "$dst = $false_value";
+  let Uses = [CC];
+  let isSelect = 1;
+}
+
+def CMOV32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst),
+                       (ins GPR32:$true_value, GPR32:$false_value,
+                            i16imm:$cond)> {
+  let Constraints = "$dst = $false_value";
+  let Uses = [CC];
+  let isSelect = 1;
+}
+
+def BR_CC_PSEUDO
+    : AVMCodeGenPseudo<(outs),
+                       (ins AVMBranchTarget:$target, i16imm:$cond)> {
+  let Uses = [CC];
+  let isBranch = 1;
+  let isTerminator = 1;
+}
+
+def JMP_PSEUDO
+    : AVMCodeGenPseudo<(outs), (ins AVMBranchTarget:$target)> {
+  let isBranch = 1;
+  let isTerminator = 1;
+  let isBarrier = 1;
+}
 def RET_PSEUDO : AVMCodeGenPseudo<(outs), (ins), [(AVMretglue)]> {
   let isReturn = 1;
   let isTerminator = 1;
@@ -572,7 +677,7 @@ def ADJCALLSTACKUP
 class AVMCallPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 
@@ -854,7 +959,7 @@ def JMP8 : AVMRel8ControlInst<"jmp8 $rel"> {
 def CALL8 : AVMRel8ControlInst<"call8 $rel"> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 def ADJSP : AVMSImm8Inst<"adjsp $imm"> { let Defs = [SP]; let Uses = [SP]; }
@@ -869,7 +974,7 @@ def JMPF : AVMInst<"jmpf $target", 4, (ins AVMImm24:$target)> {
 def CALLF : AVMInst<"callf $target", 4, (ins AVMImm24:$target)> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 
@@ -881,7 +986,7 @@ def JMP16 : AVMRel16ControlInst<"jmp16 $rel"> {
 def CALL16 : AVMRel16ControlInst<"call16 $rel"> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 def JMPP : AVMProgramPairControlInst<"jmpp $pair"> {
@@ -892,7 +997,7 @@ def JMPP : AVMProgramPairControlInst<"jmpp $pair"> {
 def CALLP : AVMProgramPairControlInst<"callp $pair"> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 def RET : AVMOperandlessInst<"ret"> {
@@ -915,7 +1020,7 @@ def RELAX_JMP : AVMRelaxableTransferPseudo<"jmp $target", 4> {
 def RELAX_CALL : AVMRelaxableTransferPseudo<"call $target", 4> {
   let isCall = 1;
   let Uses = [SP];
-  let Defs = [SP];
+  let Defs = [SP, CC];
   let mayStore = 1;
 }
 def RELAX_BR_EQ : AVMRelaxableTransferPseudo<"breq $target", 6> {

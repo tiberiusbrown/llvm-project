@@ -17,6 +17,11 @@ body: |
     ; CHECK-NEXT: $r1 = COLDLDI16 4660
     ; CHECK-NEXT: $r4 = ADD $r4, $r5
     ; CHECK-NEXT: $r0 = ADD_RR $r0, $r1
+    ; CHECK-NEXT: $r4 = ADD $r4, $r4
+    ; CHECK-NEXT: $r4 = ADD $r4, $r4
+    ; CHECK-NEXT: $r4 = ADD $r4, $r4
+    ; CHECK-NEXT: $r0 = LSL16_1 $r0
+    ; CHECK-NEXT: $r0 = LSL16_1 $r0
     ; CHECK-NEXT: RET implicit-def dead $sp, implicit $sp
     $r4 = LDI8_PSEUDO 42
     $r0 = LDI8_PSEUDO 42
@@ -24,5 +29,7 @@ body: |
     $r1 = LDI16_PSEUDO 4660
     $r4 = ADD16_PSEUDO $r4, $r5
     $r0 = ADD16_PSEUDO $r0, $r1
+    $r4 = SHL16_SMALL_PSEUDO $r4, 3
+    $r0 = SHL16_SMALL_PSEUDO $r0, 2
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...

@@ -2,7 +2,10 @@
 
 #include "AVM.h"
 #include "AVMTargetMachine.h"
+#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/Support/KnownBits.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
 
@@ -17,6 +20,261 @@ public:
 
 private:
 #include "AVMGenDAGISel.inc"
+
+  enum class ByteExtension { None, Unsigned, Signed };
+
+  ByteExtension classifyByteValue(SDValue Value, SDValue &ByteValue) const {
+    if (Value.getOpcode() == ISD::AssertZext &&
+        cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+      ByteValue = Value.getOperand(0);
+      return ByteExtension::Unsigned;
+    }
+    if (Value.getOpcode() == ISD::SIGN_EXTEND_INREG &&
+        cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+      ByteValue = Value.getOperand(0);
+      return ByteExtension::Signed;
+    }
+    if (Value.getOpcode() == ISD::AND) {
+      if (const auto *Mask = dyn_cast<ConstantSDNode>(Value.getOperand(1));
+          Mask && Mask->getZExtValue() == 0xff) {
+        ByteValue = Value.getOperand(0);
+        return ByteExtension::Unsigned;
+      }
+    }
+    if (const auto *Load = dyn_cast<LoadSDNode>(Value);
+        Load && Load->getMemoryVT() == MVT::i8) {
+      ByteValue = Value;
+      return Load->getExtensionType() == ISD::SEXTLOAD
+                 ? ByteExtension::Signed
+                 : ByteExtension::Unsigned;
+    }
+    ByteValue = Value;
+    return ByteExtension::None;
+  }
+
+  bool getKnownShiftCount(SDValue CountValue, unsigned &Count) const {
+    if (const auto *C = dyn_cast<ConstantSDNode>(CountValue)) {
+      Count = C->getZExtValue();
+      return true;
+    }
+    KnownBits Known = CurDAG->computeKnownBits(CountValue);
+    if (!Known.isConstant())
+      return false;
+    Count = Known.getConstant().getZExtValue();
+    return true;
+  }
+
+  bool selectAVMCompare(SDNode *Node) {
+    unsigned Opcode;
+    switch (Node->getOpcode()) {
+    case AVMISD::CMP:
+      Opcode = AVM::CMP16_PSEUDO;
+      break;
+    case AVMISD::CMPI:
+      Opcode = AVM::CMPIS8_PSEUDO;
+      break;
+    case AVMISD::TST8:
+      Opcode = AVM::TST8_PSEUDO;
+      break;
+    case AVMISD::TST16:
+      Opcode = AVM::TST16_PSEUDO;
+      break;
+    default:
+      return false;
+    }
+    SmallVector<SDValue, 2> Ops(Node->op_begin(), Node->op_end());
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::Glue, Ops);
+    return true;
+  }
+
+  bool selectAVMBranchCC(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::BR_CC)
+      return false;
+    SDValue Ops[] = {Node->getOperand(1), Node->getOperand(2),
+                     Node->getOperand(0), Node->getOperand(3)};
+    CurDAG->SelectNodeTo(Node, AVM::BR_CC_PSEUDO, MVT::Other, Ops);
+    return true;
+  }
+
+  bool selectAVMCSet(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::CSET)
+      return false;
+    SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1)};
+    CurDAG->SelectNodeTo(Node, AVM::CSET_PSEUDO, Node->getValueType(0), Ops);
+    return true;
+  }
+
+  bool selectAVMCMov(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::CMOV)
+      return false;
+    unsigned Opcode = Node->getValueType(0) == MVT::i32 ? AVM::CMOV32_PSEUDO
+                                                        : AVM::CMOV16_PSEUDO;
+    SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1),
+                     Node->getOperand(2), Node->getOperand(3)};
+    CurDAG->SelectNodeTo(Node, Opcode, Node->getValueType(0), Ops);
+    return true;
+  }
+
+  bool selectUnconditionalBranch(SDNode *Node) {
+    if (Node->getOpcode() != ISD::BR)
+      return false;
+    SDValue Ops[] = {Node->getOperand(1), Node->getOperand(0)};
+    CurDAG->SelectNodeTo(Node, AVM::JMP_PSEUDO, MVT::Other, Ops);
+    return true;
+  }
+
+  bool selectAddSub(SDNode *Node) {
+    if (Node->getValueType(0) != MVT::i16)
+      return false;
+    bool IsAdd = Node->getOpcode() == ISD::ADD;
+    bool IsSub = Node->getOpcode() == ISD::SUB;
+    if (!IsAdd && !IsSub)
+      return false;
+
+    SDValue Value = Node->getOperand(0);
+    const auto *C = dyn_cast<ConstantSDNode>(Node->getOperand(1));
+    if (IsAdd && !C) {
+      C = dyn_cast<ConstantSDNode>(Value);
+      if (C)
+        Value = Node->getOperand(1);
+    }
+    if (!C)
+      return false;
+
+    int64_t Imm = C->getSExtValue();
+    unsigned Opcode = 0;
+    if ((IsAdd && Imm == 1))
+      Opcode = AVM::INC16_PSEUDO;
+    else if ((IsAdd && Imm == -1) || (IsSub && Imm == 1))
+      Opcode = AVM::DEC16_PSEUDO;
+    else if (IsAdd && isInt<8>(Imm))
+      Opcode = AVM::ADDIS8_PSEUDO;
+    else
+      return false;
+
+    if (Opcode == AVM::ADDIS8_PSEUDO) {
+      SDValue Ops[] = {
+          Value, CurDAG->getSignedTargetConstant(Imm, SDLoc(Node), MVT::i16)};
+      CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
+    } else {
+      CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Value);
+    }
+    return true;
+  }
+
+  bool selectMultiply(SDNode *Node) {
+    if (Node->getOpcode() != ISD::MUL || Node->getValueType(0) != MVT::i16)
+      return false;
+
+    SDValue LeftByte;
+    SDValue RightByte;
+    ByteExtension Left = classifyByteValue(Node->getOperand(0), LeftByte);
+    ByteExtension Right = classifyByteValue(Node->getOperand(1), RightByte);
+    unsigned Opcode = AVM::MUL16_PSEUDO;
+    SDValue LHS = Node->getOperand(0);
+    SDValue RHS = Node->getOperand(1);
+
+    if (Left == ByteExtension::Unsigned && Right == ByteExtension::Unsigned) {
+      Opcode = AVM::MULU8W_PSEUDO;
+      LHS = LeftByte;
+      RHS = RightByte;
+    } else if (Left == ByteExtension::Signed &&
+               Right == ByteExtension::Signed) {
+      Opcode = AVM::MULS8W_PSEUDO;
+      LHS = LeftByte;
+      RHS = RightByte;
+    } else if (Left == ByteExtension::Signed &&
+               Right == ByteExtension::Unsigned) {
+      Opcode = AVM::MULSU8W_PSEUDO;
+      LHS = LeftByte;
+      RHS = RightByte;
+    } else if (Left == ByteExtension::Unsigned &&
+               Right == ByteExtension::Signed) {
+      Opcode = AVM::MULSU8W_PSEUDO;
+      LHS = RightByte;
+      RHS = LeftByte;
+    }
+
+    SDValue Ops[] = {LHS, RHS};
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
+    return true;
+  }
+
+  bool selectDivision(SDNode *Node) {
+    if (Node->getValueType(0) != MVT::i16)
+      return false;
+    unsigned Opcode;
+    switch (Node->getOpcode()) {
+    case ISD::UDIV:
+      Opcode = AVM::UDIV16_PSEUDO;
+      break;
+    case ISD::UREM:
+      Opcode = AVM::UREM16_PSEUDO;
+      break;
+    case ISD::SDIV:
+      Opcode = AVM::SDIV16_PSEUDO;
+      break;
+    case ISD::SREM:
+      Opcode = AVM::SREM16_PSEUDO;
+      break;
+    default:
+      return false;
+    }
+    SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1)};
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
+    return true;
+  }
+
+  bool selectShift(SDNode *Node) {
+    if (Node->getValueType(0) != MVT::i16)
+      return false;
+    unsigned ShiftOpcode = Node->getOpcode();
+    if (ShiftOpcode != ISD::SHL && ShiftOpcode != ISD::SRL &&
+        ShiftOpcode != ISD::SRA)
+      return false;
+
+    SDValue Value = Node->getOperand(0);
+    SDValue CountValue = Node->getOperand(1);
+    unsigned Count;
+    if (getKnownShiftCount(CountValue, Count)) {
+      if (Count > 15)
+        return false;
+      if (Count == 0) {
+        ReplaceUses(SDValue(Node, 0), Value);
+        CurDAG->RemoveDeadNode(Node);
+        return true;
+      }
+
+      bool OptSize = CurDAG->getMachineFunction().getFunction().hasOptSize();
+      unsigned Opcode;
+      if (ShiftOpcode == ISD::SHL)
+        Opcode = OptSize ? AVM::LSL16I_PSEUDO
+                         : (Count <= 3 ? AVM::SHL16_SMALL_PSEUDO
+                                       : AVM::LSL16I_PSEUDO);
+      else if (ShiftOpcode == ISD::SRL)
+        Opcode =
+            !OptSize && Count == 1 ? AVM::LSR16_1_PSEUDO : AVM::LSR16I_PSEUDO;
+      else
+        Opcode =
+            !OptSize && Count == 1 ? AVM::ASR16_1_PSEUDO : AVM::ASR16I_PSEUDO;
+
+      if (Opcode == AVM::LSR16_1_PSEUDO || Opcode == AVM::ASR16_1_PSEUDO) {
+        CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Value);
+      } else {
+        SDValue Ops[] = {
+            Value, CurDAG->getTargetConstant(Count, SDLoc(Node), MVT::i16)};
+        CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
+      }
+      return true;
+    }
+
+    unsigned Opcode = ShiftOpcode == ISD::SHL   ? AVM::SHL16V_PSEUDO
+                      : ShiftOpcode == ISD::SRL ? AVM::LSR16V_PSEUDO
+                                                : AVM::ASR16V_PSEUDO;
+    SDValue Ops[] = {Value, CountValue};
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
+    return true;
+  }
 
   bool matchFrameAddress(SDValue Address, int &FrameIndex,
                          int64_t &Offset) const {
@@ -193,6 +451,13 @@ private:
     }
     if (!Mask || Mask->getZExtValue() != 0xff)
       return false;
+
+    if (Value.getOpcode() == ISD::MUL) {
+      SDValue Ops[] = {Value.getOperand(0), Value.getOperand(1)};
+      CurDAG->SelectNodeTo(Node, AVM::MUL8_PSEUDO, MVT::i16, Ops);
+      return true;
+    }
+
     CurDAG->SelectNodeTo(Node, AVM::ZEXT8_PSEUDO, MVT::i16, Value);
     return true;
   }
@@ -389,8 +654,23 @@ private:
       return;
     }
     switch (Node->getOpcode()) {
+    case AVMISD::BR_CC:
+      selectAVMBranchCC(Node);
+      return;
     case AVMISD::CALL:
       selectCall(Node);
+      return;
+    case AVMISD::CMOV:
+      selectAVMCMov(Node);
+      return;
+    case AVMISD::CMP:
+    case AVMISD::CMPI:
+    case AVMISD::TST8:
+    case AVMISD::TST16:
+      selectAVMCompare(Node);
+      return;
+    case AVMISD::CSET:
+      selectAVMCSet(Node);
       return;
     case AVMISD::LOAD24:
       if (selectLoad24(Node))
@@ -415,7 +695,33 @@ private:
     case ISD::ADD:
       if (selectFrameAddress(Node))
         return;
+      if (selectAddSub(Node))
+        return;
       break;
+    case ISD::SUB:
+      if (selectAddSub(Node))
+        return;
+      break;
+    case ISD::MUL:
+      if (selectMultiply(Node))
+        return;
+      break;
+    case ISD::UDIV:
+    case ISD::UREM:
+    case ISD::SDIV:
+    case ISD::SREM:
+      if (selectDivision(Node))
+        return;
+      break;
+    case ISD::SHL:
+    case ISD::SRL:
+    case ISD::SRA:
+      if (selectShift(Node))
+        return;
+      break;
+    case ISD::BR:
+      selectUnconditionalBranch(Node);
+      return;
     case ISD::FrameIndex:
       selectFrameIndex(Node);
       return;

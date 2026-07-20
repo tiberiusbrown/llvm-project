@@ -21,6 +21,7 @@ public:
   ~AVMTargetMachine() override;
 
   const AVMSubtarget *getSubtargetImpl(const Function &F) const override;
+  TargetTransformInfo getTargetTransformInfo(const Function &F) const override;
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();

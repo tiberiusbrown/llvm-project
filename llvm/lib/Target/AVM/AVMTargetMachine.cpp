@@ -4,7 +4,10 @@
 #include "AVM.h"
 #include "AVMMachineFunctionInfo.h"
 #include "AVMTargetObjectFile.h"
+#include "AVMTargetTransformInfo.h"
 #include "TargetInfo/AVMTargetInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -22,6 +25,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   RegisterTargetMachine<AVMTargetMachine> X(getTheAVMTarget());
   PassRegistry &PR = *PassRegistry::getPassRegistry();
   initializeAVMAsmPrinterPass(PR);
+  initializeAVMBranchPolarityPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
 }
@@ -39,6 +43,11 @@ AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
 }
 
 AVMTargetMachine::~AVMTargetMachine() = default;
+
+TargetTransformInfo
+AVMTargetMachine::getTargetTransformInfo(const Function &F) const {
+  return TargetTransformInfo(std::make_unique<AVMTTIImpl>(this, F));
+}
 
 const AVMSubtarget *
 AVMTargetMachine::getSubtargetImpl(const Function &F) const {
@@ -79,7 +88,15 @@ public:
     return false;
   }
 
-  void addPreEmitPass() override { addPass(createAVMExpandPseudoPass()); }
+  void addPreSched2() override {
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(&IfConverterID);
+  }
+
+  void addPreEmitPass() override {
+    addPass(createAVMBranchPolarityPass());
+    addPass(createAVMExpandPseudoPass());
+  }
 };
 } // namespace
 

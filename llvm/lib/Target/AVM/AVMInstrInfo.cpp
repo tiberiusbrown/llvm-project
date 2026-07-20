@@ -4,9 +4,13 @@
 #include "AVM.h"
 #include "AVMCostModel.h"
 #include "AVMSubtarget.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#include <limits>
 
 using namespace llvm;
 
@@ -99,6 +103,368 @@ void AVMInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       .setMIFlag(Flags);
 }
 
+namespace {
+bool getAVMBranchCondition(unsigned Opcode, AVMCC::CondCode &Cond) {
+  switch (Opcode) {
+  case AVM::BR_CC_PSEUDO:
+    return false;
+  case AVM::RELAX_BR_EQ:
+  case AVM::BREQ8:
+  case AVM::BREQ16:
+    Cond = AVMCC::EQ;
+    return true;
+  case AVM::RELAX_BR_NE:
+  case AVM::BRNE8:
+  case AVM::BRNE16:
+    Cond = AVMCC::NE;
+    return true;
+  case AVM::RELAX_BR_ULT:
+  case AVM::BRULT8:
+  case AVM::BRULT16:
+    Cond = AVMCC::ULT;
+    return true;
+  case AVM::RELAX_BR_UGE:
+  case AVM::BRUGE8:
+  case AVM::BRUGE16:
+    Cond = AVMCC::UGE;
+    return true;
+  case AVM::RELAX_BR_SLT:
+  case AVM::BRSLT8:
+  case AVM::BRSLT16:
+    Cond = AVMCC::SLT;
+    return true;
+  case AVM::RELAX_BR_SGE:
+  case AVM::BRSGE8:
+  case AVM::BRSGE16:
+    Cond = AVMCC::SGE;
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool isAVMConditionalBranch(const MachineInstr &MI) {
+  if (MI.getOpcode() == AVM::BR_CC_PSEUDO)
+    return true;
+  AVMCC::CondCode Cond;
+  return getAVMBranchCondition(MI.getOpcode(), Cond);
+}
+
+bool isAVMUnconditionalBranch(const MachineInstr &MI) {
+  switch (MI.getOpcode()) {
+  case AVM::JMP_PSEUDO:
+  case AVM::RELAX_JMP:
+  case AVM::JMP8:
+  case AVM::JMP16:
+  case AVM::JMPF:
+    return true;
+  default:
+    return false;
+  }
+}
+
+unsigned getSemanticBranchSize(const MachineInstr &MI) {
+  if (MI.getOpcode() == AVM::BR_CC_PSEUDO)
+    return 6;
+  if (MI.getOpcode() == AVM::JMP_PSEUDO)
+    return 4;
+  return MI.getDesc().getSize();
+}
+
+unsigned countPredicableCopies(MachineBasicBlock &MBB) {
+  unsigned Count = 0;
+  for (MachineInstr &MI : MBB) {
+    if (MI.isDebugInstr() || MI.isBranch())
+      continue;
+    if (MI.getOpcode() == AVM::COPY16_PSEUDO)
+      ++Count;
+    else if (MI.getOpcode() == AVM::COPY32_PSEUDO)
+      Count += 2;
+    else
+      return std::numeric_limits<unsigned>::max();
+    if (Count > 2)
+      return Count;
+  }
+  return Count;
+}
+} // namespace
+
+bool AVMInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
+                                 MachineBasicBlock *&TBB,
+                                 MachineBasicBlock *&FBB,
+                                 SmallVectorImpl<MachineOperand> &Cond,
+                                 bool) const {
+  TBB = FBB = nullptr;
+  Cond.clear();
+
+  SmallVector<MachineInstr *, 2> Branches;
+  for (MachineInstr &MI : llvm::reverse(MBB)) {
+    if (MI.isDebugInstr())
+      continue;
+    if (!MI.isTerminator())
+      break;
+    if (!isAVMConditionalBranch(MI) && !isAVMUnconditionalBranch(MI))
+      return true;
+    Branches.push_back(&MI);
+    if (Branches.size() == 2)
+      break;
+  }
+  if (Branches.empty())
+    return false;
+
+  MachineInstr *Last = Branches[0];
+  if (isAVMConditionalBranch(*Last)) {
+    if (!Last->getOperand(0).isMBB())
+      return true;
+    TBB = Last->getOperand(0).getMBB();
+    if (Last->getOpcode() == AVM::BR_CC_PSEUDO)
+      Cond.push_back(Last->getOperand(1));
+    else {
+      AVMCC::CondCode CC;
+      if (!getAVMBranchCondition(Last->getOpcode(), CC))
+        return true;
+      Cond.push_back(MachineOperand::CreateImm(CC));
+    }
+    return false;
+  }
+
+  if (!Last->getOperand(0).isMBB())
+    return true;
+  if (Branches.size() == 1) {
+    TBB = Last->getOperand(0).getMBB();
+    return false;
+  }
+
+  MachineInstr *First = Branches[1];
+  if (!isAVMConditionalBranch(*First) || !First->getOperand(0).isMBB())
+    return true;
+  TBB = First->getOperand(0).getMBB();
+  FBB = Last->getOperand(0).getMBB();
+  if (First->getOpcode() == AVM::BR_CC_PSEUDO)
+    Cond.push_back(First->getOperand(1));
+  else {
+    AVMCC::CondCode CC;
+    if (!getAVMBranchCondition(First->getOpcode(), CC))
+      return true;
+    Cond.push_back(MachineOperand::CreateImm(CC));
+  }
+  return false;
+}
+
+unsigned AVMInstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                    int *BytesRemoved) const {
+  unsigned Removed = 0;
+  int Bytes = 0;
+  while (!MBB.empty() && Removed != 2) {
+    MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
+    if (I == MBB.end() ||
+        (!isAVMConditionalBranch(*I) && !isAVMUnconditionalBranch(*I)))
+      break;
+    Bytes += getSemanticBranchSize(*I);
+    I->eraseFromParent();
+    ++Removed;
+  }
+  if (BytesRemoved)
+    *BytesRemoved = Bytes;
+  return Removed;
+}
+
+unsigned AVMInstrInfo::insertBranch(MachineBasicBlock &MBB,
+                                    MachineBasicBlock *TBB,
+                                    MachineBasicBlock *FBB,
+                                    ArrayRef<MachineOperand> Cond,
+                                    const DebugLoc &DL, int *BytesAdded) const {
+  assert(TBB && "AVM branch target is required");
+  assert((Cond.empty() || Cond.size() == 1) && "invalid AVM branch condition");
+  unsigned Added = 0;
+  int Bytes = 0;
+  if (Cond.empty()) {
+    BuildMI(&MBB, DL, get(AVM::JMP_PSEUDO)).addMBB(TBB);
+    Added = 1;
+    Bytes = 4;
+  } else {
+    assert(Cond[0].isImm() && "AVM condition must be an immediate");
+    BuildMI(&MBB, DL, get(AVM::BR_CC_PSEUDO))
+        .addMBB(TBB)
+        .addImm(Cond[0].getImm());
+    Added = 1;
+    Bytes = 6;
+    if (FBB) {
+      BuildMI(&MBB, DL, get(AVM::JMP_PSEUDO)).addMBB(FBB);
+      ++Added;
+      Bytes += 4;
+    }
+  }
+  if (BytesAdded)
+    *BytesAdded = Bytes;
+  return Added;
+}
+
+bool AVMInstrInfo::reverseBranchCondition(
+    SmallVectorImpl<MachineOperand> &Cond) const {
+  if (Cond.size() != 1 || !Cond[0].isImm())
+    return true;
+  switch (Cond[0].getImm()) {
+  case AVMCC::EQ:
+    Cond[0].setImm(AVMCC::NE);
+    return false;
+  case AVMCC::NE:
+    Cond[0].setImm(AVMCC::EQ);
+    return false;
+  case AVMCC::ULT:
+    Cond[0].setImm(AVMCC::UGE);
+    return false;
+  case AVMCC::UGE:
+    Cond[0].setImm(AVMCC::ULT);
+    return false;
+  case AVMCC::SLT:
+    Cond[0].setImm(AVMCC::SGE);
+    return false;
+  case AVMCC::SGE:
+    Cond[0].setImm(AVMCC::SLT);
+    return false;
+  default:
+    return true;
+  }
+}
+
+bool AVMInstrInfo::isPredicated(const MachineInstr &MI) const {
+  switch (MI.getOpcode()) {
+  case AVM::CMOV16_PSEUDO:
+  case AVM::CMOV32_PSEUDO:
+  case AVM::CMOV_EQ:
+  case AVM::CMOV_NE:
+  case AVM::CMOV_ULT:
+  case AVM::CMOV_UGE:
+  case AVM::CMOV_SLT:
+  case AVM::CMOV_SGE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool AVMInstrInfo::isPredicable(const MachineInstr &MI) const {
+  return MI.getOpcode() == AVM::COPY16_PSEUDO ||
+         MI.getOpcode() == AVM::COPY32_PSEUDO;
+}
+
+bool AVMInstrInfo::PredicateInstruction(MachineInstr &MI,
+                                        ArrayRef<MachineOperand> Pred) const {
+  if (Pred.size() != 1 || !Pred[0].isImm() || !isPredicable(MI))
+    return false;
+  Register Dest = MI.getOperand(0).getReg();
+  MI.setDesc(get(MI.getOpcode() == AVM::COPY32_PSEUDO ? AVM::CMOV32_PSEUDO
+                                                      : AVM::CMOV16_PSEUDO));
+  MI.addOperand(MachineOperand::CreateReg(Dest, false));
+  MI.addOperand(MachineOperand::CreateImm(Pred[0].getImm()));
+  MI.addOperand(MachineOperand::CreateReg(AVM::CC, false, true));
+  return true;
+}
+
+bool AVMInstrInfo::ClobbersPredicate(MachineInstr &MI,
+                                     std::vector<MachineOperand> &,
+                                     bool) const {
+  return MI.modifiesRegister(AVM::CC, &RI);
+}
+
+bool AVMInstrInfo::isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned,
+                                       unsigned, BranchProbability) const {
+  if (MBB.getParent()->getFunction().hasOptSize())
+    return false;
+  unsigned Copies = countPredicableCopies(MBB);
+  return Copies >= 1 && Copies <= 2;
+}
+
+bool AVMInstrInfo::isProfitableToIfCvt(MachineBasicBlock &TMBB, unsigned,
+                                       unsigned, MachineBasicBlock &FMBB,
+                                       unsigned, unsigned,
+                                       BranchProbability) const {
+  if (TMBB.getParent()->getFunction().hasOptSize())
+    return false;
+  unsigned TrueCopies = countPredicableCopies(TMBB);
+  unsigned FalseCopies = countPredicableCopies(FMBB);
+  return TrueCopies != std::numeric_limits<unsigned>::max() &&
+         FalseCopies != std::numeric_limits<unsigned>::max() &&
+         TrueCopies + FalseCopies >= 1 && TrueCopies + FalseCopies <= 2;
+}
+
+unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
+  auto IsUpper = [](const MachineOperand &MO) {
+    return MO.isReg() && MO.getReg().isPhysical() &&
+           AVM::UpperGPR16RegClass.contains(MO.getReg());
+  };
+  auto CompactBinary = [&]() {
+    return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) &&
+                   IsUpper(MI.getOperand(2))
+               ? 1U
+               : 2U;
+  };
+
+  switch (MI.getOpcode()) {
+  case AVM::COPY16_PSEUDO:
+    return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) ? 1 : 2;
+  case AVM::COPY32_PSEUDO:
+    return 2;
+  case AVM::LDI8_PSEUDO:
+    return IsUpper(MI.getOperand(0)) ? get(AVM::LDI8).getSize()
+                                     : get(AVM::COLDLDI8).getSize();
+  case AVM::LDI16_PSEUDO:
+  case AVM::DATA_ADDR_PSEUDO:
+    return IsUpper(MI.getOperand(0)) ? get(AVM::LDI16).getSize()
+                                     : get(AVM::COLDLDI16).getSize();
+  case AVM::ADD16_PSEUDO:
+  case AVM::SUB16_PSEUDO:
+  case AVM::AND16_PSEUDO:
+  case AVM::OR16_PSEUDO:
+  case AVM::XOR16_PSEUDO:
+    return CompactBinary();
+  case AVM::SEXT8_PSEUDO:
+  case AVM::ZEXT8_PSEUDO:
+  case AVM::INC16_PSEUDO:
+  case AVM::DEC16_PSEUDO:
+  case AVM::MUL8_PSEUDO:
+  case AVM::MULU8W_PSEUDO:
+  case AVM::MULS8W_PSEUDO:
+  case AVM::MULSU8W_PSEUDO:
+  case AVM::MUL16_PSEUDO:
+  case AVM::UDIV16_PSEUDO:
+  case AVM::UREM16_PSEUDO:
+  case AVM::SDIV16_PSEUDO:
+  case AVM::SREM16_PSEUDO:
+  case AVM::TST8_PSEUDO:
+  case AVM::TST16_PSEUDO:
+  case AVM::CSET_PSEUDO:
+  case AVM::CMOV16_PSEUDO:
+  case AVM::LSR16_1_PSEUDO:
+  case AVM::ASR16_1_PSEUDO:
+  case AVM::LSL16I_PSEUDO:
+  case AVM::LSR16I_PSEUDO:
+  case AVM::ASR16I_PSEUDO:
+  case AVM::SHL16V_PSEUDO:
+  case AVM::LSR16V_PSEUDO:
+  case AVM::ASR16V_PSEUDO:
+    return 2;
+  case AVM::ADDIS8_PSEUDO:
+  case AVM::CMPIS8_PSEUDO:
+    return IsUpper(MI.getOperand(0)) ? 2 : 3;
+  case AVM::CMP16_PSEUDO:
+    return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) ? 1 : 2;
+  case AVM::CMOV32_PSEUDO:
+    return 4;
+  case AVM::SHL16_SMALL_PSEUDO: {
+    unsigned Count = MI.getOperand(2).getImm();
+    return Count * (IsUpper(MI.getOperand(0)) ? 1U : 2U);
+  }
+  case AVM::BR_CC_PSEUDO:
+    return 6;
+  case AVM::JMP_PSEUDO:
+    return 4;
+  default:
+    return MI.getDesc().getSize();
+  }
+}
+
 unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
                                        const MachineInstr &MI,
                                        unsigned *PredCost) const {
@@ -189,6 +555,10 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   case AVM::LSR16_1:
     return Fixed(AVMCostKind::Lsr16One);
   case AVM::ASR16_1:
+    return Fixed(AVMCostKind::Asr16One);
+  case AVM::LSR16_1_PSEUDO:
+    return Fixed(AVMCostKind::Lsr16One);
+  case AVM::ASR16_1_PSEUDO:
     return Fixed(AVMCostKind::Asr16One);
   case AVM::LSR32_1:
     return Fixed(AVMCostKind::Lsr32One);
@@ -348,6 +718,30 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Typical(AVMCostKind::SDiv16);
   case AVM::SREM16:
     return Typical(AVMCostKind::SRem16);
+  case AVM::UDIV16_PSEUDO:
+    return Typical(AVMCostKind::UDiv16);
+  case AVM::UREM16_PSEUDO:
+    return Typical(AVMCostKind::URem16);
+  case AVM::SDIV16_PSEUDO:
+    return Typical(AVMCostKind::SDiv16);
+  case AVM::SREM16_PSEUDO:
+    return Typical(AVMCostKind::SRem16);
+  case AVM::SHL16V:
+  case AVM::LSR16V:
+  case AVM::ASR16V:
+  case AVM::SHL16V_PSEUDO:
+  case AVM::LSR16V_PSEUDO:
+  case AVM::ASR16V_PSEUDO:
+    return 60;
+  case AVM::LSL16I:
+  case AVM::LSL16I_PSEUDO:
+    return AVM::getShiftCycles(AVMCostKind::Lsl16I, MI.getOperand(2).getImm());
+  case AVM::LSR16I:
+  case AVM::LSR16I_PSEUDO:
+    return AVM::getShiftCycles(AVMCostKind::Lsr16I, MI.getOperand(2).getImm());
+  case AVM::ASR16I:
+  case AVM::ASR16I_PSEUDO:
+    return AVM::getShiftCycles(AVMCostKind::Asr16I, MI.getOperand(2).getImm());
   case AVM::FADD:
     return Typical(AVMCostKind::FAdd);
   case AVM::FSUB:

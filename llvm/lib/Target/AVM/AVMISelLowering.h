@@ -12,9 +12,16 @@ class AVMSubtarget;
 namespace AVMISD {
 enum NodeType : unsigned {
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
+  BR_CC,
   CALL,
+  CMOV,
+  CMP,
+  CMPI,
+  CSET,
   LOAD24,
   STORE24,
+  TST8,
+  TST16,
   WRAPPER,
   RET_GLUE
 };
@@ -27,6 +34,7 @@ public:
   MVT getPointerTy(const DataLayout &DL, uint32_t AS = 0) const override;
   EVT getTypeForExtReturn(LLVMContext &Context, EVT VT,
                           ISD::NodeType ExtendKind) const override;
+  bool areJTsAllowed(const Function *) const override { return false; }
   const char *getTargetNodeName(unsigned Opcode) const override;
   bool allowsMisalignedMemoryAccesses(
       EVT VT, unsigned AddrSpace = 0, Align Alignment = Align(1),
@@ -40,7 +48,11 @@ public:
 
 private:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+  SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerSelect(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerSelectCC(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerSetCC(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerCall(CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;

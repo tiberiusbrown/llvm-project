@@ -1,0 +1,53 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 -O2 \
+# RUN:   -run-pass=avm-branch-polarity -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @hot_true() { ret void }
+  define void @equal_weights() { ret void }
+...
+---
+name: hot_true
+body: |
+  bb.0:
+    successors: %bb.1(0x73333333), %bb.2(0x0ccccccd)
+    liveins: $r4, $r5
+
+    ; Make the likely taken edge the physical fallthrough by reversing ULT.
+    ; CHECK-LABEL: name: hot_true
+    ; CHECK: CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; CHECK-NEXT: BR_CC_PSEUDO %bb.2, 3, implicit $cc
+    ; CHECK-NOT: JMP_PSEUDO
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 2, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: equal_weights
+body: |
+  bb.0:
+    successors: %bb.1(0x40000000), %bb.2(0x40000000)
+    liveins: $r4, $r5
+
+    ; Equal probabilities preserve the existing branch polarity and layout.
+    ; CHECK-LABEL: name: equal_weights
+    ; CHECK: CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; CHECK-NEXT: BR_CC_PSEUDO %bb.1, 2, implicit $cc
+    ; CHECK-NEXT: JMP_PSEUDO %bb.2
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 2, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

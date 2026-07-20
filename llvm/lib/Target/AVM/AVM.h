@@ -11,10 +11,16 @@ class AVMTargetMachine;
 class FunctionPass;
 class PassRegistry;
 
+namespace AVMCC {
+enum CondCode : unsigned { EQ, NE, ULT, UGE, SLT, SGE };
+}
+
 FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
+FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMExpandPseudoPass();
 
 void initializeAVMAsmPrinterPass(PassRegistry &);
+void initializeAVMBranchPolarityPass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 } // namespace llvm

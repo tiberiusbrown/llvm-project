@@ -17,6 +17,7 @@ add_public_tablegen_target(AVMCommonTableGen)
 
 add_llvm_target(AVMCodeGen
   AVMAsmPrinter.cpp
+  AVMBranchPolarity.cpp
   AVMCostModel.cpp
   AVMExpandPseudoInsts.cpp
   AVMFrameLowering.cpp
@@ -35,6 +36,7 @@ add_llvm_target(AVMCodeGen
   AVMCommonTableGen
 
   LINK_COMPONENTS
+  Analysis
   AsmPrinter
   AVMDesc
   AVMInfo
