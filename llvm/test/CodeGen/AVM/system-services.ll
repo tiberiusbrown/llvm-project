@@ -1,5 +1,8 @@
+; RUN: llc -mtriple=avm -O0 -verify-machineinstrs < %s | FileCheck %s
 ; RUN: llc -mtriple=avm -O2 -verify-machineinstrs < %s | FileCheck %s
-; RUN: llc -mtriple=avm -O2 -stop-after=finalize-isel < %s -o - \
+; RUN: llc -mtriple=avm -O0 -stop-after=avm-service-result < %s -o - \
+; RUN:   | FileCheck %s --check-prefix=MIR
+; RUN: llc -mtriple=avm -O2 -stop-after=avm-service-result < %s -o - \
 ; RUN:   | FileCheck %s --check-prefix=MIR
 
 declare void @llvm.avm.debug.putc(i8)
@@ -44,8 +47,6 @@ define i32 @timer32_service() {
 }
 
 define float @math_services(float %x, float %y) {
-; TODO: Add fixed q2/q3 live-range stress coverage after the separate
-; floating-service register-allocation issue is addressed.
 ; CHECK-LABEL: math_services:
 ; CHECK:       sys sinf
 ; CHECK:       sys cosf
@@ -77,21 +78,34 @@ define float @math_services(float %x, float %y) {
 ; MIR:       SYS_DEBUG_BREAK_PSEUDO
 ; MIR-LABEL: name: timer_services
 ; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
-; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
+; MIR-NEXT:  [[TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[TIMER]]
 ; MIR-LABEL: name: timer32_service
-; MIR:       {{%[0-9]+}}:q2only = SYS_MILLIS32_PSEUDO
+; MIR:       [[TIMER32:%[0-9]+]]:q2only = SYS_MILLIS32_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[TIMER32]]
 ; MIR-LABEL: name: math_services
-; MIR:       {{%[0-9]+}}:q2only = SYS_SINF_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_COSF_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR:       {{%[0-9]+}}:q2only = SYS_TANF_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_EXPF_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_LOGF_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_LOG2F_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_LOG10F_PSEUDO
-; MIR:       {{%[0-9]+}}:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR:       {{%[0-9]+}}:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR:       {{%[0-9]+}}:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR:       [[SINF:%[0-9]+]]:q2only = SYS_SINF_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[SINF]]
+; MIR:       [[COSF:%[0-9]+]]:q2only = SYS_COSF_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[COSF]]
+; MIR:       [[ATAN2F:%[0-9]+]]:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[ATAN2F]]
+; MIR:       [[TANF:%[0-9]+]]:q2only = SYS_TANF_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[TANF]]
+; MIR:       [[EXPF:%[0-9]+]]:q2only = SYS_EXPF_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[EXPF]]
+; MIR:       [[LOGF:%[0-9]+]]:q2only = SYS_LOGF_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOGF]]
+; MIR:       [[LOG2F:%[0-9]+]]:q2only = SYS_LOG2F_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOG2F]]
+; MIR:       [[LOG10F:%[0-9]+]]:q2only = SYS_LOG10F_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOG10F]]
+; MIR:       [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[POWF]]
+; MIR:       [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[HYPOTF]]
+; MIR:       [[FMODF:%[0-9]+]]:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[FMODF]]
 
 declare float @llvm.sin.f32(float)
 declare float @llvm.cos.f32(float)
@@ -106,4 +120,57 @@ define float @standard_math_intrinsics(float %x, float %y) {
   %cos = call float @llvm.cos.f32(float %sin)
   %pow = call float @llvm.pow.f32(float %cos, float %y)
   ret float %pow
+}
+
+define float @overlapping_math_results(float %x, float %y) {
+; CHECK-LABEL: overlapping_math_results:
+; CHECK-DAG:   sys sinf
+; CHECK-DAG:   sys powf
+; CHECK:       fadd
+  %sin = call float @llvm.avm.sinf(float %x)
+  %pow = call float @llvm.avm.powf(float %x, float %y)
+  %sum = fadd float %sin, %pow
+  ret float %sum
+}
+
+define float @two_binary_results(float %x, float %y) {
+; CHECK-LABEL: two_binary_results:
+; CHECK-DAG:   sys powf
+; CHECK-DAG:   sys hypotf
+; CHECK:       fadd
+  %pow = call float @llvm.avm.powf(float %x, float %y)
+  %hypot = call float @llvm.avm.hypotf(float %x, float %y)
+  %sum = fadd float %pow, %hypot
+  ret float %sum
+}
+
+define float @chained_services(float %x, float %y) {
+; CHECK-LABEL: chained_services:
+; CHECK:       sys powf
+; CHECK:       sys sinf
+  %pow = call float @llvm.avm.powf(float %x, float %y)
+  %sin = call float @llvm.avm.sinf(float %pow)
+  ret float %sin
+}
+
+define i32 @overlapping_timer32_results() {
+; CHECK-LABEL: overlapping_timer32_results:
+; CHECK:       sys millis32
+; CHECK:       sys millis32
+; CHECK:       add
+  %a = call i32 @llvm.avm.millis32()
+  %b = call i32 @llvm.avm.millis32()
+  %sum = add i32 %a, %b
+  ret i32 %sum
+}
+
+define i16 @overlapping_timer16_results() {
+; CHECK-LABEL: overlapping_timer16_results:
+; CHECK:       sys millis
+; CHECK:       sys millis
+; CHECK:       add
+  %a = call i16 @llvm.avm.millis()
+  %b = call i16 @llvm.avm.millis()
+  %sum = add i16 %a, %b
+  ret i16 %sum
 }

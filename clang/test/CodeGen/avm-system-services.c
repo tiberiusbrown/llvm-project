@@ -1,4 +1,8 @@
 // RUN: %clang_cc1 -triple avm -emit-llvm -O2 -o - %s | FileCheck %s
+// RUN: %clang_cc1 -triple avm -O0 -S -o - %s | FileCheck %s --check-prefix=ASM
+// RUN: %clang_cc1 -triple avm -O2 -S -o - %s | FileCheck %s --check-prefix=ASM
+// RUN: %clang_cc1 -triple avm -Os -S -o - %s | FileCheck %s --check-prefix=ASM
+// RUN: %clang_cc1 -triple avm -Oz -S -o - %s | FileCheck %s --check-prefix=ASM
 
 extern unsigned int __avm_millis(void);
 extern unsigned long __avm_millis32(void);
@@ -38,6 +42,10 @@ void *move_service(void *dst, const void *src, unsigned short size) {
   return __avm_memmove(dst, src, size);
 }
 
+float pressure(float x, float y) {
+  return __avm_sinf(x) + __avm_powf(x, y);
+}
+
 // CHECK-LABEL: define{{.*}} void @debug_services
 // CHECK: call{{.*}} void @llvm.avm.debug.putc(i8
 // CHECK: call{{.*}} void @llvm.avm.debug.break()
@@ -62,3 +70,6 @@ void *move_service(void *dst, const void *src, unsigned short size) {
 // CHECK: call{{.*}} ptr @llvm.avm.memset
 // CHECK-LABEL: define{{.*}} ptr @move_service
 // CHECK: call{{.*}} ptr @llvm.avm.memmove
+// ASM-LABEL: pressure:
+// ASM-DAG: sys sinf
+// ASM-DAG: sys powf

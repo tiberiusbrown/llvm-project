@@ -25,6 +25,10 @@ public:
     return true;
   }
   BitVector getReservedRegs(const MachineFunction &MF) const override;
+  bool shouldCoalesce(MachineInstr *MI, const TargetRegisterClass *SrcRC,
+                      unsigned SubReg, const TargetRegisterClass *DstRC,
+                      unsigned DstSubReg, const TargetRegisterClass *NewRC,
+                      LiveIntervals &LIS) const override;
   bool eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
                            unsigned FIOperandNum,
                            RegScavenger *RS = nullptr) const override;

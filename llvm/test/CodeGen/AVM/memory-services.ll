@@ -2,7 +2,7 @@
 ; RUN:   < %s | FileCheck %s --check-prefixes=CHECK,O0
 ; RUN: llc -mtriple=avm -O2 --frame-pointer=none -verify-machineinstrs \
 ; RUN:   < %s | FileCheck %s --check-prefixes=CHECK,O2
-; RUN: llc -mtriple=avm -O2 -stop-after=finalize-isel < %s -o - \
+; RUN: llc -mtriple=avm -O2 -stop-after=avm-service-result < %s -o - \
 ; RUN:   | FileCheck %s --check-prefix=MIR
 ; RUN: opt -mtriple=avm -passes='default<O2>' -S < %s \
 ; RUN:   | FileCheck %s --check-prefix=OPT
@@ -40,11 +40,14 @@ define ptr @target_memmove(ptr %dst, ptr %src, i16 %size) {
 }
 
 ; MIR-LABEL: name: target_memcpy
-; MIR:       {{%[0-9]+}}:r4only = SYS_MEMCPY_PSEUDO
+; MIR:       [[MEMCPY:%[0-9]+]]:r4only = SYS_MEMCPY_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMCPY]]
 ; MIR-LABEL: name: target_memset
-; MIR:       {{%[0-9]+}}:r4only = SYS_MEMSET_PSEUDO
+; MIR:       [[MEMSET:%[0-9]+]]:r4only = SYS_MEMSET_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMSET]]
 ; MIR-LABEL: name: target_memmove
-; MIR:       {{%[0-9]+}}:r4only = SYS_MEMMOVE_PSEUDO
+; MIR:       [[MEMMOVE:%[0-9]+]]:r4only = SYS_MEMMOVE_PSEUDO
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMMOVE]]
 
 define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0-LABEL: memmove_inputs_remain_live:

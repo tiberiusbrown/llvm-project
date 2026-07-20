@@ -45,6 +45,18 @@ BitVector AVMRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
+bool AVMRegisterInfo::shouldCoalesce(MachineInstr *MI,
+                                     const TargetRegisterClass *, unsigned,
+                                     const TargetRegisterClass *, unsigned,
+                                     const TargetRegisterClass *,
+                                     LiveIntervals &) const {
+  // AVMServiceResult marks fixed-to-generic copies that cross another fixed
+  // service as NoMerge. Coalescing those copies would widen a singleton
+  // service result back across the later service and can make allocation
+  // impossible. Ordinary copies retain the normal coalescer behavior.
+  return !MI || !MI->getFlag(MachineInstr::NoMerge);
+}
+
 namespace {
 void emitAddress(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
                  const DebugLoc &DL, const AVMInstrInfo &TII, Register Dest,
