@@ -456,6 +456,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
       MaxStoresPerMemmoveOptSize = 4;
 }
 
+bool AVMTargetLowering::isFPImmLegal(const APFloat &, EVT VT, bool) const {
+  return VT == MVT::f32;
+}
+
 static TargetLowering::AtomicExpansionKind getAVMAtomicExpansionKind(Type *Ty) {
   return Ty->getPrimitiveSizeInBits().getFixedValue() <= 32
              ? TargetLowering::AtomicExpansionKind::NotAtomic

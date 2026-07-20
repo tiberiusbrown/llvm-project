@@ -76,6 +76,9 @@ public:
   AtomicExpansionKind
   shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
 
+  bool isFPImmLegal(const APFloat &Imm, EVT VT,
+                    bool ForCodeSize) const override;
+
 private:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
