@@ -48,6 +48,10 @@ public:
   /// `SelectionDAG::getMemIntrinsicNode`.
   virtual bool isTargetMemoryOpcode(unsigned Opcode) const { return false; }
 
+  /// Return true when nonvolatile memory intrinsics should remain in IR until
+  /// SelectionDAG lowering can offer the target-specific emit hooks below.
+  virtual bool shouldDeferMemIntrinsics() const { return false; }
+
   /// Returns true if a node with the given target-specific opcode has
   /// strict floating-point semantics.
   virtual bool isTargetStrictFPOpcode(unsigned Opcode) const { return false; }
@@ -83,6 +87,16 @@ public:
     return SDValue();
   }
 
+  virtual SDValue EmitTargetCodeForMemcpyWithAA(
+      SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
+      SDValue Src, SDValue Size, Align Alignment, bool IsVolatile,
+      bool AlwaysInline, MachinePointerInfo DstPtrInfo,
+      MachinePointerInfo SrcPtrInfo, const AAMDNodes &AAInfo) const {
+    return EmitTargetCodeForMemcpy(DAG, DL, Chain, Dst, Src, Size, Alignment,
+                                   IsVolatile, AlwaysInline, DstPtrInfo,
+                                   SrcPtrInfo);
+  }
+
   /// Emit target-specific code that performs a memmove.
   /// This can be used by targets to provide code sequences for cases
   /// that don't fit the target's parameters for simple loads/stores and can be
@@ -94,6 +108,15 @@ public:
       SDValue Op2, SDValue Op3, Align Alignment, bool isVolatile,
       MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
     return SDValue();
+  }
+
+  virtual SDValue EmitTargetCodeForMemmoveWithAA(
+      SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
+      SDValue Src, SDValue Size, Align Alignment, bool IsVolatile,
+      MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo,
+      const AAMDNodes &AAInfo) const {
+    return EmitTargetCodeForMemmove(DAG, DL, Chain, Dst, Src, Size, Alignment,
+                                    IsVolatile, DstPtrInfo, SrcPtrInfo);
   }
 
   /// Emit target-specific code that performs a memset.
@@ -110,6 +133,15 @@ public:
                                           bool AlwaysInline,
                                           MachinePointerInfo DstPtrInfo) const {
     return SDValue();
+  }
+
+  virtual SDValue EmitTargetCodeForMemsetWithAA(
+      SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
+      SDValue Value, SDValue Size, Align Alignment, bool IsVolatile,
+      bool AlwaysInline, MachinePointerInfo DstPtrInfo,
+      const AAMDNodes &AAInfo) const {
+    return EmitTargetCodeForMemset(DAG, DL, Chain, Dst, Value, Size, Alignment,
+                                   IsVolatile, AlwaysInline, DstPtrInfo);
   }
 
   /// Emit target-specific code that performs a memcmp/bcmp, in cases where that is

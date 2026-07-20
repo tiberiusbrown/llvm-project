@@ -108,9 +108,8 @@ define i16 @load_and_call_data_pointer(i16 %value) {
 
 define zeroext i8 @program_pointer_add(ptr addrspace(1) %base, i32 %offset) {
 ; CHECK-LABEL: program_pointer_add:
-; CHECK:       zext8
 ; CHECK:       add32
-; CHECK:       zext8
+; CHECK-NOT:   zext8
 ; CHECK:       ldp8u
   %address = getelementptr i8, ptr addrspace(1) %base, i32 %offset
   %value = load i8, ptr addrspace(1) %address, align 1
@@ -129,10 +128,71 @@ define i1 @program_pointer_equal(ptr addrspace(1) %left,
                                  ptr addrspace(1) %right) {
 ; CHECK-LABEL: program_pointer_equal:
 ; CHECK:       zext8
-; CHECK:       zext8
 ; CHECK:       cmp32
   %result = icmp eq ptr addrspace(1) %left, %right
   ret i1 %result
+}
+
+define zeroext i8 @inttoptr_program_load(i32 %bits) {
+; CHECK-LABEL: inttoptr_program_load:
+; CHECK-NOT:   and
+; CHECK-NOT:   zext8
+; CHECK:       ldp8u
+  %pointer = inttoptr i32 %bits to ptr addrspace(1)
+  %value = load i8, ptr addrspace(1) %pointer, align 1
+  ret i8 %value
+}
+
+define i32 @program_ptrtoint(ptr addrspace(1) %pointer) {
+; CHECK-LABEL: program_ptrtoint:
+; CHECK:       and
+; CHECK:       ret
+  %bits = ptrtoint ptr addrspace(1) %pointer to i32
+  ret i32 %bits
+}
+
+declare void @consume_program_pointer(ptr addrspace(1))
+
+define void @computed_program_argument(ptr addrspace(1) %base, i32 %offset) {
+; CHECK-LABEL: computed_program_argument:
+; CHECK:       add32
+; CHECK:       zext8
+; CHECK:       call consume_program_pointer
+  %pointer = getelementptr i8, ptr addrspace(1) %base, i32 %offset
+  call void @consume_program_pointer(ptr addrspace(1) %pointer)
+  ret void
+}
+
+define ptr addrspace(1) @computed_program_return(ptr addrspace(1) %base,
+                                                 i32 %offset) {
+; CHECK-LABEL: computed_program_return:
+; CHECK:       add32
+; CHECK:       zext8
+; CHECK:       ret
+  %pointer = getelementptr i8, ptr addrspace(1) %base, i32 %offset
+  ret ptr addrspace(1) %pointer
+}
+
+define void @computed_indirect_call(ptr addrspace(1) %callee, i32 %offset) {
+; CHECK-LABEL: computed_indirect_call:
+; CHECK:       add32
+; CHECK-NOT:   zext8
+; CHECK:       callp
+  %adjusted = getelementptr i8, ptr addrspace(1) %callee, i32 %offset
+  call addrspace(1) void %adjusted()
+  ret void
+}
+
+define void @computed_packed_store(ptr %slot, ptr addrspace(1) %base,
+                                   i32 %offset) {
+; CHECK-LABEL: computed_packed_store:
+; CHECK:       add32
+; CHECK-NOT:   zext8
+; CHECK:       st16
+; CHECK:       st8
+  %pointer = getelementptr i8, ptr addrspace(1) %base, i32 %offset
+  store ptr addrspace(1) %pointer, ptr %slot, align 1
+  ret void
 }
 
 define zeroext i8 @postincrement_program_byte(ptr addrspace(1) %address,

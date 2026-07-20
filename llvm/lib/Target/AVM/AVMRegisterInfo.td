@@ -49,6 +49,21 @@ def UpperGPR8 : RegisterClass<"AVM", [i16, i8], 8, (add R4, R5, R6, R7)>;
 def GPR32 : RegisterClass<"AVM", [i32, f32], 8,
                           (add R4R5, R6R7, R0R1, R2R3)>;
 def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 8, (add R4R5, R6R7)>;
+// A distinct class with the same physical members lets SelectionDAG preserve
+// the semantic `t` inline-assembly constraint through register assignment.
+def ProgPtrGPR32 : RegisterClass<"AVM", [i32], 8,
+                                 (add R4R5, R6R7, R0R1, R2R3)>;
+
+// Fixed-register service interfaces.  Keeping these as singleton allocation
+// classes lets the normal register allocator insert parallel-copy-safe setup
+// and preserve input-only values without modeling a service as a call.
+def R4Only : RegisterClass<"AVM", [i16], 8, (add R4)>;
+def R5Only : RegisterClass<"AVM", [i16], 8, (add R5)>;
+def R6Only : RegisterClass<"AVM", [i16], 8, (add R6)>;
+def Q0Only : RegisterClass<"AVM", [i32, f32], 8, (add R0R1)>;
+def Q1Only : RegisterClass<"AVM", [i32, f32], 8, (add R2R3)>;
+def Q2Only : RegisterClass<"AVM", [i32, f32], 8, (add R4R5)>;
+def Q3Only : RegisterClass<"AVM", [i32, f32], 8, (add R6R7)>;
 
 // Keep the MC-facing class names so the parser, emitter, printer, and their
 // established tests retain their spelling and register acceptance.

@@ -142,7 +142,6 @@ define void @stacked_program_pointer(ptr addrspace(1) %a,
 ; CHECK-LABEL: stacked_program_pointer:
 ; CHECK:       ldsp16 r0, [sp+7]
 ; CHECK-NEXT:  ldsp8u r1, [sp+9]
-; CHECK-NEXT:  zext8 r1
 ; CHECK-NEXT:  adjsp -3
 ; CHECK-NEXT:  stsp16 [sp+0], r0
 ; CHECK-NEXT:  stsp8 [sp+2], r1

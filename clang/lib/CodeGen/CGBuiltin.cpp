@@ -32,6 +32,7 @@
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsAVM.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/MatrixBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
@@ -92,7 +93,9 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
           cast<clang::StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
       return CGF->CGM.GetAddrOfAVMFlashString(Literal).getPointer();
     }
-    case AVM::BI__builtin_avm_memcpy_p: {
+    case AVM::BI__builtin_avm_memcpy_p:
+    case AVM::BI__avm_memcpy_P:
+    case AVM::BImemcpy_P: {
       CallArgList Args;
       const FunctionDecl *Callee = E->getDirectCallee();
       const auto *FPT = Callee->getType()->castAs<FunctionProtoType>();
@@ -105,6 +108,89 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
                                 Address(Src, CGF->Int8Ty, One), Size,
                                 /*IsVolatile=*/false);
       return Dst;
+    }
+    case AVM::BI__avm_debug_putc:
+    case AVM::BI__avm_debug_break:
+    case AVM::BI__avm_millis:
+    case AVM::BI__avm_millis32:
+    case AVM::BI__avm_sinf:
+    case AVM::BI__avm_cosf:
+    case AVM::BI__avm_atan2f:
+    case AVM::BI__avm_tanf:
+    case AVM::BI__avm_expf:
+    case AVM::BI__avm_logf:
+    case AVM::BI__avm_log2f:
+    case AVM::BI__avm_log10f:
+    case AVM::BI__avm_powf:
+    case AVM::BI__avm_hypotf:
+    case AVM::BI__avm_fmodf:
+    case AVM::BI__avm_memcpy:
+    case AVM::BI__avm_memset:
+    case AVM::BI__avm_memmove: {
+      Intrinsic::ID ID;
+      switch (BuiltinID) {
+      case AVM::BI__avm_debug_putc:
+        ID = Intrinsic::avm_debug_putc;
+        break;
+      case AVM::BI__avm_debug_break:
+        ID = Intrinsic::avm_debug_break;
+        break;
+      case AVM::BI__avm_millis:
+        ID = Intrinsic::avm_millis;
+        break;
+      case AVM::BI__avm_millis32:
+        ID = Intrinsic::avm_millis32;
+        break;
+      case AVM::BI__avm_sinf:
+        ID = Intrinsic::avm_sinf;
+        break;
+      case AVM::BI__avm_cosf:
+        ID = Intrinsic::avm_cosf;
+        break;
+      case AVM::BI__avm_atan2f:
+        ID = Intrinsic::avm_atan2f;
+        break;
+      case AVM::BI__avm_tanf:
+        ID = Intrinsic::avm_tanf;
+        break;
+      case AVM::BI__avm_expf:
+        ID = Intrinsic::avm_expf;
+        break;
+      case AVM::BI__avm_logf:
+        ID = Intrinsic::avm_logf;
+        break;
+      case AVM::BI__avm_log2f:
+        ID = Intrinsic::avm_log2f;
+        break;
+      case AVM::BI__avm_log10f:
+        ID = Intrinsic::avm_log10f;
+        break;
+      case AVM::BI__avm_powf:
+        ID = Intrinsic::avm_powf;
+        break;
+      case AVM::BI__avm_hypotf:
+        ID = Intrinsic::avm_hypotf;
+        break;
+      case AVM::BI__avm_fmodf:
+        ID = Intrinsic::avm_fmodf;
+        break;
+      case AVM::BI__avm_memcpy:
+        ID = Intrinsic::avm_memcpy;
+        break;
+      case AVM::BI__avm_memset:
+        ID = Intrinsic::avm_memset;
+        break;
+      case AVM::BI__avm_memmove:
+        ID = Intrinsic::avm_memmove;
+        break;
+      default:
+        llvm_unreachable("unhandled AVM target builtin");
+      }
+
+      SmallVector<Value *, 3> Args;
+      for (const Expr *Arg : E->arguments())
+        Args.push_back(CGF->EmitScalarExpr(Arg));
+      return CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
     }
     default:
       return nullptr;

@@ -1,6 +1,9 @@
 ; RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
 ; RUN:   -mtune=avm-interpreter-32u4-v1 -O0 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s
+; RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+; RUN:   -mtune=avm-interpreter-32u4-v1 -O2 -verify-machineinstrs < %s \
+; RUN:   | FileCheck %s
 
 define void @register_constraints(i16 %word, i8 %byte, i32 %pair,
                                   ptr addrspace(1) %program) {
@@ -36,6 +39,23 @@ define void @fixed_registers(i16 %word, i32 %pair) {
   call void asm sideeffect "nop ; $0", "{r7}"(i16 %word)
   call void asm sideeffect "nop ; $0", "{q0}"(i32 %pair)
   call void asm sideeffect "nop ; $0", "{q3}"(i32 %pair)
+  ret void
+}
+
+define void @computed_program_pointer_constraints(ptr addrspace(1) %base,
+                                                   i32 %offset) {
+; CHECK-LABEL: computed_program_pointer_constraints:
+; CHECK:       add32
+; CHECK-NOT:   and
+; CHECK-NOT:   zext8
+; CHECK:       ; q{{[0-3]}}
+; CHECK:       add32
+; CHECK:       and
+; CHECK:       ; q{{[0-3]}}
+  %semantic = getelementptr i8, ptr addrspace(1) %base, i32 %offset
+  call void asm sideeffect "nop ; $0", "t"(ptr addrspace(1) %semantic)
+  %observed = getelementptr i8, ptr addrspace(1) %semantic, i32 %offset
+  call void asm sideeffect "nop ; $0", "q"(ptr addrspace(1) %observed)
   ret void
 }
 

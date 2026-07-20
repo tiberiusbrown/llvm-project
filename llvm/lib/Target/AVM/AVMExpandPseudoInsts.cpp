@@ -159,12 +159,17 @@ public:
           Register Dest = MI.getOperand(0).getReg();
           Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
           Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
-          BuildMI(MBB, MI, MI.getDebugLoc(),
-                  TII.get(IsUpper(Lo) ? AVM::LDI16 : AVM::COLDLDI16), Lo)
-              .addImm(static_cast<uint16_t>(MI.getOperand(1).getImm()));
-          BuildMI(MBB, MI, MI.getDebugLoc(),
-                  TII.get(IsUpper(Hi) ? AVM::LDI16 : AVM::COLDLDI16), Hi)
-              .addImm(static_cast<uint16_t>(MI.getOperand(2).getImm()));
+          auto EmitPart = [&](Register Reg, const MachineOperand &Part) {
+            uint16_t Value = static_cast<uint16_t>(Part.getImm());
+            bool IsByte = Value <= 0xff;
+            unsigned Opcode = IsUpper(Reg)
+                                  ? (IsByte ? AVM::LDI8 : AVM::LDI16)
+                                  : (IsByte ? AVM::COLDLDI8 : AVM::COLDLDI16);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Reg)
+                .addImm(Value);
+          };
+          EmitPart(Lo, MI.getOperand(1));
+          EmitPart(Hi, MI.getOperand(2));
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -193,6 +198,16 @@ public:
                 .addReg(Hi)
                 .addImm(15);
           }
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::SEXT24_32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::SEXT8), Hi)
+              .addReg(Hi);
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -289,12 +304,6 @@ public:
           continue;
         }
         case AVM::PROG_ADD_PSEUDO: {
-          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
-          Register Dest = MI.getOperand(0).getReg();
-          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
-          BuildMI(MBB, std::next(MI.getIterator()), MI.getDebugLoc(),
-                  TII.get(AVM::ZEXT8), Hi)
-              .addReg(Hi);
           NewOpcode = AVM::ADD32;
           break;
         }

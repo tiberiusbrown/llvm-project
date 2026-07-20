@@ -1,4 +1,5 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -O2 -fomit-frame-pointer \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 \
+// RUN:   -fomit-frame-pointer \
 // RUN:   -S %s -o - | FileCheck %s
 
 typedef unsigned char uint8_t;
@@ -19,7 +20,7 @@ float add_float_values(float left, float right) { return left + right; }
 
 // CHECK-LABEL: read_program_char:
 // CHECK:       add32
-// CHECK:       zext8
+// CHECK-NOT:   zext8
 // CHECK:       ldp8u
 uint8_t read_program_char(program_char *base, int32_t index) {
   return base[index];

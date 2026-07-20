@@ -1,10 +1,14 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -O0 -fomit-frame-pointer -S %s -o - \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O0 \
+// RUN:   -fomit-frame-pointer -S %s -o - \
 // RUN:   | FileCheck %s --check-prefix=O0
-// RUN: %clang --target=avm-unknown-arduboyfx -O2 -fomit-frame-pointer -S %s -o - \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 \
+// RUN:   -fomit-frame-pointer -S %s -o - \
 // RUN:   | FileCheck %s --check-prefix=O2
-// RUN: %clang --target=avm-unknown-arduboyfx -Os -fomit-frame-pointer -S %s -o - \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -Os \
+// RUN:   -fomit-frame-pointer -S %s -o - \
 // RUN:   | FileCheck %s --check-prefix=OS
-// RUN: %clang --target=avm-unknown-arduboyfx -Oz -fomit-frame-pointer -S %s -o - \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -Oz \
+// RUN:   -fomit-frame-pointer -S %s -o - \
 // RUN:   | FileCheck %s --check-prefix=OZ
 
 typedef unsigned char u8;

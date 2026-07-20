@@ -9250,9 +9250,9 @@ SDValue SelectionDAG::getMemcpy(
   // Then check to see if we should lower the memcpy with target-specific
   // code. If the target chooses to do this, this is the next best.
   if (TSI) {
-    SDValue Result = TSI->EmitTargetCodeForMemcpy(
+    SDValue Result = TSI->EmitTargetCodeForMemcpyWithAA(
         *this, dl, Chain, Dst, Src, Size, Alignment, isVol, AlwaysInline,
-        DstPtrInfo, SrcPtrInfo);
+        DstPtrInfo, SrcPtrInfo, AAInfo);
     if (Result.getNode())
       return Result;
   }
@@ -9367,9 +9367,9 @@ SDValue SelectionDAG::getMemmove(SDValue Chain, const SDLoc &dl, SDValue Dst,
   // Then check to see if we should lower the memmove with target-specific
   // code. If the target chooses to do this, this is the next best.
   if (TSI) {
-    SDValue Result =
-        TSI->EmitTargetCodeForMemmove(*this, dl, Chain, Dst, Src, Size,
-                                      Alignment, isVol, DstPtrInfo, SrcPtrInfo);
+    SDValue Result = TSI->EmitTargetCodeForMemmoveWithAA(
+        *this, dl, Chain, Dst, Src, Size, Alignment, isVol, DstPtrInfo,
+        SrcPtrInfo, AAInfo);
     if (Result.getNode())
       return Result;
   }
@@ -9472,8 +9472,9 @@ SDValue SelectionDAG::getMemset(SDValue Chain, const SDLoc &dl, SDValue Dst,
   // Then check to see if we should lower the memset with target-specific
   // code. If the target chooses to do this, this is the next best.
   if (TSI) {
-    SDValue Result = TSI->EmitTargetCodeForMemset(
-        *this, dl, Chain, Dst, Src, Size, Alignment, isVol, AlwaysInline, DstPtrInfo);
+    SDValue Result = TSI->EmitTargetCodeForMemsetWithAA(
+        *this, dl, Chain, Dst, Src, Size, Alignment, isVol, AlwaysInline,
+        DstPtrInfo, AAInfo);
     if (Result.getNode())
       return Result;
   }

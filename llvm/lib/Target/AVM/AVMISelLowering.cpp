@@ -10,6 +10,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/IR/IntrinsicsAVM.h"
 #include "llvm/IR/RuntimeLibcalls.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -310,7 +311,6 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i16, &AVM::GPR16RegClass);
   addRegisterClass(MVT::i32, &AVM::GPR32RegClass);
   addRegisterClass(MVT::f32, &AVM::GPR32RegClass);
-  computeRegisterProperties(STI.getRegisterInfo());
 
   setStackPointerRegisterToSaveRestore(AVM::SP);
   setBooleanContents(ZeroOrOneBooleanContent);
@@ -318,6 +318,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(Align(1));
 
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::BRCOND, MVT::Other, Custom);
   setOperationAction(ISD::BR_CC, MVT::i16, Custom);
   setOperationAction(ISD::BR_CC, MVT::i32, Custom);
   setOperationAction(ISD::BR_CC, MVT::f32, Custom);
@@ -349,6 +350,13 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
+  for (unsigned Opcode :
+       {ISD::MULHU, ISD::MULHS, ISD::UMUL_LOHI, ISD::SMUL_LOHI, ISD::SHL_PARTS,
+        ISD::SRL_PARTS, ISD::SRA_PARTS})
+    setOperationAction(Opcode, MVT::i32, Expand);
+  for (unsigned Opcode : {ISD::MUL, ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM,
+                          ISD::SHL, ISD::SRL, ISD::SRA})
+    setOperationAction(Opcode, MVT::i64, LibCall);
 
   setLibcallImpl(RTLIB::MUL_I32, RTLIB::impl___avm_mulsi3);
   setLibcallImpl(RTLIB::UDIV_I32, RTLIB::impl___avm_udivsi3);
@@ -358,6 +366,14 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::SHL_I32, RTLIB::impl___avm_ashlsi3);
   setLibcallImpl(RTLIB::SRL_I32, RTLIB::impl___avm_lshrsi3);
   setLibcallImpl(RTLIB::SRA_I32, RTLIB::impl___avm_ashrsi3);
+  setLibcallImpl(RTLIB::MUL_I64, RTLIB::impl___avm_muldi3);
+  setLibcallImpl(RTLIB::UDIV_I64, RTLIB::impl___avm_udivdi3);
+  setLibcallImpl(RTLIB::UREM_I64, RTLIB::impl___avm_umoddi3);
+  setLibcallImpl(RTLIB::SDIV_I64, RTLIB::impl___avm_divdi3);
+  setLibcallImpl(RTLIB::SREM_I64, RTLIB::impl___avm_moddi3);
+  setLibcallImpl(RTLIB::SHL_I64, RTLIB::impl___avm_ashldi3);
+  setLibcallImpl(RTLIB::SRL_I64, RTLIB::impl___avm_lshrdi3);
+  setLibcallImpl(RTLIB::SRA_I64, RTLIB::impl___avm_ashrdi3);
   setLibcallImpl(RTLIB::ADD_F32, RTLIB::impl___addsf3);
   setLibcallImpl(RTLIB::SUB_F32, RTLIB::impl___subsf3);
   setLibcallImpl(RTLIB::MUL_F32, RTLIB::impl___mulsf3);
@@ -367,6 +383,9 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
   setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
   setLibcallImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
+  setLibcallImpl(RTLIB::MEMCPY, RTLIB::impl_memcpy);
+  setLibcallImpl(RTLIB::MEMSET, RTLIB::impl_memset);
+  setLibcallImpl(RTLIB::MEMMOVE, RTLIB::impl_memmove);
   setLibcallImpl(RTLIB::ATOMIC_LOAD, RTLIB::impl___atomic_load);
   setLibcallImpl(RTLIB::ATOMIC_LOAD_8, RTLIB::impl___atomic_load_8);
   setLibcallImpl(RTLIB::ATOMIC_STORE, RTLIB::impl___atomic_store);
@@ -388,6 +407,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
        {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FSQRT, ISD::FNEG,
         ISD::FABS, ISD::FMINNUM, ISD::FMAXNUM})
     setOperationAction(Opcode, MVT::f32, Legal);
+  for (unsigned Opcode :
+       {ISD::FSIN, ISD::FCOS, ISD::FATAN2, ISD::FTAN, ISD::FEXP, ISD::FLOG,
+        ISD::FLOG2, ISD::FLOG10, ISD::FPOW, ISD::FREM})
+    setOperationAction(Opcode, MVT::f32, Custom);
   for (unsigned Opcode : {ISD::STRICT_FADD, ISD::STRICT_FSUB, ISD::STRICT_FMUL,
                           ISD::STRICT_FDIV, ISD::STRICT_FSQRT})
     setOperationAction(Opcode, MVT::f32, Expand);
@@ -412,6 +435,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
   setOperationAction(ISD::VAEND, MVT::Other, Expand);
   setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Custom);
+  setOperationAction(ISD::INTRINSIC_VOID, MVT::i8, Custom);
   setMaxAtomicSizeInBitsSupported(32);
 
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
@@ -424,6 +448,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setIndexedLoadAction(ISD::POST_INC, MVT::i32, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i8, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i16, Legal);
+
+  computeRegisterProperties(STI.getRegisterInfo());
 
   MaxStoresPerMemset = MaxStoresPerMemcpy = MaxStoresPerMemmove = 8;
   MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize =
@@ -486,8 +512,8 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::FCLASS";
   if (Opcode == AVMISD::LOAD24)
     return "AVMISD::LOAD24";
-  if (Opcode == AVMISD::PROGPTR)
-    return "AVMISD::PROGPTR";
+  if (Opcode == AVMISD::NORMALIZE_PROGPTR)
+    return "AVMISD::NORMALIZE_PROGPTR";
   if (Opcode == AVMISD::PROG_WRAPPER)
     return "AVMISD::PROG_WRAPPER";
   if (Opcode == AVMISD::STORE24)
@@ -641,8 +667,9 @@ AVMTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
     case 'P':
       return {0U, &AVM::UpperPTR16RegClass};
     case 'q':
-    case 't':
       return {0U, &AVM::GPR32RegClass};
+    case 't':
+      return {0U, &AVM::ProgPtrGPR32RegClass};
     case 'Q':
       return {0U, &AVM::UpperGPR32RegClass};
     default:
@@ -817,8 +844,26 @@ SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
+  case ISD::INTRINSIC_VOID: {
+    const auto *ID = cast<ConstantSDNode>(Op.getOperand(1));
+    if (ID->getZExtValue() != Intrinsic::avm_debug_putc)
+      report_fatal_error("unexpected AVM intrinsic with an i8 operand");
+    SDLoc DL(Op);
+    SDValue Value =
+        DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Op.getOperand(2));
+    return DAG.getNode(ISD::INTRINSIC_VOID, DL, MVT::Other, Op.getOperand(0),
+                       Op.getOperand(1), Value);
+  }
   case ISD::BR_CC:
     return LowerBRCC(Op, DAG);
+  case ISD::BRCOND: {
+    SDLoc DL(Op);
+    SDValue Cond = Op.getOperand(1);
+    auto [TargetCC, Glue] = getAVMCompare(
+        Cond, DAG.getConstant(0, DL, Cond.getValueType()), ISD::SETNE, DL, DAG);
+    return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
+                       Op.getOperand(2), TargetCC, Glue);
+  }
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
   case ISD::IS_FPCLASS:
@@ -848,6 +893,56 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerSelectCC(Op, DAG);
   case ISD::SETCC:
     return LowerSetCC(Op, DAG);
+  case ISD::FSIN:
+  case ISD::FCOS:
+  case ISD::FATAN2:
+  case ISD::FTAN:
+  case ISD::FEXP:
+  case ISD::FLOG:
+  case ISD::FLOG2:
+  case ISD::FLOG10:
+  case ISD::FPOW:
+  case ISD::FREM: {
+    Intrinsic::ID ID;
+    switch (Op.getOpcode()) {
+    case ISD::FSIN:
+      ID = Intrinsic::avm_sinf;
+      break;
+    case ISD::FCOS:
+      ID = Intrinsic::avm_cosf;
+      break;
+    case ISD::FATAN2:
+      ID = Intrinsic::avm_atan2f;
+      break;
+    case ISD::FTAN:
+      ID = Intrinsic::avm_tanf;
+      break;
+    case ISD::FEXP:
+      ID = Intrinsic::avm_expf;
+      break;
+    case ISD::FLOG:
+      ID = Intrinsic::avm_logf;
+      break;
+    case ISD::FLOG2:
+      ID = Intrinsic::avm_log2f;
+      break;
+    case ISD::FLOG10:
+      ID = Intrinsic::avm_log10f;
+      break;
+    case ISD::FPOW:
+      ID = Intrinsic::avm_powf;
+      break;
+    case ISD::FREM:
+      ID = Intrinsic::avm_fmodf;
+      break;
+    default:
+      llvm_unreachable("unexpected AVM math service");
+    }
+    SmallVector<SDValue, 3> Ops = {
+        DAG.getTargetConstant(ID, SDLoc(Op), MVT::i16)};
+    Ops.append(Op->op_begin(), Op->op_end());
+    return DAG.getNode(ISD::INTRINSIC_WO_CHAIN, SDLoc(Op), MVT::f32, Ops);
+  }
   default:
     break;
   }
@@ -887,8 +982,6 @@ SDValue AVMTargetLowering::LowerFormalArguments(
         Value = DAG.getNode(AssertOp, DL, MVT::i16, Value,
                             DAG.getValueType(MVT::i8));
       }
-      if (Ins[I].Flags.isPointer() && Ins[I].Flags.getPointerAddrSpace() == 1)
-        Value = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Value);
       InVals.push_back(Value);
       continue;
     }
@@ -914,9 +1007,7 @@ SDValue AVMTargetLowering::LowerFormalArguments(
       Load = DAG.getExtLoad(Ext, DL, VA.getValVT(), Chain, FIN, PtrInfo,
                             VA.getLocVT(), Align(1));
     }
-    InVals.push_back(IsProgramPointer
-                         ? DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Load)
-                         : Load);
+    InVals.push_back(Load);
     LoadChains.push_back(Load.getValue(1));
   }
   if (!LoadChains.empty()) {
@@ -986,7 +1077,7 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
       Arg = canonicalizeNarrowOutgoing(Arg, CLI.Outs[I], DL, DAG);
       if (CLI.Outs[I].Flags.isPointer() &&
           CLI.Outs[I].Flags.getPointerAddrSpace() == 1)
-        Arg = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Arg);
+        Arg = DAG.getNode(AVMISD::NORMALIZE_PROGPTR, DL, MVT::i32, Arg);
       RegsToPass.emplace_back(VA.getLocReg(), Arg);
       continue;
     }
@@ -1035,7 +1126,6 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   else {
     if (Callee.getValueType() != MVT::i32)
       Callee = DAG.getZExtOrTrunc(Callee, DL, MVT::i32);
-    Callee = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Callee);
   }
 
   SmallVector<SDValue, 10> Ops = {Chain, Callee};
@@ -1064,12 +1154,7 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   for (const CCValAssign &VA : RVLocs) {
     SDValue Copy =
         DAG.getCopyFromReg(Chain, DL, VA.getLocReg(), VA.getLocVT(), Glue);
-    unsigned I = VA.getValNo();
-    bool IsProgramPointer = CLI.Ins[I].Flags.isPointer() &&
-                            CLI.Ins[I].Flags.getPointerAddrSpace() == 1;
-    InVals.push_back(IsProgramPointer
-                         ? DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Copy)
-                         : Copy);
+    InVals.push_back(Copy);
     Chain = Copy.getValue(1);
     Glue = Copy.getValue(2);
   }
@@ -1116,7 +1201,7 @@ AVMTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
     unsigned ValueIndex = VA.getValNo();
     if (Outs[ValueIndex].Flags.isPointer() &&
         Outs[ValueIndex].Flags.getPointerAddrSpace() == 1)
-      Value = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Value);
+      Value = DAG.getNode(AVMISD::NORMALIZE_PROGPTR, DL, MVT::i32, Value);
     Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), Value, Glue);
     Glue = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));

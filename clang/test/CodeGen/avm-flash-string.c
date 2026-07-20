@@ -1,6 +1,10 @@
 // RUN: %clang_cc1 -triple avm -emit-llvm -o - %s | FileCheck %s
 // RUN: %clang_cc1 -triple avm -emit-obj -o %t %s
 // RUN: llvm-readobj --sections --relocations --symbols %t | FileCheck %s --check-prefix=OBJ
+// RUN: ld.lld -e function_use %t -o %t.elf
+// RUN: llvm-readobj --relocations --symbols %t.elf \
+// RUN:   | FileCheck %s --check-prefix=LINK
+// RUN: llvm-objdump -s %t.elf | FileCheck %s --check-prefix=LINK-DATA
 
 #define AS1 __attribute__((address_space(1)))
 typedef const char AS1 *flash_ptr;
@@ -42,3 +46,16 @@ flash_ptr embedded_null(void) {
 // OBJ: Section: .data
 // OBJ: Name: flash_table
 // OBJ: Section: .rodata
+
+// LINK: Relocations [
+// LINK-NEXT: ]
+// LINK: Name: .L.avm.flashstr.0
+// LINK: Value: 0x210
+// LINK: Name: file_scope
+// LINK: Value: 0x100
+// LINK: Name: flash_table
+// LINK: Value: 0x216
+// LINK-DATA: Contents of section .data:
+// LINK-DATA-NEXT: 0100 10020010 02001002
+// LINK-DATA: Contents of section .rodata:
+// LINK-DATA-NEXT: 0210 48656c6c 6f001002 0048656c 6c6f0000

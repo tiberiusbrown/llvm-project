@@ -9,6 +9,29 @@
 // The format of this database matches clang/Basic/Builtins.def.
 
 BUILTIN(__builtin_avm_flash_string, "cC*1cC*0", "nctE")
-BUILTIN(__builtin_avm_memcpy_p, "v*0v*0vC*1Us", "n")
+BUILTIN(__builtin_avm_memcpy_p, "v*v*vC*1Ui", "n")
+BUILTIN(__avm_memcpy_P, "v*v*vC*1Ui", "nA")
+BUILTIN(memcpy_P, "v*v*vC*1Ui", "nA")
+
+BUILTIN(__avm_debug_putc, "vUc", "n")
+BUILTIN(__avm_debug_break, "v", "n")
+BUILTIN(__avm_millis, "Ui", "n")
+BUILTIN(__avm_millis32, "ULi", "n")
+
+BUILTIN(__avm_sinf, "ff", "nc")
+BUILTIN(__avm_cosf, "ff", "nc")
+BUILTIN(__avm_atan2f, "fff", "nc")
+BUILTIN(__avm_tanf, "ff", "nc")
+BUILTIN(__avm_expf, "ff", "nc")
+BUILTIN(__avm_logf, "ff", "nc")
+BUILTIN(__avm_log2f, "ff", "nc")
+BUILTIN(__avm_log10f, "ff", "nc")
+BUILTIN(__avm_powf, "fff", "nc")
+BUILTIN(__avm_hypotf, "fff", "nc")
+BUILTIN(__avm_fmodf, "fff", "nc")
+
+BUILTIN(__avm_memcpy, "v*v*vC*Ui", "nA")
+BUILTIN(__avm_memset, "v*v*iUi", "nA")
+BUILTIN(__avm_memmove, "v*v*vC*Ui", "nA")
 
 #undef BUILTIN

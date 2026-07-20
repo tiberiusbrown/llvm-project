@@ -133,11 +133,10 @@ define ptr addrspace(1) @computed_program_pointer(ptr addrspace(1) %base,
                                                   i16 %offset) {
 ; CHECK-LABEL: computed_program_pointer:
 ; CHECK:       add32
-; CHECK-NEXT:  zext8
-; CHECK:       zext8
-; CHECK:       call program_identity
-; CHECK:       zext8
-; CHECK:       ret
+; CHECK-NEXT:  zext8 r5
+; CHECK-NEXT:  call program_identity
+; CHECK-NEXT:  zext8 r5
+; CHECK-NEXT:  ret
   %computed = getelementptr i8, ptr addrspace(1) %base, i16 %offset
   %returned = call ptr addrspace(1) @program_identity(
       ptr addrspace(1) %computed)
@@ -148,8 +147,9 @@ define i1 @computed_program_equal(ptr addrspace(1) %base, i16 %offset,
                                   ptr addrspace(1) %other) {
 ; CHECK-LABEL: computed_program_equal:
 ; CHECK:       add32
-; CHECK-NEXT:  zext8
-; CHECK:       cmp32
+; CHECK:       zext8 r5
+; CHECK-NEXT:  zext8 r7
+; CHECK-NEXT:  cmp32
 ; CHECK:       ret
   %computed = getelementptr i8, ptr addrspace(1) %base, i16 %offset
   %equal = icmp eq ptr addrspace(1) %computed, %other

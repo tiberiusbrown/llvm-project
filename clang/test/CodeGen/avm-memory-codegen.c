@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -triple avm-unknown-arduboyfx -target-cpu avm1 \
-// RUN:   -tune-cpu avm-interpreter-32u4-v1 -O2 -S -o - %s \
+// RUN:   -tune-cpu avm-interpreter-32u4-v1 -ffreestanding -O2 -S -o - %s \
 // RUN:   | FileCheck %s
 
 unsigned short word;

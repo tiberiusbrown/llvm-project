@@ -2,8 +2,11 @@
 
 #include "AVM.h"
 #include "AVMTargetMachine.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/IntrinsicsAVM.h"
 #include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -31,6 +34,72 @@ public:
   }
 
 private:
+  static SDValue stripProgramPointerNormalization(SDValue Value) {
+    for (;;) {
+      if (Value.getOpcode() == AVMISD::NORMALIZE_PROGPTR) {
+        Value = Value.getOperand(0);
+        continue;
+      }
+      if (Value.getOpcode() == ISD::ZERO_EXTEND &&
+          Value.getOperand(0).getOpcode() == ISD::TRUNCATE &&
+          Value.getOperand(0).getValueType() == MVT::i24) {
+        Value = Value.getOperand(0).getOperand(0);
+        continue;
+      }
+      if (Value.getOpcode() != ISD::AND || Value.getValueType() != MVT::i32)
+        return Value;
+      SDValue Candidate = Value.getOperand(0);
+      const auto *Mask = dyn_cast<ConstantSDNode>(Value.getOperand(1));
+      if (!Mask) {
+        Mask = dyn_cast<ConstantSDNode>(Candidate);
+        Candidate = Value.getOperand(1);
+      }
+      if (!Mask || Mask->getZExtValue() != 0xffffff)
+        return Value;
+      Value = Candidate;
+    }
+  }
+
+  void PreprocessISelDAG() override {
+    SmallDenseSet<Register, 4> ProgramPointerInputs;
+    for (SDNode &Node : CurDAG->allnodes()) {
+      if (Node.getOpcode() != ISD::INLINEASM &&
+          Node.getOpcode() != ISD::INLINEASM_BR)
+        continue;
+      unsigned End = Node.getNumOperands();
+      if (Node.getOperand(End - 1).getValueType() == MVT::Glue)
+        --End;
+      for (unsigned I = InlineAsm::Op_FirstOperand; I < End;) {
+        InlineAsm::Flag Flag(Node.getOperand(I)->getAsZExtVal());
+        unsigned RC;
+        if (Flag.isRegUseKind() && Flag.hasRegClassConstraint(RC) &&
+            RC == AVM::ProgPtrGPR32RegClassID) {
+          for (unsigned J = 0; J != Flag.getNumOperandRegisters(); ++J) {
+            const auto *Reg =
+                dyn_cast<RegisterSDNode>(Node.getOperand(I + 1 + J));
+            if (Reg)
+              ProgramPointerInputs.insert(Reg->getReg());
+          }
+        }
+        I += Flag.getNumOperandRegisters() + 1;
+      }
+    }
+
+    if (ProgramPointerInputs.empty())
+      return;
+    SmallVector<SDNode *, 4> Copies;
+    for (SDNode &Node : CurDAG->allnodes())
+      if (Node.getOpcode() == ISD::CopyToReg &&
+          ProgramPointerInputs.contains(
+              cast<RegisterSDNode>(Node.getOperand(1))->getReg()))
+        Copies.push_back(&Node);
+    for (SDNode *Copy : Copies) {
+      SmallVector<SDValue, 4> Ops(Copy->op_begin(), Copy->op_end());
+      Ops[2] = stripProgramPointerNormalization(Ops[2]);
+      CurDAG->UpdateNodeOperands(Copy, Ops);
+    }
+  }
+
 #include "AVMGenDAGISel.inc"
 
   enum class ByteExtension { None, Unsigned, Signed };
@@ -97,6 +166,16 @@ private:
       return false;
     }
     SmallVector<SDValue, 2> Ops(Node->op_begin(), Node->op_end());
+    if (Opcode == AVM::CMP32_PSEUDO) {
+      for (SDValue &Op : Ops) {
+        SDValue Relaxed = stripProgramPointerNormalization(Op);
+        if (Relaxed == Op)
+          continue;
+        Op = SDValue(CurDAG->getMachineNode(AVM::PROG_CANON_PSEUDO, SDLoc(Node),
+                                            MVT::i32, Relaxed),
+                     0);
+      }
+    }
     CurDAG->SelectNodeTo(Node, Opcode, MVT::Glue, Ops);
     return true;
   }
@@ -140,7 +219,7 @@ private:
   }
 
   bool isProgramPointer(SDValue Value) const {
-    if (Value.getOpcode() == AVMISD::PROGPTR ||
+    if (Value.getOpcode() == AVMISD::NORMALIZE_PROGPTR ||
         Value.getOpcode() == AVMISD::PROG_WRAPPER)
       return true;
     if (Value->isMachineOpcode())
@@ -485,6 +564,13 @@ private:
   bool selectExtendOrTruncate32(SDNode *Node) {
     if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
         Node->getValueType(0) == MVT::i32 &&
+        cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i24) {
+      CurDAG->SelectNodeTo(Node, AVM::SEXT24_32_PSEUDO, MVT::i32,
+                           Node->getOperand(0));
+      return true;
+    }
+    if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
+        Node->getValueType(0) == MVT::i32 &&
         cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i16) {
       SDLoc DL(Node);
       SDValue SubReg = CurDAG->getTargetConstant(AVM::sub_lo16, DL, MVT::i32);
@@ -635,10 +721,12 @@ private:
     SmallVector<SDValue, 2> Ops;
     if (IsPostInc) {
       ResultVTs = {ValueVT, MVT::i32, MVT::Other};
-      Ops = {Load->getBasePtr(), Load->getChain()};
+      Ops = {stripProgramPointerNormalization(Load->getBasePtr()),
+             Load->getChain()};
     } else {
       ResultVTs = {ValueVT, MVT::Other};
-      Ops = {Load->getBasePtr(), Load->getChain()};
+      Ops = {stripProgramPointerNormalization(Load->getBasePtr()),
+             Load->getChain()};
     }
     SDNode *Result =
         CurDAG->getMachineNode(Opcode, SDLoc(Node), ResultVTs, Ops);
@@ -678,6 +766,9 @@ private:
     bool IsPostInc = Store->getAddressingMode() == ISD::POST_INC;
 
     SDValue Address = Store->getBasePtr();
+    SDValue StoredValue = Store->getValue();
+    if (IsPointer)
+      StoredValue = stripProgramPointerNormalization(StoredValue);
     unsigned Opcode;
     SmallVector<EVT, 2> ResultVTs;
     SmallVector<SDValue, 4> Ops;
@@ -686,21 +777,21 @@ private:
         matchDataSymbol(Address, Symbol)) {
       Opcode = IsByte ? AVM::ABS_STORE8_PSEUDO : AVM::ABS_STORE16_PSEUDO;
       ResultVTs = {MVT::Other};
-      Ops = {Symbol, Store->getValue(), Store->getChain()};
+      Ops = {Symbol, StoredValue, Store->getChain()};
     } else if (IsPostInc && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Store->getOffset());
       if (!Increment || Increment->getSExtValue() != (IsByte ? 1 : 2))
         return false;
       Opcode = IsByte ? AVM::STORE8_POST_PSEUDO : AVM::STORE16_POST_PSEUDO;
       ResultVTs = {MVT::i16, MVT::Other};
-      Ops = {Address, Store->getValue(), Store->getChain()};
+      Ops = {Address, StoredValue, Store->getChain()};
     } else if (Store->getAddressingMode() == ISD::UNINDEXED) {
       Opcode = IsPointer ? AVM::STORE24_PSEUDO
                : IsPair  ? AVM::STORE32_PSEUDO
                          : (IsByte ? AVM::STORE8_PSEUDO : AVM::STORE16_PSEUDO);
       ResultVTs = IsPointer ? SmallVector<EVT, 2>{MVT::i16, MVT::Other}
                             : SmallVector<EVT, 2>{MVT::Other};
-      Ops = {Address, Store->getValue(), Store->getChain()};
+      Ops = {Address, StoredValue, Store->getChain()};
     } else {
       return false;
     }
@@ -738,10 +829,117 @@ private:
   }
 
   bool selectProgramPointer(SDNode *Node) {
-    if (Node->getOpcode() != AVMISD::PROGPTR)
+    if (Node->getOpcode() != AVMISD::NORMALIZE_PROGPTR)
       return false;
     CurDAG->SelectNodeTo(Node, AVM::PROG_CANON_PSEUDO, MVT::i32,
-                         Node->getOperand(0));
+                         stripProgramPointerNormalization(Node->getOperand(0)));
+    return true;
+  }
+
+  void attachMemoryServiceRefs(SDNode *Node, SDValue Size, bool ReadsAS0,
+                               bool ReadsAS1, bool WritesAS0) {
+    LocationSize MemSize = LocationSize::afterPointer();
+    if (const auto *C = dyn_cast<ConstantSDNode>(Size))
+      MemSize = LocationSize::precise(C->getZExtValue());
+    MachineFunction &MF = CurDAG->getMachineFunction();
+    SmallVector<MachineMemOperand *, 2> MMOs;
+    if (WritesAS0)
+      MMOs.push_back(MF.getMachineMemOperand(MachinePointerInfo(unsigned(0)),
+                                             MachineMemOperand::MOStore,
+                                             MemSize, Align(1)));
+    if (ReadsAS0 || ReadsAS1)
+      MMOs.push_back(MF.getMachineMemOperand(
+          MachinePointerInfo(unsigned(ReadsAS1 ? 1 : 0)),
+          MachineMemOperand::MOLoad, MemSize, Align(1)));
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Node), MMOs);
+  }
+
+  bool selectAVMIntrinsic(SDNode *Node) {
+    unsigned IDOperand = Node->getOpcode() == ISD::INTRINSIC_WO_CHAIN ? 0 : 1;
+    const auto *IDNode = dyn_cast<ConstantSDNode>(Node->getOperand(IDOperand));
+    if (!IDNode)
+      return false;
+    unsigned ID = IDNode->getZExtValue();
+
+    unsigned Opcode = 0;
+    switch (ID) {
+    case Intrinsic::avm_debug_putc:
+      Opcode = AVM::SYS_DEBUG_PUTC_PSEUDO;
+      break;
+    case Intrinsic::avm_debug_break:
+      Opcode = AVM::SYS_DEBUG_BREAK_PSEUDO;
+      break;
+    case Intrinsic::avm_millis:
+      Opcode = AVM::SYS_MILLIS_PSEUDO;
+      break;
+    case Intrinsic::avm_millis32:
+      Opcode = AVM::SYS_MILLIS32_PSEUDO;
+      break;
+    case Intrinsic::avm_sinf:
+      Opcode = AVM::SYS_SINF_PSEUDO;
+      break;
+    case Intrinsic::avm_cosf:
+      Opcode = AVM::SYS_COSF_PSEUDO;
+      break;
+    case Intrinsic::avm_atan2f:
+      Opcode = AVM::SYS_ATAN2F_PSEUDO;
+      break;
+    case Intrinsic::avm_tanf:
+      Opcode = AVM::SYS_TANF_PSEUDO;
+      break;
+    case Intrinsic::avm_expf:
+      Opcode = AVM::SYS_EXPF_PSEUDO;
+      break;
+    case Intrinsic::avm_logf:
+      Opcode = AVM::SYS_LOGF_PSEUDO;
+      break;
+    case Intrinsic::avm_log2f:
+      Opcode = AVM::SYS_LOG2F_PSEUDO;
+      break;
+    case Intrinsic::avm_log10f:
+      Opcode = AVM::SYS_LOG10F_PSEUDO;
+      break;
+    case Intrinsic::avm_powf:
+      Opcode = AVM::SYS_POWF_PSEUDO;
+      break;
+    case Intrinsic::avm_hypotf:
+      Opcode = AVM::SYS_HYPOTF_PSEUDO;
+      break;
+    case Intrinsic::avm_fmodf:
+      Opcode = AVM::SYS_FMODF_PSEUDO;
+      break;
+    case Intrinsic::avm_memcpy:
+      Opcode = AVM::SYS_MEMCPY_PSEUDO;
+      break;
+    case Intrinsic::avm_memset:
+      Opcode = AVM::SYS_MEMSET_PSEUDO;
+      break;
+    case Intrinsic::avm_memmove:
+      Opcode = AVM::SYS_MEMMOVE_PSEUDO;
+      break;
+    default:
+      return false;
+    }
+
+    SmallVector<SDValue, 5> Ops;
+    if (Node->getOpcode() == ISD::INTRINSIC_WO_CHAIN) {
+      Ops.append(Node->op_begin() + 1, Node->op_end());
+    } else {
+      Ops.append(Node->op_begin() + 2, Node->op_end());
+      Ops.push_back(Node->getOperand(0));
+    }
+
+    if (ID == Intrinsic::avm_memset && Ops[1].getValueType() != MVT::i16)
+      Ops[1] = CurDAG->getNode(ISD::ZERO_EXTEND, SDLoc(Node), MVT::i16, Ops[1]);
+
+    SDNode *Selected =
+        CurDAG->SelectNodeTo(Node, Opcode, Node->getVTList(), Ops);
+    if (ID == Intrinsic::avm_memcpy)
+      attachMemoryServiceRefs(Selected, Ops[2], true, false, true);
+    else if (ID == Intrinsic::avm_memset)
+      attachMemoryServiceRefs(Selected, Ops[2], false, false, true);
+    else if (ID == Intrinsic::avm_memmove)
+      attachMemoryServiceRefs(Selected, Ops[2], true, false, true);
     return true;
   }
 
@@ -781,6 +979,8 @@ private:
                     Callee.getOpcode() == ISD::TargetExternalSymbol;
     unsigned Opcode =
         IsDirect ? AVM::CALL_DIRECT_PSEUDO : AVM::CALL_INDIRECT_PSEUDO;
+    if (!IsDirect)
+      Callee = stripProgramPointerNormalization(Callee);
 
     unsigned Last = Node->getNumOperands() - 1;
     bool HasGlue = Node->getOperand(Last).getValueType() == MVT::Glue;
@@ -823,7 +1023,8 @@ private:
         CurDAG->getTargetConstant(
             cast<ConstantSDNode>(Node->getOperand(2))->getZExtValue(),
             SDLoc(Node), MVT::i16),
-        Node->getOperand(1), Node->getOperand(0)};
+        stripProgramPointerNormalization(Node->getOperand(1)),
+        Node->getOperand(0)};
     SDNode *Result = CurDAG->getMachineNode(AVM::OUT_STORE24_PSEUDO,
                                             SDLoc(Node), MVT::Other, Ops);
     ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
@@ -1007,7 +1208,7 @@ private:
     case AVMISD::CSET:
       selectAVMCSet(Node);
       return;
-    case AVMISD::PROGPTR:
+    case AVMISD::NORMALIZE_PROGPTR:
       selectProgramPointer(Node);
       return;
     case AVMISD::PROG_WRAPPER:
@@ -1020,6 +1221,12 @@ private:
     case AVMISD::STORE24:
       selectStore24(Node);
       return;
+    case ISD::INTRINSIC_VOID:
+    case ISD::INTRINSIC_W_CHAIN:
+    case ISD::INTRINSIC_WO_CHAIN:
+      if (selectAVMIntrinsic(Node))
+        return;
+      break;
     case ISD::LOAD:
       if (selectStackLoad(Node) || selectProgramLoad(Node) ||
           selectDataLoad(Node))

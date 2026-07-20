@@ -21,7 +21,7 @@ enum NodeType : unsigned {
   FCMP,
   FCLASS,
   LOAD24,
-  PROGPTR,
+  NORMALIZE_PROGPTR,
   PROG_WRAPPER,
   STORE24,
   TST8,

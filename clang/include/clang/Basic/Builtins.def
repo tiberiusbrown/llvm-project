@@ -77,6 +77,8 @@
 //  T -> type is not important to semantic analysis and codegen; recognize as
 //       builtin even if type doesn't match signature, and don't warn if we
 //       can't be sure the type is right
+//  A -> this target builtin names an ordinary fallback function and may have
+//       its address taken
 //  F -> this is a libc/libm function with a '__builtin_' prefix added.
 //  f -> this is a libc/libm function without a '__builtin_' prefix, or with
 //       'z', a C++ standard library function in namespace std::. This builtin

@@ -1,4 +1,5 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -O2 -fomit-frame-pointer \
+// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 \
+// RUN:   -fomit-frame-pointer \
 // RUN:   -S %s -o - | FileCheck %s
 
 typedef unsigned short uint16_t;

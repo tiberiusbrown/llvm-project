@@ -349,7 +349,8 @@ public:
     // Most standard library functions can have their addresses taken. C++
     // standard library functions formally cannot in C++20 onwards, and when
     // we allow it, we need to ensure we instantiate a definition.
-    return isPredefinedLibFunction(ID) && !isInStdNamespace(ID);
+    return (isPredefinedLibFunction(ID) && !isInStdNamespace(ID)) ||
+           strchr(getAttributesString(ID), 'A') != nullptr;
   }
 
   /// Determines whether this builtin has custom typechecking.

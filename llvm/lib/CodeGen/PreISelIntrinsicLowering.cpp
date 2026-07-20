@@ -19,8 +19,10 @@
 #include "llvm/CodeGen/ExpandVectorPredication.h"
 #include "llvm/CodeGen/LibcallLoweringInfo.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/SelectionDAGTargetInfo.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
@@ -75,6 +77,15 @@ struct PreISelIntrinsicLowering {
 
   static bool shouldExpandMemIntrinsicWithSize(Value *Size,
                                                const TargetTransformInfo &TTI);
+
+  bool shouldDeferMemIntrinsic(Function &F, bool IsVolatile) const {
+    if (!TM || IsVolatile)
+      return false;
+    const TargetSubtargetInfo *STI = TM->getSubtargetImpl(F);
+    const SelectionDAGTargetInfo *TSI =
+        STI ? STI->getSelectionDAGInfo() : nullptr;
+    return TSI && TSI->shouldDeferMemIntrinsics();
+  }
   bool
   expandMemIntrinsicUses(Function &F,
                          DenseMap<Constant *, GlobalVariable *> &CMap) const;
@@ -326,6 +337,8 @@ bool PreISelIntrinsicLowering::expandMemIntrinsicUses(
     case Intrinsic::memcpy: {
       auto *Memcpy = cast<MemCpyInst>(Inst);
       Function *ParentFunc = Memcpy->getFunction();
+      if (shouldDeferMemIntrinsic(*ParentFunc, Memcpy->isVolatile()))
+        break;
       const TargetTransformInfo &TTI = LookupTTI(*ParentFunc);
       if (shouldExpandMemIntrinsicWithSize(Memcpy->getLength(), TTI)) {
         if (UseMemIntrinsicLibFunc &&
@@ -358,6 +371,8 @@ bool PreISelIntrinsicLowering::expandMemIntrinsicUses(
     case Intrinsic::memmove: {
       auto *Memmove = cast<MemMoveInst>(Inst);
       Function *ParentFunc = Memmove->getFunction();
+      if (shouldDeferMemIntrinsic(*ParentFunc, Memmove->isVolatile()))
+        break;
       const TargetTransformInfo &TTI = LookupTTI(*ParentFunc);
       if (shouldExpandMemIntrinsicWithSize(Memmove->getLength(), TTI)) {
         if (UseMemIntrinsicLibFunc &&
@@ -375,6 +390,8 @@ bool PreISelIntrinsicLowering::expandMemIntrinsicUses(
     case Intrinsic::memset: {
       auto *Memset = cast<MemSetInst>(Inst);
       Function *ParentFunc = Memset->getFunction();
+      if (shouldDeferMemIntrinsic(*ParentFunc, Memset->isVolatile()))
+        break;
       const TargetTransformInfo &TTI = LookupTTI(*ParentFunc);
       if (shouldExpandMemIntrinsicWithSize(Memset->getLength(), TTI)) {
         if (UseMemIntrinsicLibFunc &&

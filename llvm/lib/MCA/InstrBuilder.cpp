@@ -682,6 +682,35 @@ STATISTIC(NumVariantInst, "Number of MCInsts that doesn't have static Desc");
 Expected<std::unique_ptr<Instruction>>
 InstrBuilder::createInstruction(const MCInst &MCI,
                                 const SmallVector<Instrument *> &IVec) {
+  const MCInstrDesc &OriginalDesc = MCII.get(MCI.getOpcode());
+  if (!OriginalDesc.isVariadic() &&
+      MCI.getNumOperands() < OriginalDesc.getNumOperands()) {
+    // Some targets use a compact MC representation that elides tied input
+    // operands already represented by their definition. Reconstruct the full
+    // descriptor layout for dependency analysis; encoders and printers keep
+    // receiving the target's compact MCInst.
+    MCInst Expanded;
+    Expanded.setOpcode(MCI.getOpcode());
+    Expanded.setFlags(MCI.getFlags());
+    Expanded.setLoc(MCI.getLoc());
+    unsigned SourceIndex = 0;
+    for (unsigned I = 0; I != OriginalDesc.getNumOperands(); ++I) {
+      int TiedTo = OriginalDesc.getOperandConstraint(I, MCOI::TIED_TO);
+      if (TiedTo >= 0) {
+        if (static_cast<unsigned>(TiedTo) >= Expanded.getNumOperands())
+          break;
+        Expanded.addOperand(Expanded.getOperand(TiedTo));
+      } else {
+        if (SourceIndex == MCI.getNumOperands())
+          break;
+        Expanded.addOperand(MCI.getOperand(SourceIndex++));
+      }
+    }
+    if (Expanded.getNumOperands() == OriginalDesc.getNumOperands() &&
+        SourceIndex == MCI.getNumOperands())
+      return createInstruction(Expanded, IVec);
+  }
+
   Expected<const InstrDesc &> DescOrErr = IM.canCustomize(IVec)
                                               ? createInstrDescImpl(MCI, IVec)
                                               : getOrCreateInstrDesc(MCI, IVec);

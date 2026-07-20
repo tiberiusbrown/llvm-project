@@ -602,6 +602,7 @@ def ZEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
+def SEXT24_32_PSEUDO : AVMUnary32Pseudo;
 def PROG_ADDR_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
 def PROG_CANON_PSEUDO : AVMUnary32Pseudo;
@@ -648,6 +649,84 @@ def FCMP_PSEUDO
                        (ins GPR32:$left, GPR32:$right)>;
 def FCLASS_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+
+// Typed semantic system-service pseudos.  AVMMCInstLower maps these to the
+// corresponding SYS encoding only after physical allocation.  Memory pseudos
+// intentionally carry only their precise load/store effects and are not calls.
+class AVMSystemServicePseudo<dag Outs, dag Ins>
+    : AVMCodeGenPseudo<Outs, Ins> {
+  let Size = 2;
+  let hasSideEffects = 0;
+}
+
+let hasSideEffects = 1 in {
+def SYS_DEBUG_PUTC_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins R4Only:$value)>;
+def SYS_DEBUG_BREAK_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins)>;
+def SYS_MILLIS_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result), (ins)>;
+def SYS_MILLIS32_PSEUDO
+    : AVMSystemServicePseudo<(outs Q2Only:$result), (ins)>;
+}
+
+class AVMUnaryMathServicePseudo
+    : AVMSystemServicePseudo<(outs Q2Only:$result), (ins Q2Only:$operand)> {
+  let Constraints = "$result = $operand";
+}
+class AVMBinaryMathServicePseudo
+    : AVMSystemServicePseudo<(outs Q2Only:$result),
+                             (ins Q2Only:$operand0, Q3Only:$operand1)> {
+  let Constraints = "$result = $operand0";
+}
+
+def SYS_SINF_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_COSF_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_ATAN2F_PSEUDO : AVMBinaryMathServicePseudo;
+def SYS_TANF_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_EXPF_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_LOGF_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_LOG2F_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_LOG10F_PSEUDO : AVMUnaryMathServicePseudo;
+def SYS_POWF_PSEUDO : AVMBinaryMathServicePseudo;
+def SYS_HYPOTF_PSEUDO : AVMBinaryMathServicePseudo;
+def SYS_FMODF_PSEUDO : AVMBinaryMathServicePseudo;
+
+def SYS_MEMCPY_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$src,
+                                  R6Only:$size)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+// The physical order is dst, size, src.  q3[31:24] is deliberately ignored.
+def SYS_MEMCPY_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$size,
+                                  Q3Only:$src)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_MEMSET_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$value,
+                                  R6Only:$size)> {
+  let Constraints = "$dst = $dst_in";
+  let mayStore = 1;
+}
+
+def SYS_MEMMOVE_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$src,
+                                  R6Only:$size)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
 
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;

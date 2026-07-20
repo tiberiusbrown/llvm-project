@@ -6,7 +6,32 @@
 #include "llvm/CodeGen/SelectionDAGTargetInfo.h"
 
 namespace llvm {
-class AVMSelectionDAGInfo final : public SelectionDAGTargetInfo {};
+class AVMSelectionDAGInfo final : public SelectionDAGTargetInfo {
+public:
+  bool shouldDeferMemIntrinsics() const override { return true; }
+
+  SDValue EmitTargetCodeForMemcpyWithAA(SelectionDAG &DAG, const SDLoc &DL,
+                                        SDValue Chain, SDValue Dst, SDValue Src,
+                                        SDValue Size, Align Alignment,
+                                        bool IsVolatile, bool AlwaysInline,
+                                        MachinePointerInfo DstPtrInfo,
+                                        MachinePointerInfo SrcPtrInfo,
+                                        const AAMDNodes &AAInfo) const override;
+
+  SDValue EmitTargetCodeForMemmoveWithAA(
+      SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
+      SDValue Src, SDValue Size, Align Alignment, bool IsVolatile,
+      MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo,
+      const AAMDNodes &AAInfo) const override;
+
+  SDValue EmitTargetCodeForMemsetWithAA(SelectionDAG &DAG, const SDLoc &DL,
+                                        SDValue Chain, SDValue Dst,
+                                        SDValue Value, SDValue Size,
+                                        Align Alignment, bool IsVolatile,
+                                        bool AlwaysInline,
+                                        MachinePointerInfo DstPtrInfo,
+                                        const AAMDNodes &AAInfo) const override;
+};
 } // namespace llvm
 
 #endif

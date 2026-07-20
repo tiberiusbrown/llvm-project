@@ -28,6 +28,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMBranchPolarityPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
+  initializeAVMServiceResultPass(PR);
 }
 
 AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
@@ -92,6 +93,8 @@ public:
     addPass(createAVMISelDag(getTM<AVMTargetMachine>(), getOptLevel()));
     return false;
   }
+
+  void addPreRegAlloc() override { addPass(createAVMServiceResultPass()); }
 
   void addPreSched2() override {
     if (getOptLevel() != CodeGenOptLevel::None)

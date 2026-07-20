@@ -914,6 +914,14 @@ def __avm_divsi3 : RuntimeLibcallImpl<SDIV_I32>;
 def __avm_udivsi3 : RuntimeLibcallImpl<UDIV_I32>;
 def __avm_modsi3 : RuntimeLibcallImpl<SREM_I32>;
 def __avm_umodsi3 : RuntimeLibcallImpl<UREM_I32>;
+def __avm_ashldi3 : RuntimeLibcallImpl<SHL_I64>;
+def __avm_lshrdi3 : RuntimeLibcallImpl<SRL_I64>;
+def __avm_ashrdi3 : RuntimeLibcallImpl<SRA_I64>;
+def __avm_muldi3 : RuntimeLibcallImpl<MUL_I64>;
+def __avm_divdi3 : RuntimeLibcallImpl<SDIV_I64>;
+def __avm_udivdi3 : RuntimeLibcallImpl<UDIV_I64>;
+def __avm_moddi3 : RuntimeLibcallImpl<SREM_I64>;
+def __avm_umoddi3 : RuntimeLibcallImpl<UREM_I64>;
 }
 
 def __mulqi3 : RuntimeLibcallImpl<MUL_I8>;

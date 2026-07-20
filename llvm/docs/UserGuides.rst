@@ -17,6 +17,7 @@ intermediate LLVM representation.
    AdminTasks
    AdvancedBuilds
    AliasAnalysis
+   AVMCodeGenerator
    AMDGPUUsage
    Benchmarking
    BigEndianNEON
