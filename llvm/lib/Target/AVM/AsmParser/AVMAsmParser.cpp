@@ -300,7 +300,9 @@ class AVMAsmParser final : public MCTargetAsmParser {
       StringRef Identifier = Parser.getTok().getIdentifier();
       std::optional<int64_t> Service =
           StringSwitch<std::optional<int64_t>>(Identifier.lower())
-#define AVM_SYS_DEF(ID, NAME) .Case(#NAME, ID)
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind,          \
+                    Intrinsic, CostKind, Cost)                               \
+  .Case(#AsmName, ID)
 #include "AVMSystemCalls.inc"
               .Default(std::nullopt);
       if (!Service)

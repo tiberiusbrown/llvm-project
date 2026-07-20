@@ -31,6 +31,25 @@ TEST(AVMCostModelTest, FixedAndRangeCosts) {
   EXPECT_EQ(Divide.Maximum, 251U);
 }
 
+TEST(AVMCostModelTest, SystemServiceMetadataReferencesMeasuredCosts) {
+#define AVM_SYS_FIXED_COST(Intrinsic, Cost)                                    \
+  EXPECT_NE(getFixedCycles(AVMCostKind::Cost), 0U);
+#define AVM_SYS_RANGE_COST(Intrinsic, Cost)                                    \
+  EXPECT_NE(getCycleRange(AVMCostKind::Cost).Typical, 0U);
+#define AVM_NO_COST(Intrinsic, Cost)
+#define AVM_SYS_INTRINSIC(Intrinsic, CostKind, Cost) CostKind(Intrinsic, Cost)
+#define AVM_NO_INTRINSIC(Intrinsic, CostKind, Cost)
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind, Intrinsic, \
+                    CostKind, Cost)                                            \
+  IntrinsicKind(Intrinsic, CostKind, Cost)
+#include "AVMSystemCalls.inc"
+#undef AVM_SYS_FIXED_COST
+#undef AVM_SYS_RANGE_COST
+#undef AVM_NO_COST
+#undef AVM_SYS_INTRINSIC
+#undef AVM_NO_INTRINSIC
+}
+
 TEST(AVMCostModelTest, ShiftCosts) {
   constexpr std::array<unsigned, 16> Shl16V = {42, 45, 50, 55, 60, 65, 70, 75,
                                                44, 47, 52, 57, 62, 67, 72, 77};

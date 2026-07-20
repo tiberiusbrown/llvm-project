@@ -39,6 +39,13 @@ define ptr @target_memmove(ptr %dst, ptr %src, i16 %size) {
   ret ptr %result
 }
 
+; MIR-LABEL: name: target_memcpy
+; MIR:       {{%[0-9]+}}:r4only = SYS_MEMCPY_PSEUDO
+; MIR-LABEL: name: target_memset
+; MIR:       {{%[0-9]+}}:r4only = SYS_MEMSET_PSEUDO
+; MIR-LABEL: name: target_memmove
+; MIR:       {{%[0-9]+}}:r4only = SYS_MEMMOVE_PSEUDO
+
 define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0-LABEL: memmove_inputs_remain_live:
 ; O0:       sys memmove

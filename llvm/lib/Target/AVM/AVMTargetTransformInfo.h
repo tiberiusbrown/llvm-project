@@ -121,74 +121,51 @@ public:
       break;
     }
 
-    AVM::AVMCostKind Kind;
-    bool IsFixed = false;
     switch (ICA.getID()) {
-    case Intrinsic::avm_debug_putc:
-      Kind = AVM::AVMCostKind::SysDebugPutc;
-      IsFixed = true;
-      break;
-    case Intrinsic::avm_debug_break:
-      Kind = AVM::AVMCostKind::SysDebugBreak;
-      IsFixed = true;
-      break;
-    case Intrinsic::avm_millis:
-      Kind = AVM::AVMCostKind::SysMillis;
-      IsFixed = true;
-      break;
-    case Intrinsic::avm_millis32:
-      Kind = AVM::AVMCostKind::SysMillis32;
-      IsFixed = true;
-      break;
     case Intrinsic::sin:
-    case Intrinsic::avm_sinf:
-      Kind = AVM::AVMCostKind::SysSinf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysSinf, AVM::SYS);
     case Intrinsic::cos:
-    case Intrinsic::avm_cosf:
-      Kind = AVM::AVMCostKind::SysCosf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysCosf, AVM::SYS);
     case Intrinsic::atan2:
-    case Intrinsic::avm_atan2f:
-      Kind = AVM::AVMCostKind::SysAtan2f;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysAtan2f, AVM::SYS);
     case Intrinsic::tan:
-    case Intrinsic::avm_tanf:
-      Kind = AVM::AVMCostKind::SysTanf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysTanf, AVM::SYS);
     case Intrinsic::exp:
-    case Intrinsic::avm_expf:
-      Kind = AVM::AVMCostKind::SysExpf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysExpf, AVM::SYS);
     case Intrinsic::log:
-    case Intrinsic::avm_logf:
-      Kind = AVM::AVMCostKind::SysLogf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysLogf, AVM::SYS);
     case Intrinsic::log2:
-    case Intrinsic::avm_log2f:
-      Kind = AVM::AVMCostKind::SysLog2f;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysLog2f, AVM::SYS);
     case Intrinsic::log10:
-    case Intrinsic::avm_log10f:
-      Kind = AVM::AVMCostKind::SysLog10f;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysLog10f, AVM::SYS);
     case Intrinsic::pow:
-    case Intrinsic::avm_powf:
-      Kind = AVM::AVMCostKind::SysPowf;
-      break;
-    case Intrinsic::avm_hypotf:
-      Kind = AVM::AVMCostKind::SysHypotf;
-      break;
-    case Intrinsic::avm_fmodf:
-      Kind = AVM::AVMCostKind::SysFmodf;
-      break;
+      return FloatIntrinsicCost(AVM::AVMCostKind::SysPowf, AVM::SYS);
+#define AVM_SYS_FIXED_COST(IntrinsicName, Cost)                                \
+  case Intrinsic::IntrinsicName:                                               \
+    if (CostKind == TTI::TCK_CodeSize)                                         \
+      return encodedBytes(AVM::SYS);                                           \
+    return normalizedCycles(AVM::getFixedCycles(AVM::AVMCostKind::Cost));
+#define AVM_SYS_RANGE_COST(IntrinsicName, Cost)                                \
+  case Intrinsic::IntrinsicName:                                               \
+    if (CostKind == TTI::TCK_CodeSize)                                         \
+      return encodedBytes(AVM::SYS);                                           \
+    return normalizedCycles(AVM::getCycleRange(AVM::AVMCostKind::Cost).Typical);
+#define AVM_NO_COST(IntrinsicName, Cost)
+#define AVM_SYS_INTRINSIC(IntrinsicName, CostKind, Cost)                       \
+  CostKind(IntrinsicName, Cost)
+#define AVM_NO_INTRINSIC(IntrinsicName, CostKind, Cost)
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind,            \
+                    IntrinsicName, ServiceCostKind, Cost)                      \
+  IntrinsicKind(IntrinsicName, ServiceCostKind, Cost)
+#include "AVMSystemCalls.inc"
+#undef AVM_SYS_FIXED_COST
+#undef AVM_SYS_RANGE_COST
+#undef AVM_NO_COST
+#undef AVM_SYS_INTRINSIC
+#undef AVM_NO_INTRINSIC
     default:
       return BaseT::getIntrinsicInstrCost(ICA, CostKind);
     }
-    if (CostKind == TTI::TCK_CodeSize)
-      return encodedBytes(AVM::SYS);
-    return normalizedCycles(IsFixed ? AVM::getFixedCycles(Kind)
-                                    : AVM::getCycleRange(Kind).Typical);
   }
 
   void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,

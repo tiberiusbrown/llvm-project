@@ -72,11 +72,26 @@ define float @math_services(float %x, float %y) {
   ret float %fmod
 }
 
+; MIR-LABEL: name: debug_services
+; MIR:       SYS_DEBUG_PUTC_PSEUDO
+; MIR:       SYS_DEBUG_BREAK_PSEUDO
+; MIR-LABEL: name: timer_services
+; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
+; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
+; MIR-LABEL: name: timer32_service
+; MIR:       {{%[0-9]+}}:q2only = SYS_MILLIS32_PSEUDO
 ; MIR-LABEL: name: math_services
 ; MIR:       {{%[0-9]+}}:q2only = SYS_SINF_PSEUDO
-; MIR:       {{%[0-9]+}}:q3only = COPY
+; MIR:       {{%[0-9]+}}:q2only = SYS_COSF_PSEUDO
 ; MIR:       {{%[0-9]+}}:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR:       $r4r5 = COPY {{%[0-9]+}}
+; MIR:       {{%[0-9]+}}:q2only = SYS_TANF_PSEUDO
+; MIR:       {{%[0-9]+}}:q2only = SYS_EXPF_PSEUDO
+; MIR:       {{%[0-9]+}}:q2only = SYS_LOGF_PSEUDO
+; MIR:       {{%[0-9]+}}:q2only = SYS_LOG2F_PSEUDO
+; MIR:       {{%[0-9]+}}:q2only = SYS_LOG10F_PSEUDO
+; MIR:       {{%[0-9]+}}:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR:       {{%[0-9]+}}:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR:       {{%[0-9]+}}:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
 
 declare float @llvm.sin.f32(float)
 declare float @llvm.cos.f32(float)

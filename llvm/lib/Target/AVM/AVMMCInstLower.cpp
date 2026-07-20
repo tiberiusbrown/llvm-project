@@ -14,69 +14,29 @@
 
 using namespace llvm;
 
-void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
-  int Service = -1;
-  switch (MI->getOpcode()) {
-  case AVM::SYS_DEBUG_PUTC_PSEUDO:
-    Service = 0x00;
-    break;
-  case AVM::SYS_DEBUG_BREAK_PSEUDO:
-    Service = 0x01;
-    break;
-  case AVM::SYS_MILLIS_PSEUDO:
-    Service = 0x02;
-    break;
-  case AVM::SYS_MILLIS32_PSEUDO:
-    Service = 0x03;
-    break;
-  case AVM::SYS_SINF_PSEUDO:
-    Service = 0x04;
-    break;
-  case AVM::SYS_COSF_PSEUDO:
-    Service = 0x05;
-    break;
-  case AVM::SYS_ATAN2F_PSEUDO:
-    Service = 0x06;
-    break;
-  case AVM::SYS_TANF_PSEUDO:
-    Service = 0x07;
-    break;
-  case AVM::SYS_EXPF_PSEUDO:
-    Service = 0x08;
-    break;
-  case AVM::SYS_LOGF_PSEUDO:
-    Service = 0x09;
-    break;
-  case AVM::SYS_LOG2F_PSEUDO:
-    Service = 0x0a;
-    break;
-  case AVM::SYS_LOG10F_PSEUDO:
-    Service = 0x0b;
-    break;
-  case AVM::SYS_POWF_PSEUDO:
-    Service = 0x0c;
-    break;
-  case AVM::SYS_HYPOTF_PSEUDO:
-    Service = 0x0d;
-    break;
-  case AVM::SYS_FMODF_PSEUDO:
-    Service = 0x0e;
-    break;
-  case AVM::SYS_MEMCPY_PSEUDO:
-    Service = 0x0f;
-    break;
-  case AVM::SYS_MEMCPY_P_PSEUDO:
-    Service = 0x10;
-    break;
-  case AVM::SYS_MEMSET_PSEUDO:
-    Service = 0x11;
-    break;
-  case AVM::SYS_MEMMOVE_PSEUDO:
-    Service = 0x12;
-    break;
+namespace {
+
+int getSystemServiceID(unsigned Opcode) {
+  switch (Opcode) {
+#define AVM_SYS_PSEUDO(Pseudo, ID)                                             \
+  case AVM::Pseudo:                                                            \
+    return ID;
+#define AVM_NO_PSEUDO(Pseudo, ID)
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind, Intrinsic, \
+                    CostKind, Cost)                                            \
+  PseudoKind(Pseudo, ID)
+#include "AVMSystemCalls.inc"
+#undef AVM_SYS_PSEUDO
+#undef AVM_NO_PSEUDO
   default:
-    break;
+    return -1;
   }
+}
+
+} // namespace
+
+void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
+  int Service = getSystemServiceID(MI->getOpcode());
   if (Service >= 0) {
     OutMI.setOpcode(AVM::SYS);
     OutMI.addOperand(MCOperand::createImm(Service));

@@ -14,6 +14,18 @@ using namespace llvm;
 
 namespace {
 
+bool isKnownSystemService(unsigned Service) {
+  switch (Service) {
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind, Intrinsic, \
+                    CostKind, Cost)                                            \
+  case ID:                                                                     \
+    return true;
+#include "../AVMSystemCalls.inc"
+  default:
+    return false;
+  }
+}
+
 class AVMSymbolizer final : public MCSymbolizer {
   SectionSymbolsTy *Symbols;
 
@@ -909,7 +921,7 @@ public:
       case 0xd9: MI.setOpcode(AVM::BRSGE8); break;
       case 0xd6: MI.setOpcode(AVM::ADJSP); break;
       default:
-        if (Bytes[1] > 3) {
+        if (!isKnownSystemService(Bytes[1])) {
           Size = 1;
           return Fail;
         }

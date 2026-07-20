@@ -612,7 +612,11 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::SYS:
     OS << '\t';
     switch (MI->getOperand(0).getImm()) {
-#define AVM_SYS_DEF(ID, NAME) case ID: OS << #NAME; break;
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind,          \
+                    Intrinsic, CostKind, Cost)                               \
+  case ID:                                                                    \
+    OS << #AsmName;                                                           \
+    break;
 #include "AVMSystemCalls.inc"
 #undef AVM_SYS_DEF
     default: OS << MI->getOperand(0).getImm(); break;

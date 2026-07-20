@@ -863,60 +863,24 @@ private:
 
     unsigned Opcode = 0;
     switch (ID) {
-    case Intrinsic::avm_debug_putc:
-      Opcode = AVM::SYS_DEBUG_PUTC_PSEUDO;
-      break;
-    case Intrinsic::avm_debug_break:
-      Opcode = AVM::SYS_DEBUG_BREAK_PSEUDO;
-      break;
-    case Intrinsic::avm_millis:
-      Opcode = AVM::SYS_MILLIS_PSEUDO;
-      break;
-    case Intrinsic::avm_millis32:
-      Opcode = AVM::SYS_MILLIS32_PSEUDO;
-      break;
-    case Intrinsic::avm_sinf:
-      Opcode = AVM::SYS_SINF_PSEUDO;
-      break;
-    case Intrinsic::avm_cosf:
-      Opcode = AVM::SYS_COSF_PSEUDO;
-      break;
-    case Intrinsic::avm_atan2f:
-      Opcode = AVM::SYS_ATAN2F_PSEUDO;
-      break;
-    case Intrinsic::avm_tanf:
-      Opcode = AVM::SYS_TANF_PSEUDO;
-      break;
-    case Intrinsic::avm_expf:
-      Opcode = AVM::SYS_EXPF_PSEUDO;
-      break;
-    case Intrinsic::avm_logf:
-      Opcode = AVM::SYS_LOGF_PSEUDO;
-      break;
-    case Intrinsic::avm_log2f:
-      Opcode = AVM::SYS_LOG2F_PSEUDO;
-      break;
-    case Intrinsic::avm_log10f:
-      Opcode = AVM::SYS_LOG10F_PSEUDO;
-      break;
-    case Intrinsic::avm_powf:
-      Opcode = AVM::SYS_POWF_PSEUDO;
-      break;
-    case Intrinsic::avm_hypotf:
-      Opcode = AVM::SYS_HYPOTF_PSEUDO;
-      break;
-    case Intrinsic::avm_fmodf:
-      Opcode = AVM::SYS_FMODF_PSEUDO;
-      break;
-    case Intrinsic::avm_memcpy:
-      Opcode = AVM::SYS_MEMCPY_PSEUDO;
-      break;
-    case Intrinsic::avm_memset:
-      Opcode = AVM::SYS_MEMSET_PSEUDO;
-      break;
-    case Intrinsic::avm_memmove:
-      Opcode = AVM::SYS_MEMMOVE_PSEUDO;
-      break;
+#define AVM_SYS_PSEUDO(Pseudo, ID) AVM::Pseudo
+#define AVM_NO_PSEUDO(Pseudo, ID) 0
+#define AVM_SYS_INTRINSIC(IntrinsicName, Pseudo)                               \
+  case Intrinsic::IntrinsicName:                                               \
+    if (Pseudo) {                                                              \
+      Opcode = Pseudo;                                                         \
+      break;                                                                   \
+    }                                                                          \
+    return false;
+#define AVM_NO_INTRINSIC(IntrinsicName, Pseudo)
+#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind,            \
+                    IntrinsicName, CostKind, Cost)                              \
+  IntrinsicKind(IntrinsicName, PseudoKind(Pseudo, ID))
+#include "AVMSystemCalls.inc"
+#undef AVM_SYS_PSEUDO
+#undef AVM_NO_PSEUDO
+#undef AVM_SYS_INTRINSIC
+#undef AVM_NO_INTRINSIC
     default:
       return false;
     }
