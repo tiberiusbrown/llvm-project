@@ -904,6 +904,18 @@ def __ashrhi3 : RuntimeLibcallImpl<SRA_I16>;
 def __ashrsi3 : RuntimeLibcallImpl<SRA_I32>;
 def __ashrdi3 : RuntimeLibcallImpl<SRA_I64>;
 
+// AVM wide-integer helper ABI.
+let IsDefault = false in {
+def __avm_ashlsi3 : RuntimeLibcallImpl<SHL_I32>;
+def __avm_lshrsi3 : RuntimeLibcallImpl<SRL_I32>;
+def __avm_ashrsi3 : RuntimeLibcallImpl<SRA_I32>;
+def __avm_mulsi3 : RuntimeLibcallImpl<MUL_I32>;
+def __avm_divsi3 : RuntimeLibcallImpl<SDIV_I32>;
+def __avm_udivsi3 : RuntimeLibcallImpl<UDIV_I32>;
+def __avm_modsi3 : RuntimeLibcallImpl<SREM_I32>;
+def __avm_umodsi3 : RuntimeLibcallImpl<UREM_I32>;
+}
+
 def __mulqi3 : RuntimeLibcallImpl<MUL_I8>;
 def __mulhi3 : RuntimeLibcallImpl<MUL_I16>;
 def __mulsi3 : RuntimeLibcallImpl<MUL_I32>;

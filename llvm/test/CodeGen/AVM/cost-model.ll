@@ -27,3 +27,32 @@ define void @scalar_costs(i16 %a, i16 %b, i16 %count) {
   %variable = shl i16 %a, %count
   ret void
 }
+
+define void @wide_float_and_program_costs(i32 %a, i32 %b, float %x, float %y,
+                                           ptr addrspace(1) %program) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %add32 = add i32 %a, %b
+; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %sub32 = sub i32 %a, %b
+; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %and32 = and i32 %a, %b
+; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %or32 = or i32 %a, %b
+; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %xor32 = xor i32 %a, %b
+; CHECK:       Cost Model: Found an estimated cost of 11 for instruction: %fadd = fadd float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 11 for instruction: %fsub = fsub float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 13 for instruction: %fmul = fmul float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 33 for instruction: %fdiv = fdiv float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 12 for instruction: %sitofp = sitofp i32 %a to float
+; CHECK:       Cost Model: Found an estimated cost of 12 for instruction: %fptosi = fptosi float %x to i32
+; CHECK:       Cost Model: Found an estimated cost of 20 for instruction: %load = load i32, ptr addrspace(1) %program, align 1
+  %add32 = add i32 %a, %b
+  %sub32 = sub i32 %a, %b
+  %and32 = and i32 %a, %b
+  %or32 = or i32 %a, %b
+  %xor32 = xor i32 %a, %b
+  %fadd = fadd float %x, %y
+  %fsub = fsub float %x, %y
+  %fmul = fmul float %x, %y
+  %fdiv = fdiv float %x, %y
+  %sitofp = sitofp i32 %a to float
+  %fptosi = fptosi float %x to i32
+  %load = load i32, ptr addrspace(1) %program, align 1
+  ret void
+}

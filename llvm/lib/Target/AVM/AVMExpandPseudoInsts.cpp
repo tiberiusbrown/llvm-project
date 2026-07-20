@@ -113,6 +113,11 @@ public:
         case AVM::COPY32_PSEUDO: {
           Register Dest = MI.getOperand(0).getReg();
           Register Src = MI.getOperand(1).getReg();
+          if (Dest == Src) {
+            MI.eraseFromParent();
+            Changed = true;
+            continue;
+          }
           if (AVM::UpperGPR32RegClass.contains(Dest, Src)) {
             const AVMRegisterInfo &TRI = TII.getRegisterInfo();
             Register DestLo = TRI.getSubReg(Dest, AVM::sub_lo16);
@@ -140,11 +145,77 @@ public:
         case AVM::LDI8_PSEUDO:
           NewOpcode =
               IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI8 : AVM::COLDLDI8;
+          MI.getOperand(1).setImm(
+              static_cast<uint8_t>(MI.getOperand(1).getImm()));
           break;
         case AVM::LDI16_PSEUDO:
           NewOpcode =
               IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI16 : AVM::COLDLDI16;
+          MI.getOperand(1).setImm(
+              static_cast<uint16_t>(MI.getOperand(1).getImm()));
           break;
+        case AVM::LDI32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(),
+                  TII.get(IsUpper(Lo) ? AVM::LDI16 : AVM::COLDLDI16), Lo)
+              .addImm(static_cast<uint16_t>(MI.getOperand(1).getImm()));
+          BuildMI(MBB, MI, MI.getDebugLoc(),
+                  TII.get(IsUpper(Hi) ? AVM::LDI16 : AVM::COLDLDI16), Hi)
+              .addImm(static_cast<uint16_t>(MI.getOperand(2).getImm()));
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::ZEXT16_32_PSEUDO:
+        case AVM::SEXT16_32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Src = MI.getOperand(1).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          unsigned MoveOpcode =
+              IsUpper(Lo) && IsUpper(Src) ? AVM::MOV : AVM::MOV_RR;
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(MoveOpcode), Lo)
+              .addReg(Src);
+          if (MI.getOpcode() == AVM::ZEXT16_32_PSEUDO) {
+            BuildMI(MBB, MI, MI.getDebugLoc(),
+                    TII.get(IsUpper(Hi) ? AVM::LDI16 : AVM::COLDLDI16), Hi)
+                .addImm(0);
+          } else {
+            assert(IsUpper(Hi) && "signed extension requires an upper pair");
+            unsigned HiMoveOpcode = IsUpper(Src) ? AVM::MOV : AVM::MOV_RR;
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(HiMoveOpcode), Hi)
+                .addReg(Src, MI.getOperand(1).isKill() ? RegState::Kill : 0);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::ASR16I), Hi)
+                .addReg(Hi)
+                .addImm(15);
+          }
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::PROG_ADDR_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          MachineOperand LoAddress = MI.getOperand(1);
+          MachineOperand HiAddress = MI.getOperand(1);
+          LoAddress.setTargetFlags(AVMII::MO_LO16);
+          HiAddress.setTargetFlags(AVMII::MO_HI8);
+          BuildMI(MBB, MI, MI.getDebugLoc(),
+                  TII.get(IsUpper(Lo) ? AVM::LDI16 : AVM::COLDLDI16), Lo)
+              .add(LoAddress);
+          BuildMI(MBB, MI, MI.getDebugLoc(),
+                  TII.get(IsUpper(Hi) ? AVM::LDI8 : AVM::COLDLDI8), Hi)
+              .add(HiAddress);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         case AVM::ADD16_PSEUDO:
           NewOpcode = PreferCompact(IsUpper(MI.getOperand(0).getReg()) &&
                                         IsUpper(MI.getOperand(1).getReg()) &&
@@ -180,6 +251,85 @@ public:
                                     AVM::XOR, AVM::AVMCostKind::XorUpper,
                                     AVM::XOR_RR, AVM::AVMCostKind::XorFull);
           break;
+        case AVM::ADD32_PSEUDO:
+          NewOpcode = AVM::ADD32;
+          break;
+        case AVM::SUB32_PSEUDO:
+          NewOpcode = AVM::SUB32;
+          break;
+        case AVM::AND32_PSEUDO:
+        case AVM::OR32_PSEUDO:
+        case AVM::XOR32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register RHS = MI.getOperand(2).getReg();
+          Register DestLo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register DestHi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          Register RHSLo = TRI.getSubReg(RHS, AVM::sub_lo16);
+          Register RHSHi = TRI.getSubReg(RHS, AVM::sub_hi16);
+          unsigned CompactOpcode =
+              MI.getOpcode() == AVM::AND32_PSEUDO  ? AVM::AND
+              : MI.getOpcode() == AVM::OR32_PSEUDO ? AVM::OR
+                                                   : AVM::XOR;
+          unsigned FullOpcode =
+              MI.getOpcode() == AVM::AND32_PSEUDO  ? AVM::AND_RR
+              : MI.getOpcode() == AVM::OR32_PSEUDO ? AVM::OR_RR
+                                                   : AVM::XOR_RR;
+          auto EmitWord = [&](Register Dst, Register Src) {
+            unsigned Opcode =
+                IsUpper(Dst) && IsUpper(Src) ? CompactOpcode : FullOpcode;
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Dst)
+                .addReg(Dst)
+                .addReg(Src);
+          };
+          EmitWord(DestLo, RHSLo);
+          EmitWord(DestHi, RHSHi);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::PROG_ADD_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, std::next(MI.getIterator()), MI.getDebugLoc(),
+                  TII.get(AVM::ZEXT8), Hi)
+              .addReg(Hi);
+          NewOpcode = AVM::ADD32;
+          break;
+        }
+        case AVM::PROG_CANON_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::ZEXT8), Hi)
+              .addReg(Hi);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::BSWAP32_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::BSWAP16), Lo)
+              .addReg(Lo);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::BSWAP16), Hi)
+              .addReg(Hi);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::XOR_RR), Lo)
+              .addReg(Lo)
+              .addReg(Hi);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::XOR_RR), Hi)
+              .addReg(Hi)
+              .addReg(Lo);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::XOR_RR), Lo)
+              .addReg(Lo)
+              .addReg(Hi);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         case AVM::INC16_PSEUDO:
           NewOpcode = AVM::INC16;
           break;
@@ -222,6 +372,9 @@ public:
                                         IsUpper(MI.getOperand(1).getReg()),
                                     AVM::CMP, AVM::AVMCostKind::CmpUpper,
                                     AVM::CMP_RR, AVM::AVMCostKind::CmpFull);
+          break;
+        case AVM::CMP32_PSEUDO:
+          NewOpcode = AVM::CMP32;
           break;
         case AVM::CMPIS8_PSEUDO:
           NewOpcode = IsUpper(MI.getOperand(0).getReg()) ? AVM::CMPIS8
@@ -370,6 +523,39 @@ public:
         case AVM::STORE32_PSEUDO:
           NewOpcode = AVM::ST32;
           break;
+        case AVM::LOAD24_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Addr = MI.getOperand(1).getReg();
+          Register AddrIn = MI.getOperand(2).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPLD16_POST), Lo)
+              .addDef(Addr)
+              .addReg(AddrIn);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPLD8U), Hi)
+              .addReg(Addr);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        case AVM::STORE24_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Addr = MI.getOperand(0).getReg();
+          Register AddrIn = MI.getOperand(1).getReg();
+          Register Src = MI.getOperand(2).getReg();
+          Register Lo = TRI.getSubReg(Src, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Src, AVM::sub_hi16);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPST16_POST), Addr)
+              .addReg(AddrIn)
+              .addReg(Lo);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPST8))
+              .addReg(Addr)
+              .addReg(Hi);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         case AVM::LOAD8U_POST_PSEUDO:
           NewOpcode = IsUpper(MI.getOperand(2).getReg()) ? AVM::F7LD8U_POST
                                                          : AVM::GPLD8U_POST;
@@ -397,6 +583,90 @@ public:
           break;
         case AVM::ABS_STORE16_PSEUDO:
           NewOpcode = AVM::STM16;
+          break;
+        case AVM::PLOAD8U_PSEUDO:
+          NewOpcode = AVM::LDP8U;
+          break;
+        case AVM::PLOAD8S_PSEUDO:
+          NewOpcode = AVM::LDP8S;
+          break;
+        case AVM::PLOAD16_PSEUDO:
+          NewOpcode = AVM::LDP16;
+          break;
+        case AVM::PLOAD24_PSEUDO:
+          NewOpcode = AVM::LDP24;
+          break;
+        case AVM::PLOAD32_PSEUDO:
+          NewOpcode = AVM::LDP32;
+          break;
+        case AVM::PLOAD8U_POST_PSEUDO:
+          NewOpcode = AVM::LDP8U_POST;
+          break;
+        case AVM::PLOAD16_POST_PSEUDO:
+          NewOpcode = AVM::LDP16_POST;
+          break;
+        case AVM::PLOAD24_POST_PSEUDO:
+          NewOpcode = AVM::LDP24_POST;
+          break;
+        case AVM::PLOAD32_POST_PSEUDO:
+          NewOpcode = AVM::LDP32_POST;
+          break;
+        case AVM::FADD_PSEUDO:
+          NewOpcode = AVM::FADD;
+          break;
+        case AVM::FSUB_PSEUDO:
+          NewOpcode = AVM::FSUB;
+          break;
+        case AVM::FMUL_PSEUDO:
+          NewOpcode = AVM::FMUL;
+          break;
+        case AVM::FDIV_PSEUDO:
+          NewOpcode = AVM::FDIV;
+          break;
+        case AVM::FMIN_PSEUDO:
+          NewOpcode = AVM::FMIN;
+          break;
+        case AVM::FMAX_PSEUDO:
+          NewOpcode = AVM::FMAX;
+          break;
+        case AVM::FNEG_PSEUDO:
+          NewOpcode = AVM::FNEG;
+          break;
+        case AVM::FABS_PSEUDO:
+          NewOpcode = AVM::FABS;
+          break;
+        case AVM::FSQRT_PSEUDO:
+          NewOpcode = AVM::FSQRT;
+          break;
+        case AVM::S16TOF_PSEUDO:
+          NewOpcode = AVM::S16TOF;
+          break;
+        case AVM::U16TOF_PSEUDO:
+          NewOpcode = AVM::U16TOF;
+          break;
+        case AVM::S32TOF_PSEUDO:
+          NewOpcode = AVM::S32TOF;
+          break;
+        case AVM::U32TOF_PSEUDO:
+          NewOpcode = AVM::U32TOF;
+          break;
+        case AVM::FTOS16_PSEUDO:
+          NewOpcode = AVM::FTOS16;
+          break;
+        case AVM::FTOU16_PSEUDO:
+          NewOpcode = AVM::FTOU16;
+          break;
+        case AVM::FTOS32_PSEUDO:
+          NewOpcode = AVM::FTOS32;
+          break;
+        case AVM::FTOU32_PSEUDO:
+          NewOpcode = AVM::FTOU32;
+          break;
+        case AVM::FCMP_PSEUDO:
+          NewOpcode = AVM::FCMP;
+          break;
+        case AVM::FCLASS_PSEUDO:
+          NewOpcode = AVM::FCLASS;
           break;
         case AVM::OUT_STORE8_PSEUDO: {
           bool Compact = IsUpper(MI.getOperand(1).getReg()) &&

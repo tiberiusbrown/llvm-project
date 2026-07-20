@@ -31,6 +31,13 @@ void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
         .addReg(SrcReg, getKillRegState(KillSrc));
     return;
   }
+  if (AVM::GPR16RegClass.contains(DestReg) &&
+      AVM::GPR32RegClass.contains(SrcReg)) {
+    Register SrcLo = RI.getSubReg(SrcReg, AVM::sub_lo16);
+    BuildMI(MBB, MI, DL, get(AVM::COPY16_PSEUDO), DestReg)
+        .addReg(SrcLo, getKillRegState(KillSrc));
+    return;
+  }
   if (AVM::GPR32RegClass.contains(DestReg, SrcReg)) {
     BuildMI(MBB, MI, DL, get(AVM::COPY32_PSEUDO), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc));
@@ -413,6 +420,16 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::DATA_ADDR_PSEUDO:
     return IsUpper(MI.getOperand(0)) ? get(AVM::LDI16).getSize()
                                      : get(AVM::COLDLDI16).getSize();
+  case AVM::LDI32_PSEUDO:
+    return 2 * get(AVM::LDI16).getSize();
+  case AVM::PROG_ADDR_PSEUDO:
+    return get(AVM::LDI16).getSize() + get(AVM::LDI8).getSize();
+  case AVM::PROG_CANON_PSEUDO:
+    return get(AVM::ZEXT8).getSize();
+  case AVM::ZEXT16_32_PSEUDO:
+    return get(AVM::MOV_RR).getSize() + get(AVM::COLDLDI16).getSize();
+  case AVM::SEXT16_32_PSEUDO:
+    return 2 * get(AVM::MOV_RR).getSize() + get(AVM::ASR16I).getSize();
   case AVM::ADD16_PSEUDO:
   case AVM::SUB16_PSEUDO:
   case AVM::AND16_PSEUDO:
@@ -450,6 +467,61 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     return IsUpper(MI.getOperand(0)) ? 2 : 3;
   case AVM::CMP16_PSEUDO:
     return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) ? 1 : 2;
+  case AVM::ADD32_PSEUDO:
+  case AVM::SUB32_PSEUDO:
+  case AVM::PROG_ADD_PSEUDO:
+    return get(AVM::ADD32).getSize() + (MI.getOpcode() == AVM::PROG_ADD_PSEUDO
+                                            ? get(AVM::ZEXT8).getSize()
+                                            : 0);
+  case AVM::AND32_PSEUDO:
+  case AVM::OR32_PSEUDO:
+  case AVM::XOR32_PSEUDO:
+    return 2 * get(AVM::XOR_RR).getSize();
+  case AVM::BSWAP32_PSEUDO:
+    return 2 * get(AVM::BSWAP16).getSize() + 3 * get(AVM::XOR_RR).getSize();
+  case AVM::CMP32_PSEUDO:
+    return get(AVM::CMP32).getSize();
+  case AVM::LOAD24_PSEUDO:
+    return get(AVM::GPLD16_POST).getSize() + get(AVM::GPLD8U).getSize();
+  case AVM::STORE24_PSEUDO:
+    return get(AVM::GPST16_POST).getSize() + get(AVM::GPST8).getSize();
+  case AVM::PLOAD8U_PSEUDO:
+  case AVM::PLOAD8S_PSEUDO:
+    return get(AVM::LDP8U).getSize();
+  case AVM::PLOAD16_PSEUDO:
+    return get(AVM::LDP16).getSize();
+  case AVM::PLOAD24_PSEUDO:
+    return get(AVM::LDP24).getSize();
+  case AVM::PLOAD32_PSEUDO:
+    return get(AVM::LDP32).getSize();
+  case AVM::PLOAD8U_POST_PSEUDO:
+    return get(AVM::LDP8U_POST).getSize();
+  case AVM::PLOAD16_POST_PSEUDO:
+    return get(AVM::LDP16_POST).getSize();
+  case AVM::PLOAD24_POST_PSEUDO:
+    return get(AVM::LDP24_POST).getSize();
+  case AVM::PLOAD32_POST_PSEUDO:
+    return get(AVM::LDP32_POST).getSize();
+  case AVM::FADD_PSEUDO:
+  case AVM::FSUB_PSEUDO:
+  case AVM::FMUL_PSEUDO:
+  case AVM::FDIV_PSEUDO:
+  case AVM::FMIN_PSEUDO:
+  case AVM::FMAX_PSEUDO:
+  case AVM::FNEG_PSEUDO:
+  case AVM::FABS_PSEUDO:
+  case AVM::FSQRT_PSEUDO:
+  case AVM::S16TOF_PSEUDO:
+  case AVM::U16TOF_PSEUDO:
+  case AVM::S32TOF_PSEUDO:
+  case AVM::U32TOF_PSEUDO:
+  case AVM::FTOS16_PSEUDO:
+  case AVM::FTOU16_PSEUDO:
+  case AVM::FTOS32_PSEUDO:
+  case AVM::FTOU32_PSEUDO:
+  case AVM::FCMP_PSEUDO:
+  case AVM::FCLASS_PSEUDO:
+    return 3;
   case AVM::CMOV32_PSEUDO:
     return 4;
   case AVM::SHL16_SMALL_PSEUDO: {
@@ -478,6 +550,95 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   };
 
   switch (MI.getOpcode()) {
+  case AVM::LDI32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::Ldi16Upper);
+  case AVM::PROG_ADDR_PSEUDO:
+    return Fixed(AVMCostKind::Ldi16Upper) + Fixed(AVMCostKind::Ldi8Upper);
+  case AVM::PROG_CANON_PSEUDO:
+    return Fixed(AVMCostKind::ZExt8);
+  case AVM::ZEXT16_32_PSEUDO:
+    return Fixed(AVMCostKind::MovUpper) + Fixed(AVMCostKind::Ldi16Upper);
+  case AVM::SEXT16_32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::MovUpper) +
+           AVM::getShiftCycles(AVMCostKind::Asr16I, 15);
+  case AVM::ADD32_PSEUDO:
+    return Fixed(AVMCostKind::Add32);
+  case AVM::SUB32_PSEUDO:
+    return Fixed(AVMCostKind::Sub32);
+  case AVM::AND32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::AndUpper);
+  case AVM::OR32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::OrUpper);
+  case AVM::XOR32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::XorUpper);
+  case AVM::PROG_ADD_PSEUDO:
+    return Fixed(AVMCostKind::Add32) + Fixed(AVMCostKind::ZExt8);
+  case AVM::BSWAP32_PSEUDO:
+    return 2 * Fixed(AVMCostKind::BSwap16) + 3 * Fixed(AVMCostKind::XorUpper);
+  case AVM::CMP32_PSEUDO:
+    return Fixed(AVMCostKind::Cmp32);
+  case AVM::LOAD24_PSEUDO:
+    return Fixed(AVMCostKind::Ld16PostIncGeneral) +
+           Fixed(AVMCostKind::Ld8UGeneral);
+  case AVM::STORE24_PSEUDO:
+    return Fixed(AVMCostKind::St16PostIncGeneral) +
+           Fixed(AVMCostKind::St8General);
+  case AVM::PLOAD8U_PSEUDO:
+    return Fixed(AVMCostKind::Ldp8U);
+  case AVM::PLOAD8S_PSEUDO:
+    return Fixed(AVMCostKind::Ldp8S);
+  case AVM::PLOAD16_PSEUDO:
+    return Fixed(AVMCostKind::Ldp16);
+  case AVM::PLOAD24_PSEUDO:
+    return Fixed(AVMCostKind::Ldp24);
+  case AVM::PLOAD32_PSEUDO:
+    return Fixed(AVMCostKind::Ldp32);
+  case AVM::PLOAD8U_POST_PSEUDO:
+    return Fixed(AVMCostKind::Ldp8UPostInc);
+  case AVM::PLOAD16_POST_PSEUDO:
+    return Fixed(AVMCostKind::Ldp16PostInc);
+  case AVM::PLOAD24_POST_PSEUDO:
+    return Fixed(AVMCostKind::Ldp24PostInc);
+  case AVM::PLOAD32_POST_PSEUDO:
+    return Fixed(AVMCostKind::Ldp32PostInc);
+  case AVM::FADD_PSEUDO:
+    return Typical(AVMCostKind::FAdd);
+  case AVM::FSUB_PSEUDO:
+    return Typical(AVMCostKind::FSub);
+  case AVM::FMUL_PSEUDO:
+    return Typical(AVMCostKind::FMul);
+  case AVM::FDIV_PSEUDO:
+    return Typical(AVMCostKind::FDiv);
+  case AVM::FMIN_PSEUDO:
+    return Typical(AVMCostKind::FMin);
+  case AVM::FMAX_PSEUDO:
+    return Typical(AVMCostKind::FMax);
+  case AVM::FSQRT_PSEUDO:
+    return Typical(AVMCostKind::FSqrt);
+  case AVM::FNEG_PSEUDO:
+    return Fixed(AVMCostKind::FNeg);
+  case AVM::FABS_PSEUDO:
+    return Fixed(AVMCostKind::FAbs);
+  case AVM::S16TOF_PSEUDO:
+    return Typical(AVMCostKind::S16ToF);
+  case AVM::U16TOF_PSEUDO:
+    return Typical(AVMCostKind::U16ToF);
+  case AVM::FTOS16_PSEUDO:
+    return Typical(AVMCostKind::FToS16);
+  case AVM::FTOU16_PSEUDO:
+    return Typical(AVMCostKind::FToU16);
+  case AVM::S32TOF_PSEUDO:
+    return Typical(AVMCostKind::S32ToF);
+  case AVM::U32TOF_PSEUDO:
+    return Typical(AVMCostKind::U32ToF);
+  case AVM::FTOS32_PSEUDO:
+    return Typical(AVMCostKind::FToS32);
+  case AVM::FTOU32_PSEUDO:
+    return Typical(AVMCostKind::FToU32);
+  case AVM::FCMP_PSEUDO:
+    return Typical(AVMCostKind::FCmp);
+  case AVM::FCLASS_PSEUDO:
+    return Typical(AVMCostKind::FClass);
   case AVM::MOV:
     return Fixed(AVMCostKind::MovUpper);
   case AVM::MOV_RR:

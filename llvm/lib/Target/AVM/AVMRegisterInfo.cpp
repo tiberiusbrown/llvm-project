@@ -149,8 +149,10 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                 Opcode == AVM::STACK_LOAD32_PSEUDO;
   bool IsPair = Opcode == AVM::STACK_LOAD24_PSEUDO ||
                 Opcode == AVM::STACK_LOAD32_PSEUDO ||
+                Opcode == AVM::STACK_STORE24_PSEUDO ||
                 Opcode == AVM::STACK_STORE32_PSEUDO;
-  bool Is24 = Opcode == AVM::STACK_LOAD24_PSEUDO;
+  bool Is24 =
+      Opcode == AVM::STACK_LOAD24_PSEUDO || Opcode == AVM::STACK_STORE24_PSEUDO;
   Register ValueReg = Old.getOperand(IsLoad ? 0 : 2).getReg();
   bool IsKill = !IsLoad && Old.getOperand(2).isKill();
 
@@ -214,11 +216,16 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                            TII.get(getStackStoreOpcode(MF, TII, Lo, Offset)))
                        .addImm(Offset)
                        .addReg(Lo, getKillRegState(IsKill)));
-      CloneMemRefs(
-          BuildMI(MBB, MI, DL,
-                  TII.get(getStackStoreOpcode(MF, TII, Hi, Offset + 2)))
-              .addImm(Offset + 2)
-              .addReg(Hi, getKillRegState(IsKill)));
+      unsigned HiOpcode =
+          Is24 ? preferCompact(MF, TII,
+                               AVM::UpperGPR16RegClass.contains(Hi) &&
+                                   isUInt<4>(Offset + 2),
+                               AVM::STSP8_COMPACT, AVM::AVMCostKind::StSp8Short,
+                               AVM::STSP8, AVM::AVMCostKind::StSp8Cold)
+               : getStackStoreOpcode(MF, TII, Hi, Offset + 2);
+      CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(HiOpcode))
+                       .addImm(Offset + 2)
+                       .addReg(Hi, getKillRegState(IsKill)));
     }
     Old.eraseFromParent();
     return true;
@@ -236,18 +243,30 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       unsigned AddOpcode = AVM::UpperGPR16RegClass.contains(Address)
                                ? AVM::ADDIS8
                                : AVM::COLDADDIS8;
-      BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
-          .addReg(Address)
-          .addImm(2);
-      Register Hi = getSubReg(ValueReg, AVM::sub_hi16);
-      CloneMemRefs(
-          BuildMI(MBB, MI, DL, TII.get(AVM::GPLD8U), Hi).addReg(Address));
-      BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
-          .addReg(Address)
-          .addImm(-2);
       Register Lo = getSubReg(ValueReg, AVM::sub_lo16);
-      CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPLD16), Lo)
-                       .addReg(Address, RegState::Kill));
+      Register Hi = getSubReg(ValueReg, AVM::sub_hi16);
+      if (IsLoad) {
+        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
+            .addReg(Address)
+            .addImm(2);
+        CloneMemRefs(
+            BuildMI(MBB, MI, DL, TII.get(AVM::GPLD8U), Hi).addReg(Address));
+        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
+            .addReg(Address)
+            .addImm(-2);
+        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPLD16), Lo)
+                         .addReg(Address, RegState::Kill));
+      } else {
+        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPST16))
+                         .addReg(Address)
+                         .addReg(Lo, getKillRegState(IsKill)));
+        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
+            .addReg(Address)
+            .addImm(2);
+        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPST8))
+                         .addReg(Address, RegState::Kill)
+                         .addReg(Hi, getKillRegState(IsKill)));
+      }
     } else if (IsLoad)
       CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::LD32), ValueReg)
                        .addReg(Address, RegState::Kill));

@@ -548,6 +548,8 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
   TypeSize StWidth = StVT.getSizeInBits();
   TypeSize StSize = StVT.getStoreSizeInBits();
   auto &DL = DAG.getDataLayout();
+  TargetLowering::LegalizeAction StoreAction =
+      TLI.getTruncStoreAction(ST->getValue().getValueType(), StVT);
 
   if (StWidth != StSize) {
     // Promote to a byte-sized store with upper bits zero if not
@@ -559,7 +561,9 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
         DAG.getTruncStore(Chain, dl, Value, Ptr, ST->getPointerInfo(), NVT,
                           ST->getBaseAlign(), MMOFlags, AAInfo);
     ReplaceNode(SDValue(Node, 0), Result);
-  } else if (!StVT.isVector() && !isPowerOf2_64(StWidth.getFixedValue())) {
+  } else if (!StVT.isVector() && !isPowerOf2_64(StWidth.getFixedValue()) &&
+             StoreAction != TargetLowering::Legal &&
+             StoreAction != TargetLowering::Custom) {
     // If not storing a power-of-2 number of bits, expand as two stores.
     assert(!StVT.isVector() && "Unsupported truncstore!");
     unsigned StWidthBits = StWidth.getFixedValue();
@@ -616,7 +620,7 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
     SDValue Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Lo, Hi);
     ReplaceNode(SDValue(Node, 0), Result);
   } else {
-    switch (TLI.getTruncStoreAction(ST->getValue().getValueType(), StVT)) {
+    switch (StoreAction) {
     default: llvm_unreachable("This action is not supported yet!");
     case TargetLowering::Legal: {
       EVT MemVT = ST->getMemoryVT();
@@ -733,6 +737,8 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
   TypeSize SrcWidth = SrcVT.getSizeInBits();
   MachineMemOperand::Flags MMOFlags = LD->getMemOperand()->getFlags();
   AAMDNodes AAInfo = LD->getAAInfo();
+  TargetLowering::LegalizeAction ExtAction = TLI.getLoadExtAction(
+      ExtType, Node->getValueType(0), SrcVT.getSimpleVT());
 
   if (SrcWidth != SrcVT.getStoreSizeInBits() &&
       // Some targets pretend to have an i1 loading operation, and actually
@@ -776,7 +782,9 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
 
     Value = Result;
     Chain = Ch;
-  } else if (!isPowerOf2_64(SrcWidth.getKnownMinValue())) {
+  } else if (!isPowerOf2_64(SrcWidth.getKnownMinValue()) &&
+             ExtAction != TargetLowering::Legal &&
+             ExtAction != TargetLowering::Custom) {
     // If not loading a power-of-2 number of bits, expand as two loads.
     assert(!SrcVT.isVector() && "Unsupported extload!");
     unsigned SrcWidthBits = SrcWidth.getFixedValue();
@@ -854,8 +862,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
     Chain = Ch;
   } else {
     bool isCustom = false;
-    switch (TLI.getLoadExtAction(ExtType, Node->getValueType(0),
-                                 SrcVT.getSimpleVT())) {
+    switch (ExtAction) {
     default: llvm_unreachable("This action is not supported yet!");
     case TargetLowering::Custom:
       isCustom = true;

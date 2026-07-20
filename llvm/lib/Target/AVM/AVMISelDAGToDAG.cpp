@@ -68,7 +68,9 @@ private:
     unsigned Opcode;
     switch (Node->getOpcode()) {
     case AVMISD::CMP:
-      Opcode = AVM::CMP16_PSEUDO;
+      Opcode = Node->getOperand(0).getValueType() == MVT::i32
+                   ? AVM::CMP32_PSEUDO
+                   : AVM::CMP16_PSEUDO;
       break;
     case AVMISD::CMPI:
       Opcode = AVM::CMPIS8_PSEUDO;
@@ -107,8 +109,10 @@ private:
   bool selectAVMCMov(SDNode *Node) {
     if (Node->getOpcode() != AVMISD::CMOV)
       return false;
-    unsigned Opcode = Node->getValueType(0) == MVT::i32 ? AVM::CMOV32_PSEUDO
-                                                        : AVM::CMOV16_PSEUDO;
+    unsigned Opcode =
+        Node->getValueType(0) == MVT::i32 || Node->getValueType(0) == MVT::f32
+            ? AVM::CMOV32_PSEUDO
+            : AVM::CMOV16_PSEUDO;
     SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1),
                      Node->getOperand(2), Node->getOperand(3)};
     CurDAG->SelectNodeTo(Node, Opcode, Node->getValueType(0), Ops);
@@ -120,6 +124,147 @@ private:
       return false;
     SDValue Ops[] = {Node->getOperand(1), Node->getOperand(0)};
     CurDAG->SelectNodeTo(Node, AVM::JMP_PSEUDO, MVT::Other, Ops);
+    return true;
+  }
+
+  bool isProgramPointer(SDValue Value) const {
+    if (Value.getOpcode() == AVMISD::PROGPTR ||
+        Value.getOpcode() == AVMISD::PROG_WRAPPER)
+      return true;
+    if (Value->isMachineOpcode())
+      return Value->getMachineOpcode() == AVM::PROG_ADD_PSEUDO ||
+             Value->getMachineOpcode() == AVM::PROG_ADDR_PSEUDO;
+    if (Value.getOpcode() == ISD::ADD)
+      return isProgramPointer(Value.getOperand(0)) ||
+             isProgramPointer(Value.getOperand(1));
+    return false;
+  }
+
+  bool selectI32Binary(SDNode *Node) {
+    if (Node->getValueType(0) != MVT::i32)
+      return false;
+    unsigned Opcode;
+    switch (Node->getOpcode()) {
+    case ISD::ADD:
+      if (isProgramPointer(Node->getOperand(0)))
+        Opcode = AVM::PROG_ADD_PSEUDO;
+      else if (isProgramPointer(Node->getOperand(1))) {
+        Opcode = AVM::PROG_ADD_PSEUDO;
+        SDValue Ops[] = {Node->getOperand(1), Node->getOperand(0)};
+        CurDAG->SelectNodeTo(Node, Opcode, MVT::i32, Ops);
+        return true;
+      } else
+        Opcode = AVM::ADD32_PSEUDO;
+      break;
+    case ISD::SUB:
+      Opcode = AVM::SUB32_PSEUDO;
+      break;
+    case ISD::AND:
+      if (isProgramPointer(Node->getOperand(0))) {
+        const auto *Mask = dyn_cast<ConstantSDNode>(Node->getOperand(1));
+        if (Mask && Mask->getZExtValue() == 0xffffff) {
+          ReplaceUses(SDValue(Node, 0), Node->getOperand(0));
+          CurDAG->RemoveDeadNode(Node);
+          return true;
+        }
+      }
+      Opcode = AVM::AND32_PSEUDO;
+      break;
+    case ISD::OR:
+      Opcode = AVM::OR32_PSEUDO;
+      break;
+    case ISD::XOR:
+      Opcode = AVM::XOR32_PSEUDO;
+      break;
+    default:
+      return false;
+    }
+    SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1)};
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i32, Ops);
+    return true;
+  }
+
+  bool selectI32Constant(SDNode *Node) {
+    uint32_t Bits;
+    EVT VT = Node->getValueType(0);
+    if (Node->getOpcode() == ISD::Constant && VT == MVT::i32) {
+      Bits = cast<ConstantSDNode>(Node)->getZExtValue();
+    } else if (Node->getOpcode() == ISD::ConstantFP && VT == MVT::f32) {
+      Bits = cast<ConstantFPSDNode>(Node)
+                 ->getValueAPF()
+                 .bitcastToAPInt()
+                 .getZExtValue();
+    } else {
+      return false;
+    }
+    SDLoc DL(Node);
+    SDValue Ops[] = {CurDAG->getTargetConstant(Bits & 0xffff, DL, MVT::i16),
+                     CurDAG->getTargetConstant(Bits >> 16, DL, MVT::i16)};
+    CurDAG->SelectNodeTo(Node, AVM::LDI32_PSEUDO, VT, Ops);
+    return true;
+  }
+
+  bool selectFloatOperation(SDNode *Node) {
+    unsigned Opcode;
+    switch (Node->getOpcode()) {
+    case ISD::FADD:
+      Opcode = AVM::FADD_PSEUDO;
+      break;
+    case ISD::FSUB:
+      Opcode = AVM::FSUB_PSEUDO;
+      break;
+    case ISD::FMUL:
+      Opcode = AVM::FMUL_PSEUDO;
+      break;
+    case ISD::FDIV:
+      Opcode = AVM::FDIV_PSEUDO;
+      break;
+    case ISD::FMINNUM:
+      Opcode = AVM::FMIN_PSEUDO;
+      break;
+    case ISD::FMAXNUM:
+      Opcode = AVM::FMAX_PSEUDO;
+      break;
+    case ISD::FNEG:
+      Opcode = AVM::FNEG_PSEUDO;
+      break;
+    case ISD::FABS:
+      Opcode = AVM::FABS_PSEUDO;
+      break;
+    case ISD::FSQRT:
+      Opcode = AVM::FSQRT_PSEUDO;
+      break;
+    case ISD::SINT_TO_FP:
+      Opcode = Node->getOperand(0).getValueType() == MVT::i16
+                   ? AVM::S16TOF_PSEUDO
+                   : AVM::S32TOF_PSEUDO;
+      break;
+    case ISD::UINT_TO_FP:
+      Opcode = Node->getOperand(0).getValueType() == MVT::i16
+                   ? AVM::U16TOF_PSEUDO
+                   : AVM::U32TOF_PSEUDO;
+      break;
+    case ISD::FP_TO_SINT:
+      Opcode = Node->getValueType(0) == MVT::i16 ? AVM::FTOS16_PSEUDO
+                                                 : AVM::FTOS32_PSEUDO;
+      break;
+    case ISD::FP_TO_UINT:
+      Opcode = Node->getValueType(0) == MVT::i16 ? AVM::FTOU16_PSEUDO
+                                                 : AVM::FTOU32_PSEUDO;
+      break;
+    default:
+      return false;
+    }
+    SmallVector<SDValue, 2> Ops(Node->op_begin(), Node->op_end());
+    CurDAG->SelectNodeTo(Node, Opcode, Node->getValueType(0), Ops);
+    return true;
+  }
+
+  bool selectFloatUtility(SDNode *Node) {
+    unsigned Opcode = Node->getOpcode() == AVMISD::FCMP ? AVM::FCMP_PSEUDO
+                                                        : AVM::FCLASS_PSEUDO;
+    SmallVector<SDValue, 2> Ops(Node->op_begin(), Node->op_end());
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
     return true;
   }
 
@@ -320,17 +465,62 @@ private:
     return SDValue(Sext, 0);
   }
 
+  SDValue extend16To32(SDValue Value, bool IsSigned, const SDLoc &DL) {
+    unsigned Opcode = IsSigned ? AVM::SEXT16_32_PSEUDO : AVM::ZEXT16_32_PSEUDO;
+    return SDValue(CurDAG->getMachineNode(Opcode, DL, MVT::i32, Value), 0);
+  }
+
+  bool selectExtendOrTruncate32(SDNode *Node) {
+    if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
+        Node->getValueType(0) == MVT::i32 &&
+        cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i16) {
+      SDLoc DL(Node);
+      SDValue SubReg = CurDAG->getTargetConstant(AVM::sub_lo16, DL, MVT::i32);
+      SDNode *Lo =
+          CurDAG->getMachineNode(TargetOpcode::EXTRACT_SUBREG, DL, MVT::i16,
+                                 Node->getOperand(0), SubReg);
+      CurDAG->SelectNodeTo(Node, AVM::SEXT16_32_PSEUDO, MVT::i32,
+                           SDValue(Lo, 0));
+      return true;
+    }
+    if (Node->getOpcode() == ISD::TRUNCATE &&
+        Node->getOperand(0).getValueType() == MVT::i32 &&
+        Node->getValueType(0) == MVT::i16) {
+      SDValue Ops[] = {
+          Node->getOperand(0),
+          CurDAG->getTargetConstant(AVM::sub_lo16, SDLoc(Node), MVT::i32)};
+      CurDAG->SelectNodeTo(Node, TargetOpcode::EXTRACT_SUBREG, MVT::i16, Ops);
+      return true;
+    }
+    if ((Node->getOpcode() != ISD::ZERO_EXTEND &&
+         Node->getOpcode() != ISD::ANY_EXTEND &&
+         Node->getOpcode() != ISD::SIGN_EXTEND) ||
+        Node->getOperand(0).getValueType() != MVT::i16 ||
+        Node->getValueType(0) != MVT::i32)
+      return false;
+    unsigned Opcode = Node->getOpcode() == ISD::SIGN_EXTEND
+                          ? AVM::SEXT16_32_PSEUDO
+                          : AVM::ZEXT16_32_PSEUDO;
+    CurDAG->SelectNodeTo(Node, Opcode, MVT::i32, Node->getOperand(0));
+    return true;
+  }
+
   bool selectDataLoad(SDNode *Node) {
     const auto *Load = cast<LoadSDNode>(Node);
     if (Load->getAddressSpace() != 0)
       return false;
 
     EVT MemoryVT = Load->getMemoryVT();
-    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i32)
+    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i24 &&
+        MemoryVT != MVT::i32 && MemoryVT != MVT::f32)
       return false;
     bool IsByte = MemoryVT == MVT::i8;
-    bool IsPair = MemoryVT == MVT::i32;
-    if (Load->getValueType(0) != (IsPair ? MVT::i32 : MVT::i16))
+    bool IsPointer = MemoryVT == MVT::i24;
+    bool IsPair = IsPointer || MemoryVT == MVT::i32 || MemoryVT == MVT::f32;
+    EVT ResultVT = Load->getValueType(0);
+    if ((IsPointer && ResultVT != MVT::i32) ||
+        (IsPair && !IsPointer && ResultVT != MemoryVT) ||
+        (!IsPair && ResultVT != MVT::i16 && ResultVT != MVT::i32))
       return false;
     bool IsSigned = IsByte && Load->getExtensionType() == ISD::SEXTLOAD;
     bool IsPostInc = Load->getAddressingMode() == ISD::POST_INC;
@@ -354,9 +544,13 @@ private:
       ResultVTs = {MVT::i16, MVT::i16, MVT::Other};
       Ops = {Address, Load->getChain()};
     } else if (Load->getAddressingMode() == ISD::UNINDEXED) {
-      Opcode = IsPair ? AVM::LOAD32_PSEUDO
-                      : (IsByte ? AVM::LOAD8U_PSEUDO : AVM::LOAD16_PSEUDO);
-      ResultVTs = {IsPair ? EVT(MVT::i32) : EVT(MVT::i16), MVT::Other};
+      Opcode = IsPointer ? AVM::LOAD24_PSEUDO
+               : IsPair  ? AVM::LOAD32_PSEUDO
+                         : (IsByte ? AVM::LOAD8U_PSEUDO : AVM::LOAD16_PSEUDO);
+      ResultVTs = IsPointer
+                      ? SmallVector<EVT, 3>{MVT::i32, MVT::i16, MVT::Other}
+                      : SmallVector<EVT, 3>{IsPair ? MemoryVT : EVT(MVT::i16),
+                                            MVT::Other};
       Ops = {Address, Load->getChain()};
     } else {
       return false;
@@ -369,6 +563,81 @@ private:
     SDValue Value(Result, 0);
     if (IsSigned)
       Value = selectSignExtend8(Value, SDLoc(Node));
+    if (!IsPair && Load->getValueType(0) == MVT::i32)
+      Value = extend16To32(Value, Load->getExtensionType() == ISD::SEXTLOAD,
+                           SDLoc(Node));
+    ReplaceUses(SDValue(Node, 0), Value);
+    if (IsPostInc) {
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+      ReplaceUses(SDValue(Node, 2), SDValue(Result, 2));
+    } else if (IsPointer) {
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 2));
+    } else {
+      ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+    }
+    CurDAG->RemoveDeadNode(Node);
+    return true;
+  }
+
+  bool selectProgramLoad(SDNode *Node) {
+    const auto *Load = cast<LoadSDNode>(Node);
+    if (Load->getAddressSpace() != 1)
+      return false;
+
+    EVT MemoryVT = Load->getMemoryVT();
+    bool IsByte = MemoryVT == MVT::i8;
+    bool IsWord = MemoryVT == MVT::i16;
+    bool IsPointer = MemoryVT == MVT::i24;
+    bool IsDWord = MemoryVT == MVT::i32 || MemoryVT == MVT::f32;
+    if (!IsByte && !IsWord && !IsPointer && !IsDWord)
+      return false;
+    bool IsPair = IsPointer || IsDWord;
+    EVT ValueVT = IsPair ? Load->getValueType(0) : EVT(MVT::i16);
+    if ((!IsPair && Load->getValueType(0) != MVT::i16 &&
+         Load->getValueType(0) != MVT::i32) ||
+        (IsPair && Load->getValueType(0) != MVT::i32 &&
+         Load->getValueType(0) != MVT::f32))
+      return false;
+
+    bool IsSigned = IsByte && Load->getExtensionType() == ISD::SEXTLOAD;
+    bool IsPostInc = Load->getAddressingMode() == ISD::POST_INC;
+    unsigned Opcode;
+    if (IsPostInc) {
+      const auto *Increment = dyn_cast<ConstantSDNode>(Load->getOffset());
+      if (!Increment || Increment->getZExtValue() != MemoryVT.getStoreSize())
+        return false;
+      Opcode = IsByte      ? AVM::PLOAD8U_POST_PSEUDO
+               : IsWord    ? AVM::PLOAD16_POST_PSEUDO
+               : IsPointer ? AVM::PLOAD24_POST_PSEUDO
+                           : AVM::PLOAD32_POST_PSEUDO;
+    } else if (Load->getAddressingMode() == ISD::UNINDEXED) {
+      Opcode = IsByte   ? (IsSigned ? AVM::PLOAD8S_PSEUDO : AVM::PLOAD8U_PSEUDO)
+               : IsWord ? AVM::PLOAD16_PSEUDO
+               : IsPointer ? AVM::PLOAD24_PSEUDO
+                           : AVM::PLOAD32_PSEUDO;
+    } else {
+      return false;
+    }
+
+    SmallVector<EVT, 3> ResultVTs;
+    SmallVector<SDValue, 2> Ops;
+    if (IsPostInc) {
+      ResultVTs = {ValueVT, MVT::i32, MVT::Other};
+      Ops = {Load->getBasePtr(), Load->getChain()};
+    } else {
+      ResultVTs = {ValueVT, MVT::Other};
+      Ops = {Load->getBasePtr(), Load->getChain()};
+    }
+    SDNode *Result =
+        CurDAG->getMachineNode(Opcode, SDLoc(Node), ResultVTs, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
+                           {Load->getMemOperand()});
+    SDValue Value(Result, 0);
+    if (IsSigned && IsPostInc)
+      Value = selectSignExtend8(Value, SDLoc(Node));
+    if (!IsPair && Load->getValueType(0) == MVT::i32)
+      Value = extend16To32(Value, Load->getExtensionType() == ISD::SEXTLOAD,
+                           SDLoc(Node));
     ReplaceUses(SDValue(Node, 0), Value);
     if (IsPostInc) {
       ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
@@ -382,14 +651,18 @@ private:
 
   bool selectDataStore(SDNode *Node) {
     const auto *Store = cast<StoreSDNode>(Node);
+    if (Store->getAddressSpace() == 1)
+      report_fatal_error("AVM address space 1 is read-only");
     if (Store->getAddressSpace() != 0)
       return false;
 
     EVT MemoryVT = Store->getMemoryVT();
-    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i32)
+    if (MemoryVT != MVT::i8 && MemoryVT != MVT::i16 && MemoryVT != MVT::i24 &&
+        MemoryVT != MVT::i32 && MemoryVT != MVT::f32)
       return false;
     bool IsByte = MemoryVT == MVT::i8;
-    bool IsPair = MemoryVT == MVT::i32;
+    bool IsPointer = MemoryVT == MVT::i24;
+    bool IsPair = IsPointer || MemoryVT == MVT::i32 || MemoryVT == MVT::f32;
     bool IsPostInc = Store->getAddressingMode() == ISD::POST_INC;
 
     SDValue Address = Store->getBasePtr();
@@ -410,9 +683,11 @@ private:
       ResultVTs = {MVT::i16, MVT::Other};
       Ops = {Address, Store->getValue(), Store->getChain()};
     } else if (Store->getAddressingMode() == ISD::UNINDEXED) {
-      Opcode = IsPair ? AVM::STORE32_PSEUDO
-                      : (IsByte ? AVM::STORE8_PSEUDO : AVM::STORE16_PSEUDO);
-      ResultVTs = {MVT::Other};
+      Opcode = IsPointer ? AVM::STORE24_PSEUDO
+               : IsPair  ? AVM::STORE32_PSEUDO
+                         : (IsByte ? AVM::STORE8_PSEUDO : AVM::STORE16_PSEUDO);
+      ResultVTs = IsPointer ? SmallVector<EVT, 2>{MVT::i16, MVT::Other}
+                            : SmallVector<EVT, 2>{MVT::Other};
       Ops = {Address, Store->getValue(), Store->getChain()};
     } else {
       return false;
@@ -425,6 +700,8 @@ private:
     if (IsPostInc) {
       ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
       ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
+    } else if (IsPointer) {
+      ReplaceUses(SDValue(Node, 0), SDValue(Result, 1));
     } else {
       ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
     }
@@ -436,6 +713,30 @@ private:
     if (Node->getOpcode() != AVMISD::WRAPPER)
       return false;
     CurDAG->SelectNodeTo(Node, AVM::DATA_ADDR_PSEUDO, MVT::i16,
+                         Node->getOperand(0));
+    return true;
+  }
+
+  bool selectProgramAddress(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::PROG_WRAPPER)
+      return false;
+    CurDAG->SelectNodeTo(Node, AVM::PROG_ADDR_PSEUDO, MVT::i32,
+                         Node->getOperand(0));
+    return true;
+  }
+
+  bool selectProgramPointer(SDNode *Node) {
+    if (Node->getOpcode() != AVMISD::PROGPTR)
+      return false;
+    CurDAG->SelectNodeTo(Node, AVM::PROG_CANON_PSEUDO, MVT::i32,
+                         Node->getOperand(0));
+    return true;
+  }
+
+  bool selectBSwap32(SDNode *Node) {
+    if (Node->getOpcode() != ISD::BSWAP || Node->getValueType(0) != MVT::i32)
+      return false;
+    CurDAG->SelectNodeTo(Node, AVM::BSWAP32_PSEUDO, MVT::i32,
                          Node->getOperand(0));
     return true;
   }
@@ -527,16 +828,24 @@ private:
       return false;
 
     unsigned Opcode;
-    if (Load->getMemoryVT() == MVT::i8 && Load->getValueType(0) == MVT::i16) {
+    bool NeedsI32Extend =
+        Load->getValueType(0) == MVT::i32 &&
+        (Load->getMemoryVT() == MVT::i8 || Load->getMemoryVT() == MVT::i16);
+    if (Load->getMemoryVT() == MVT::i8 &&
+        (Load->getValueType(0) == MVT::i16 || NeedsI32Extend)) {
       Opcode = Load->getExtensionType() == ISD::SEXTLOAD
                    ? AVM::STACK_LOAD8S_PSEUDO
                    : AVM::STACK_LOAD8U_PSEUDO;
     } else if (Load->getMemoryVT() == MVT::i16 &&
-               Load->getValueType(0) == MVT::i16) {
+               (Load->getValueType(0) == MVT::i16 || NeedsI32Extend)) {
       Opcode = AVM::STACK_LOAD16_PSEUDO;
-    } else if (Load->getMemoryVT() == MVT::i32 &&
-               Load->getValueType(0) == MVT::i32) {
+    } else if ((Load->getMemoryVT() == MVT::i32 ||
+                Load->getMemoryVT() == MVT::f32) &&
+               Load->getValueType(0) == Load->getMemoryVT()) {
       Opcode = AVM::STACK_LOAD32_PSEUDO;
+    } else if (Load->getMemoryVT() == MVT::i24 &&
+               Load->getValueType(0) == MVT::i32) {
+      Opcode = AVM::STACK_LOAD24_PSEUDO;
     } else {
       return false;
     }
@@ -546,10 +855,16 @@ private:
                      CurDAG->getTargetConstant(Offset, SDLoc(Node), MVT::i16),
                      Load->getChain()};
     SDNode *Result = CurDAG->getMachineNode(
-        Opcode, SDLoc(Node), Load->getValueType(0), MVT::Other, Ops);
+        Opcode, SDLoc(Node),
+        NeedsI32Extend ? EVT(MVT::i16) : Load->getValueType(0), MVT::Other,
+        Ops);
     CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
                            {Load->getMemOperand()});
-    ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
+    SDValue Value(Result, 0);
+    if (NeedsI32Extend)
+      Value = extend16To32(Value, Load->getExtensionType() == ISD::SEXTLOAD,
+                           SDLoc(Node));
+    ReplaceUses(SDValue(Node, 0), Value);
     ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
     CurDAG->RemoveDeadNode(Node);
     return true;
@@ -568,7 +883,10 @@ private:
       Opcode = AVM::STACK_STORE8_PSEUDO;
     else if (Store->getMemoryVT() == MVT::i16)
       Opcode = AVM::STACK_STORE16_PSEUDO;
-    else if (Store->getMemoryVT() == MVT::i32)
+    else if (Store->getMemoryVT() == MVT::i24)
+      Opcode = AVM::STACK_STORE24_PSEUDO;
+    else if (Store->getMemoryVT() == MVT::i32 ||
+             Store->getMemoryVT() == MVT::f32)
       Opcode = AVM::STACK_STORE32_PSEUDO;
     else
       return false;
@@ -610,7 +928,8 @@ private:
       Opcode = AVM::OUT_STORE8_PSEUDO;
     else if (Store->getMemoryVT() == MVT::i16)
       Opcode = AVM::OUT_STORE16_PSEUDO;
-    else if (Store->getMemoryVT() == MVT::i32)
+    else if (Store->getMemoryVT() == MVT::i32 ||
+             Store->getMemoryVT() == MVT::f32)
       Opcode = AVM::OUT_STORE32_PSEUDO;
     else
       return false;
@@ -660,6 +979,10 @@ private:
     case AVMISD::CALL:
       selectCall(Node);
       return;
+    case AVMISD::FCMP:
+    case AVMISD::FCLASS:
+      selectFloatUtility(Node);
+      return;
     case AVMISD::CMOV:
       selectAVMCMov(Node);
       return;
@@ -672,6 +995,12 @@ private:
     case AVMISD::CSET:
       selectAVMCSet(Node);
       return;
+    case AVMISD::PROGPTR:
+      selectProgramPointer(Node);
+      return;
+    case AVMISD::PROG_WRAPPER:
+      selectProgramAddress(Node);
+      return;
     case AVMISD::LOAD24:
       if (selectLoad24(Node))
         return;
@@ -680,7 +1009,8 @@ private:
       selectStore24(Node);
       return;
     case ISD::LOAD:
-      if (selectStackLoad(Node) || selectDataLoad(Node))
+      if (selectStackLoad(Node) || selectProgramLoad(Node) ||
+          selectDataLoad(Node))
         return;
       break;
     case ISD::STORE:
@@ -689,17 +1019,61 @@ private:
         return;
       break;
     case ISD::AND:
+      if (selectI32Binary(Node))
+        return;
       if (selectZeroExtend8(Node))
+        return;
+      break;
+    case ISD::OR:
+    case ISD::XOR:
+      if (selectI32Binary(Node))
         return;
       break;
     case ISD::ADD:
       if (selectFrameAddress(Node))
         return;
+      if (selectI32Binary(Node))
+        return;
       if (selectAddSub(Node))
         return;
       break;
     case ISD::SUB:
+      if (selectI32Binary(Node))
+        return;
       if (selectAddSub(Node))
+        return;
+      break;
+    case ISD::BSWAP:
+      if (selectBSwap32(Node))
+        return;
+      break;
+    case ISD::Constant:
+    case ISD::ConstantFP:
+      if (selectI32Constant(Node))
+        return;
+      break;
+    case ISD::ZERO_EXTEND:
+    case ISD::ANY_EXTEND:
+    case ISD::SIGN_EXTEND:
+    case ISD::SIGN_EXTEND_INREG:
+    case ISD::TRUNCATE:
+      if (selectExtendOrTruncate32(Node))
+        return;
+      break;
+    case ISD::FADD:
+    case ISD::FSUB:
+    case ISD::FMUL:
+    case ISD::FDIV:
+    case ISD::FMINNUM:
+    case ISD::FMAXNUM:
+    case ISD::FNEG:
+    case ISD::FABS:
+    case ISD::FSQRT:
+    case ISD::SINT_TO_FP:
+    case ISD::UINT_TO_FP:
+    case ISD::FP_TO_SINT:
+    case ISD::FP_TO_UINT:
+      if (selectFloatOperation(Node))
         return;
       break;
     case ISD::MUL:

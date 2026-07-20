@@ -185,6 +185,7 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::GPST8_POST: return {"st8", 0};
   case AVM::GPST16:
   case AVM::GPST16_POST: return {"st16", 0};
+  case AVM::PROGPTR: return {".progptr", 0};
   default:
     return {"<unknown>", 0};
   }

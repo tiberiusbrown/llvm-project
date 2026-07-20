@@ -12,6 +12,14 @@
 namespace llvm {
 class AVMSubtarget;
 
+namespace AVMII {
+enum TargetOperandFlags : unsigned {
+  MO_NONE,
+  MO_LO16,
+  MO_HI8,
+};
+} // namespace AVMII
+
 class AVMInstrInfo final : public AVMGenInstrInfo {
   AVMRegisterInfo RI;
 

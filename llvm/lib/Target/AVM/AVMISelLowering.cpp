@@ -8,6 +8,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/IR/RuntimeLibcalls.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -206,6 +207,11 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
   AVMCC::CondCode TargetCond = canonicalizeCondCode(CC, LHS, RHS);
   SDValue TargetCC = DAG.getTargetConstant(TargetCond, DL, MVT::i16);
 
+  if (LHS.getValueType() == MVT::i32) {
+    SDValue Glue = DAG.getNode(AVMISD::CMP, DL, MVT::Glue, LHS, RHS);
+    return {TargetCC, Glue};
+  }
+
   if (const auto *C = dyn_cast<ConstantSDNode>(RHS); C && C->isZero()) {
     SDValue ByteValue;
     SDValue Glue = stripByteValue(LHS, ByteValue)
@@ -224,13 +230,84 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
   SDValue Glue = DAG.getNode(AVMISD::CMP, DL, MVT::Glue, LHS, RHS);
   return {TargetCC, Glue};
 }
+
+static SDValue getAVMCSet(SDValue LHS, SDValue RHS, ISD::CondCode CC,
+                          const SDLoc &DL, SelectionDAG &DAG) {
+  auto [TargetCC, Glue] = getAVMCompare(LHS, RHS, CC, DL, DAG);
+  return DAG.getNode(AVMISD::CSET, DL, MVT::i16, TargetCC, Glue);
+}
+
+static SDValue getAVMFloatSetCC(SDValue LHS, SDValue RHS, ISD::CondCode CC,
+                                const SDLoc &DL, SelectionDAG &DAG) {
+  SDValue Result = DAG.getNode(AVMISD::FCMP, DL, MVT::i16, LHS, RHS);
+  auto Compare = [&](int16_t Value, ISD::CondCode IntCC) {
+    return getAVMCSet(
+        Result, DAG.getConstant(static_cast<uint16_t>(Value), DL, MVT::i16),
+        IntCC, DL, DAG);
+  };
+  auto Equal = [&](int16_t Value) { return Compare(Value, ISD::SETEQ); };
+  auto NotEqual = [&](int16_t Value) { return Compare(Value, ISD::SETNE); };
+  auto And = [&](SDValue A, SDValue B) {
+    return DAG.getNode(ISD::AND, DL, MVT::i16, A, B);
+  };
+  auto Or = [&](SDValue A, SDValue B) {
+    return DAG.getNode(ISD::OR, DL, MVT::i16, A, B);
+  };
+
+  switch (CC) {
+  case ISD::SETOEQ:
+  case ISD::SETEQ:
+    return Equal(0);
+  case ISD::SETOGT:
+  case ISD::SETGT:
+    return Equal(1);
+  case ISD::SETOGE:
+  case ISD::SETGE:
+    return Compare(2, ISD::SETULT);
+  case ISD::SETOLT:
+  case ISD::SETLT:
+    return Equal(-1);
+  case ISD::SETOLE:
+  case ISD::SETLE:
+    return Compare(0, ISD::SETLE);
+  case ISD::SETONE:
+    return And(NotEqual(0), NotEqual(2));
+  case ISD::SETO:
+    return NotEqual(2);
+  case ISD::SETUO:
+    return Equal(2);
+  case ISD::SETUEQ:
+    return Or(Equal(0), Equal(2));
+  case ISD::SETUGT:
+    return Or(Equal(1), Equal(2));
+  case ISD::SETUGE:
+    return NotEqual(-1);
+  case ISD::SETULT:
+    return Or(Equal(-1), Equal(2));
+  case ISD::SETULE:
+    return NotEqual(1);
+  case ISD::SETUNE:
+  case ISD::SETNE:
+    return NotEqual(0);
+  case ISD::SETFALSE:
+  case ISD::SETFALSE2:
+    return DAG.getConstant(0, DL, MVT::i16);
+  case ISD::SETTRUE:
+  case ISD::SETTRUE2:
+    return DAG.getConstant(1, DL, MVT::i16);
+  default:
+    report_fatal_error("unsupported AVM floating condition code");
+  }
+}
 } // namespace
 
 AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
                                      const AVMSubtarget &STI)
     : TargetLowering(TM, STI) {
+  IsStrictFPEnabled = true;
   addRegisterClass(MVT::i16, &AVM::GPR16RegClass);
   addRegisterClass(MVT::i32, &AVM::GPR32RegClass);
+  addRegisterClass(MVT::f32, &AVM::GPR32RegClass);
   computeRegisterProperties(STI.getRegisterInfo());
 
   setStackPointerRegisterToSaveRestore(AVM::SP);
@@ -240,28 +317,87 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
   setOperationAction(ISD::BR_CC, MVT::i16, Custom);
+  setOperationAction(ISD::BR_CC, MVT::i32, Custom);
+  setOperationAction(ISD::BR_CC, MVT::f32, Custom);
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
+  setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
   setOperationAction(ISD::SETCC, MVT::i16, Custom);
+  setOperationAction(ISD::SETCC, MVT::i32, Custom);
+  setOperationAction(ISD::SETCC, MVT::f32, Custom);
   if (TM.getOptLevel() == CodeGenOptLevel::None) {
     setOperationAction(ISD::SELECT, MVT::i16, Custom);
     setOperationAction(ISD::SELECT, MVT::i32, Custom);
+    setOperationAction(ISD::SELECT, MVT::f32, Custom);
     setOperationAction(ISD::SELECT_CC, MVT::i16, Expand);
     setOperationAction(ISD::SELECT_CC, MVT::i32, Expand);
+    setOperationAction(ISD::SELECT_CC, MVT::f32, Expand);
   } else {
     setOperationAction(ISD::SELECT, MVT::i16, Custom);
     setOperationAction(ISD::SELECT, MVT::i32, Custom);
+    setOperationAction(ISD::SELECT, MVT::f32, Custom);
     setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
     setOperationAction(ISD::SELECT_CC, MVT::i32, Custom);
+    setOperationAction(ISD::SELECT_CC, MVT::f32, Custom);
   }
+  for (unsigned Opcode :
+       {ISD::ADD, ISD::SUB, ISD::AND, ISD::OR, ISD::XOR, ISD::BSWAP})
+    setOperationAction(Opcode, MVT::i32, Legal);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32, Legal);
+  for (unsigned Opcode : {ISD::MUL, ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM})
+    setOperationAction(Opcode, MVT::i32, LibCall);
+  for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
+    setOperationAction(Opcode, MVT::i32, Custom);
+
+  setLibcallImpl(RTLIB::MUL_I32, RTLIB::impl___avm_mulsi3);
+  setLibcallImpl(RTLIB::UDIV_I32, RTLIB::impl___avm_udivsi3);
+  setLibcallImpl(RTLIB::UREM_I32, RTLIB::impl___avm_umodsi3);
+  setLibcallImpl(RTLIB::SDIV_I32, RTLIB::impl___avm_divsi3);
+  setLibcallImpl(RTLIB::SREM_I32, RTLIB::impl___avm_modsi3);
+  setLibcallImpl(RTLIB::SHL_I32, RTLIB::impl___avm_ashlsi3);
+  setLibcallImpl(RTLIB::SRL_I32, RTLIB::impl___avm_lshrsi3);
+  setLibcallImpl(RTLIB::SRA_I32, RTLIB::impl___avm_ashrsi3);
+  setLibcallImpl(RTLIB::ADD_F32, RTLIB::impl___addsf3);
+  setLibcallImpl(RTLIB::SUB_F32, RTLIB::impl___subsf3);
+  setLibcallImpl(RTLIB::MUL_F32, RTLIB::impl___mulsf3);
+  setLibcallImpl(RTLIB::DIV_F32, RTLIB::impl___divsf3);
+  setLibcallImpl(RTLIB::SQRT_F32, RTLIB::impl_sqrtf);
+  setLibcallImpl(RTLIB::FPTOSINT_F32_I32, RTLIB::impl___fixsfsi);
+  setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
+  setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
+  setLibcallImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
+
+  for (unsigned Opcode :
+       {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FSQRT, ISD::FNEG,
+        ISD::FABS, ISD::FMINNUM, ISD::FMAXNUM})
+    setOperationAction(Opcode, MVT::f32, Legal);
+  for (unsigned Opcode : {ISD::STRICT_FADD, ISD::STRICT_FSUB, ISD::STRICT_FMUL,
+                          ISD::STRICT_FDIV, ISD::STRICT_FSQRT})
+    setOperationAction(Opcode, MVT::f32, Expand);
+  for (MVT VT : {MVT::i16, MVT::i32}) {
+    setOperationAction(ISD::SINT_TO_FP, VT, Legal);
+    setOperationAction(ISD::UINT_TO_FP, VT, Legal);
+    setOperationAction(ISD::FP_TO_SINT, VT, Legal);
+    setOperationAction(ISD::FP_TO_UINT, VT, Legal);
+    setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Expand);
+    setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Expand);
+  }
+  setOperationAction(ISD::STRICT_SINT_TO_FP, MVT::f32, Expand);
+  setOperationAction(ISD::STRICT_UINT_TO_FP, MVT::f32, Expand);
+  setOperationAction(ISD::IS_FPCLASS, MVT::f32, Custom);
+  setOperationAction(ISD::ADDRSPACECAST, MVT::i16, Custom);
+  setOperationAction(ISD::ADDRSPACECAST, MVT::i32, Custom);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
 
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
                    MVT::i8, Legal);
+  setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD}, MVT::i32, MVT::i24, Legal);
   setTruncStoreAction(MVT::i16, MVT::i8, Legal);
+  setTruncStoreAction(MVT::i32, MVT::i24, Legal);
   setIndexedLoadAction(ISD::POST_INC, MVT::i8, Legal);
   setIndexedLoadAction(ISD::POST_INC, MVT::i16, Legal);
+  setIndexedLoadAction(ISD::POST_INC, MVT::i32, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i8, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i16, Legal);
 
@@ -294,8 +430,16 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::CMPI";
   if (Opcode == AVMISD::CSET)
     return "AVMISD::CSET";
+  if (Opcode == AVMISD::FCMP)
+    return "AVMISD::FCMP";
+  if (Opcode == AVMISD::FCLASS)
+    return "AVMISD::FCLASS";
   if (Opcode == AVMISD::LOAD24)
     return "AVMISD::LOAD24";
+  if (Opcode == AVMISD::PROGPTR)
+    return "AVMISD::PROGPTR";
+  if (Opcode == AVMISD::PROG_WRAPPER)
+    return "AVMISD::PROG_WRAPPER";
   if (Opcode == AVMISD::STORE24)
     return "AVMISD::STORE24";
   if (Opcode == AVMISD::TST8)
@@ -314,8 +458,17 @@ bool AVMTargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
                                                        Align,
                                                        MachineMemOperand::Flags,
                                                        unsigned *Fast) const {
-  if (AddrSpace != 0 || (VT != MVT::i8 && VT != MVT::i16 && VT != MVT::i32))
+  if (AddrSpace == 0) {
+    if (VT != MVT::i8 && VT != MVT::i16 && VT.getSizeInBits() != 24 &&
+        VT != MVT::i32 && VT != MVT::f32)
+      return false;
+  } else if (AddrSpace == 1) {
+    if (VT != MVT::i8 && VT != MVT::i16 && VT.getSizeInBits() != 24 &&
+        VT != MVT::i32 && VT != MVT::f32)
+      return false;
+  } else {
     return false;
+  }
   if (Fast)
     *Fast = 1;
   return true;
@@ -340,16 +493,23 @@ bool AVMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
   } else {
     return false;
   }
-  if (AddressSpace != 0 || (MemoryVT != MVT::i8 && MemoryVT != MVT::i16) ||
-      Op->getOpcode() != ISD::ADD)
+  if (Op->getOpcode() != ISD::ADD)
+    return false;
+  if (AddressSpace == 0 && MemoryVT != MVT::i8 && MemoryVT != MVT::i16)
+    return false;
+  if (AddressSpace == 1 && MemoryVT != MVT::i8 && MemoryVT != MVT::i16 &&
+      MemoryVT.getSizeInBits() != 24 && MemoryVT != MVT::i32 &&
+      MemoryVT != MVT::f32)
+    return false;
+  if (AddressSpace != 0 && AddressSpace != 1)
     return false;
   const auto *Increment = dyn_cast<ConstantSDNode>(Op->getOperand(1));
-  int64_t Width = MemoryVT == MVT::i8 ? 1 : 2;
+  int64_t Width = MemoryVT.getStoreSize();
   if (!Increment || Increment->getSExtValue() != Width ||
       Pointer != Op->getOperand(0))
     return false;
   Base = Pointer;
-  Offset = DAG.getConstant(Width, SDLoc(N), MVT::i16);
+  Offset = DAG.getConstant(Width, SDLoc(N), Pointer.getValueType());
   AM = ISD::POST_INC;
   return true;
 }
@@ -365,6 +525,11 @@ SDValue AVMTargetLowering::LowerGlobalAddress(SDValue Op,
                                               SelectionDAG &DAG) const {
   const auto *GA = cast<GlobalAddressSDNode>(Op);
   SDLoc DL(Op);
+  if (GA->getGlobal()->getAddressSpace() == 1) {
+    SDValue Target = DAG.getTargetGlobalAddress(
+        GA->getGlobal(), DL, MVT::i32, GA->getOffset(), GA->getTargetFlags());
+    return DAG.getNode(AVMISD::PROG_WRAPPER, DL, MVT::i32, Target);
+  }
   SDValue Target = DAG.getTargetGlobalAddress(
       GA->getGlobal(), DL, MVT::i16, GA->getOffset(), GA->getTargetFlags());
   return DAG.getNode(AVMISD::WRAPPER, DL, MVT::i16, Target);
@@ -373,6 +538,14 @@ SDValue AVMTargetLowering::LowerGlobalAddress(SDValue Op,
 SDValue AVMTargetLowering::LowerBRCC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  if (Op.getOperand(2).getValueType() == MVT::f32) {
+    SDValue Bool =
+        getAVMFloatSetCC(Op.getOperand(2), Op.getOperand(3), CC, DL, DAG);
+    auto [TargetCC, Glue] = getAVMCompare(
+        Bool, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
+    return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
+                       Op.getOperand(4), TargetCC, Glue);
+  }
   auto [TargetCC, Glue] =
       getAVMCompare(Op.getOperand(2), Op.getOperand(3), CC, DL, DAG);
   return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
@@ -382,6 +555,8 @@ SDValue AVMTargetLowering::LowerBRCC(SDValue Op, SelectionDAG &DAG) const {
 SDValue AVMTargetLowering::LowerSetCC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+  if (Op.getOperand(0).getValueType() == MVT::f32)
+    return getAVMFloatSetCC(Op.getOperand(0), Op.getOperand(1), CC, DL, DAG);
   auto [TargetCC, Glue] =
       getAVMCompare(Op.getOperand(0), Op.getOperand(1), CC, DL, DAG);
   return DAG.getNode(AVMISD::CSET, DL, Op.getValueType(), TargetCC, Glue);
@@ -390,8 +565,14 @@ SDValue AVMTargetLowering::LowerSetCC(SDValue Op, SelectionDAG &DAG) const {
 SDValue AVMTargetLowering::LowerSelectCC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
-  auto [TargetCC, Glue] =
-      getAVMCompare(Op.getOperand(0), Op.getOperand(1), CC, DL, DAG);
+  SDValue CompareLHS = Op.getOperand(0);
+  SDValue CompareRHS = Op.getOperand(1);
+  if (CompareLHS.getValueType() == MVT::f32) {
+    CompareLHS = getAVMFloatSetCC(CompareLHS, CompareRHS, CC, DL, DAG);
+    CompareRHS = DAG.getConstant(0, DL, MVT::i16);
+    CC = ISD::SETNE;
+  }
+  auto [TargetCC, Glue] = getAVMCompare(CompareLHS, CompareRHS, CC, DL, DAG);
   return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(2),
                      Op.getOperand(3), TargetCC, Glue);
 }
@@ -403,8 +584,15 @@ SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
   SDValue Glue;
   if (Cond.getOpcode() == ISD::SETCC) {
     ISD::CondCode CC = cast<CondCodeSDNode>(Cond.getOperand(2))->get();
-    std::tie(TargetCC, Glue) =
-        getAVMCompare(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
+    if (Cond.getOperand(0).getValueType() == MVT::f32) {
+      SDValue Bool =
+          getAVMFloatSetCC(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
+      std::tie(TargetCC, Glue) = getAVMCompare(
+          Bool, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
+    } else {
+      std::tie(TargetCC, Glue) =
+          getAVMCompare(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
+    }
   } else {
     std::tie(TargetCC, Glue) = getAVMCompare(
         Cond, DAG.getConstant(0, DL, Cond.getValueType()), ISD::SETNE, DL, DAG);
@@ -413,12 +601,37 @@ SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
                      Op.getOperand(2), TargetCC, Glue);
 }
 
+SDValue AVMTargetLowering::LowerISFPClass(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  SDValue Class = DAG.getNode(AVMISD::FCLASS, DL, MVT::i16, Op.getOperand(0));
+  uint64_t Mask = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
+  SDValue Selected = DAG.getNode(ISD::AND, DL, MVT::i16, Class,
+                                 DAG.getConstant(Mask, DL, MVT::i16));
+  return getAVMCSet(Selected, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL,
+                    DAG);
+}
+
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   case ISD::BR_CC:
     return LowerBRCC(Op, DAG);
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::IS_FPCLASS:
+    return LowerISFPClass(Op, DAG);
+  case ISD::ADDRSPACECAST:
+    report_fatal_error(
+        "AVM does not support casts between address spaces 0 and 1");
+  case ISD::SHL:
+  case ISD::SRL:
+  case ISD::SRA: {
+    RTLIB::Libcall LC = Op.getOpcode() == ISD::SHL   ? RTLIB::SHL_I32
+                        : Op.getOpcode() == ISD::SRL ? RTLIB::SRL_I32
+                                                     : RTLIB::SRA_I32;
+    MakeLibCallOptions CallOptions;
+    SDValue Ops[] = {Op.getOperand(0), Op.getOperand(1)};
+    return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, SDLoc(Op)).first;
+  }
   case ISD::SELECT:
     return LowerSelect(Op, DAG);
   case ISD::SELECT_CC:
@@ -451,7 +664,9 @@ SDValue AVMTargetLowering::LowerFormalArguments(
     unsigned I = VA.getValNo();
     if (VA.isRegLoc()) {
       const TargetRegisterClass *RC =
-          VA.getLocVT() == MVT::i32 ? &AVM::GPR32RegClass : &AVM::GPR16RegClass;
+          VA.getLocVT() == MVT::i32 || VA.getLocVT() == MVT::f32
+              ? &AVM::GPR32RegClass
+              : &AVM::GPR16RegClass;
       Register VReg = MRI.createVirtualRegister(RC);
       MRI.addLiveIn(VA.getLocReg(), VReg);
       SDValue Value = DAG.getCopyFromReg(Chain, DL, VReg, VA.getLocVT());
@@ -462,6 +677,8 @@ SDValue AVMTargetLowering::LowerFormalArguments(
         Value = DAG.getNode(AssertOp, DL, MVT::i16, Value,
                             DAG.getValueType(MVT::i8));
       }
+      if (Ins[I].Flags.isPointer() && Ins[I].Flags.getPointerAddrSpace() == 1)
+        Value = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Value);
       InVals.push_back(Value);
       continue;
     }
@@ -485,7 +702,9 @@ SDValue AVMTargetLowering::LowerFormalArguments(
       Load = DAG.getExtLoad(Ext, DL, VA.getValVT(), Chain, FIN, PtrInfo,
                             VA.getLocVT(), Align(1));
     }
-    InVals.push_back(Load);
+    InVals.push_back(IsProgramPointer
+                         ? DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Load)
+                         : Load);
     LoadChains.push_back(Load.getValue(1));
   }
   if (!LoadChains.empty()) {
@@ -518,6 +737,9 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     SDValue Arg = CLI.OutVals[I];
     if (VA.isRegLoc()) {
       Arg = canonicalizeNarrowOutgoing(Arg, CLI.Outs[I], DL, DAG);
+      if (CLI.Outs[I].Flags.isPointer() &&
+          CLI.Outs[I].Flags.getPointerAddrSpace() == 1)
+        Arg = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Arg);
       RegsToPass.emplace_back(VA.getLocReg(), Arg);
       continue;
     }
@@ -560,8 +782,11 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, MVT::i32);
   else if (const auto *E = dyn_cast<ExternalSymbolSDNode>(Callee))
     Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i32);
-  else if (Callee.getValueType() != MVT::i32)
-    Callee = DAG.getZExtOrTrunc(Callee, DL, MVT::i32);
+  else {
+    if (Callee.getValueType() != MVT::i32)
+      Callee = DAG.getZExtOrTrunc(Callee, DL, MVT::i32);
+    Callee = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Callee);
+  }
 
   SmallVector<SDValue, 10> Ops = {Chain, Callee};
   for (const auto &[Reg, Value] : RegsToPass)
@@ -589,7 +814,12 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   for (const CCValAssign &VA : RVLocs) {
     SDValue Copy =
         DAG.getCopyFromReg(Chain, DL, VA.getLocReg(), VA.getLocVT(), Glue);
-    InVals.push_back(Copy);
+    unsigned I = VA.getValNo();
+    bool IsProgramPointer = CLI.Ins[I].Flags.isPointer() &&
+                            CLI.Ins[I].Flags.getPointerAddrSpace() == 1;
+    InVals.push_back(IsProgramPointer
+                         ? DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Copy)
+                         : Copy);
     Chain = Copy.getValue(1);
     Glue = Copy.getValue(2);
   }
@@ -633,6 +863,10 @@ AVMTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
     else
       assert(VA.getLocInfo() == CCValAssign::Full &&
              "unsupported AVM return conversion");
+    unsigned ValueIndex = VA.getValNo();
+    if (Outs[ValueIndex].Flags.isPointer() &&
+        Outs[ValueIndex].Flags.getPointerAddrSpace() == 1)
+      Value = DAG.getNode(AVMISD::PROGPTR, DL, MVT::i32, Value);
     Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), Value, Glue);
     Glue = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));

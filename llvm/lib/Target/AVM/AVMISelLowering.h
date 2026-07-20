@@ -18,7 +18,11 @@ enum NodeType : unsigned {
   CMP,
   CMPI,
   CSET,
+  FCMP,
+  FCLASS,
   LOAD24,
+  PROGPTR,
+  PROG_WRAPPER,
   STORE24,
   TST8,
   TST16,
@@ -32,6 +36,9 @@ public:
   AVMTargetLowering(const TargetMachine &TM, const AVMSubtarget &STI);
 
   MVT getPointerTy(const DataLayout &DL, uint32_t AS = 0) const override;
+  MVT getScalarShiftAmountTy(const DataLayout &, EVT LHSTy) const override {
+    return LHSTy.getSimpleVT();
+  }
   EVT getTypeForExtReturn(LLVMContext &Context, EVT VT,
                           ISD::NodeType ExtendKind) const override;
   bool areJTsAllowed(const Function *) const override { return false; }
@@ -50,6 +57,7 @@ private:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerISFPClass(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSelect(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSelectCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSetCC(SDValue Op, SelectionDAG &DAG) const;

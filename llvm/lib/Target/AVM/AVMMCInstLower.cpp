@@ -1,6 +1,8 @@
 //===-- AVMMCInstLower.cpp - Lower AVM MachineInstr to MCInst -------------===//
 
 #include "AVMMCInstLower.h"
+#include "AVMInstrInfo.h"
+#include "MCTargetDesc/AVMMCExpr.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -39,6 +41,18 @@ void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
       if (MO.getOffset())
         Expr = MCBinaryExpr::createAdd(
             Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+      switch (MO.getTargetFlags()) {
+      case AVMII::MO_NONE:
+        break;
+      case AVMII::MO_LO16:
+        Expr = MCSpecifierExpr::create(Expr, AVM::VK_AVM_LO16, Ctx);
+        break;
+      case AVMII::MO_HI8:
+        Expr = MCSpecifierExpr::create(Expr, AVM::VK_AVM_HI8, Ctx);
+        break;
+      default:
+        llvm_unreachable("unsupported AVM target operand flag");
+      }
       OutMI.addOperand(MCOperand::createExpr(Expr));
     } break;
     case MachineOperand::MO_ExternalSymbol:

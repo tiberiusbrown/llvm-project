@@ -430,6 +430,20 @@ class AVMProgramLoadPairInst<string Asm>
   let OutOperandList = (outs AVMProgramLoadPairReg:$dst);
   let mayLoad = 1;
 }
+class AVMProgramPostLoadScalarInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMProgramLoadPairReg:$addr_in)> {
+  let OutOperandList = (outs AVMProgramLoadScalarReg:$dst,
+                             AVMProgramLoadPairReg:$addr);
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+class AVMProgramPostLoadPairInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMProgramLoadPairReg:$addr_in)> {
+  let OutOperandList = (outs AVMProgramLoadPairReg:$dst,
+                             AVMProgramLoadPairReg:$addr);
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
 
 // Cold 32-bit forms are MC-only.  Their RRSPEC32 byte is encoded explicitly
 // from the architectural q/r mappings; it is not derived from register enums.
@@ -548,6 +562,17 @@ class AVMUnary16Pseudo
   let Constraints = "$dst = $src";
 }
 
+class AVMBinary32Pseudo
+    : AVMCodeGenPseudo<(outs GPR32:$dst),
+                       (ins GPR32:$lhs, GPR32:$rhs)> {
+  let Constraints = "$dst = $lhs";
+}
+
+class AVMUnary32Pseudo
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)> {
+  let Constraints = "$dst = $src";
+}
+
 class AVMUpperUnary16ImmPseudo
     : AVMCodeGenPseudo<(outs UpperGPR16:$dst),
                        (ins UpperGPR16:$src, i16imm:$count)> {
@@ -570,11 +595,59 @@ def LDI8_PSEUDO
 def LDI16_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
                        [(set GPR16:$dst, (i16 imm:$imm))]>;
+def LDI32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst),
+                       (ins i16imm:$lo, i16imm:$hi)>;
+def ZEXT16_32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+def SEXT16_32_PSEUDO
+    : AVMCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
+def PROG_ADDR_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
+def PROG_CANON_PSEUDO : AVMUnary32Pseudo;
 def ADD16_PSEUDO : AVMBinary16Pseudo<add> { let isCommutable = 1; }
 def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
 def AND16_PSEUDO : AVMBinary16Pseudo<and> { let isCommutable = 1; }
 def OR16_PSEUDO : AVMBinary16Pseudo<or> { let isCommutable = 1; }
 def XOR16_PSEUDO : AVMBinary16Pseudo<xor> { let isCommutable = 1; }
+def ADD32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
+def SUB32_PSEUDO : AVMBinary32Pseudo;
+def AND32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
+def OR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
+def XOR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
+def PROG_ADD_PSEUDO : AVMBinary32Pseudo;
+def BSWAP32_PSEUDO : AVMUnary32Pseudo;
+
+def FADD_PSEUDO : AVMBinary32Pseudo;
+def FSUB_PSEUDO : AVMBinary32Pseudo;
+def FMUL_PSEUDO : AVMBinary32Pseudo;
+def FDIV_PSEUDO : AVMBinary32Pseudo;
+def FMIN_PSEUDO : AVMBinary32Pseudo;
+def FMAX_PSEUDO : AVMBinary32Pseudo;
+def FNEG_PSEUDO : AVMUnary32Pseudo;
+def FABS_PSEUDO : AVMUnary32Pseudo;
+def FSQRT_PSEUDO : AVMUnary32Pseudo;
+def S16TOF_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+def U16TOF_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+def S32TOF_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+def U32TOF_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+def FTOS16_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+def FTOU16_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+def FTOS32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+def FTOU32_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+def FCMP_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins GPR32:$left, GPR32:$right)>;
+def FCLASS_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
 
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
@@ -614,6 +687,8 @@ class AVMCCProducerPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
 
 def CMP16_PSEUDO
     : AVMCCProducerPseudo<(ins GPR16:$left, GPR16:$right)>;
+def CMP32_PSEUDO
+    : AVMCCProducerPseudo<(ins GPR32:$left, GPR32:$right)>;
 def CMPIS8_PSEUDO
     : AVMCCProducerPseudo<(ins GPR16:$left, i16imm:$right)>;
 def TST8_PSEUDO : AVMCCProducerPseudo<(ins GPR16:$value)>;
@@ -736,6 +811,18 @@ def STORE8_PSEUDO : AVMIndirectStorePseudo;
 def STORE16_PSEUDO : AVMIndirectStorePseudo;
 def LOAD32_PSEUDO : AVMIndirectPairLoadPseudo;
 def STORE32_PSEUDO : AVMIndirectPairStorePseudo;
+def LOAD24_PSEUDO
+    : AVMCodeGenPseudo<(outs GPR32:$dst, PTR16:$addr),
+                       (ins PTR16:$addr_in)> {
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+def STORE24_PSEUDO
+    : AVMCodeGenPseudo<(outs PTR16:$addr),
+                       (ins PTR16:$addr_in, GPR32:$src)> {
+  let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
+}
 def LOAD8U_POST_PSEUDO : AVMPostIncLoadPseudo;
 def LOAD16_POST_PSEUDO : AVMPostIncLoadPseudo;
 def STORE8_POST_PSEUDO : AVMPostIncStorePseudo;
@@ -744,6 +831,37 @@ def ABS_LOAD8U_PSEUDO : AVMAbsoluteLoadPseudo;
 def ABS_LOAD16_PSEUDO : AVMAbsoluteLoadPseudo;
 def ABS_STORE8_PSEUDO : AVMAbsoluteStorePseudo;
 def ABS_STORE16_PSEUDO : AVMAbsoluteStorePseudo;
+
+class AVMProgramLoadScalarPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$addr)> {
+  let mayLoad = 1;
+}
+class AVMProgramLoadPairPseudo
+    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$addr)> {
+  let mayLoad = 1;
+}
+class AVMProgramPostLoadScalarPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst, GPR32:$addr),
+                       (ins GPR32:$addr_in)> {
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+class AVMProgramPostLoadPairPseudo
+    : AVMCodeGenPseudo<(outs GPR32:$dst, GPR32:$addr),
+                       (ins GPR32:$addr_in)> {
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+
+def PLOAD8U_PSEUDO : AVMProgramLoadScalarPseudo;
+def PLOAD8S_PSEUDO : AVMProgramLoadScalarPseudo;
+def PLOAD16_PSEUDO : AVMProgramLoadScalarPseudo;
+def PLOAD24_PSEUDO : AVMProgramLoadPairPseudo;
+def PLOAD32_PSEUDO : AVMProgramLoadPairPseudo;
+def PLOAD8U_POST_PSEUDO : AVMProgramPostLoadScalarPseudo;
+def PLOAD16_POST_PSEUDO : AVMProgramPostLoadScalarPseudo;
+def PLOAD24_POST_PSEUDO : AVMProgramPostLoadPairPseudo;
+def PLOAD32_POST_PSEUDO : AVMProgramPostLoadPairPseudo;
 
 def ZEXT8_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
@@ -768,6 +886,7 @@ def STACK_LOAD24_PSEUDO : AVMStackLoadPseudo<GPR32>;
 def STACK_LOAD32_PSEUDO : AVMStackLoadPseudo<GPR32>;
 def STACK_STORE8_PSEUDO : AVMStackStorePseudo<GPR16>;
 def STACK_STORE16_PSEUDO : AVMStackStorePseudo<GPR16>;
+def STACK_STORE24_PSEUDO : AVMStackStorePseudo<GPR32>;
 def STACK_STORE32_PSEUDO : AVMStackStorePseudo<GPR32>;
 
 class AVMOutgoingStorePseudo<RegisterClass RC>
@@ -919,10 +1038,10 @@ def LDP8S : AVMProgramLoadScalarInst<"ldp8s $dst, [$addr]">;
 def LDP16 : AVMProgramLoadScalarInst<"ldp16 $dst, [$addr]">;
 def LDP24 : AVMProgramLoadPairInst<"ldp24 $dst, [$addr]">;
 def LDP32 : AVMProgramLoadPairInst<"ldp32 $dst, [$addr]">;
-def LDP8U_POST : AVMProgramLoadScalarInst<"ldp8u $dst, [$addr+]">;
-def LDP16_POST : AVMProgramLoadScalarInst<"ldp16 $dst, [$addr+]">;
-def LDP24_POST : AVMProgramLoadPairInst<"ldp24 $dst, [$addr+]">;
-def LDP32_POST : AVMProgramLoadPairInst<"ldp32 $dst, [$addr+]">;
+def LDP8U_POST : AVMProgramPostLoadScalarInst<"ldp8u $dst, [$addr+]">;
+def LDP16_POST : AVMProgramPostLoadScalarInst<"ldp16 $dst, [$addr+]">;
+def LDP24_POST : AVMProgramPostLoadPairInst<"ldp24 $dst, [$addr+]">;
+def LDP32_POST : AVMProgramPostLoadPairInst<"ldp32 $dst, [$addr+]">;
 
 def CMP32 : AVMColdPairPairInst<"cmp32 $left, $right"> {
   let Defs = [CC];
