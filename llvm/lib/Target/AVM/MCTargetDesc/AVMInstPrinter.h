@@ -16,6 +16,7 @@ public:
   void printInst(const MCInst *MI, uint64_t Address, StringRef Annot,
                  const MCSubtargetInfo &STI, raw_ostream &OS) override;
   void printRegName(raw_ostream &OS, MCRegister Reg) override;
+  static StringRef getRegisterName(MCRegister Reg);
 
 private:
   void printOperand(const MCOperand &Op, raw_ostream &OS) const;

@@ -12769,6 +12769,17 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
     // Skip normal pointer conversion checks in this case; we have better
     // diagnostics for this below.
   } else if (getLangOpts().CPlusPlus) {
+    if (LHSType->isPointerType() && RHSType->isPointerType() && !LHSIsNull &&
+        !RHSIsNull &&
+        Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
+        !LHSType->getPointeeType().isAddressSpaceOverlapping(
+            RHSType->getPointeeType(), Context)) {
+      Diag(Loc, diag::err_typecheck_op_on_nonoverlapping_address_space_pointers)
+          << LHSType << RHSType << 0 /* comparison */
+          << LHS.get()->getSourceRange() << RHS.get()->getSourceRange();
+      return QualType();
+    }
+
     // Equality comparison of a function pointer to a void pointer is invalid,
     // but we allow it as an extension.
     // FIXME: If we really want to allow this, should it be part of composite
@@ -12845,7 +12856,10 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
     }
     if (LCanPointeeTy != RCanPointeeTy) {
       // Treat NULL constant as a special case in OpenCL.
-      if (getLangOpts().OpenCL && !LHSIsNull && !RHSIsNull) {
+      if ((getLangOpts().OpenCL ||
+           Context.getTargetInfo().getTriple().getArch() ==
+               llvm::Triple::avm) &&
+          !LHSIsNull && !RHSIsNull) {
         if (!LCanPointeeTy.isAddressSpaceOverlapping(RCanPointeeTy,
                                                      getASTContext())) {
           Diag(Loc,
@@ -14041,6 +14055,12 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
   assert(!E->hasPlaceholderType(BuiltinType::PseudoObject));
 
   S.CheckShadowingDeclModification(E, Loc);
+
+  if (S.Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
+      E->getType().getAddressSpace() == getLangASFromTargetAS(1)) {
+    S.Diag(Loc, diag::err_avm_read_only_address_space) << E->getSourceRange();
+    return true;
+  }
 
   SourceLocation OrigLoc = Loc;
   Expr::isModifiableLvalueResult IsLV = E->isModifiableLvalue(S.Context,

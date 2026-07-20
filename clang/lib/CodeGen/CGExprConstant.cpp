@@ -24,6 +24,7 @@
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/TargetBuiltins.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -2335,6 +2336,13 @@ ConstantLValueEmitter::VisitAddrLabelExpr(const AddrLabelExpr *E) {
 ConstantLValue
 ConstantLValueEmitter::VisitCallExpr(const CallExpr *E) {
   unsigned builtin = E->getBuiltinCallee();
+  if (CGM.getTarget().getTriple().getArch() == llvm::Triple::avm &&
+      builtin == AVM::BI__builtin_avm_flash_string) {
+    const auto *Literal =
+        cast<StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
+    return CGM.GetAddrOfAVMFlashString(Literal);
+  }
+
   if (builtin == Builtin::BI__builtin_function_start)
     return CGM.GetFunctionStart(
         E->getArg(0)->getAsBuiltinConstantDeclRef(CGM.getContext()));

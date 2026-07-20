@@ -1,0 +1,14 @@
+//===--- BuiltinsAVM.def - AVM builtin function database -------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// The format of this database matches clang/Basic/Builtins.def.
+
+BUILTIN(__builtin_avm_flash_string, "cC*1cC*0", "nctE")
+BUILTIN(__builtin_avm_memcpy_p, "v*0v*0vC*1Us", "n")
+
+#undef BUILTIN

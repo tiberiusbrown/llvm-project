@@ -159,7 +159,7 @@ u16 lshr_variable(u16 x, u16 count) { return x >> count; }
 s16 ashr_variable(s16 x, u16 count) { return x >> count; }
 
 // O2-LABEL: multiply8:
-// O2:       mul8
+// O2:       mulu8.w
 u8 multiply8(u8 a, u8 b) { return a * b; }
 
 // O2-LABEL: widening_multiply:

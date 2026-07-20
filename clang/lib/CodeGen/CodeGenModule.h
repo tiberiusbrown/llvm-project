@@ -493,6 +493,8 @@ private:
   llvm::StringMap<llvm::GlobalVariable *> CFConstantStringMap;
 
   llvm::DenseMap<llvm::Constant *, llvm::GlobalVariable *> ConstantStringMap;
+  llvm::StringMap<llvm::GlobalVariable *> AVMFlashStringMap;
+  unsigned AVMFlashStringCounter = 0;
   llvm::DenseMap<const UnnamedGlobalConstantDecl *, llvm::GlobalVariable *>
       UnnamedGlobalConstantDeclMap;
   llvm::DenseMap<const Decl*, llvm::Constant *> StaticLocalDeclMap;
@@ -1205,6 +1207,9 @@ public:
   ConstantAddress
   GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
                                      StringRef Name = ".str");
+
+  /// Return the uniqued address of an AVM program-memory string literal.
+  ConstantAddress GetAddrOfAVMFlashString(const StringLiteral *S);
 
   /// Return a pointer to a constant array for the given ObjCEncodeExpr node.
   ConstantAddress

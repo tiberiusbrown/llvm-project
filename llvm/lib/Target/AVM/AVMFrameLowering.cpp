@@ -46,6 +46,8 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
   MachineFrameInfo &MFI = MF.getFrameInfo();
   if (MFI.hasVarSizedObjects())
     report_fatal_error("dynamic AVM stack allocation is unsupported");
+  if (MFI.getStackSize() > 256)
+    report_fatal_error("AVM fixed frame exceeds 256 bytes");
   const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
 
   MachineBasicBlock::iterator MI = MBB.begin();

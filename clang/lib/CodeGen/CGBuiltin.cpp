@@ -27,6 +27,7 @@
 #include "clang/AST/OSLog.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/DiagnosticFrontend.h"
+#include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instruction.h"
@@ -84,6 +85,30 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     return nullptr;
 
   switch (Arch) {
+  case llvm::Triple::avm:
+    switch (BuiltinID) {
+    case AVM::BI__builtin_avm_flash_string: {
+      const auto *Literal =
+          cast<clang::StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
+      return CGF->CGM.GetAddrOfAVMFlashString(Literal).getPointer();
+    }
+    case AVM::BI__builtin_avm_memcpy_p: {
+      CallArgList Args;
+      const FunctionDecl *Callee = E->getDirectCallee();
+      const auto *FPT = Callee->getType()->castAs<FunctionProtoType>();
+      CGF->EmitCallArgs(Args, FPT, E->arguments(), Callee);
+      Value *Dst = Args[0].getRValue(*CGF).getScalarVal();
+      Value *Src = Args[1].getRValue(*CGF).getScalarVal();
+      Value *Size = Args[2].getRValue(*CGF).getScalarVal();
+      CharUnits One = CharUnits::One();
+      CGF->Builder.CreateMemCpy(Address(Dst, CGF->Int8Ty, One),
+                                Address(Src, CGF->Int8Ty, One), Size,
+                                /*IsVolatile=*/false);
+      return Dst;
+    }
+    default:
+      return nullptr;
+    }
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:

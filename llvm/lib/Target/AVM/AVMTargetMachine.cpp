@@ -83,6 +83,11 @@ public:
   AVMPassConfig(AVMTargetMachine &TM, PassManagerBase &PM)
       : TargetPassConfig(TM, PM) {}
 
+  void addIRPasses() override {
+    TargetPassConfig::addIRPasses();
+    addPass(createAtomicExpandLegacyPass());
+  }
+
   bool addInstSelector() override {
     addPass(createAVMISelDag(getTM<AVMTargetMachine>(), getOptLevel()));
     return false;

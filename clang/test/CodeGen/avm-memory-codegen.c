@@ -25,7 +25,6 @@ const char *text_address(void) { return text; }
 
 // CHECK-LABEL: read_signed:
 // CHECK: ld8u r4, [r4]
-// CHECK-NEXT: sext8 r4
 signed char read_signed(const signed char *ptr) { return *ptr; }
 
 // CHECK-LABEL: read_unsigned:

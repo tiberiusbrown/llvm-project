@@ -2044,12 +2044,19 @@ static bool EvaluateIgnoredValue(EvalInfo &Info, const Expr *E) {
 }
 
 /// Should this call expression be treated as forming an opaque constant?
+static bool IsAVMFlashStringCall(const CallExpr *E) {
+  const FunctionDecl *Callee = E->getDirectCallee();
+  return Callee && Callee->getBuiltinID() &&
+         Callee->getName() == "__builtin_avm_flash_string";
+}
+
 static bool IsOpaqueConstantCall(const CallExpr *E) {
   unsigned Builtin = E->getBuiltinCallee();
   return (Builtin == Builtin::BI__builtin___CFStringMakeConstantString ||
           Builtin == Builtin::BI__builtin___NSStringMakeConstantString ||
           Builtin == Builtin::BI__builtin_ptrauth_sign_constant ||
-          Builtin == Builtin::BI__builtin_function_start);
+          Builtin == Builtin::BI__builtin_function_start ||
+          IsAVMFlashStringCall(E));
 }
 
 static bool IsOpaqueConstantCall(const LValue &LVal) {

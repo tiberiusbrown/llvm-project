@@ -202,23 +202,43 @@ void AVMInstPrinter::printCompactReg(MCRegister Reg, raw_ostream &OS) const {
 }
 
 void AVMInstPrinter::printFullReg(MCRegister Reg, raw_ostream &OS) const {
+  OS << getRegisterName(Reg);
+}
+
+StringRef AVMInstPrinter::getRegisterName(MCRegister Reg) {
   switch (Reg.id()) {
-  case AVM::R0: OS << "r0"; return;
-  case AVM::R1: OS << "r1"; return;
-  case AVM::R2: OS << "r2"; return;
-  case AVM::R3: OS << "r3"; return;
-  case AVM::R4: OS << "r4"; return;
-  case AVM::R5: OS << "r5"; return;
-  case AVM::R6: OS << "r6"; return;
-  case AVM::R7: OS << "r7"; return;
-  case AVM::R0R1: OS << "q0"; return;
-  case AVM::R2R3: OS << "q1"; return;
-  case AVM::R4R5: OS << "q2"; return;
-  case AVM::R6R7: OS << "q3"; return;
-  case AVM::SP: OS << "sp"; return;
-  case AVM::PC: OS << "pc"; return;
-  case AVM::CC: OS << "cc"; return;
-  default: OS << "<bad-reg>"; return;
+  case AVM::R0:
+    return "r0";
+  case AVM::R1:
+    return "r1";
+  case AVM::R2:
+    return "r2";
+  case AVM::R3:
+    return "r3";
+  case AVM::R4:
+    return "r4";
+  case AVM::R5:
+    return "r5";
+  case AVM::R6:
+    return "r6";
+  case AVM::R7:
+    return "r7";
+  case AVM::R0R1:
+    return "q0";
+  case AVM::R2R3:
+    return "q1";
+  case AVM::R4R5:
+    return "q2";
+  case AVM::R6R7:
+    return "q3";
+  case AVM::SP:
+    return "sp";
+  case AVM::PC:
+    return "pc";
+  case AVM::CC:
+    return "cc";
+  default:
+    return "<bad-reg>";
   }
 }
 

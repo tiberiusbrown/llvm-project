@@ -2076,6 +2076,8 @@ bool Sema::CheckTSBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
     // Some builtins don't require additional checking, so just consider these
     // acceptable.
     return false;
+  case llvm::Triple::avm:
+    return CheckAVMBuiltinFunctionCall(BuiltinID, TheCall);
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:

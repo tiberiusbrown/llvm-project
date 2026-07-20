@@ -134,6 +134,7 @@ add_clang_library(clangCodeGen
   Targets/AMDGPU.cpp
   Targets/ARC.cpp
   Targets/ARM.cpp
+  Targets/AVM.cpp
   Targets/AVR.cpp
   Targets/BPF.cpp
   Targets/CSKY.cpp

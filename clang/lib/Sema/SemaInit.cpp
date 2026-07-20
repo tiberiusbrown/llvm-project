@@ -8961,6 +8961,28 @@ bool InitializationSequence::Diagnose(Sema &S,
   else
     OnlyArg = nullptr;
 
+  // AVM data and program pointers are deliberately disjoint. C++
+  // initialization diagnostics normally describe this as a generic failed
+  // conversion, which obscures the target rule and is inconsistent with the
+  // corresponding assignment diagnostic. Diagnose the address-space change
+  // directly before handling the generic initialization failure.
+  if (S.Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
+      OnlyArg && DestType->isPointerType() &&
+      OnlyArg->getType()->isPointerType()) {
+    QualType DestPointee = DestType->getPointeeType();
+    QualType SrcPointee = OnlyArg->getType()->getPointeeType();
+    if (!DestPointee.isAddressSpaceOverlapping(SrcPointee, S.Context)) {
+      AssignmentAction Action = getAssignmentAction(Entity, true);
+      QualType FirstType = DestType;
+      QualType SecondType = OnlyArg->getType();
+      if (Action != AssignmentAction::Initializing)
+        std::swap(FirstType, SecondType);
+      S.Diag(Kind.getLocation(), diag::err_typecheck_incompatible_address_space)
+          << FirstType << SecondType << Action << OnlyArg->getSourceRange();
+      return true;
+    }
+  }
+
   switch (Failure) {
   case FK_TooManyInitsForReference:
     // FIXME: Customize for the initialized entity?

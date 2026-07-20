@@ -186,6 +186,26 @@ namespace {
     // Language specific cast restrictions for address spaces.
     void checkAddressSpaceCast(QualType SrcType, QualType DestType);
 
+    bool rejectAVMAddressSpaceCast(CastType Type) {
+      if (Self.Context.getTargetInfo().getTriple().getArch() !=
+              llvm::Triple::avm ||
+          SrcExpr.isInvalid())
+        return false;
+
+      const auto *SrcPtr = SrcExpr.get()->getType()->getAs<PointerType>();
+      const auto *DestPtr = DestType->getAs<PointerType>();
+      if (!SrcPtr || !DestPtr ||
+          SrcPtr->getPointeeType().isAddressSpaceOverlapping(
+              DestPtr->getPointeeType(), Self.Context))
+        return false;
+
+      Self.Diag(OpRange.getBegin(), diag::err_bad_cxx_cast_addr_space_mismatch)
+          << Type << SrcExpr.get()->getType() << DestType
+          << SrcExpr.get()->getSourceRange();
+      SrcExpr = ExprError();
+      return true;
+    }
+
     void checkCastAlign() {
       Self.CheckCastAlign(SrcExpr.get(), DestType, OpRange);
     }
@@ -1018,6 +1038,9 @@ void CastOperation::CheckConstCast() {
   if (SrcExpr.isInvalid()) // if conversion failed, don't report another error
     return;
 
+  if (rejectAVMAddressSpaceCast(CT_Const))
+    return;
+
   unsigned msg = diag::err_bad_cxx_cast_generic;
   auto TCR = TryConstCast(Self, SrcExpr, DestType, /*CStyle*/ false, msg);
   if (TCR != TC_Success && msg != 0) {
@@ -1269,6 +1292,9 @@ void CastOperation::CheckReinterpretCast() {
   if (SrcExpr.isInvalid()) // if conversion failed, don't report another error
     return;
 
+  if (rejectAVMAddressSpaceCast(CT_Reinterpret))
+    return;
+
   unsigned msg = diag::err_bad_cxx_cast_generic;
   TryCastResult tcr =
     TryReinterpretCast(Self, SrcExpr, DestType,
@@ -1341,6 +1367,9 @@ void CastOperation::CheckStaticCast() {
     if (SrcExpr.isInvalid()) // if conversion failed, don't report another error
       return;
   }
+
+  if (rejectAVMAddressSpaceCast(CT_Static))
+    return;
 
   unsigned msg = diag::err_bad_cxx_cast_generic;
   TryCastResult tcr =
@@ -2635,7 +2664,8 @@ static TryCastResult TryReinterpretCast(Sema &Self, ExprResult &SrcExpr,
 static TryCastResult TryAddressSpaceCast(Sema &Self, ExprResult &SrcExpr,
                                          QualType DestType, bool CStyle,
                                          unsigned &msg, CastKind &Kind) {
-  if (!Self.getLangOpts().OpenCL && !Self.getLangOpts().SYCLIsDevice)
+  if (!Self.getLangOpts().OpenCL && !Self.getLangOpts().SYCLIsDevice &&
+      Self.Context.getTargetInfo().getTriple().getArch() != llvm::Triple::avm)
     // FIXME: As compiler doesn't have any information about overlapping addr
     // spaces at the moment we have to be permissive here.
     return TC_NotApplicable;
@@ -2686,6 +2716,20 @@ void CastOperation::checkAddressSpaceCast(QualType SrcType, QualType DestType) {
   //   local int ** p;
   //   return (generic int **) p;
   // warn even though local -> generic is permitted.
+  if (Self.Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm) {
+    const auto *SrcPtr = SrcType->getAs<PointerType>();
+    const auto *DestPtr = DestType->getAs<PointerType>();
+    if (SrcPtr && DestPtr &&
+        !SrcPtr->getPointeeType().isAddressSpaceOverlapping(
+            DestPtr->getPointeeType(), Self.Context)) {
+      Self.Diag(OpRange.getBegin(), diag::err_bad_cxx_cast_addr_space_mismatch)
+          << CT_CStyle << SrcType << DestType
+          << SrcExpr.get()->getSourceRange();
+      SrcExpr = ExprError();
+      return;
+    }
+  }
+
   if (Self.getLangOpts().OpenCL) {
     const Type *DestPtr, *SrcPtr;
     bool Nested = false;

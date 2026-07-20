@@ -3,6 +3,7 @@
 #include "AVM.h"
 #include "AVMMCInstLower.h"
 #include "AVMTargetMachine.h"
+#include "MCTargetDesc/AVMInstPrinter.h"
 #include "MCTargetDesc/AVMMCExpr.h"
 #include "MCTargetDesc/AVMMCTargetDesc.h"
 #include "TargetInfo/AVMTargetInfo.h"
@@ -82,6 +83,33 @@ public:
       : AsmPrinter(TM, std::move(Streamer), ID) {}
 
   StringRef getPassName() const override { return "AVM Assembly Printer"; }
+
+  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                       const char *ExtraCode, raw_ostream &OS) override {
+    if (ExtraCode && ExtraCode[0])
+      return true;
+    const MachineOperand &MO = MI->getOperand(OpNo);
+    if (MO.isReg()) {
+      OS << AVMInstPrinter::getRegisterName(MO.getReg());
+      return false;
+    }
+    if (MO.isImm()) {
+      OS << MO.getImm();
+      return false;
+    }
+    return AsmPrinter::PrintAsmOperand(MI, OpNo, ExtraCode, OS);
+  }
+
+  bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                             const char *ExtraCode, raw_ostream &OS) override {
+    if (ExtraCode && ExtraCode[0])
+      return true;
+    OS << '[';
+    if (PrintAsmOperand(MI, OpNo, nullptr, OS))
+      return true;
+    OS << ']';
+    return false;
+  }
 
   void emitGlobalVariable(const GlobalVariable *GV) override {
     if (!GV->hasInitializer() ||

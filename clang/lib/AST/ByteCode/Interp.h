@@ -1070,11 +1070,14 @@ inline bool CmpHelper<Pointer>(InterpState &S, CodePtr OpPC, CompareFn Fn) {
 }
 
 static inline bool IsOpaqueConstantCall(const CallExpr *E) {
+  const FunctionDecl *Callee = E->getDirectCallee();
   unsigned Builtin = E->getBuiltinCallee();
   return (Builtin == Builtin::BI__builtin___CFStringMakeConstantString ||
           Builtin == Builtin::BI__builtin___NSStringMakeConstantString ||
           Builtin == Builtin::BI__builtin_ptrauth_sign_constant ||
-          Builtin == Builtin::BI__builtin_function_start);
+          Builtin == Builtin::BI__builtin_function_start ||
+          (Callee && Callee->getBuiltinID() &&
+           Callee->getName() == "__builtin_avm_flash_string"));
 }
 
 bool arePotentiallyOverlappingStringLiterals(const Pointer &LHS,

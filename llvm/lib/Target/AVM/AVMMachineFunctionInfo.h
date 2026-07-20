@@ -9,9 +9,17 @@ namespace llvm {
 class AVMMachineFunctionInfo final : public MachineFunctionInfo {
   void anchor();
 
+  Register SRetReturnReg;
+  int VarArgsFrameIndex = 0;
+
 public:
   AVMMachineFunctionInfo() = default;
   AVMMachineFunctionInfo(const Function &, const TargetSubtargetInfo *) {}
+
+  Register getSRetReturnReg() const { return SRetReturnReg; }
+  void setSRetReturnReg(Register Reg) { SRetReturnReg = Reg; }
+  int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
+  void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
 
   MachineFunctionInfo *
   clone(BumpPtrAllocator &Allocator, MachineFunction &DestMF,

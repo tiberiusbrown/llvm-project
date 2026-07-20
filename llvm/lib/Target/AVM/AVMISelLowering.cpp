@@ -1,8 +1,10 @@
 //===-- AVMISelLowering.cpp - AVM DAG lowering --------------------------===//
 
 #include "AVMISelLowering.h"
+#include "AVMMachineFunctionInfo.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -49,9 +51,9 @@ static MCPhysReg getAVMArgRegister(unsigned Unit, MVT VT) {
 
 template <typename ArgT>
 static void analyzeAVMArguments(const SmallVectorImpl<ArgT> &Args,
-                                CCState &State) {
+                                CCState &State, bool AllStack = false) {
   unsigned UnitCursor = 0;
-  bool RegistersClosed = false;
+  bool RegistersClosed = AllStack;
 
   for (unsigned I = 0, E = Args.size(); I != E;) {
     unsigned J = I + 1;
@@ -365,6 +367,22 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
   setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
   setLibcallImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
+  setLibcallImpl(RTLIB::ATOMIC_LOAD, RTLIB::impl___atomic_load);
+  setLibcallImpl(RTLIB::ATOMIC_LOAD_8, RTLIB::impl___atomic_load_8);
+  setLibcallImpl(RTLIB::ATOMIC_STORE, RTLIB::impl___atomic_store);
+  setLibcallImpl(RTLIB::ATOMIC_STORE_8, RTLIB::impl___atomic_store_8);
+  setLibcallImpl(RTLIB::ATOMIC_EXCHANGE, RTLIB::impl___atomic_exchange);
+  setLibcallImpl(RTLIB::ATOMIC_EXCHANGE_8, RTLIB::impl___atomic_exchange_8);
+  setLibcallImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE,
+                 RTLIB::impl___atomic_compare_exchange);
+  setLibcallImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE_8,
+                 RTLIB::impl___atomic_compare_exchange_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_ADD_8, RTLIB::impl___atomic_fetch_add_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_SUB_8, RTLIB::impl___atomic_fetch_sub_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_AND_8, RTLIB::impl___atomic_fetch_and_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_OR_8, RTLIB::impl___atomic_fetch_or_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_XOR_8, RTLIB::impl___atomic_fetch_xor_8);
+  setLibcallImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
 
   for (unsigned Opcode :
        {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FSQRT, ISD::FNEG,
@@ -386,9 +404,15 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::IS_FPCLASS, MVT::f32, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i16, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i32, Custom);
-  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Custom);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+  setOperationAction(ISD::VASTART, MVT::Other, Custom);
+  setOperationAction(ISD::VAARG, MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+  setOperationAction(ISD::VAEND, MVT::Other, Expand);
+  setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Custom);
+  setMaxAtomicSizeInBitsSupported(32);
 
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
                    MVT::i8, Legal);
@@ -404,6 +428,32 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   MaxStoresPerMemset = MaxStoresPerMemcpy = MaxStoresPerMemmove = 8;
   MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize =
       MaxStoresPerMemmoveOptSize = 4;
+}
+
+static TargetLowering::AtomicExpansionKind getAVMAtomicExpansionKind(Type *Ty) {
+  return Ty->getPrimitiveSizeInBits().getFixedValue() <= 32
+             ? TargetLowering::AtomicExpansionKind::NotAtomic
+             : TargetLowering::AtomicExpansionKind::None;
+}
+
+TargetLowering::AtomicExpansionKind
+AVMTargetLowering::shouldExpandAtomicLoadInIR(LoadInst *LI) const {
+  return getAVMAtomicExpansionKind(LI->getType());
+}
+
+TargetLowering::AtomicExpansionKind
+AVMTargetLowering::shouldExpandAtomicStoreInIR(StoreInst *SI) const {
+  return getAVMAtomicExpansionKind(SI->getValueOperand()->getType());
+}
+
+TargetLowering::AtomicExpansionKind
+AVMTargetLowering::shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *CI) const {
+  return getAVMAtomicExpansionKind(CI->getCompareOperand()->getType());
+}
+
+TargetLowering::AtomicExpansionKind
+AVMTargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
+  return getAVMAtomicExpansionKind(AI->getValOperand()->getType());
 }
 
 MVT AVMTargetLowering::getPointerTy(const DataLayout &DL, uint32_t AS) const {
@@ -521,6 +571,150 @@ EVT AVMTargetLowering::getOptimalMemOpType(LLVMContext &, const MemOp &,
   return MVT::i8;
 }
 
+TargetLowering::ConstraintType
+AVMTargetLowering::getConstraintType(StringRef Constraint) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    case 'r':
+    case 'c':
+    case 'b':
+    case 'B':
+    case 'p':
+    case 'P':
+    case 'q':
+    case 'Q':
+    case 't':
+      return C_RegisterClass;
+    case 'I':
+    case 'J':
+    case 'K':
+    case 'L':
+    case 'M':
+    case 'N':
+    case 'O':
+      return C_Immediate;
+    case 'm':
+    case 'o':
+      return C_Memory;
+    default:
+      break;
+    }
+  }
+  return TargetLowering::getConstraintType(Constraint);
+}
+
+std::pair<unsigned, const TargetRegisterClass *>
+AVMTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                                StringRef Constraint,
+                                                MVT VT) const {
+  unsigned FixedReg = StringSwitch<unsigned>(Constraint)
+                          .Case("{r0}", AVM::R0)
+                          .Case("{r1}", AVM::R1)
+                          .Case("{r2}", AVM::R2)
+                          .Case("{r3}", AVM::R3)
+                          .Case("{r4}", AVM::R4)
+                          .Case("{r5}", AVM::R5)
+                          .Case("{r6}", AVM::R6)
+                          .Case("{r7}", AVM::R7)
+                          .Case("{q0}", AVM::R0R1)
+                          .Case("{q1}", AVM::R2R3)
+                          .Case("{q2}", AVM::R4R5)
+                          .Case("{q3}", AVM::R6R7)
+                          .Default(0);
+  if (FixedReg)
+    return {FixedReg, AVM::GPR32RegClass.contains(FixedReg)
+                          ? &AVM::GPR32RegClass
+                          : &AVM::GPR16RegClass};
+
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    case 'r':
+      return {0U, &AVM::GPR16RegClass};
+    case 'c':
+      return {0U, &AVM::UpperGPR16RegClass};
+    case 'b':
+      return {0U, &AVM::GPR8RegClass};
+    case 'B':
+      return {0U, &AVM::UpperGPR8RegClass};
+    case 'p':
+      return {0U, &AVM::PTR16RegClass};
+    case 'P':
+      return {0U, &AVM::UpperPTR16RegClass};
+    case 'q':
+    case 't':
+      return {0U, &AVM::GPR32RegClass};
+    case 'Q':
+      return {0U, &AVM::UpperGPR32RegClass};
+    default:
+      break;
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+}
+
+TargetLowering::ConstraintWeight
+AVMTargetLowering::getSingleConstraintMatchWeight(
+    AsmOperandInfo &Info, const char *Constraint) const {
+  if (*Constraint == 't') {
+    auto *Ty = Info.CallOperandVal ? Info.CallOperandVal->getType() : nullptr;
+    return Ty && Ty->isPointerTy() &&
+                   cast<PointerType>(Ty)->getAddressSpace() == 1
+               ? CW_Register
+               : CW_Invalid;
+  }
+  if (StringRef("IJKLMNO").contains(*Constraint))
+    return isa_and_nonnull<ConstantInt>(Info.CallOperandVal) ? CW_Constant
+                                                             : CW_Invalid;
+  return TargetLowering::getSingleConstraintMatchWeight(Info, Constraint);
+}
+
+void AVMTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
+                                                     StringRef Constraint,
+                                                     std::vector<SDValue> &Ops,
+                                                     SelectionDAG &DAG) const {
+  if (Constraint.size() != 1)
+    return TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops,
+                                                        DAG);
+  const auto *Constant = dyn_cast<ConstantSDNode>(Op);
+  if (!StringRef("IJKLMNO").contains(Constraint[0]) || !Constant)
+    return TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops,
+                                                        DAG);
+
+  int64_t Signed = Constant->getSExtValue();
+  uint64_t Unsigned = Constant->getZExtValue();
+  bool Matches = false;
+  switch (Constraint[0]) {
+  case 'I':
+    Matches = isInt<8>(Signed);
+    break;
+  case 'J':
+    Matches = isUInt<8>(Unsigned);
+    break;
+  case 'K':
+  case 'N':
+    Matches = isUInt<4>(Unsigned);
+    break;
+  case 'L':
+    Matches = isInt<16>(Signed);
+    break;
+  case 'M':
+    Matches = isUInt<16>(Unsigned);
+    break;
+  case 'O':
+    Matches = Unsigned == 0;
+    break;
+  default:
+    llvm_unreachable("invalid AVM immediate constraint");
+  }
+  if (!Matches)
+    return;
+  if (Constraint[0] == 'I' || Constraint[0] == 'L')
+    Ops.push_back(
+        DAG.getSignedTargetConstant(Signed, SDLoc(Op), Op.getValueType()));
+  else
+    Ops.push_back(DAG.getTargetConstant(Unsigned, SDLoc(Op), MVT::i32));
+}
+
 SDValue AVMTargetLowering::LowerGlobalAddress(SDValue Op,
                                               SelectionDAG &DAG) const {
   const auto *GA = cast<GlobalAddressSDNode>(Op);
@@ -611,6 +805,16 @@ SDValue AVMTargetLowering::LowerISFPClass(SDValue Op, SelectionDAG &DAG) const {
                     DAG);
 }
 
+SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  const auto *Info = MF.getInfo<AVMMachineFunctionInfo>();
+  SDValue FrameIndex =
+      DAG.getFrameIndex(Info->getVarArgsFrameIndex(), MVT::i16);
+  const Value *Source = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
+                      MachinePointerInfo(Source), Align(1));
+}
+
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   case ISD::BR_CC:
@@ -619,6 +823,12 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerGlobalAddress(Op, DAG);
   case ISD::IS_FPCLASS:
     return LowerISFPClass(Op, DAG);
+  case ISD::VASTART:
+    return LowerVASTART(Op, DAG);
+  case ISD::ATOMIC_FENCE:
+    return Op.getOperand(0);
+  case ISD::DYNAMIC_STACKALLOC:
+    report_fatal_error("dynamic AVM stack allocation is unsupported");
   case ISD::ADDRSPACECAST:
     report_fatal_error(
         "AVM does not support casts between address spaces 0 and 1");
@@ -648,7 +858,7 @@ SDValue AVMTargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
     SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
-  if (CallConv != CallingConv::C || IsVarArg)
+  if (CallConv != CallingConv::C)
     report_fatal_error("unsupported AVM calling convention");
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -656,7 +866,7 @@ SDValue AVMTargetLowering::LowerFormalArguments(
   SmallVector<CCValAssign, 8> ArgLocs;
   CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), ArgLocs,
                  *DAG.getContext());
-  analyzeAVMArguments(Ins, CCInfo);
+  analyzeAVMArguments(Ins, CCInfo, IsVarArg);
 
   MachineRegisterInfo &MRI = MF.getRegInfo();
   SmallVector<SDValue, 4> LoadChains;
@@ -686,12 +896,14 @@ SDValue AVMTargetLowering::LowerFormalArguments(
     assert(VA.isMemLoc() && "invalid AVM formal-argument location");
     bool IsProgramPointer =
         Ins[I].Flags.isPointer() && Ins[I].Flags.getPointerAddrSpace() == 1;
-    unsigned Size = IsProgramPointer ? 3 : VA.getLocVT().getStoreSize();
+    bool IsThreeByteValue = Ins[I].ArgVT.getSizeInBits().getFixedValue() == 24;
+    unsigned Size =
+        IsProgramPointer || IsThreeByteValue ? 3 : VA.getLocVT().getStoreSize();
     int FI = MFI.CreateFixedObject(Size, VA.getLocMemOffset() + 3, true);
     SDValue FIN = DAG.getFrameIndex(FI, MVT::i16);
     MachinePointerInfo PtrInfo = MachinePointerInfo::getFixedStack(MF, FI);
     SDValue Load;
-    if (IsProgramPointer) {
+    if (IsProgramPointer || IsThreeByteValue) {
       Load = DAG.getNode(AVMISD::LOAD24, DL,
                          DAG.getVTList(MVT::i32, MVT::Other), Chain, FIN);
     } else if (VA.getLocVT() == VA.getValVT()) {
@@ -711,6 +923,23 @@ SDValue AVMTargetLowering::LowerFormalArguments(
     LoadChains.push_back(Chain);
     Chain = DAG.getNode(ISD::TokenFactor, DL, MVT::Other, LoadChains);
   }
+
+  AVMMachineFunctionInfo *Info = MF.getInfo<AVMMachineFunctionInfo>();
+  for (unsigned I = 0; I != Ins.size(); ++I) {
+    if (!Ins[I].Flags.isSRet())
+      continue;
+    Register Reg = Info->getSRetReturnReg();
+    if (!Reg) {
+      Reg = MRI.createVirtualRegister(&AVM::GPR16RegClass);
+      Info->setSRetReturnReg(Reg);
+    }
+    SDValue Copy = DAG.getCopyToReg(DAG.getEntryNode(), DL, Reg, InVals[I]);
+    Chain = DAG.getNode(ISD::TokenFactor, DL, MVT::Other, Copy, Chain);
+  }
+  if (IsVarArg) {
+    int FI = MFI.CreateFixedObject(1, CCInfo.getStackSize() + 3, true);
+    Info->setVarArgsFrameIndex(FI);
+  }
   return Chain;
 }
 
@@ -718,23 +947,41 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
                                      SmallVectorImpl<SDValue> &InVals) const {
   SelectionDAG &DAG = CLI.DAG;
   const SDLoc &DL = CLI.DL;
-  if (CLI.CallConv != CallingConv::C || CLI.IsVarArg)
+  if (CLI.CallConv != CallingConv::C)
     report_fatal_error("unsupported AVM calling convention");
   CLI.IsTailCall = false;
+
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  SDValue Chain = CLI.Chain;
+  SmallVector<SDValue, 8> OutVals(CLI.OutVals.begin(), CLI.OutVals.end());
+  for (unsigned I = 0; I != CLI.Outs.size(); ++I) {
+    const ISD::ArgFlagsTy &Flags = CLI.Outs[I].Flags;
+    if (!Flags.isByVal() || !Flags.getByValSize())
+      continue;
+    int FI = MFI.CreateStackObject(Flags.getByValSize(), Align(1), false);
+    SDValue Copy = DAG.getFrameIndex(FI, MVT::i16);
+    SDValue Size = DAG.getConstant(Flags.getByValSize(), DL, MVT::i16);
+    Chain = DAG.getMemcpy(Chain, DL, Copy, OutVals[I], Size, Align(1),
+                          /*IsVolatile=*/false, /*AlwaysInline=*/false,
+                          /*CI=*/nullptr, std::nullopt, MachinePointerInfo(),
+                          MachinePointerInfo());
+    OutVals[I] = Copy;
+  }
 
   SmallVector<CCValAssign, 8> ArgLocs;
   CCState CCInfo(CLI.CallConv, CLI.IsVarArg, DAG.getMachineFunction(), ArgLocs,
                  *DAG.getContext());
-  analyzeAVMArguments(CLI.Outs, CCInfo);
+  analyzeAVMArguments(CLI.Outs, CCInfo, CLI.IsVarArg);
 
   unsigned NumBytes = CCInfo.getStackSize();
-  SDValue Chain = DAG.getCALLSEQ_START(CLI.Chain, NumBytes, 0, DL);
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
   SmallVector<std::pair<MCPhysReg, SDValue>, 4> RegsToPass;
   SmallVector<SDValue, 4> StoreChains;
 
   for (const CCValAssign &VA : ArgLocs) {
     unsigned I = VA.getValNo();
-    SDValue Arg = CLI.OutVals[I];
+    SDValue Arg = OutVals[I];
     if (VA.isRegLoc()) {
       Arg = canonicalizeNarrowOutgoing(Arg, CLI.Outs[I], DL, DAG);
       if (CLI.Outs[I].Flags.isPointer() &&
@@ -747,7 +994,10 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     assert(VA.isMemLoc() && "invalid AVM call-argument location");
     bool IsProgramPointer = CLI.Outs[I].Flags.isPointer() &&
                             CLI.Outs[I].Flags.getPointerAddrSpace() == 1;
-    if (VA.getValVT() != MVT::i16 && VA.getValVT() != MVT::i32)
+    bool IsThreeByteValue =
+        CLI.Outs[I].ArgVT.getSizeInBits().getFixedValue() == 24;
+    if (VA.getValVT() != MVT::i16 && VA.getValVT() != MVT::i32 &&
+        VA.getValVT() != MVT::f32)
       report_fatal_error(
           "stack lowering for this AVM scalar type is not implemented yet");
     SDValue Ptr =
@@ -756,7 +1006,7 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     MachinePointerInfo PtrInfo = MachinePointerInfo::getStack(
         DAG.getMachineFunction(), VA.getLocMemOffset());
     SDValue Store;
-    if (IsProgramPointer)
+    if (IsProgramPointer || IsThreeByteValue)
       Store = DAG.getNode(AVMISD::STORE24, DL, MVT::Other, Chain, Arg,
                           DAG.getConstant(VA.getLocMemOffset(), DL, MVT::i16));
     else if (VA.getLocVT() == MVT::i8)
@@ -830,7 +1080,7 @@ bool AVMTargetLowering::CanLowerReturn(
     CallingConv::ID CallConv, MachineFunction &MF, bool IsVarArg,
     const SmallVectorImpl<ISD::OutputArg> &Outs, LLVMContext &Context,
     const Type *) const {
-  if (CallConv != CallingConv::C || IsVarArg)
+  if (CallConv != CallingConv::C)
     return false;
   SmallVector<CCValAssign, 2> RVLocs;
   CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
@@ -843,7 +1093,7 @@ AVMTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                const SmallVectorImpl<ISD::OutputArg> &Outs,
                                const SmallVectorImpl<SDValue> &OutVals,
                                const SDLoc &DL, SelectionDAG &DAG) const {
-  if (CallConv != CallingConv::C || IsVarArg)
+  if (CallConv != CallingConv::C)
     report_fatal_error("unsupported AVM return calling convention");
 
   SmallVector<CCValAssign, 2> RVLocs;
@@ -870,6 +1120,17 @@ AVMTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
     Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), Value, Glue);
     Glue = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
+  }
+
+  MachineFunction &MF = DAG.getMachineFunction();
+  if (MF.getFunction().hasStructRetAttr()) {
+    const auto *Info = MF.getInfo<AVMMachineFunctionInfo>();
+    Register Reg = Info->getSRetReturnReg();
+    assert(Reg && "missing AVM sret return register");
+    SDValue Value = DAG.getCopyFromReg(Chain, DL, Reg, MVT::i16);
+    Chain = DAG.getCopyToReg(Chain, DL, AVM::R4, Value, Glue);
+    Glue = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(AVM::R4, MVT::i16));
   }
 
   RetOps[0] = Chain;

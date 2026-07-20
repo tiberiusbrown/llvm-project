@@ -451,6 +451,16 @@ namespace clang {
     };
   }
 
+  /// AVM builtins
+  namespace AVM {
+  enum {
+    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
+#define BUILTIN(ID, TYPE, ATTRS) BI##ID,
+#include "clang/Basic/BuiltinsAVM.def"
+    LastTSBuiltin
+  };
+  } // namespace AVM
+
   /// SystemZ builtins
   namespace SystemZ {
     enum {
@@ -476,7 +486,7 @@ namespace clang {
        PPC::LastTSBuiltin, NVPTX::LastTSBuiltin, AMDGPU::LastTSBuiltin,
        X86::LastTSBuiltin, VE::LastTSBuiltin, RISCV::LastTSBuiltin,
        Hexagon::LastTSBuiltin, Mips::LastTSBuiltin, XCore::LastTSBuiltin,
-       SystemZ::LastTSBuiltin, WebAssembly::LastTSBuiltin});
+       AVM::LastTSBuiltin, SystemZ::LastTSBuiltin, WebAssembly::LastTSBuiltin});
 
 } // end namespace clang.
 

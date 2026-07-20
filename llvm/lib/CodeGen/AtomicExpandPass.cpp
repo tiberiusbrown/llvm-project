@@ -261,6 +261,15 @@ bool AtomicExpandImpl::processAtomicInstr(Instruction *I) {
     if (!LI->isAtomic())
       return false;
 
+    // A target that explicitly requests non-atomic lowering does not require
+    // the stronger natural-alignment condition used for native atomic
+    // instructions.  Handle that policy before the generic libcall test.
+    if (TLI->shouldExpandAtomicLoadInIR(LI) ==
+        TargetLoweringBase::AtomicExpansionKind::NotAtomic) {
+      LI->setAtomic(AtomicOrdering::NotAtomic);
+      return true;
+    }
+
     if (!atomicSizeSupported(TLI, LI)) {
       expandAtomicLoadToLibcall(LI);
       return true;
@@ -275,6 +284,12 @@ bool AtomicExpandImpl::processAtomicInstr(Instruction *I) {
     if (!SI->isAtomic())
       return false;
 
+    if (TLI->shouldExpandAtomicStoreInIR(SI) ==
+        TargetLoweringBase::AtomicExpansionKind::NotAtomic) {
+      SI->setAtomic(AtomicOrdering::NotAtomic);
+      return true;
+    }
+
     if (!atomicSizeSupported(TLI, SI)) {
       expandAtomicStoreToLibcall(SI);
       return true;
@@ -286,6 +301,10 @@ bool AtomicExpandImpl::processAtomicInstr(Instruction *I) {
       MadeChange = true;
     }
   } else if (RMWI) {
+    if (TLI->shouldExpandAtomicRMWInIR(RMWI) ==
+        TargetLoweringBase::AtomicExpansionKind::NotAtomic)
+      return lowerAtomicRMWInst(RMWI);
+
     if (!atomicSizeSupported(TLI, RMWI)) {
       expandAtomicRMWToLibcall(RMWI);
       return true;
@@ -297,6 +316,10 @@ bool AtomicExpandImpl::processAtomicInstr(Instruction *I) {
       MadeChange = true;
     }
   } else if (CASI) {
+    if (TLI->shouldExpandAtomicCmpXchgInIR(CASI) ==
+        TargetLoweringBase::AtomicExpansionKind::NotAtomic)
+      return lowerAtomicCmpXchgInst(CASI);
+
     if (!atomicSizeSupported(TLI, CASI)) {
       expandAtomicCASToLibcall(CASI);
       return true;

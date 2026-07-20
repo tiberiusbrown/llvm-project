@@ -2825,6 +2825,13 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     // extension.
     auto DestLLVMTy = ConvertType(DestTy);
     llvm::Type *MiddleTy = CGF.CGM.getDataLayout().getIntPtrType(DestLLVMTy);
+    if (CGF.getTarget().getTriple().getArch() == llvm::Triple::avm) {
+      unsigned AddrSpace =
+          cast<llvm::PointerType>(DestLLVMTy)->getAddressSpace();
+      MiddleTy = llvm::IntegerType::get(
+          CGF.getLLVMContext(),
+          CGF.CGM.getDataLayout().getPointerSizeInBits(AddrSpace));
+    }
     bool InputSigned = E->getType()->isSignedIntegerOrEnumerationType();
     llvm::Value* IntResult =
       Builder.CreateIntCast(Src, MiddleTy, InputSigned, "conv");
@@ -2855,7 +2862,18 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     }
 
     PtrExpr = CGF.authPointerToPointerCast(PtrExpr, E->getType(), DestTy);
-    return Builder.CreatePtrToInt(PtrExpr, ConvertType(DestTy));
+    llvm::Type *DestLLVMTy = ConvertType(DestTy);
+    if (CGF.getTarget().getTriple().getArch() != llvm::Triple::avm)
+      return Builder.CreatePtrToInt(PtrExpr, DestLLVMTy);
+
+    unsigned AddrSpace =
+        cast<llvm::PointerType>(PtrExpr->getType())->getAddressSpace();
+    llvm::Type *PointerIntTy = llvm::IntegerType::get(
+        CGF.getLLVMContext(),
+        CGF.CGM.getDataLayout().getPointerSizeInBits(AddrSpace));
+    llvm::Value *PointerInt =
+        Builder.CreatePtrToInt(PtrExpr, PointerIntTy, "ptrtoint");
+    return Builder.CreateZExtOrTrunc(PointerInt, DestLLVMTy, "conv");
   }
   case CK_ToVoid: {
     CGF.EmitIgnoredExpr(E);

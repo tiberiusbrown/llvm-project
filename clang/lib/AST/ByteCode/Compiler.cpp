@@ -5094,6 +5094,16 @@ bool Compiler<Emitter>::visitAPValueInitializer(const APValue &Val,
 template <class Emitter>
 bool Compiler<Emitter>::VisitBuiltinCallExpr(const CallExpr *E,
                                              unsigned BuiltinID) {
+  if (const FunctionDecl *Callee = E->getDirectCallee();
+      Callee && Callee->getName() == "__builtin_avm_flash_string") {
+    if (DiscardResult)
+      return true;
+    const auto *Literal =
+        cast<StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
+    unsigned StringIndex = P.createGlobalString(Literal, E);
+    return this->emitGetPtrGlobal(StringIndex, E);
+  }
+
   if (BuiltinID == Builtin::BI__builtin_constant_p) {
     // Void argument is always invalid and harder to handle later.
     if (E->getArg(0)->getType()->isVoidType()) {

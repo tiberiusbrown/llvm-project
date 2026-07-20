@@ -2918,6 +2918,8 @@ private:
   bool CheckTSBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
                                   CallExpr *TheCall);
 
+  bool CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+
   void checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD, CallExpr *TheCall);
 
   /// Check the arguments to '__builtin_va_start', '__builtin_ms_va_start',

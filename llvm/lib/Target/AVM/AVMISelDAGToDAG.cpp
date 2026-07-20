@@ -18,6 +18,18 @@ public:
   AVMDAGToDAGISel(AVMTargetMachine &TM, CodeGenOptLevel OptLevel)
       : SelectionDAGISel(TM, OptLevel) {}
 
+  bool SelectInlineAsmMemoryOperand(const SDValue &Op,
+                                    InlineAsm::ConstraintCode ConstraintID,
+                                    std::vector<SDValue> &OutOps) override {
+    if (ConstraintID != InlineAsm::ConstraintCode::m &&
+        ConstraintID != InlineAsm::ConstraintCode::o)
+      return true;
+    if (Op.getValueType() != MVT::i16)
+      return true;
+    OutOps.push_back(Op);
+    return false;
+  }
+
 private:
 #include "AVMGenDAGISel.inc"
 

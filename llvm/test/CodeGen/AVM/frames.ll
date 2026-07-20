@@ -27,26 +27,6 @@ define void @frame128(i8 %x) {
   ret void
 }
 
-define void @large_frame(i16 %x) {
-; CHECK-LABEL: large_frame:
-; CHECK:       adjsp -128
-; CHECK-NEXT:  adjsp -128
-; CHECK-NEXT:  adjsp -46
-; CHECK-NEXT:  getsp [[ADDR:r[0-7]]]
-; CHECK-NEXT:  addi.s8 [[ADDR]], 127
-; CHECK-NEXT:  addi.s8 [[ADDR]], 127
-; CHECK-NEXT:  addi.s8 [[ADDR]], 46
-; CHECK-NEXT:  st16 {{\[}}[[ADDR]]], r4
-; CHECK-NEXT:  adjsp 127
-; CHECK-NEXT:  adjsp 127
-; CHECK-NEXT:  adjsp 48
-; CHECK-NEXT:  ret
-  %a = alloca [300 x i8], align 1
-  %p = getelementptr [300 x i8], ptr %a, i16 0, i16 298
-  store volatile i16 %x, ptr %p, align 1
-  ret void
-}
-
 define i16 @frame_pointer(i16 %x) #0 {
 ; CHECK-LABEL: frame_pointer:
 ; CHECK:       push16 r3

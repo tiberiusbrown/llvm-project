@@ -52,6 +52,29 @@ public:
                                   SelectionDAG &DAG) const override;
   EVT getOptimalMemOpType(LLVMContext &Context, const MemOp &Op,
                           const AttributeList &FuncAttributes) const override;
+  EVT getAsmOperandValueType(const DataLayout &DL, Type *Ty,
+                             bool AllowUnknown = false) const override {
+    EVT VT = TargetLowering::getAsmOperandValueType(DL, Ty, AllowUnknown);
+    return VT == MVT::i8 ? EVT(MVT::i16) : VT;
+  }
+
+  ConstraintType getConstraintType(StringRef Constraint) const override;
+  std::pair<unsigned, const TargetRegisterClass *>
+  getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                               StringRef Constraint, MVT VT) const override;
+  ConstraintWeight
+  getSingleConstraintMatchWeight(AsmOperandInfo &Info,
+                                 const char *Constraint) const override;
+  void LowerAsmOperandForConstraint(SDValue Op, StringRef Constraint,
+                                    std::vector<SDValue> &Ops,
+                                    SelectionDAG &DAG) const override;
+
+  AtomicExpansionKind shouldExpandAtomicLoadInIR(LoadInst *LI) const override;
+  AtomicExpansionKind shouldExpandAtomicStoreInIR(StoreInst *SI) const override;
+  AtomicExpansionKind
+  shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *CI) const override;
+  AtomicExpansionKind
+  shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
 
 private:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
@@ -61,6 +84,7 @@ private:
   SDValue LowerSelect(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSelectCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSetCC(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerCall(CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;

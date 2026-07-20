@@ -12,6 +12,11 @@
 
 let Component = "Sema" in {
 let CategoryName = "Semantic Issue" in {
+
+def err_avm_flash_string_literal : Error<
+  "argument to '__builtin_avm_flash_string' must be an ordinary narrow string literal">;
+def err_avm_read_only_address_space : Error<
+  "address space 1 is read-only">;
 // C++11 compatibility with C++98.
 defm nonclass_type_friend : CXX11Compat<"non-class friend type %0 is">;
 defm static_data_member_in_union : CXX11Compat<"static data member %0 in union is">;

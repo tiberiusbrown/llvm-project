@@ -138,6 +138,9 @@ createTargetCodeGenInfo(CodeGenModule &CGM) {
     return createAVRTargetCodeGenInfo(CGM, NPR, NRR);
   }
 
+  case llvm::Triple::avm:
+    return createAVMTargetCodeGenInfo(CGM);
+
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_32:
   case llvm::Triple::aarch64_be: {
@@ -7112,6 +7115,30 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
 
   return ConstantAddress(castStringLiteralToDefaultAddressSpace(*this, GV),
                          GV->getValueType(), Alignment);
+}
+
+ConstantAddress CodeGenModule::GetAddrOfAVMFlashString(const StringLiteral *S) {
+  assert(getTarget().getTriple().getArch() == llvm::Triple::avm &&
+         "AVM flash strings are target-specific");
+
+  SmallString<256> Key;
+  Key.push_back(/*AddressSpace=*/1);
+  Key.push_back(static_cast<char>(S->getCharByteWidth()));
+  Key.append(S->getBytes());
+  Key.push_back('\0');
+  llvm::GlobalVariable *&Entry = AVMFlashStringMap[Key];
+  if (Entry)
+    return ConstantAddress(Entry, Entry->getValueType(), CharUnits::One());
+
+  llvm::Constant *C = GetConstantArrayFromStringLiteral(S);
+  Entry = new llvm::GlobalVariable(
+      getModule(), C->getType(), /*isConstant=*/true,
+      llvm::GlobalValue::PrivateLinkage, C,
+      (Twine(".avm.flashstr.") + Twine(AVMFlashStringCounter++)).str(), nullptr,
+      llvm::GlobalVariable::NotThreadLocal, /*AddressSpace=*/1);
+  Entry->setAlignment(llvm::Align(1));
+  setDSOLocal(Entry);
+  return ConstantAddress(Entry, Entry->getValueType(), CharUnits::One());
 }
 
 /// GetAddrOfConstantStringFromObjCEncode - Return a pointer to a constant

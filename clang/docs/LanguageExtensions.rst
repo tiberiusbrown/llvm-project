@@ -6765,6 +6765,32 @@ of explicit constraints against atomically qualified (arrays and) function
 types.
 
 
+AVM flash strings
+=================
+
+On the AVM target, ``__builtin_avm_flash_string`` places an ordinary narrow
+string literal in read-only program memory and returns a
+``const char __attribute__((address_space(1))) *``.  Its sole argument must be
+an ordinary narrow string literal; variables, conditional expressions, and
+prefixed string literals are rejected.
+
+The result is a constant address expression and can be used in C static-storage
+initializers and in C++ ``constexpr`` and ``constinit`` pointer initializers.
+Identical flash strings are pooled within a translation unit, independently of
+ordinary data-space strings.  Pointer identity between distinct builtin
+invocations is unspecified.  Constant evaluation currently supports pointer
+formation and propagation only; dereferencing flash bytes and using the result
+as a non-type template argument are not supported in constant expressions.
+
+AVM program-memory copies
+=========================
+
+``__builtin_avm_memcpy_p(dst, src, size)`` copies ``size`` bytes from an
+address-space-1 source to an address-space-0 destination and returns ``dst``.
+It has the same non-overlap requirement as ``memcpy`` and lowers directly to a
+cross-address-space LLVM ``memcpy`` operation.
+
+
 Underspecified Object Declarations in C
 =======================================
 
