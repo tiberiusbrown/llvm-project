@@ -438,6 +438,9 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::ROTR, VT, Expand);
   }
   for (unsigned Opcode :
+       {ISD::MULHU, ISD::MULHS, ISD::UMUL_LOHI, ISD::SMUL_LOHI})
+    setOperationAction(Opcode, MVT::i16, Custom);
+  for (unsigned Opcode :
        {ISD::MULHU, ISD::MULHS, ISD::UMUL_LOHI, ISD::SMUL_LOHI, ISD::SHL_PARTS,
         ISD::SRL_PARTS, ISD::SRA_PARTS})
     setOperationAction(Opcode, MVT::i32, Expand);
@@ -954,6 +957,59 @@ SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
                       MachinePointerInfo(Source), Align(1));
 }
 
+SDValue AVMTargetLowering::LowerI16FullMultiply(SDValue LHS, SDValue RHS,
+                                                bool IsSigned, const SDLoc &DL,
+                                                SelectionDAG &DAG) const {
+  assert(LHS.getValueType() == MVT::i16 && RHS.getValueType() == MVT::i16 &&
+         "expected i16 multiply operands");
+
+  unsigned ExtendOpcode = IsSigned ? ISD::SIGN_EXTEND : ISD::ZERO_EXTEND;
+
+  SDValue WideLHS = DAG.getNode(ExtendOpcode, DL, MVT::i32, LHS);
+  SDValue WideRHS = DAG.getNode(ExtendOpcode, DL, MVT::i32, RHS);
+
+  MakeLibCallOptions CallOptions;
+  SDValue Ops[] = {WideLHS, WideRHS};
+
+  return makeLibCall(DAG, RTLIB::MUL_I32, MVT::i32, Ops, CallOptions, DL).first;
+}
+
+SDValue AVMTargetLowering::LowerMULH(SDValue Op, SelectionDAG &DAG) const {
+  assert((Op.getOpcode() == ISD::MULHU || Op.getOpcode() == ISD::MULHS) &&
+         Op.getValueType() == MVT::i16 &&
+         "unexpected AVM multiply-high operation");
+
+  SDLoc DL(Op);
+  bool IsSigned = Op.getOpcode() == ISD::MULHS;
+
+  SDValue Product = LowerI16FullMultiply(Op.getOperand(0), Op.getOperand(1),
+                                         IsSigned, DL, DAG);
+
+  SDValue High = DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Product);
+
+  return DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, High);
+}
+
+SDValue AVMTargetLowering::LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const {
+  assert(
+      (Op.getOpcode() == ISD::UMUL_LOHI || Op.getOpcode() == ISD::SMUL_LOHI) &&
+      Op.getValueType() == MVT::i16 &&
+      "unexpected AVM multiply low/high operation");
+
+  SDLoc DL(Op);
+  bool IsSigned = Op.getOpcode() == ISD::SMUL_LOHI;
+
+  SDValue Product = LowerI16FullMultiply(Op.getOperand(0), Op.getOperand(1),
+                                         IsSigned, DL, DAG);
+
+  SDValue Low = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Product);
+
+  SDValue ShiftedHigh = DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Product);
+  SDValue High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
+
+  return DAG.getMergeValues({Low, High}, DL);
+}
+
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   case ISD::INTRINSIC_VOID: {
@@ -982,6 +1038,12 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerISFPClass(Op, DAG);
   case ISD::VASTART:
     return LowerVASTART(Op, DAG);
+  case ISD::MULHU:
+  case ISD::MULHS:
+    return LowerMULH(Op, DAG);
+  case ISD::UMUL_LOHI:
+  case ISD::SMUL_LOHI:
+    return LowerMUL_LOHI(Op, DAG);
   case ISD::ATOMIC_FENCE:
     return Op.getOperand(0);
   case ISD::DYNAMIC_STACKALLOC:

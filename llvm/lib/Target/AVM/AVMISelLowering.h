@@ -82,11 +82,19 @@ public:
   bool isFPImmLegal(const APFloat &Imm, EVT VT,
                     bool ForCodeSize) const override;
 
+  bool isIntDivCheap(EVT VT, AttributeList) const override {
+    return VT == MVT::i16;
+  }
+
 private:
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,
+                               const SDLoc &DL, SelectionDAG &DAG) const;
   SDValue LowerISFPClass(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerMULH(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSelect(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSelectCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSetCC(SDValue Op, SelectionDAG &DAG) const;
