@@ -564,6 +564,18 @@ private:
   bool selectExtendOrTruncate32(SDNode *Node) {
     if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
         Node->getValueType(0) == MVT::i32 &&
+        cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i8) {
+      SDLoc DL(Node);
+      SDValue SubReg = CurDAG->getTargetConstant(AVM::sub_lo16, DL, MVT::i32);
+      SDNode *Lo =
+          CurDAG->getMachineNode(TargetOpcode::EXTRACT_SUBREG, DL, MVT::i16,
+                                 Node->getOperand(0), SubReg);
+      SDValue Extended8 = selectSignExtend8(SDValue(Lo, 0), DL);
+      CurDAG->SelectNodeTo(Node, AVM::SEXT16_32_PSEUDO, MVT::i32, Extended8);
+      return true;
+    }
+    if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
+        Node->getValueType(0) == MVT::i32 &&
         cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i24) {
       CurDAG->SelectNodeTo(Node, AVM::SEXT24_32_PSEUDO, MVT::i32,
                            Node->getOperand(0));
