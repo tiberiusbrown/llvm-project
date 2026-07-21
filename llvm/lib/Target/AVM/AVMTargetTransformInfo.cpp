@@ -9,8 +9,11 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/IntrinsicsAVM.h"
+
+#include <optional>
 
 using namespace llvm;
 
@@ -20,7 +23,14 @@ AVMTTIImpl::getPreferredAddressingMode(const Loop *L,
   if (!L || !SE || !L->isInnermost())
     return TTI::AMK_None;
 
+  unsigned LoopCarriedAccesses = 0;
   unsigned FoldableAccesses = 0;
+
+  const Value *FirstObject = nullptr;
+  bool AllSameObject = true;
+
+  std::optional<int64_t> CommonStep;
+  bool AllSameStep = true;
 
   for (BasicBlock *BB : L->blocks()) {
     for (Instruction &I : *BB) {
@@ -40,38 +50,73 @@ AVMTTIImpl::getPreferredAddressingMode(const Loop *L,
         continue;
       }
 
-      const auto *AddRec = dyn_cast<SCEVAddRecExpr>(SE->getSCEV(Pointer));
+      const SCEV *PointerSCEV = SE->getSCEV(Pointer);
 
-      // Loop-invariant accesses and recurrences belonging to another loop do
-      // not participate in this loop's addressing-mode decision.
-      if (!AddRec || AddRec->getLoop() != L)
+      // Loop-invariant accesses consume no loop-carried pointer register and
+      // do not participate in this decision.
+      if (SE->isLoopInvariant(PointerSCEV, L))
         continue;
 
-      // AVM data-space post-index folding currently exists only for i8 and
-      // i16. Because the preference affects the entire loop, reject the loop
-      // if any loop-carried memory stream uses another address space or type.
+      // A non-affine loop-varying address means that scalar-index expressions
+      // still have to remain live. Requesting additional pointer recurrences
+      // in that situation increases AVM register pressure.
+      const auto *AddRec = dyn_cast<SCEVAddRecExpr>(PointerSCEV);
+      if (!AddRec || AddRec->getLoop() != L)
+        return TTI::AMK_None;
+
+      // This policy currently applies only to ordinary data-space integer
+      // accesses. Floating-point loops were a measured negative case.
       if (AddressSpace != 0 ||
-          (!AccessTy->isIntegerTy(8) && !AccessTy->isIntegerTy(16)))
+          (!AccessTy->isIntegerTy(8) && !AccessTy->isIntegerTy(16) &&
+           !AccessTy->isIntegerTy(32)))
         return TTI::AMK_None;
 
       const auto *Step = dyn_cast<SCEVConstant>(AddRec->getStepRecurrence(*SE));
-      int64_t Width = AccessTy->getIntegerBitWidth() / 8;
-
-      // AVM post-index instructions increment by exactly the access width.
-      // Runtime strides, negative strides, and other constant strides cannot
-      // fold and must not receive a post-index preference.
-      if (!Step || Step->getAPInt().getSExtValue() != Width)
+      if (!Step)
         return TTI::AMK_None;
 
-      // AVM has only eight 16-bit registers. More than three simultaneous
-      // memory streams consistently creates enough pointer pressure to
-      // outweigh the addressing savings.
-      if (++FoldableAccesses > 3)
+      int64_t StepValue = Step->getAPInt().getSExtValue();
+
+      // Runtime, zero, and backward strides are not candidates for the current
+      // forward pointer-induction policy.
+      if (StepValue <= 0)
         return TTI::AMK_None;
+
+      ++LoopCarriedAccesses;
+
+      const Value *Object = getUnderlyingObject(Pointer);
+      if (!FirstObject)
+        FirstObject = Object;
+      else if (Object != FirstObject)
+        AllSameObject = false;
+
+      if (!CommonStep)
+        CommonStep = StepValue;
+      else if (*CommonStep != StepValue)
+        AllSameStep = false;
+
+      if ((AccessTy->isIntegerTy(8) || AccessTy->isIntegerTy(16)) &&
+          StepValue == static_cast<int64_t>(AccessTy->getIntegerBitWidth() / 8))
+        ++FoldableAccesses;
     }
   }
 
-  return FoldableAccesses != 0 ? TTI::AMK_PostIndexed : TTI::AMK_None;
+  if (LoopCarriedAccesses == 0)
+    return TTI::AMK_None;
+
+  // A small loop may profit when at least one stream becomes a native AVM
+  // post-increment access. Non-foldable i32 streams are allowed in this case,
+  // but the total number of loop-carried accesses remains capped at three.
+  bool SmallMixedStreamSet = FoldableAccesses != 0 && LoopCarriedAccesses <= 3;
+
+  // Several constant-offset fields of one object should share one base pointer.
+  // Four covers the current particle and stack-stencil cases without allowing
+  // arbitrary high-pressure aggregate loops.
+  bool SingleObjectFixedStride =
+      AllSameObject && AllSameStep && LoopCarriedAccesses <= 4;
+
+  return SmallMixedStreamSet || SingleObjectFixedStride ? TTI::AMK_PostIndexed
+                                                        : TTI::AMK_None;
 }
 
 void AVMTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
