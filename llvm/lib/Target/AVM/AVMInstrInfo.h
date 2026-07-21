@@ -74,6 +74,7 @@ public:
                            const MachineInstr &MI,
                            unsigned *PredCost = nullptr) const override;
   unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
+  bool isReMaterializableImpl(const MachineInstr &MI) const override;
 };
 } // namespace llvm
 

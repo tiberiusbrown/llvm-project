@@ -1,0 +1,74 @@
+# RUN: llc -mtriple=avm -run-pass=avm-final-control-flow \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @empty_layout_fallthrough() { ret void }
+  define void @shared_return_tail() { ret void }
+  define void @large_return_tail() { ret void }
+...
+---
+name: empty_layout_fallthrough
+body: |
+  bb.0:
+    successors: %bb.0, %bb.2
+    liveins: $cc
+
+    ; CHECK-LABEL: name: empty_layout_fallthrough
+    ; CHECK:       bb.0:
+    ; CHECK:       successors: %bb.0{{.*}}, %bb.1
+    ; CHECK:       RELAX_BR_NE %bb.0, implicit $cc
+    ; CHECK-NOT:   RELAX_JMP
+    RELAX_BR_EQ %bb.2, implicit $cc
+    RELAX_JMP %bb.0
+
+  bb.1:
+
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: shared_return_tail
+body: |
+  bb.0:
+    successors: %bb.2
+
+    ; CHECK-LABEL: name: shared_return_tail
+    ; CHECK:       bb.0:
+    ; CHECK:       $r4 = MOV $r5
+    ; CHECK-NEXT:  RET implicit-def dead $sp, implicit $sp
+    ; CHECK-NOT:   RELAX_JMP
+    RELAX_JMP %bb.2
+
+  bb.1:
+    successors: %bb.2
+
+    ; CHECK:       bb.1:
+    ; CHECK:       $r4 = MOV $r5
+    ; CHECK-NEXT:  RET implicit-def dead $sp, implicit $sp
+    ; CHECK-NOT:   RELAX_JMP
+    ; CHECK-NOT:   bb.2:
+    RELAX_JMP %bb.2
+
+  bb.2:
+    $r4 = MOV $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: large_return_tail
+body: |
+  bb.0:
+    successors: %bb.1
+
+    ; CHECK-LABEL: name: large_return_tail
+    ; CHECK:       bb.0:
+    ; CHECK:       RELAX_JMP %bb.1
+    RELAX_JMP %bb.1
+
+  bb.1:
+    ; CHECK:       bb.1:
+    ; CHECK:       $r4 = MOV_RR $r0
+    ; CHECK-NEXT:  RET implicit-def dead $sp, implicit $sp
+    $r4 = MOV_RR $r0
+    RET implicit-def dead $sp, implicit $sp
+...

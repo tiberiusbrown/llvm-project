@@ -28,6 +28,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMBranchPolarityPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
+  initializeAVMFinalControlFlowPass(PR);
   initializeAVMServiceResultPass(PR);
 }
 
@@ -104,6 +105,7 @@ public:
   void addPreEmitPass() override {
     addPass(createAVMBranchPolarityPass());
     addPass(createAVMExpandPseudoPass());
+    addPass(createAVMFinalControlFlowPass());
   }
 };
 } // namespace

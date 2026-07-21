@@ -18,12 +18,14 @@ enum CondCode : unsigned { EQ, NE, ULT, UGE, SLT, SGE };
 FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
 FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMExpandPseudoPass();
+FunctionPass *createAVMFinalControlFlowPass();
 FunctionPass *createAVMServiceResultPass();
 
 void initializeAVMAsmPrinterPass(PassRegistry &);
 void initializeAVMBranchPolarityPass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
+void initializeAVMFinalControlFlowPass(PassRegistry &);
 void initializeAVMServiceResultPass(PassRegistry &);
 } // namespace llvm
 

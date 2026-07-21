@@ -20,6 +20,7 @@ add_llvm_target(AVMCodeGen
   AVMBranchPolarity.cpp
   AVMCostModel.cpp
   AVMExpandPseudoInsts.cpp
+  AVMFinalControlFlow.cpp
   AVMFrameLowering.cpp
   AVMISelDAGToDAG.cpp
   AVMISelLowering.cpp

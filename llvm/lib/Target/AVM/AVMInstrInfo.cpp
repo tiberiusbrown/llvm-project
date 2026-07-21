@@ -21,6 +21,15 @@ AVMInstrInfo::AVMInstrInfo(const AVMSubtarget &STI)
     : AVMGenInstrInfo(STI, RI, AVM::ADJCALLSTACKDOWN, AVM::ADJCALLSTACKUP),
       RI() {}
 
+bool AVMInstrInfo::isReMaterializableImpl(const MachineInstr &MI) const {
+  if ((MI.getOpcode() == AVM::LDI8_PSEUDO ||
+       MI.getOpcode() == AVM::LDI16_PSEUDO ||
+       MI.getOpcode() == AVM::LDI32_PSEUDO) &&
+      !MI.getFlag(MachineInstr::NoMerge))
+    return false;
+  return TargetInstrInfo::isReMaterializableImpl(MI);
+}
+
 void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator MI,
                                const DebugLoc &DL, Register DestReg,

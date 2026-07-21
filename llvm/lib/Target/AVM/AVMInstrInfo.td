@@ -594,6 +594,7 @@ def SEXT8_PSEUDO
                              (sext_inreg GPR16:$src, i8))]> {
   let Constraints = "$dst = $src";
 }
+let isReMaterializable = 1 in {
 def LDI8_PSEUDO
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
                        [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
@@ -602,7 +603,10 @@ def LDI16_PSEUDO
                        [(set GPR16:$dst, (i16 imm:$imm))]>;
 def LDI32_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst),
-                       (ins i16imm:$lo, i16imm:$hi)>;
+                       (ins i16imm:$lo, i16imm:$hi)> {
+  let hasSideEffects = 0;
+}
+}
 def ZEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO

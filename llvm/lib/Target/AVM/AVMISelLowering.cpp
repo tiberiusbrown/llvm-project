@@ -13,6 +13,7 @@
 #include "llvm/IR/IntrinsicsAVM.h"
 #include "llvm/IR/RuntimeLibcalls.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
@@ -217,9 +218,19 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
 
   if (const auto *C = dyn_cast<ConstantSDNode>(RHS); C && C->isZero()) {
     SDValue ByteValue;
-    SDValue Glue = stripByteValue(LHS, ByteValue)
-                       ? DAG.getNode(AVMISD::TST8, DL, MVT::Glue, ByteValue)
-                       : DAG.getNode(AVMISD::TST16, DL, MVT::Glue, LHS);
+    SDValue Glue;
+    if (stripByteValue(LHS, ByteValue)) {
+      Glue = DAG.getNode(AVMISD::TST8, DL, MVT::Glue, ByteValue);
+    } else {
+      bool HighByteKnownZero = false;
+      if (TargetCond == AVMCC::EQ || TargetCond == AVMCC::NE) {
+        KnownBits Known = DAG.computeKnownBits(LHS);
+        APInt HighMask = APInt::getHighBitsSet(16, 8);
+        HighByteKnownZero = (Known.Zero & HighMask) == HighMask;
+      }
+      Glue = DAG.getNode(HighByteKnownZero ? AVMISD::TST8 : AVMISD::TST16, DL,
+                         MVT::Glue, LHS);
+    }
     return {TargetCC, Glue};
   }
 

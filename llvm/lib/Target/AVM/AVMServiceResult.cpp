@@ -249,6 +249,24 @@ public:
         Changed = true;
       }
     }
+    // The generic spiller rematerializes every use once an instruction is
+    // marked rematerializable. Restrict that behavior to reusable immediates;
+    // one-use values otherwise perturb allocation without eliminating paired
+    // stack traffic.
+    for (MachineBasicBlock &MBB : MF) {
+      for (MachineInstr &MI : MBB) {
+        unsigned Opcode = MI.getOpcode();
+        if (Opcode != AVM::LDI8_PSEUDO && Opcode != AVM::LDI16_PSEUDO &&
+            Opcode != AVM::LDI32_PSEUDO)
+          continue;
+        Register Def = MI.getOperand(0).getReg();
+        if (!Def.isVirtual() || MRI.use_nodbg_empty(Def) ||
+            MRI.hasOneNonDBGUse(Def))
+          continue;
+        MI.setFlag(MachineInstr::NoMerge);
+        Changed = true;
+      }
+    }
     return Changed;
   }
 };
