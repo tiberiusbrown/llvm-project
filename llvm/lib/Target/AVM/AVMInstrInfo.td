@@ -21,6 +21,8 @@ def SDT_AVMCallSeqEnd : SDCallSeqEnd<[SDTCisVT<0, i16>,
                                       SDTCisVT<1, i16>]>;
 def SDT_AVMUnaryI32
     : SDTypeProfile<1, 1, [SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
+def SDT_AVMBuildHi16
+    : SDTypeProfile<1, 1, [SDTCisVT<0, i32>, SDTCisVT<1, i16>]>;
 
 def AVMretglue : SDNode<"AVMISD::RET_GLUE", SDTNone,
                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
@@ -35,6 +37,9 @@ def AVMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_AVMCallSeqStart,
                               [SDNPHasChain, SDNPOutGlue]>;
 def AVMcallseq_end : SDNode<"ISD::CALLSEQ_END", SDT_AVMCallSeqEnd,
                             [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+def AVMbuild_hi16 : SDNode<"AVMISD::BUILD_HI16", SDT_AVMBuildHi16>;
+def AVMlsr32_1 : SDNode<"AVMISD::LSR32_1", SDT_AVMUnaryI32>;
+def AVMsra32_1 : SDNode<"AVMISD::SRA32_1", SDT_AVMUnaryI32>;
 def AVMshl32_16 : SDNode<"AVMISD::SHL32_16", SDT_AVMUnaryI32>;
 def AVMsrl32_16 : SDNode<"AVMISD::SRL32_16", SDT_AVMUnaryI32>;
 def AVMsra32_16 : SDNode<"AVMISD::SRA32_16", SDT_AVMUnaryI32>;
@@ -68,6 +73,7 @@ class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let AsmString = Asm;
   let Size = Bytes;
   let isCodeGenOnly = 0;
+  let hasSideEffects = 0;
 }
 
 class AVMCompactMoveInst<string Asm, bits<4> Family>
@@ -611,6 +617,25 @@ def ZEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
+def BUILD_HI16_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR16:$src),
+          [(set GPR32:$dst, (AVMbuild_hi16 GPR16:$src))]>;
+def LSR32_1_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR32:$src),
+          [(set GPR32:$dst, (AVMlsr32_1 GPR32:$src))]> {
+  let Constraints = "$dst = $src";
+}
+def SRA32_1_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR32:$src),
+          [(set GPR32:$dst, (AVMsra32_1 GPR32:$src))]> {
+  let Constraints = "$dst = $src";
+}
 def SHL32_16_PSEUDO
     : AVMCodeGenPseudo<
           (outs GPR32:$dst),
@@ -899,6 +924,18 @@ class AVMPostIncStorePseudo
   let Constraints = "$addr = $addr_in";
   let mayStore = 1;
 }
+class AVMPreDecLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
+                       (ins PTR16:$addr_in)> {
+  let Constraints = "@earlyclobber $dst, $addr = $addr_in";
+  let mayLoad = 1;
+}
+class AVMPreDecStorePseudo
+    : AVMCodeGenPseudo<(outs PTR16:$addr),
+                       (ins PTR16:$addr_in, GPR16:$src)> {
+  let Constraints = "$addr = $addr_in";
+  let mayStore = 1;
+}
 class AVMAbsoluteLoadPseudo
     : AVMCodeGenPseudo<(outs GPR16:$dst), (ins AVMDataAddr16:$addr)> {
   let mayLoad = 1;
@@ -930,6 +967,10 @@ def LOAD8U_POST_PSEUDO : AVMPostIncLoadPseudo;
 def LOAD16_POST_PSEUDO : AVMPostIncLoadPseudo;
 def STORE8_POST_PSEUDO : AVMPostIncStorePseudo;
 def STORE16_POST_PSEUDO : AVMPostIncStorePseudo;
+def LOAD8U_PRE_PSEUDO : AVMPreDecLoadPseudo;
+def LOAD16_PRE_PSEUDO : AVMPreDecLoadPseudo;
+def STORE8_PRE_PSEUDO : AVMPreDecStorePseudo;
+def STORE16_PRE_PSEUDO : AVMPreDecStorePseudo;
 def ABS_LOAD8U_PSEUDO : AVMAbsoluteLoadPseudo;
 def ABS_LOAD16_PSEUDO : AVMAbsoluteLoadPseudo;
 def ABS_STORE8_PSEUDO : AVMAbsoluteStorePseudo;

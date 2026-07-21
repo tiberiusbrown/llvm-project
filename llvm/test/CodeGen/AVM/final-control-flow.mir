@@ -6,6 +6,11 @@
   define void @empty_layout_fallthrough() { ret void }
   define void @shared_return_tail() { ret void }
   define void @large_return_tail() { ret void }
+  define void @sibling_calls() { ret void }
+  declare void @direct_target()
+  declare void @adjust_target()
+  declare void @restore_target()
+  declare void @copy_target()
 ...
 ---
 name: empty_layout_fallthrough
@@ -70,5 +75,51 @@ body: |
     ; CHECK:       $r4 = MOV_RR $r0
     ; CHECK-NEXT:  RET implicit-def dead $sp, implicit $sp
     $r4 = MOV_RR $r0
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: sibling_calls
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: sibling_calls
+    ; CHECK: bb.0:
+    ; CHECK: RELAX_JMP @direct_target
+    ; CHECK-NOT: RELAX_CALL @direct_target
+    RELAX_CALL @direct_target, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    RET implicit-def dead $sp, implicit $sp
+
+  bb.1:
+    liveins: $r6r7
+    ; CHECK: bb.1:
+    ; CHECK: JMPP $r6r7
+    ; CHECK-NOT: CALLP $r6r7
+    CALLP $r6r7, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    RET implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    ; CHECK: bb.2:
+    ; CHECK: RELAX_CALL @adjust_target
+    ; CHECK-NEXT: ADJSP -2
+    ; CHECK-NEXT: RET
+    RELAX_CALL @adjust_target, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    ADJSP -2, implicit-def $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp
+
+  bb.3:
+    ; CHECK: bb.3:
+    ; CHECK: RELAX_CALL @restore_target
+    ; CHECK-NEXT: $r4 = POP16
+    ; CHECK-NEXT: RET
+    RELAX_CALL @restore_target, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    $r4 = POP16 implicit-def $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp
+
+  bb.4:
+    ; CHECK: bb.4:
+    ; CHECK: RELAX_CALL @copy_target
+    ; CHECK-NEXT: $r4 = COPY $r5
+    ; CHECK-NEXT: RET
+    RELAX_CALL @copy_target, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    $r4 = COPY $r5
     RET implicit-def dead $sp, implicit $sp
 ...

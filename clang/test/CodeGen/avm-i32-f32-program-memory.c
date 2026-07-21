@@ -32,7 +32,7 @@ callback_t callback_slot = callback;
 // CHECK-LABEL: call_loaded_callback:
 // CHECK:       ld16
 // CHECK:       ld8u
-// CHECK:       callp
+// CHECK:       jmpp
 uint16_t call_loaded_callback(uint16_t value) {
   return callback_slot(value);
 }

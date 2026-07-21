@@ -30,7 +30,17 @@ define i32 @ashr32_16(i32 %value) {
 
 define i32 @lshr32_variable(i32 %value, i32 %count) {
 ; CHECK-LABEL: lshr32_variable:
-; CHECK:       call{{8|16|f?}} __avm_lshrsi3
+; CHECK:       {{call|jmp}}{{8|16|f?}} __avm_lshrsi3
   %result = lshr i32 %value, %count
+  ret i32 %result
+}
+
+define i32 @shl_zext16(i16 %value) {
+; CHECK-LABEL: shl_zext16:
+; CHECK-NOT:   call
+; CHECK:       mov r5, r4
+; CHECK-NEXT:  xor r4, r4
+  %wide = zext i16 %value to i32
+  %result = shl i32 %wide, 16
   ret i32 %result
 }

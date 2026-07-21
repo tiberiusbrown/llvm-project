@@ -1428,7 +1428,7 @@ void Cost::RateRegister(const Formula &F, const SCEV *Reg,
         // addressing.
         bool CanPreIndex = (AMK & TTI::AMK_PreIndexed) &&
                            F.BaseOffset.isFixed() &&
-                           *Step == F.BaseOffset.getFixedValue();
+                           Step->getSExtValue() == F.BaseOffset.getFixedValue();
         bool CanPostIndex = (AMK & TTI::AMK_PostIndexed) &&
                             !isa<SCEVConstant>(Start) &&
                             SE->isLoopInvariant(Start, L);
@@ -1611,6 +1611,10 @@ bool Cost::isLess(const Cost &Other) const {
   if (InsnsCost.getNumOccurrences() > 0 && InsnsCost &&
       C.Insns != Other.C.Insns)
     return C.Insns < Other.C.Insns;
+  if (AMK == TTI::AMK_PreIndexed && C.NumRegs != Other.C.NumRegs)
+    return C.NumRegs > Other.C.NumRegs;
+  if (AMK == TTI::AMK_PreIndexed && C.AddRecCost != Other.C.AddRecCost)
+    return C.AddRecCost < Other.C.AddRecCost;
   return TTI->isLSRCostLess(C, Other.C);
 }
 

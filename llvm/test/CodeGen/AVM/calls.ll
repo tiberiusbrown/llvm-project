@@ -11,7 +11,7 @@
 ; RELOC-NEXT: R_AVM_FAR24 f0
 
 ; OBJ-LABEL: <call0>:
-; OBJ:       callf
+; OBJ:       jmpf
 ; OBJ-LABEL: <indirect>:
 ; OBJ:       callp
 
@@ -25,40 +25,35 @@ declare i16 @f6(i16, i16, i16, i16, i16, i16)
 
 define i16 @call0() {
 ; CHECK-LABEL: call0:
-; CHECK:       call f0
-; CHECK-NEXT:  ret
+; CHECK:       jmp f0
   %r = call i16 @f0()
   ret i16 %r
 }
 
 define i16 @call1(i16 %a) {
 ; CHECK-LABEL: call1:
-; CHECK:       call f1
-; CHECK-NEXT:  ret
+; CHECK:       jmp f1
   %r = call i16 @f1(i16 %a)
   ret i16 %r
 }
 
 define i16 @call2(i16 %a, i16 %b) {
 ; CHECK-LABEL: call2:
-; CHECK:       call f2
-; CHECK-NEXT:  ret
+; CHECK:       jmp f2
   %r = call i16 @f2(i16 %a, i16 %b)
   ret i16 %r
 }
 
 define i16 @call3(i16 %a, i16 %b, i16 %c) {
 ; CHECK-LABEL: call3:
-; CHECK:       call f3
-; CHECK-NEXT:  ret
+; CHECK:       jmp f3
   %r = call i16 @f3(i16 %a, i16 %b, i16 %c)
   ret i16 %r
 }
 
 define i16 @call4(i16 %a, i16 %b, i16 %c, i16 %d) {
 ; CHECK-LABEL: call4:
-; CHECK:       call f4
-; CHECK-NEXT:  ret
+; CHECK:       jmp f4
   %r = call i16 @f4(i16 %a, i16 %b, i16 %c, i16 %d)
   ret i16 %r
 }

@@ -32,6 +32,22 @@ body: |
     ; CHECK-NEXT: $r0 = GPST8_POST $r0, $r5
     ; CHECK-NEXT: $r4 = F7ST16_POST $r4, $r0
     ; CHECK-NEXT: $r0 = GPST16_POST $r0, $r5
+    ; CHECK-NEXT: $r4 = DEC16 $r4
+    ; CHECK-NEXT: $r5 = LD8U $r4
+    ; CHECK-NEXT: $r0 = DEC16 $r0
+    ; CHECK-NEXT: $r5 = GPLD8U $r0
+    ; CHECK-NEXT: $r4 = ADDIS8 $r4, -2
+    ; CHECK-NEXT: $r5 = LD16 $r4
+    ; CHECK-NEXT: $r0 = COLDADDIS8 $r0, -2
+    ; CHECK-NEXT: $r5 = GPLD16 $r0
+    ; CHECK-NEXT: $r4 = DEC16 $r4
+    ; CHECK-NEXT: ST8 $r4, $r5
+    ; CHECK-NEXT: $r0 = DEC16 $r0
+    ; CHECK-NEXT: GPST8 $r0, $r5
+    ; CHECK-NEXT: $r4 = ADDIS8 $r4, -2
+    ; CHECK-NEXT: ST16 $r4, $r5
+    ; CHECK-NEXT: $r0 = COLDADDIS8 $r0, -2
+    ; CHECK-NEXT: GPST16 $r0, $r5
     ; CHECK-NEXT: $r6r7 = LD32 $r0
     ; CHECK-NEXT: ST32 $r0, $r6r7
     ; CHECK-NEXT: $r4 = LDM8U @data
@@ -62,6 +78,14 @@ body: |
     $r0 = STORE8_POST_PSEUDO $r0, $r5
     $r4 = STORE16_POST_PSEUDO $r4, $r0
     $r0 = STORE16_POST_PSEUDO $r0, $r5
+    $r5, $r4 = LOAD8U_PRE_PSEUDO $r4
+    $r5, $r0 = LOAD8U_PRE_PSEUDO $r0
+    $r5, $r4 = LOAD16_PRE_PSEUDO $r4
+    $r5, $r0 = LOAD16_PRE_PSEUDO $r0
+    $r4 = STORE8_PRE_PSEUDO $r4, $r5
+    $r0 = STORE8_PRE_PSEUDO $r0, $r5
+    $r4 = STORE16_PRE_PSEUDO $r4, $r5
+    $r0 = STORE16_PRE_PSEUDO $r0, $r5
     $r6r7 = LOAD32_PSEUDO $r0
     STORE32_PSEUDO $r0, $r6r7
     $r4 = ABS_LOAD8U_PSEUDO @data

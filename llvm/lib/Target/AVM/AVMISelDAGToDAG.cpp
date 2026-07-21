@@ -653,6 +653,8 @@ private:
       return false;
     bool IsSigned = IsByte && Load->getExtensionType() == ISD::SEXTLOAD;
     bool IsPostInc = Load->getAddressingMode() == ISD::POST_INC;
+    bool IsPreDec = Load->getAddressingMode() == ISD::PRE_DEC;
+    bool IsIndexed = IsPostInc || IsPreDec;
 
     SDValue Address = Load->getBasePtr();
     unsigned Opcode;
@@ -665,11 +667,15 @@ private:
       Opcode = IsByte ? AVM::ABS_LOAD8U_PSEUDO : AVM::ABS_LOAD16_PSEUDO;
       ResultVTs = {MVT::i16, MVT::Other};
       Ops = {Symbol, Load->getChain()};
-    } else if (IsPostInc && !IsPair) {
+    } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Load->getOffset());
-      if (!Increment || Increment->getSExtValue() != (IsByte ? 1 : 2))
+      int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);
+      if (!Increment || Increment->getSExtValue() != ExpectedOffset)
         return false;
-      Opcode = IsByte ? AVM::LOAD8U_POST_PSEUDO : AVM::LOAD16_POST_PSEUDO;
+      Opcode =
+          IsPreDec
+              ? (IsByte ? AVM::LOAD8U_PRE_PSEUDO : AVM::LOAD16_PRE_PSEUDO)
+              : (IsByte ? AVM::LOAD8U_POST_PSEUDO : AVM::LOAD16_POST_PSEUDO);
       ResultVTs = {MVT::i16, MVT::i16, MVT::Other};
       Ops = {Address, Load->getChain()};
     } else if (Load->getAddressingMode() == ISD::UNINDEXED) {
@@ -696,7 +702,7 @@ private:
       Value = extend16To32(Value, Load->getExtensionType() == ISD::SEXTLOAD,
                            SDLoc(Node));
     ReplaceUses(SDValue(Node, 0), Value);
-    if (IsPostInc) {
+    if (IsIndexed) {
       ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
       ReplaceUses(SDValue(Node, 2), SDValue(Result, 2));
     } else if (IsPointer) {
@@ -795,6 +801,8 @@ private:
     bool IsPointer = MemoryVT == MVT::i24;
     bool IsPair = IsPointer || MemoryVT == MVT::i32 || MemoryVT == MVT::f32;
     bool IsPostInc = Store->getAddressingMode() == ISD::POST_INC;
+    bool IsPreDec = Store->getAddressingMode() == ISD::PRE_DEC;
+    bool IsIndexed = IsPostInc || IsPreDec;
 
     SDValue Address = Store->getBasePtr();
     SDValue StoredValue = Store->getValue();
@@ -809,11 +817,15 @@ private:
       Opcode = IsByte ? AVM::ABS_STORE8_PSEUDO : AVM::ABS_STORE16_PSEUDO;
       ResultVTs = {MVT::Other};
       Ops = {Symbol, StoredValue, Store->getChain()};
-    } else if (IsPostInc && !IsPair) {
+    } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Store->getOffset());
-      if (!Increment || Increment->getSExtValue() != (IsByte ? 1 : 2))
+      int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);
+      if (!Increment || Increment->getSExtValue() != ExpectedOffset)
         return false;
-      Opcode = IsByte ? AVM::STORE8_POST_PSEUDO : AVM::STORE16_POST_PSEUDO;
+      Opcode =
+          IsPreDec
+              ? (IsByte ? AVM::STORE8_PRE_PSEUDO : AVM::STORE16_PRE_PSEUDO)
+              : (IsByte ? AVM::STORE8_POST_PSEUDO : AVM::STORE16_POST_PSEUDO);
       ResultVTs = {MVT::i16, MVT::Other};
       Ops = {Address, StoredValue, Store->getChain()};
     } else if (Store->getAddressingMode() == ISD::UNINDEXED) {
@@ -831,7 +843,7 @@ private:
         CurDAG->getMachineNode(Opcode, SDLoc(Node), ResultVTs, Ops);
     CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
                            {Store->getMemOperand()});
-    if (IsPostInc) {
+    if (IsIndexed) {
       ReplaceUses(SDValue(Node, 0), SDValue(Result, 0));
       ReplaceUses(SDValue(Node, 1), SDValue(Result, 1));
     } else if (IsPointer) {

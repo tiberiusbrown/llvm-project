@@ -105,6 +105,7 @@ public:
   void addPreEmitPass() override {
     addPass(createAVMBranchPolarityPass());
     addPass(createAVMExpandPseudoPass());
+    addPass(&DeadMachineInstructionElimID);
     addPass(createAVMFinalControlFlowPass());
   }
 };

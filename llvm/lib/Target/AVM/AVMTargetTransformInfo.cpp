@@ -31,6 +31,7 @@ AVMTTIImpl::getPreferredAddressingMode(const Loop *L,
 
   std::optional<int64_t> CommonStep;
   bool AllSameStep = true;
+  std::optional<bool> PositiveDirection;
 
   for (BasicBlock *BB : L->blocks()) {
     for (Instruction &I : *BB) {
@@ -77,12 +78,22 @@ AVMTTIImpl::getPreferredAddressingMode(const Loop *L,
 
       int64_t StepValue = Step->getAPInt().getSExtValue();
 
-      // Runtime, zero, and backward strides are not candidates for the current
-      // forward pointer-induction policy.
-      if (StepValue <= 0)
+      if (StepValue == 0)
+        return TTI::AMK_None;
+
+      bool IsPositive = StepValue > 0;
+      if (!PositiveDirection)
+        PositiveDirection = IsPositive;
+      else if (*PositiveDirection != IsPositive)
         return TTI::AMK_None;
 
       ++LoopCarriedAccesses;
+
+      if (!IsPositive &&
+          ((!AccessTy->isIntegerTy(8) && !AccessTy->isIntegerTy(16)) ||
+           StepValue !=
+               -static_cast<int64_t>(AccessTy->getIntegerBitWidth() / 8)))
+        return TTI::AMK_None;
 
       const Value *Object = getUnderlyingObject(Pointer);
       if (!FirstObject)
@@ -103,6 +114,9 @@ AVMTTIImpl::getPreferredAddressingMode(const Loop *L,
 
   if (LoopCarriedAccesses == 0)
     return TTI::AMK_None;
+
+  if (!*PositiveDirection)
+    return LoopCarriedAccesses <= 3 ? TTI::AMK_PreIndexed : TTI::AMK_None;
 
   // A small loop may profit when at least one stream becomes a native AVM
   // post-increment access. Non-foldable i32 streams are allowed in this case,

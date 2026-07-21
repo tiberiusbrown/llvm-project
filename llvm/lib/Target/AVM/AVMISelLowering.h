@@ -27,6 +27,9 @@ enum NodeType : unsigned {
   TST8,
   TST16,
   WRAPPER,
+  BUILD_HI16,
+  LSR32_1,
+  SRA32_1,
   SHL32_16,
   SRL32_16,
   SRA32_16,
@@ -53,6 +56,9 @@ public:
   bool getPostIndexedAddressParts(SDNode *N, SDNode *Op, SDValue &Base,
                                   SDValue &Offset, ISD::MemIndexedMode &AM,
                                   SelectionDAG &DAG) const override;
+  bool getPreIndexedAddressParts(SDNode *N, SDValue &Base, SDValue &Offset,
+                                 ISD::MemIndexedMode &AM,
+                                 SelectionDAG &DAG) const override;
   EVT getOptimalMemOpType(LLVMContext &Context, const MemOp &Op,
                           const AttributeList &FuncAttributes) const override;
   EVT getAsmOperandValueType(const DataLayout &DL, Type *Ty,
@@ -86,12 +92,17 @@ public:
     return VT == MVT::i16;
   }
 
+  SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+
 private:
+  SDValue BuildI32FromWords(SDValue Low, SDValue High, const SDLoc &DL,
+                            SelectionDAG &DAG) const;
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,
                                const SDLoc &DL, SelectionDAG &DAG) const;
+  SDValue LowerI32Shift(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerISFPClass(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMULH(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const;

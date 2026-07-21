@@ -1,0 +1,32 @@
+# RUN: llc -mtriple=avm -run-pass=avm-expand-pseudo,dead-mi-elimination \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define i32 @dead_extension_high_word(i16 %x) { ret i32 0 }
+  define i32 @build_high_alias(i16 %x) { ret i32 0 }
+...
+---
+name: dead_extension_high_word
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: dead_extension_high_word
+    ; CHECK-NOT: $r7 = XOR
+    ; CHECK: $r7 = MOV $r6
+    ; CHECK-NEXT: $r6 = XOR undef $r6, undef $r6
+    $r6r7 = ZEXT16_32_PSEUDO $r6
+    $r6r7 = SHL32_16_PSEUDO $r6r7
+    RET implicit $r6r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: build_high_alias
+body: |
+  bb.0:
+    liveins: $r7
+    ; CHECK-LABEL: name: build_high_alias
+    ; CHECK-NOT: MOV
+    ; CHECK: $r6 = XOR undef $r6, undef $r6
+    $r6r7 = BUILD_HI16_PSEUDO $r7
+    RET implicit $r6r7, implicit-def dead $sp, implicit $sp
+...

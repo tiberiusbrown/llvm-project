@@ -209,6 +209,44 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
                                                  const SDLoc &DL,
                                                  SelectionDAG &DAG) {
   AVMCC::CondCode TargetCond = canonicalizeCondCode(CC, LHS, RHS);
+
+  if (const auto *C = dyn_cast<ConstantSDNode>(LHS);
+      C && LHS.getValueType() == MVT::i16 && !isa<ConstantSDNode>(RHS)) {
+    bool Swap = false;
+    int64_t Immediate = 0;
+    switch (TargetCond) {
+    case AVMCC::EQ:
+    case AVMCC::NE:
+      Immediate = C->getSExtValue();
+      Swap = isInt<8>(Immediate);
+      break;
+    case AVMCC::ULT:
+    case AVMCC::UGE: {
+      uint64_t Value = C->getZExtValue();
+      if (Value != UINT16_MAX && isInt<8>(Value + 1)) {
+        Immediate = Value + 1;
+        TargetCond = TargetCond == AVMCC::ULT ? AVMCC::UGE : AVMCC::ULT;
+        Swap = true;
+      }
+      break;
+    }
+    case AVMCC::SLT:
+    case AVMCC::SGE: {
+      int64_t Value = C->getSExtValue();
+      if (Value != INT16_MAX && isInt<8>(Value + 1)) {
+        Immediate = Value + 1;
+        TargetCond = TargetCond == AVMCC::SLT ? AVMCC::SGE : AVMCC::SLT;
+        Swap = true;
+      }
+      break;
+    }
+    }
+    if (Swap) {
+      LHS = RHS;
+      RHS = DAG.getSignedConstant(Immediate, DL, MVT::i16);
+    }
+  }
+
   SDValue TargetCC = DAG.getTargetConstant(TargetCond, DL, MVT::i16);
 
   if (LHS.getValueType() == MVT::i32) {
@@ -433,6 +471,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
+  setTargetDAGCombine({ISD::MUL, ISD::SUB});
   for (MVT VT : {MVT::i16, MVT::i32}) {
     setOperationAction(ISD::ROTL, VT, Expand);
     setOperationAction(ISD::ROTR, VT, Expand);
@@ -538,6 +577,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setIndexedLoadAction(ISD::POST_INC, MVT::i32, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i8, Legal);
   setIndexedStoreAction(ISD::POST_INC, MVT::i16, Legal);
+  setIndexedLoadAction(ISD::PRE_DEC, MVT::i8, Legal);
+  setIndexedLoadAction(ISD::PRE_DEC, MVT::i16, Legal);
+  setIndexedStoreAction(ISD::PRE_DEC, MVT::i8, Legal);
+  setIndexedStoreAction(ISD::PRE_DEC, MVT::i16, Legal);
 
   computeRegisterProperties(STI.getRegisterInfo());
 
@@ -618,6 +661,12 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::TST16";
   if (Opcode == AVMISD::WRAPPER)
     return "AVMISD::WRAPPER";
+  if (Opcode == AVMISD::BUILD_HI16)
+    return "AVMISD::BUILD_HI16";
+  if (Opcode == AVMISD::LSR32_1)
+    return "AVMISD::LSR32_1";
+  if (Opcode == AVMISD::SRA32_1)
+    return "AVMISD::SRA32_1";
   if (Opcode == AVMISD::SHL32_16)
     return "AVMISD::SHL32_16";
   if (Opcode == AVMISD::SRL32_16)
@@ -687,6 +736,40 @@ bool AVMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
   Base = Pointer;
   Offset = DAG.getConstant(Width, SDLoc(N), Pointer.getValueType());
   AM = ISD::POST_INC;
+  return true;
+}
+
+bool AVMTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
+                                                  SDValue &Offset,
+                                                  ISD::MemIndexedMode &AM,
+                                                  SelectionDAG &DAG) const {
+  EVT MemoryVT;
+  SDValue Pointer;
+  unsigned AddressSpace;
+  if (const auto *Load = dyn_cast<LoadSDNode>(N)) {
+    MemoryVT = Load->getMemoryVT();
+    Pointer = Load->getBasePtr();
+    AddressSpace = Load->getAddressSpace();
+  } else if (const auto *Store = dyn_cast<StoreSDNode>(N)) {
+    MemoryVT = Store->getMemoryVT();
+    Pointer = Store->getBasePtr();
+    AddressSpace = Store->getAddressSpace();
+  } else {
+    return false;
+  }
+
+  if (AddressSpace != 0 || (MemoryVT != MVT::i8 && MemoryVT != MVT::i16) ||
+      Pointer.getOpcode() != ISD::ADD)
+    return false;
+
+  int64_t Width = MemoryVT.getStoreSize();
+  const auto *Decrement = dyn_cast<ConstantSDNode>(Pointer.getOperand(1));
+  if (!Decrement || Decrement->getSExtValue() != -Width)
+    return false;
+
+  Base = Pointer.getOperand(0);
+  Offset = DAG.getSignedConstant(-Width, SDLoc(N), Base.getValueType());
+  AM = ISD::PRE_DEC;
   return true;
 }
 
@@ -957,6 +1040,153 @@ SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
                       MachinePointerInfo(Source), Align(1));
 }
 
+SDValue AVMTargetLowering::BuildI32FromWords(SDValue Low, SDValue High,
+                                             const SDLoc &DL,
+                                             SelectionDAG &DAG) const {
+  assert(Low.getValueType() == MVT::i16 && High.getValueType() == MVT::i16 &&
+         "expected i16 words");
+
+  if (const auto *C = dyn_cast<ConstantSDNode>(Low); C && C->isZero())
+    return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, High);
+  if (const auto *C = dyn_cast<ConstantSDNode>(High); C && C->isZero())
+    return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Low);
+
+  SDValue WideLow = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Low);
+  SDValue WideHigh = DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, High);
+  return DAG.getNode(ISD::OR, DL, MVT::i32, WideLow, WideHigh);
+}
+
+SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
+  assert(Op.getValueType() == MVT::i32 && "expected i32 shift");
+
+  SDLoc DL(Op);
+  SDValue Value = Op.getOperand(0);
+  const auto *CountNode = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+  auto EmitLibCall = [&]() {
+    RTLIB::Libcall LC = Op.getOpcode() == ISD::SHL   ? RTLIB::SHL_I32
+                        : Op.getOpcode() == ISD::SRL ? RTLIB::SRL_I32
+                                                     : RTLIB::SRA_I32;
+    MakeLibCallOptions CallOptions;
+    SDValue Ops[] = {Value, Op.getOperand(1)};
+    return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, DL).first;
+  };
+
+  if (!CountNode)
+    return EmitLibCall();
+
+  uint64_t Count = CountNode->getZExtValue();
+  if (Count >= 32)
+    return EmitLibCall();
+  if (Count == 0)
+    return Value;
+  if (Op.getOpcode() == ISD::SHL && Count == 1)
+    return DAG.getNode(ISD::ADD, DL, MVT::i32, Value, Value);
+  if (Op.getOpcode() == ISD::SRL && Count == 1)
+    return DAG.getNode(AVMISD::LSR32_1, DL, MVT::i32, Value);
+  if (Op.getOpcode() == ISD::SRA && Count == 1)
+    return DAG.getNode(AVMISD::SRA32_1, DL, MVT::i32, Value);
+
+  SDValue Low = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
+  SDValue ShiftedHigh = DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Value);
+  SDValue High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
+  auto ShiftCount = [&](uint64_t Amount) {
+    return DAG.getConstant(Amount, DL, MVT::i16);
+  };
+
+  if (Count < 16) {
+    SDValue NewLow;
+    SDValue NewHigh;
+    if (Op.getOpcode() == ISD::SHL) {
+      NewLow = DAG.getNode(ISD::SHL, DL, MVT::i16, Low, ShiftCount(Count));
+      SDValue Carry =
+          DAG.getNode(ISD::SRL, DL, MVT::i16, Low, ShiftCount(16 - Count));
+      SDValue Shifted =
+          DAG.getNode(ISD::SHL, DL, MVT::i16, High, ShiftCount(Count));
+      NewHigh = DAG.getNode(ISD::OR, DL, MVT::i16, Shifted, Carry);
+    } else {
+      SDValue ShiftedLow =
+          DAG.getNode(ISD::SRL, DL, MVT::i16, Low, ShiftCount(Count));
+      SDValue Carry =
+          DAG.getNode(ISD::SHL, DL, MVT::i16, High, ShiftCount(16 - Count));
+      NewLow = DAG.getNode(ISD::OR, DL, MVT::i16, ShiftedLow, Carry);
+      NewHigh = DAG.getNode(Op.getOpcode() == ISD::SRL ? ISD::SRL : ISD::SRA,
+                            DL, MVT::i16, High, ShiftCount(Count));
+    }
+    return BuildI32FromWords(NewLow, NewHigh, DL, DAG);
+  }
+
+  if (Count == 16) {
+    if (Op.getOpcode() == ISD::SHL &&
+        (Value.getOpcode() == ISD::ZERO_EXTEND ||
+         Value.getOpcode() == ISD::SIGN_EXTEND ||
+         Value.getOpcode() == ISD::ANY_EXTEND) &&
+        Value.getOperand(0).getValueType() == MVT::i16)
+      return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, Value.getOperand(0));
+    unsigned Opcode = Op.getOpcode() == ISD::SHL   ? AVMISD::SHL32_16
+                      : Op.getOpcode() == ISD::SRL ? AVMISD::SRL32_16
+                                                   : AVMISD::SRA32_16;
+    return DAG.getNode(Opcode, DL, MVT::i32, Value);
+  }
+
+  uint64_t WordCount = Count - 16;
+  if (Op.getOpcode() == ISD::SHL) {
+    SDValue NewHigh =
+        DAG.getNode(ISD::SHL, DL, MVT::i16, Low, ShiftCount(WordCount));
+    return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, NewHigh);
+  }
+  if (Op.getOpcode() == ISD::SRL) {
+    SDValue NewLow =
+        DAG.getNode(ISD::SRL, DL, MVT::i16, High, ShiftCount(WordCount));
+    return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, NewLow);
+  }
+
+  SDValue NewLow =
+      DAG.getNode(ISD::SRA, DL, MVT::i16, High, ShiftCount(WordCount));
+  SDValue Sign = DAG.getNode(ISD::SRA, DL, MVT::i16, High, ShiftCount(15));
+  return BuildI32FromWords(NewLow, Sign, DL, DAG);
+}
+
+SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
+                                             DAGCombinerInfo &DCI) const {
+  if (N->getValueType(0) != MVT::i16)
+    return SDValue();
+
+  SDValue Product = SDValue(N, 0);
+  SDValue Dividend;
+  if (N->getOpcode() == ISD::SUB) {
+    Dividend = N->getOperand(0);
+    Product = N->getOperand(1);
+    if (Product.getOpcode() != ISD::MUL || !Product.getNode()->hasOneUse())
+      return SDValue();
+  } else if (N->getOpcode() != ISD::MUL) {
+    return SDValue();
+  }
+
+  for (unsigned DivOperand = 0; DivOperand != 2; ++DivOperand) {
+    SDValue Div = Product.getOperand(DivOperand);
+    if ((Div.getOpcode() != ISD::UDIV && Div.getOpcode() != ISD::SDIV) ||
+        !Div.getNode()->hasOneUse() ||
+        Product.getOperand(1 - DivOperand) != Div.getOperand(1))
+      continue;
+
+    SDValue DivDividend = Div.getOperand(0);
+    if (Dividend && Dividend != DivDividend)
+      continue;
+
+    unsigned RemOpcode = Div.getOpcode() == ISD::UDIV ? ISD::UREM : ISD::SREM;
+    SDValue Rem = DCI.DAG.getNode(RemOpcode, SDLoc(N), MVT::i16, DivDividend,
+                                  Div.getOperand(1));
+    if (Dividend)
+      return Rem;
+
+    // Preserve the product's value while exposing a native remainder to the
+    // surrounding subtraction. This also handles legalized narrow remainders
+    // whose later reassociation obscures the original SUB dividend.
+    return DCI.DAG.getNode(ISD::SUB, SDLoc(N), MVT::i16, DivDividend, Rem);
+  }
+  return SDValue();
+}
+
 SDValue AVMTargetLowering::LowerI16FullMultiply(SDValue LHS, SDValue RHS,
                                                 bool IsSigned, const SDLoc &DL,
                                                 SelectionDAG &DAG) const {
@@ -1053,21 +1283,8 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
         "AVM does not support casts between address spaces 0 and 1");
   case ISD::SHL:
   case ISD::SRL:
-  case ISD::SRA: {
-    if (const auto *Count = dyn_cast<ConstantSDNode>(Op.getOperand(1));
-        Count && Count->getZExtValue() == 16) {
-      unsigned Opcode = Op.getOpcode() == ISD::SHL   ? AVMISD::SHL32_16
-                        : Op.getOpcode() == ISD::SRL ? AVMISD::SRL32_16
-                                                     : AVMISD::SRA32_16;
-      return DAG.getNode(Opcode, SDLoc(Op), MVT::i32, Op.getOperand(0));
-    }
-    RTLIB::Libcall LC = Op.getOpcode() == ISD::SHL   ? RTLIB::SHL_I32
-                        : Op.getOpcode() == ISD::SRL ? RTLIB::SRL_I32
-                                                     : RTLIB::SRA_I32;
-    MakeLibCallOptions CallOptions;
-    SDValue Ops[] = {Op.getOperand(0), Op.getOperand(1)};
-    return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, SDLoc(Op)).first;
-  }
+  case ISD::SRA:
+    return LowerI32Shift(Op, DAG);
   case ISD::SELECT:
     return LowerSelect(Op, DAG);
   case ISD::SELECT_CC:

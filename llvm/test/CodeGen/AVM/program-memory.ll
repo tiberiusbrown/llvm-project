@@ -90,7 +90,7 @@ define float @load_program_f32() {
 define i16 @load_and_call_program_pointer(i16 %value) {
 ; CHECK-LABEL: load_and_call_program_pointer:
 ; CHECK:       ldp24
-; CHECK:       callp
+; CHECK:       jmpp
   %callee = load ptr addrspace(1), ptr addrspace(1) @flash_callback, align 1
   %result = call addrspace(1) i16 %callee(i16 %value)
   ret i16 %result
@@ -100,7 +100,7 @@ define i16 @load_and_call_data_pointer(i16 %value) {
 ; CHECK-LABEL: load_and_call_data_pointer:
 ; CHECK:       ld16
 ; CHECK:       ld8u
-; CHECK:       callp
+; CHECK:       jmpp
   %callee = load ptr addrspace(1), ptr @data_callback, align 1
   %result = call addrspace(1) i16 %callee(i16 %value)
   ret i16 %result
@@ -157,7 +157,7 @@ define void @computed_program_argument(ptr addrspace(1) %base, i32 %offset) {
 ; CHECK-LABEL: computed_program_argument:
 ; CHECK:       add32
 ; CHECK:       zext8
-; CHECK:       call consume_program_pointer
+; CHECK:       jmp consume_program_pointer
   %pointer = getelementptr i8, ptr addrspace(1) %base, i32 %offset
   call void @consume_program_pointer(ptr addrspace(1) %pointer)
   ret void
@@ -177,7 +177,7 @@ define void @computed_indirect_call(ptr addrspace(1) %callee, i32 %offset) {
 ; CHECK-LABEL: computed_indirect_call:
 ; CHECK:       add32
 ; CHECK-NOT:   zext8
-; CHECK:       callp
+; CHECK:       jmpp
   %adjusted = getelementptr i8, ptr addrspace(1) %callee, i32 %offset
   call addrspace(1) void %adjusted()
   ret void

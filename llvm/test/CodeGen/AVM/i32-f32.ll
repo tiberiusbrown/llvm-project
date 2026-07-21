@@ -76,35 +76,35 @@ define i32 @integer_helpers(i32 %a, i32 %b, i16 %count) {
 
 define i32 @signed_division_helper(i32 %a, i32 %b) {
 ; CHECK-LABEL: signed_division_helper:
-; CHECK:       call __avm_divsi3
+; CHECK:       jmp __avm_divsi3
   %result = sdiv i32 %a, %b
   ret i32 %result
 }
 
 define i32 @signed_remainder_helper(i32 %a, i32 %b) {
 ; CHECK-LABEL: signed_remainder_helper:
-; CHECK:       call __avm_modsi3
+; CHECK:       jmp __avm_modsi3
   %result = srem i32 %a, %b
   ret i32 %result
 }
 
 define i32 @unsigned_remainder_helper(i32 %a, i32 %b) {
 ; CHECK-LABEL: unsigned_remainder_helper:
-; CHECK:       call __avm_umodsi3
+; CHECK:       jmp __avm_umodsi3
   %result = urem i32 %a, %b
   ret i32 %result
 }
 
 define i32 @left_shift_helper(i32 %value, i32 %count) {
 ; CHECK-LABEL: left_shift_helper:
-; CHECK:       call __avm_ashlsi3
+; CHECK:       jmp __avm_ashlsi3
   %result = shl i32 %value, %count
   ret i32 %result
 }
 
 define i32 @arithmetic_shift_helper(i32 %value, i32 %count) {
 ; CHECK-LABEL: arithmetic_shift_helper:
-; CHECK:       call __avm_ashrsi3
+; CHECK:       jmp __avm_ashrsi3
   %result = ashr i32 %value, %count
   ret i32 %result
 }
@@ -296,7 +296,7 @@ define i1 @float_ule(float %a, float %b) {
 
 define float @strict_float_add(float %a, float %b) strictfp {
 ; CHECK-LABEL: strict_float_add:
-; CHECK:       call __addsf3
+; CHECK:       jmp __addsf3
   %result = call float @llvm.experimental.constrained.fadd.f32(
       float %a, float %b, metadata !"round.dynamic",
       metadata !"fpexcept.strict")

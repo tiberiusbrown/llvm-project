@@ -6,6 +6,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/InitializePasses.h"
 #include <algorithm>
 #include <iterator>
@@ -176,6 +177,31 @@ public:
           MBB.isSuccessor(EffectiveSuccessor) &&
           !MBB.isSuccessor(ImmediateSuccessor))
         MBB.replaceSuccessor(EffectiveSuccessor, ImmediateSuccessor);
+      Changed = true;
+    }
+
+    for (MachineBasicBlock &MBB : MF) {
+      if (!MBB.succ_empty())
+        continue;
+      SmallVector<MachineInstr *, 2> Last = getLastCodeInstructions(MBB);
+      if (Last.size() != 2 || Last.back()->getOpcode() != AVM::RET)
+        continue;
+
+      MachineInstr &Call = *Last.front();
+      unsigned JumpOpcode;
+      if (Call.getOpcode() == AVM::RELAX_CALL)
+        JumpOpcode = AVM::RELAX_JMP;
+      else if (Call.getOpcode() == AVM::CALLP)
+        JumpOpcode = AVM::JMPP;
+      else
+        continue;
+      if (Call.getNumExplicitOperands() < 1)
+        continue;
+
+      BuildMI(MBB, Call, Call.getDebugLoc(), TII.get(JumpOpcode))
+          .add(Call.getOperand(0));
+      Call.eraseFromParent();
+      Last.back()->eraseFromParent();
       Changed = true;
     }
 

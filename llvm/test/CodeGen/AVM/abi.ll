@@ -111,8 +111,7 @@ define void @call_narrow(i16 %value) {
 ; CHECK-LABEL: call_narrow:
 ; CHECK:       sext8
 ; CHECK:       zext8
-; CHECK:       call consume_narrow
-; CHECK:       ret
+; CHECK:       jmp consume_narrow
   %signed = trunc i16 %value to i8
   %unsigned = trunc i16 %value to i8
   %boolean = icmp ne i16 %value, 0
