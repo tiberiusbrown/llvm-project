@@ -36,11 +36,11 @@ body: |
     successors: %bb.1(0x40000000), %bb.2(0x40000000)
     liveins: $r4, $r5
 
-    ; Equal probabilities preserve the existing branch polarity and layout.
+    ; Structural fallthrough canonicalization takes precedence over weights.
     ; CHECK-LABEL: name: equal_weights
     ; CHECK: CMP16_PSEUDO $r4, $r5, implicit-def $cc
-    ; CHECK-NEXT: BR_CC_PSEUDO %bb.1, 2, implicit $cc
-    ; CHECK-NEXT: JMP_PSEUDO %bb.2
+    ; CHECK-NEXT: BR_CC_PSEUDO %bb.2, 3, implicit $cc
+    ; CHECK-NOT: JMP_PSEUDO
     CMP16_PSEUDO $r4, $r5, implicit-def $cc
     BR_CC_PSEUDO %bb.1, 2, implicit $cc
     JMP_PSEUDO %bb.2

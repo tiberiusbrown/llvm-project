@@ -83,6 +83,24 @@ public:
       SmallVector<MachineOperand, 1> Cond;
       if (TII.analyzeBranch(MBB, TBB, FBB, Cond) || !TBB || Cond.empty())
         continue;
+      bool HasExplicitFalseBranch = FBB != nullptr;
+      MachineBasicBlock *LayoutSuccessor = nullptr;
+      if (std::next(MBB.getIterator()) != MF.end())
+        LayoutSuccessor = &*std::next(MBB.getIterator());
+
+      if (HasExplicitFalseBranch && TBB == LayoutSuccessor && FBB != TBB) {
+        DebugLoc DL;
+        if (MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
+            I != MBB.end())
+          DL = I->getDebugLoc();
+        TII.removeBranch(MBB);
+        if (TII.reverseBranchCondition(Cond))
+          llvm_unreachable("AVM branch condition stopped being reversible");
+        TII.insertBranch(MBB, FBB, nullptr, Cond, DL);
+        Changed = true;
+        continue;
+      }
+
       if (!FBB) {
         for (MachineBasicBlock *Succ : MBB.successors())
           if (Succ != TBB) {
@@ -91,6 +109,11 @@ public:
           }
       }
       if (!FBB || FBB == TBB)
+        continue;
+
+      // Do not turn an already canonical conditional branch with an implicit
+      // layout fallthrough into the explicit two-branch form handled above.
+      if (!HasExplicitFalseBranch && FBB == LayoutSuccessor)
         continue;
 
       BranchProbability TrueProbability = MBPI.getEdgeProbability(&MBB, TBB);
@@ -112,9 +135,6 @@ public:
       if (TII.reverseBranchCondition(Cond))
         llvm_unreachable("AVM branch condition stopped being reversible");
 
-      MachineBasicBlock *LayoutSuccessor = nullptr;
-      if (std::next(MBB.getIterator()) != MF.end())
-        LayoutSuccessor = &*std::next(MBB.getIterator());
       MachineBasicBlock *NewFalse = TBB == LayoutSuccessor ? nullptr : TBB;
       TII.insertBranch(MBB, FBB, NewFalse, Cond, DL);
       Changed = true;

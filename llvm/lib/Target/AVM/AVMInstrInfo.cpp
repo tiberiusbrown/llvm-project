@@ -397,9 +397,20 @@ bool AVMInstrInfo::isProfitableToIfCvt(MachineBasicBlock &TMBB, unsigned,
 }
 
 unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
-  auto IsUpper = [](const MachineOperand &MO) {
-    return MO.isReg() && MO.getReg().isPhysical() &&
-           AVM::UpperGPR16RegClass.contains(MO.getReg());
+  auto IsUpperReg = [](Register Reg) {
+    return Reg.isPhysical() && AVM::UpperGPR16RegClass.contains(Reg);
+  };
+  auto IsUpper = [&](const MachineOperand &MO) {
+    return MO.isReg() && IsUpperReg(MO.getReg());
+  };
+  auto ImmediateSize = [&](Register Reg, uint16_t Value) {
+    if (Value == 0 && IsUpperReg(Reg))
+      return get(AVM::XOR).getSize();
+    bool IsByte = Value <= 0xff;
+    unsigned Opcode = IsUpperReg(Reg)
+                          ? (IsByte ? AVM::LDI8 : AVM::LDI16)
+                          : (IsByte ? AVM::COLDLDI8 : AVM::COLDLDI16);
+    return get(Opcode).getSize();
   };
   auto CompactBinary = [&]() {
     return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) &&
@@ -414,20 +425,36 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::COPY32_PSEUDO:
     return 2;
   case AVM::LDI8_PSEUDO:
-    return IsUpper(MI.getOperand(0)) ? get(AVM::LDI8).getSize()
-                                     : get(AVM::COLDLDI8).getSize();
+    return ImmediateSize(MI.getOperand(0).getReg(),
+                         static_cast<uint8_t>(MI.getOperand(1).getImm()));
   case AVM::LDI16_PSEUDO:
+    return ImmediateSize(MI.getOperand(0).getReg(),
+                         static_cast<uint16_t>(MI.getOperand(1).getImm()));
   case AVM::DATA_ADDR_PSEUDO:
     return IsUpper(MI.getOperand(0)) ? get(AVM::LDI16).getSize()
                                      : get(AVM::COLDLDI16).getSize();
-  case AVM::LDI32_PSEUDO:
-    return 2 * get(AVM::LDI16).getSize();
+  case AVM::LDI32_PSEUDO: {
+    const AVMRegisterInfo &TRI = getRegisterInfo();
+    Register Dest = MI.getOperand(0).getReg();
+    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    return ImmediateSize(Lo, static_cast<uint16_t>(MI.getOperand(1).getImm())) +
+           ImmediateSize(Hi, static_cast<uint16_t>(MI.getOperand(2).getImm()));
+  }
   case AVM::PROG_ADDR_PSEUDO:
     return get(AVM::LDI16).getSize() + get(AVM::LDI8).getSize();
   case AVM::PROG_CANON_PSEUDO:
     return get(AVM::ZEXT8).getSize();
-  case AVM::ZEXT16_32_PSEUDO:
-    return get(AVM::MOV_RR).getSize() + get(AVM::COLDLDI16).getSize();
+  case AVM::ZEXT16_32_PSEUDO: {
+    const AVMRegisterInfo &TRI = getRegisterInfo();
+    Register Dest = MI.getOperand(0).getReg();
+    Register Src = MI.getOperand(1).getReg();
+    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    unsigned MoveOpcode =
+        IsUpperReg(Lo) && IsUpperReg(Src) ? AVM::MOV : AVM::MOV_RR;
+    return get(MoveOpcode).getSize() + ImmediateSize(Hi, 0);
+  }
   case AVM::SEXT16_32_PSEUDO:
     return 2 * get(AVM::MOV_RR).getSize() + get(AVM::ASR16I).getSize();
   case AVM::ADD16_PSEUDO:
@@ -548,16 +575,50 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   auto NotTaken = [](AVMCostKind Kind) {
     return AVM::getBranchCycles(Kind, false);
   };
+  auto IsUpper = [](Register Reg) {
+    return Reg.isPhysical() && AVM::UpperGPR16RegClass.contains(Reg);
+  };
+  auto ImmediateLatency = [&](Register Reg, uint16_t Value) {
+    if (Value == 0 && IsUpper(Reg))
+      return Fixed(AVMCostKind::ClrUpper);
+    if (Value <= 0xff)
+      return Fixed(IsUpper(Reg) ? AVMCostKind::Ldi8Upper
+                                : AVMCostKind::Ldi8Lower);
+    return Fixed(IsUpper(Reg) ? AVMCostKind::Ldi16Upper
+                              : AVMCostKind::Ldi16Lower);
+  };
 
   switch (MI.getOpcode()) {
-  case AVM::LDI32_PSEUDO:
-    return 2 * Fixed(AVMCostKind::Ldi16Upper);
+  case AVM::LDI8_PSEUDO:
+    return ImmediateLatency(MI.getOperand(0).getReg(),
+                            static_cast<uint8_t>(MI.getOperand(1).getImm()));
+  case AVM::LDI16_PSEUDO:
+    return ImmediateLatency(MI.getOperand(0).getReg(),
+                            static_cast<uint16_t>(MI.getOperand(1).getImm()));
+  case AVM::LDI32_PSEUDO: {
+    const AVMRegisterInfo &TRI = getRegisterInfo();
+    Register Dest = MI.getOperand(0).getReg();
+    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    return ImmediateLatency(Lo,
+                            static_cast<uint16_t>(MI.getOperand(1).getImm())) +
+           ImmediateLatency(Hi,
+                            static_cast<uint16_t>(MI.getOperand(2).getImm()));
+  }
   case AVM::PROG_ADDR_PSEUDO:
     return Fixed(AVMCostKind::Ldi16Upper) + Fixed(AVMCostKind::Ldi8Upper);
   case AVM::PROG_CANON_PSEUDO:
     return Fixed(AVMCostKind::ZExt8);
-  case AVM::ZEXT16_32_PSEUDO:
-    return Fixed(AVMCostKind::MovUpper) + Fixed(AVMCostKind::Ldi16Upper);
+  case AVM::ZEXT16_32_PSEUDO: {
+    const AVMRegisterInfo &TRI = getRegisterInfo();
+    Register Dest = MI.getOperand(0).getReg();
+    Register Src = MI.getOperand(1).getReg();
+    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    AVMCostKind MoveCost = IsUpper(Lo) && IsUpper(Src) ? AVMCostKind::MovUpper
+                                                       : AVMCostKind::MovFull;
+    return Fixed(MoveCost) + ImmediateLatency(Hi, 0);
+  }
   case AVM::SEXT16_32_PSEUDO:
     return 2 * Fixed(AVMCostKind::MovUpper) +
            AVM::getShiftCycles(AVMCostKind::Asr16I, 15);

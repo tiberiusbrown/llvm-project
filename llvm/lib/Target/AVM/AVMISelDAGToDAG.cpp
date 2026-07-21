@@ -129,6 +129,14 @@ private:
                  ? ByteExtension::Signed
                  : ByteExtension::Unsigned;
     }
+    if (Value.getValueType() == MVT::i16) {
+      KnownBits Known = CurDAG->computeKnownBits(Value);
+      APInt HighMask = APInt::getHighBitsSet(16, 8);
+      if ((Known.Zero & HighMask) == HighMask) {
+        ByteValue = Value;
+        return ByteExtension::Unsigned;
+      }
+    }
     ByteValue = Value;
     return ByteExtension::None;
   }
@@ -406,6 +414,17 @@ private:
     SDValue RightByte;
     ByteExtension Left = classifyByteValue(Node->getOperand(0), LeftByte);
     ByteExtension Right = classifyByteValue(Node->getOperand(1), RightByte);
+    if (Left == ByteExtension::None && Right == ByteExtension::None &&
+        Node->getOperand(0) == Node->getOperand(1) &&
+        Node->getFlags().hasNoUnsignedWrap()) {
+      // An unsigned i16 self-product can only avoid overflow when its operand
+      // fits in eight bits. This recovers promoted narrow induction values
+      // after cross-block CopyFromReg nodes have hidden their KnownBits.
+      LeftByte = Node->getOperand(0);
+      RightByte = Node->getOperand(1);
+      Left = ByteExtension::Unsigned;
+      Right = ByteExtension::Unsigned;
+    }
     unsigned Opcode = AVM::MUL16_PSEUDO;
     SDValue LHS = Node->getOperand(0);
     SDValue RHS = Node->getOperand(1);
@@ -886,7 +905,7 @@ private:
     return false;
 #define AVM_NO_INTRINSIC(IntrinsicName, Pseudo)
 #define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind,            \
-                    IntrinsicName, CostKind, Cost)                              \
+                    IntrinsicName, CostKind, Cost)                             \
   IntrinsicKind(IntrinsicName, PseudoKind(Pseudo, ID))
 #include "AVMSystemCalls.inc"
 #undef AVM_SYS_PSEUDO

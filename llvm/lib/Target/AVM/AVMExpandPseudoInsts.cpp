@@ -30,6 +30,22 @@ public:
     auto IsUpper = [](Register Reg) {
       return AVM::UpperGPR16RegClass.contains(Reg);
     };
+    auto EmitImmediate = [&](MachineBasicBlock &MBB, MachineInstr &Before,
+                             Register Reg, uint16_t Value) {
+      if (Value == 0 && IsUpper(Reg)) {
+        BuildMI(MBB, Before, Before.getDebugLoc(), TII.get(AVM::XOR), Reg)
+            .addReg(Reg, RegState::Undef)
+            .addReg(Reg, RegState::Undef);
+        return;
+      }
+
+      bool IsByte = Value <= 0xff;
+      unsigned Opcode = IsUpper(Reg)
+                            ? (IsByte ? AVM::LDI8 : AVM::LDI16)
+                            : (IsByte ? AVM::COLDLDI8 : AVM::COLDLDI16);
+      BuildMI(MBB, Before, Before.getDebugLoc(), TII.get(Opcode), Reg)
+          .addImm(Value);
+    };
     auto GetBranchOpcode = [](int64_t Cond) {
       switch (Cond) {
       case AVMCC::EQ:
@@ -143,33 +159,26 @@ public:
           NewOpcode = AVM::ZEXT8;
           break;
         case AVM::LDI8_PSEUDO:
-          NewOpcode =
-              IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI8 : AVM::COLDLDI8;
-          MI.getOperand(1).setImm(
-              static_cast<uint8_t>(MI.getOperand(1).getImm()));
-          break;
+          EmitImmediate(MBB, MI, MI.getOperand(0).getReg(),
+                        static_cast<uint8_t>(MI.getOperand(1).getImm()));
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
         case AVM::LDI16_PSEUDO:
-          NewOpcode =
-              IsUpper(MI.getOperand(0).getReg()) ? AVM::LDI16 : AVM::COLDLDI16;
-          MI.getOperand(1).setImm(
-              static_cast<uint16_t>(MI.getOperand(1).getImm()));
-          break;
+          EmitImmediate(MBB, MI, MI.getOperand(0).getReg(),
+                        static_cast<uint16_t>(MI.getOperand(1).getImm()));
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
         case AVM::LDI32_PSEUDO: {
           const AVMRegisterInfo &TRI = TII.getRegisterInfo();
           Register Dest = MI.getOperand(0).getReg();
           Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
           Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
-          auto EmitPart = [&](Register Reg, const MachineOperand &Part) {
-            uint16_t Value = static_cast<uint16_t>(Part.getImm());
-            bool IsByte = Value <= 0xff;
-            unsigned Opcode = IsUpper(Reg)
-                                  ? (IsByte ? AVM::LDI8 : AVM::LDI16)
-                                  : (IsByte ? AVM::COLDLDI8 : AVM::COLDLDI16);
-            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Reg)
-                .addImm(Value);
-          };
-          EmitPart(Lo, MI.getOperand(1));
-          EmitPart(Hi, MI.getOperand(2));
+          EmitImmediate(MBB, MI, Lo,
+                        static_cast<uint16_t>(MI.getOperand(1).getImm()));
+          EmitImmediate(MBB, MI, Hi,
+                        static_cast<uint16_t>(MI.getOperand(2).getImm()));
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -186,9 +195,7 @@ public:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(MoveOpcode), Lo)
               .addReg(Src);
           if (MI.getOpcode() == AVM::ZEXT16_32_PSEUDO) {
-            BuildMI(MBB, MI, MI.getDebugLoc(),
-                    TII.get(IsUpper(Hi) ? AVM::LDI16 : AVM::COLDLDI16), Hi)
-                .addImm(0);
+            EmitImmediate(MBB, MI, Hi, 0);
           } else {
             assert(IsUpper(Hi) && "signed extension requires an upper pair");
             unsigned HiMoveOpcode = IsUpper(Src) ? AVM::MOV : AVM::MOV_RR;
