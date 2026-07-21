@@ -15,4 +15,4 @@
 # CHECK: sys millis
 # CHECK: sys millis32
 
-# INVALID-COUNT-4: warning: invalid instruction encoding
+# INVALID-COUNT-3: warning: invalid instruction encoding
