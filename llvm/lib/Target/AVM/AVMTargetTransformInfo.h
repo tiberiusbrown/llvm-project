@@ -59,6 +59,8 @@ public:
 
   bool shouldBuildLookupTables() const override { return false; }
 
+  bool useFastCCForInternalCall(Function &) const override { return false; }
+
   InstructionCost getIntImmCost(const APInt &Imm, Type *Ty,
                                 TTI::TargetCostKind CostKind) const override {
     if (!Ty->isIntegerTy() || Ty->getIntegerBitWidth() > 64)
