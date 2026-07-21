@@ -27,6 +27,9 @@ enum NodeType : unsigned {
   TST8,
   TST16,
   WRAPPER,
+  SHL32_16,
+  SRL32_16,
+  SRA32_16,
   RET_GLUE
 };
 } // namespace AVMISD

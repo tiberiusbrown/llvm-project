@@ -19,6 +19,8 @@ def SDT_AVMCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>,
                                           SDTCisVT<1, i16>]>;
 def SDT_AVMCallSeqEnd : SDCallSeqEnd<[SDTCisVT<0, i16>,
                                       SDTCisVT<1, i16>]>;
+def SDT_AVMUnaryI32
+    : SDTypeProfile<1, 1, [SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 
 def AVMretglue : SDNode<"AVMISD::RET_GLUE", SDTNone,
                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
@@ -33,6 +35,9 @@ def AVMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_AVMCallSeqStart,
                               [SDNPHasChain, SDNPOutGlue]>;
 def AVMcallseq_end : SDNode<"ISD::CALLSEQ_END", SDT_AVMCallSeqEnd,
                             [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+def AVMshl32_16 : SDNode<"AVMISD::SHL32_16", SDT_AVMUnaryI32>;
+def AVMsrl32_16 : SDNode<"AVMISD::SRL32_16", SDT_AVMUnaryI32>;
+def AVMsra32_16 : SDNode<"AVMISD::SRA32_16", SDT_AVMUnaryI32>;
 
 def AVMImmZExt8 : PatLeaf<(i16 imm), [{
   return isUInt<8>(N->getZExtValue());
@@ -602,6 +607,21 @@ def ZEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO
     : AVMCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
+def SHL32_16_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR32:$src),
+          [(set GPR32:$dst, (AVMshl32_16 GPR32:$src))]>;
+def SRL32_16_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR32:$src),
+          [(set GPR32:$dst, (AVMsrl32_16 GPR32:$src))]>;
+def SRA32_16_PSEUDO
+    : AVMCodeGenPseudo<
+          (outs GPR32:$dst),
+          (ins GPR32:$src),
+          [(set GPR32:$dst, (AVMsra32_16 GPR32:$src))]>;
 def SEXT24_32_PSEUDO : AVMUnary32Pseudo;
 def PROG_ADDR_PSEUDO
     : AVMCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;

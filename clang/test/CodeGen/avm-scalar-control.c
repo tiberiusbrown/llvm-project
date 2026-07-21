@@ -30,7 +30,7 @@ u16 avm_if(u16 a, u16 b) {
 }
 
 // O2-LABEL: avm_loop:
-// O2:       cmp
+// O2:       tst16
 // O2:       br
 u16 avm_loop(volatile u16 *out, u16 n) {
   u16 i;

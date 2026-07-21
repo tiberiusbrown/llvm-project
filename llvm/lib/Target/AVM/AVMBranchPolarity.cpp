@@ -32,6 +32,93 @@ public:
     const MachineBranchProbabilityInfo &MBPI =
         getAnalysis<MachineBranchProbabilityInfoWrapperPass>().getMBPI();
 
+    bool Changed = false;
+    for (MachineBasicBlock &MBB : MF) {
+      if (MBB.succ_size() != 2)
+        continue;
+
+      MachineBasicBlock *TBB = nullptr;
+      MachineBasicBlock *FBB = nullptr;
+      SmallVector<MachineOperand, 1> Cond;
+      if (TII.analyzeBranch(MBB, TBB, FBB, Cond) || !TBB || Cond.empty())
+        continue;
+      bool HasExplicitFalseBranch = FBB != nullptr;
+      MachineBasicBlock *LayoutSuccessor = nullptr;
+      if (std::next(MBB.getIterator()) != MF.end())
+        LayoutSuccessor = &*std::next(MBB.getIterator());
+
+      if (HasExplicitFalseBranch && TBB == LayoutSuccessor && FBB != TBB) {
+        DebugLoc DL;
+        if (MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
+            I != MBB.end())
+          DL = I->getDebugLoc();
+        TII.removeBranch(MBB);
+        if (TII.reverseBranchCondition(Cond))
+          llvm_unreachable("AVM branch condition stopped being reversible");
+        TII.insertBranch(MBB, FBB, nullptr, Cond, DL);
+        Changed = true;
+        continue;
+      }
+
+      if (HasExplicitFalseBranch)
+        continue;
+      for (MachineBasicBlock *Succ : MBB.successors())
+        if (Succ != TBB) {
+          FBB = Succ;
+          break;
+        }
+      MachineBasicBlock *ForwardBlock = FBB;
+      if (!ForwardBlock || ForwardBlock != LayoutSuccessor ||
+          ForwardBlock->pred_size() != 1 ||
+          std::next(ForwardBlock->getIterator()) == MF.end() ||
+          &*std::next(ForwardBlock->getIterator()) != TBB)
+        continue;
+
+      MachineInstr *OnlyInstr = nullptr;
+      bool MultipleInstrs = false;
+      for (MachineInstr &MI : *ForwardBlock) {
+        if (MI.isDebugInstr())
+          continue;
+        if (OnlyInstr) {
+          MultipleInstrs = true;
+          break;
+        }
+        OnlyInstr = &MI;
+      }
+      if (!OnlyInstr || MultipleInstrs || !OnlyInstr->isUnconditionalBranch())
+        continue;
+
+      MachineBasicBlock *JumpTBB = nullptr;
+      MachineBasicBlock *JumpFBB = nullptr;
+      SmallVector<MachineOperand, 1> JumpCond;
+      if (TII.analyzeBranch(*ForwardBlock, JumpTBB, JumpFBB, JumpCond) ||
+          !JumpTBB || JumpFBB || !JumpCond.empty() || JumpTBB == ForwardBlock ||
+          JumpTBB == TBB)
+        continue;
+
+      BranchProbability TrueProbability = MBPI.getEdgeProbability(&MBB, TBB);
+      BranchProbability FalseProbability =
+          MBPI.getEdgeProbability(&MBB, ForwardBlock);
+      DebugLoc DL;
+      if (MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
+          I != MBB.end())
+        DL = I->getDebugLoc();
+      TII.removeBranch(MBB);
+      if (TII.reverseBranchCondition(Cond))
+        llvm_unreachable("AVM branch condition stopped being reversible");
+      TII.insertBranch(MBB, JumpTBB, nullptr, Cond, DL);
+      TII.removeBranch(*ForwardBlock);
+      MBB.replaceSuccessor(TBB, JumpTBB);
+      ForwardBlock->replaceSuccessor(JumpTBB, TBB);
+      for (auto I = MBB.succ_begin(), E = MBB.succ_end(); I != E; ++I) {
+        if (*I == ForwardBlock)
+          MBB.setSuccProbability(I, TrueProbability);
+        else if (*I == JumpTBB)
+          MBB.setSuccProbability(I, FalseProbability);
+      }
+      Changed = true;
+    }
+
     DenseMap<const MachineBasicBlock *, uint64_t> BlockOffsets;
     uint64_t Offset = 0;
     for (const MachineBasicBlock &MBB : MF) {
@@ -73,7 +160,6 @@ public:
       return AVM::getExpectedBranchCycles(Kind, TakenProbability);
     };
 
-    bool Changed = false;
     for (MachineBasicBlock &MBB : MF) {
       if (MBB.succ_size() != 2)
         continue;
@@ -87,19 +173,6 @@ public:
       MachineBasicBlock *LayoutSuccessor = nullptr;
       if (std::next(MBB.getIterator()) != MF.end())
         LayoutSuccessor = &*std::next(MBB.getIterator());
-
-      if (HasExplicitFalseBranch && TBB == LayoutSuccessor && FBB != TBB) {
-        DebugLoc DL;
-        if (MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
-            I != MBB.end())
-          DL = I->getDebugLoc();
-        TII.removeBranch(MBB);
-        if (TII.reverseBranchCondition(Cond))
-          llvm_unreachable("AVM branch condition stopped being reversible");
-        TII.insertBranch(MBB, FBB, nullptr, Cond, DL);
-        Changed = true;
-        continue;
-      }
 
       if (!FBB) {
         for (MachineBasicBlock *Succ : MBB.successors())

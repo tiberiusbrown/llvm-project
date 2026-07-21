@@ -234,6 +234,78 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
   return {TargetCC, Glue};
 }
 
+static bool getAVMDirectFloatCompare(SDValue LHS, SDValue RHS, ISD::CondCode CC,
+                                     const SDLoc &DL, SelectionDAG &DAG,
+                                     SDValue &TargetCC, SDValue &Glue) {
+  int16_t Value;
+  ISD::CondCode IntCC;
+
+  switch (CC) {
+  case ISD::SETOEQ:
+  case ISD::SETEQ:
+    Value = 0;
+    IntCC = ISD::SETEQ;
+    break;
+  case ISD::SETOGT:
+  case ISD::SETGT:
+    Value = 1;
+    IntCC = ISD::SETEQ;
+    break;
+  case ISD::SETOGE:
+  case ISD::SETGE:
+    Value = 2;
+    IntCC = ISD::SETULT;
+    break;
+  case ISD::SETOLT:
+  case ISD::SETLT:
+    Value = -1;
+    IntCC = ISD::SETEQ;
+    break;
+  case ISD::SETOLE:
+  case ISD::SETLE:
+    Value = 0;
+    IntCC = ISD::SETLE;
+    break;
+  case ISD::SETO:
+    Value = 2;
+    IntCC = ISD::SETNE;
+    break;
+  case ISD::SETUO:
+    Value = 2;
+    IntCC = ISD::SETEQ;
+    break;
+  case ISD::SETUGT:
+    Value = 0;
+    IntCC = ISD::SETGT;
+    break;
+  case ISD::SETUGE:
+    Value = -1;
+    IntCC = ISD::SETNE;
+    break;
+  case ISD::SETULT:
+    Value = 2;
+    IntCC = ISD::SETUGE;
+    break;
+  case ISD::SETULE:
+    Value = 1;
+    IntCC = ISD::SETNE;
+    break;
+  case ISD::SETUNE:
+  case ISD::SETNE:
+    Value = 0;
+    IntCC = ISD::SETNE;
+    break;
+  default:
+    return false;
+  }
+
+  SDValue Result = DAG.getNode(AVMISD::FCMP, DL, MVT::i16, LHS, RHS);
+  std::tie(TargetCC, Glue) = getAVMCompare(
+      Result, DAG.getConstant(static_cast<uint16_t>(Value), DL, MVT::i16),
+      IntCC, DL, DAG);
+  return true;
+}
+
 static SDValue getAVMCSet(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                           const SDLoc &DL, SelectionDAG &DAG) {
   auto [TargetCC, Glue] = getAVMCompare(LHS, RHS, CC, DL, DAG);
@@ -532,6 +604,12 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::TST16";
   if (Opcode == AVMISD::WRAPPER)
     return "AVMISD::WRAPPER";
+  if (Opcode == AVMISD::SHL32_16)
+    return "AVMISD::SHL32_16";
+  if (Opcode == AVMISD::SRL32_16)
+    return "AVMISD::SRL32_16";
+  if (Opcode == AVMISD::SRA32_16)
+    return "AVMISD::SRA32_16";
   if (Opcode == AVMISD::RET_GLUE)
     return "AVMISD::RET_GLUE";
   return nullptr;
@@ -768,9 +846,15 @@ SDValue AVMTargetLowering::LowerBRCC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
   if (Op.getOperand(2).getValueType() == MVT::f32) {
+    SDValue TargetCC;
+    SDValue Glue;
+    if (getAVMDirectFloatCompare(Op.getOperand(2), Op.getOperand(3), CC, DL,
+                                 DAG, TargetCC, Glue))
+      return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
+                         Op.getOperand(4), TargetCC, Glue);
     SDValue Bool =
         getAVMFloatSetCC(Op.getOperand(2), Op.getOperand(3), CC, DL, DAG);
-    auto [TargetCC, Glue] = getAVMCompare(
+    std::tie(TargetCC, Glue) = getAVMCompare(
         Bool, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
     return DAG.getNode(AVMISD::BR_CC, DL, MVT::Other, Op.getOperand(0),
                        Op.getOperand(4), TargetCC, Glue);
@@ -797,6 +881,12 @@ SDValue AVMTargetLowering::LowerSelectCC(SDValue Op, SelectionDAG &DAG) const {
   SDValue CompareLHS = Op.getOperand(0);
   SDValue CompareRHS = Op.getOperand(1);
   if (CompareLHS.getValueType() == MVT::f32) {
+    SDValue TargetCC;
+    SDValue Glue;
+    if (getAVMDirectFloatCompare(CompareLHS, CompareRHS, CC, DL, DAG, TargetCC,
+                                 Glue))
+      return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(2),
+                         Op.getOperand(3), TargetCC, Glue);
     CompareLHS = getAVMFloatSetCC(CompareLHS, CompareRHS, CC, DL, DAG);
     CompareRHS = DAG.getConstant(0, DL, MVT::i16);
     CC = ISD::SETNE;
@@ -814,10 +904,13 @@ SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
   if (Cond.getOpcode() == ISD::SETCC) {
     ISD::CondCode CC = cast<CondCodeSDNode>(Cond.getOperand(2))->get();
     if (Cond.getOperand(0).getValueType() == MVT::f32) {
-      SDValue Bool =
-          getAVMFloatSetCC(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
-      std::tie(TargetCC, Glue) = getAVMCompare(
-          Bool, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
+      if (!getAVMDirectFloatCompare(Cond.getOperand(0), Cond.getOperand(1), CC,
+                                    DL, DAG, TargetCC, Glue)) {
+        SDValue Bool = getAVMFloatSetCC(Cond.getOperand(0), Cond.getOperand(1),
+                                        CC, DL, DAG);
+        std::tie(TargetCC, Glue) = getAVMCompare(
+            Bool, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
+      }
     } else {
       std::tie(TargetCC, Glue) =
           getAVMCompare(Cond.getOperand(0), Cond.getOperand(1), CC, DL, DAG);
@@ -888,6 +981,13 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SHL:
   case ISD::SRL:
   case ISD::SRA: {
+    if (const auto *Count = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+        Count && Count->getZExtValue() == 16) {
+      unsigned Opcode = Op.getOpcode() == ISD::SHL   ? AVMISD::SHL32_16
+                        : Op.getOpcode() == ISD::SRL ? AVMISD::SRL32_16
+                                                     : AVMISD::SRA32_16;
+      return DAG.getNode(Opcode, SDLoc(Op), MVT::i32, Op.getOperand(0));
+    }
     RTLIB::Libcall LC = Op.getOpcode() == ISD::SHL   ? RTLIB::SHL_I32
                         : Op.getOpcode() == ISD::SRL ? RTLIB::SRL_I32
                                                      : RTLIB::SRA_I32;
