@@ -350,6 +350,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
+  for (MVT VT : {MVT::i16, MVT::i32}) {
+    setOperationAction(ISD::ROTL, VT, Expand);
+    setOperationAction(ISD::ROTR, VT, Expand);
+  }
   for (unsigned Opcode :
        {ISD::MULHU, ISD::MULHS, ISD::UMUL_LOHI, ISD::SMUL_LOHI, ISD::SHL_PARTS,
         ISD::SRL_PARTS, ISD::SRA_PARTS})
