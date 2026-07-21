@@ -62,9 +62,7 @@ public:
   bool useFastCCForInternalCall(Function &) const override { return false; }
 
   TTI::AddressingModeKind
-  getPreferredAddressingMode(const Loop *, ScalarEvolution *) const override {
-    return TTI::AMK_PostIndexed;
-  }
+  getPreferredAddressingMode(const Loop *L, ScalarEvolution *SE) const override;
 
   InstructionCost getIntImmCost(const APInt &Imm, Type *Ty,
                                 TTI::TargetCostKind CostKind) const override {
