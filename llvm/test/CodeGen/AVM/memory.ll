@@ -66,10 +66,65 @@ define zeroext i8 @add_chars(i8 %left, i8 %right) {
 
 define i16 @unaligned_word(ptr %base) {
 ; CHECK-LABEL: unaligned_word:
-; CHECK: ld16 {{r[0-7]}}, [{{r[0-7]}}]
+; CHECK: ld16 {{r[0-7]}}, [{{r[0-7]}}+1]
   %ptr = getelementptr i8, ptr %base, i16 1
   %value = load i16, ptr %ptr, align 1
   ret i16 %value
+}
+
+define i16 @load_disp_min(ptr %base) {
+; CHECK-LABEL: load_disp_min:
+; CHECK: ld8u {{r[0-7]}}, [{{r[0-7]}}-32]
+  %ptr = getelementptr i8, ptr %base, i16 -32
+  %value = load i8, ptr %ptr, align 1
+  %extended = zext i8 %value to i16
+  ret i16 %extended
+}
+
+define i16 @load_disp_max(ptr %base) {
+; CHECK-LABEL: load_disp_max:
+; CHECK: ld16 {{r[0-7]}}, [{{r[0-7]}}+223]
+  %ptr = getelementptr i8, ptr %base, i16 223
+  %value = load i16, ptr %ptr, align 1
+  ret i16 %value
+}
+
+define void @store_disp_byte(ptr %base, i8 %value) {
+; CHECK-LABEL: store_disp_byte:
+; CHECK: st8 [{{r[0-7]}}+7], {{r[0-7]}}
+  %ptr = getelementptr i8, ptr %base, i16 7
+  store i8 %value, ptr %ptr, align 1
+  ret void
+}
+
+define void @store_disp_word(ptr %base, i16 %value) {
+; CHECK-LABEL: store_disp_word:
+; CHECK: st16 [{{r[0-7]}}-5], {{r[0-7]}}
+  %ptr = getelementptr i8, ptr %base, i16 -5
+  store i16 %value, ptr %ptr, align 1
+  ret void
+}
+
+define i16 @load_disp_too_low(ptr %base) {
+; CHECK-LABEL: load_disp_too_low:
+; CHECK-NOT: [{{r[0-7]}}-33]
+; CHECK: addi.s8 {{r[0-7]}}, -33
+; CHECK-NEXT: ld8u
+  %ptr = getelementptr i8, ptr %base, i16 -33
+  %value = load i8, ptr %ptr, align 1
+  %extended = zext i8 %value to i16
+  ret i16 %extended
+}
+
+define void @store_disp_too_high(ptr %base, i16 %value) {
+; CHECK-LABEL: store_disp_too_high:
+; CHECK-NOT: [{{r[0-7]}}+224]
+; CHECK: ldi8 {{r[0-7]}}, 224
+; CHECK-NEXT: add {{r[0-7]}}, {{r[0-7]}}
+; CHECK-NEXT: st16
+  %ptr = getelementptr i8, ptr %base, i16 224
+  store i16 %value, ptr %ptr, align 1
+  ret void
 }
 
 define i16 @postincrement_word(ptr %ptr, ptr %updated) {
@@ -85,7 +140,7 @@ define i16 @postincrement_word(ptr %ptr, ptr %updated) {
 define i16 @volatile_bytes(ptr %ptr) {
 ; CHECK-LABEL: volatile_bytes:
 ; CHECK: ld8u {{r[0-7]}}, [{{r[0-7]}}]
-; CHECK: ld8u {{r[0-7]}}, [{{r[0-7]}}]
+; CHECK: ld8u {{r[0-7]}}, [{{r[0-7]}}+1]
 ; CHECK-NOT: ld16
   %first = load volatile i8, ptr %ptr, align 1
   %next = getelementptr i8, ptr %ptr, i16 1

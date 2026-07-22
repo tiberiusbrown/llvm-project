@@ -471,39 +471,26 @@ class AVMColdPairStoreInst<string Asm>
   let mayStore = 1;
 }
 
-// General-pointer forms are MC-only.  They encode the explicit architectural
-// r0-r7 indices in the dddWaaaP operand byte, independent of LLVM physical
-// register enum values.
+// General-pointer postincrement and displaced forms encode explicit
+// architectural r0-r7 indices, independent of LLVM physical register enums.
 def AVMGeneralPointerDataReg
     : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMGeneralPointerAddressReg
     : RegisterOperand<AVMGeneralReg, "printFullReg">;
-class AVMGeneralPointerLoadInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr)> {
-  let OutOperandList = (outs AVMGeneralPointerDataReg:$dst);
-  let mayLoad = 1;
-}
-class AVMGeneralPointerStoreInst<string Asm>
-    : AVMInst<Asm, 3,
-              (ins AVMGeneralPointerAddressReg:$addr,
-                   AVMGeneralPointerDataReg:$src)> { let mayStore = 1; }
-
-// Displaced data-memory forms are MC-only.  The signed architectural
-// displacement is encoded as an unsigned byte biased by 32; it has no
-// relocation semantics and these records intentionally have no patterns.
+// Displaced data-memory forms encode the signed architectural displacement as
+// an unsigned byte biased by 32.  It has no relocation semantics, and these
+// records intentionally have no patterns.
 class AVMDisplacedDataLoadInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr,
                            AVMDataDisp8:$disp)> {
   let OutOperandList = (outs AVMGeneralPointerDataReg:$dst);
   let mayLoad = 1;
-  let hasNoSchedulingInfo = 1;
 }
 class AVMDisplacedDataStoreInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr,
                            AVMDataDisp8:$disp,
                            AVMGeneralPointerDataReg:$src)> {
   let mayStore = 1;
-  let hasNoSchedulingInfo = 1;
 }
 
 class AVMGeneralPointerPostLoadInst<string Asm>
@@ -963,11 +950,25 @@ class AVMAbsoluteStorePseudo
     : AVMCodeGenPseudo<(outs), (ins AVMDataAddr16:$addr, GPR16:$src)> {
   let mayStore = 1;
 }
+class AVMDisplacedLoadPseudo
+    : AVMCodeGenPseudo<(outs GPR16:$dst),
+                       (ins PTR16:$addr, i16imm:$disp)> {
+  let mayLoad = 1;
+}
+class AVMDisplacedStorePseudo
+    : AVMCodeGenPseudo<(outs),
+                       (ins PTR16:$addr, i16imm:$disp, GPR16:$src)> {
+  let mayStore = 1;
+}
 
 def LOAD8U_PSEUDO : AVMIndirectLoadPseudo;
 def LOAD16_PSEUDO : AVMIndirectLoadPseudo;
 def STORE8_PSEUDO : AVMIndirectStorePseudo;
 def STORE16_PSEUDO : AVMIndirectStorePseudo;
+def LOAD8U_DISP_PSEUDO : AVMDisplacedLoadPseudo;
+def LOAD16_DISP_PSEUDO : AVMDisplacedLoadPseudo;
+def STORE8_DISP_PSEUDO : AVMDisplacedStorePseudo;
+def STORE16_DISP_PSEUDO : AVMDisplacedStorePseudo;
 def LOAD32_PSEUDO : AVMIndirectPairLoadPseudo;
 def STORE32_PSEUDO : AVMIndirectPairStorePseudo;
 def LOAD24_PSEUDO
@@ -1212,12 +1213,8 @@ def CMP32 : AVMColdPairPairInst<"cmp32 $left, $right"> {
 def LD32 : AVMColdPairLoadInst<"ld32 $dst, [$addr]">;
 def ST32 : AVMColdPairStoreInst<"st32 [$addr], $src">;
 
-def GPLD8U : AVMGeneralPointerLoadInst<"ld8u $dst, [$addr]">;
-def GPLD16 : AVMGeneralPointerLoadInst<"ld16 $dst, [$addr]">;
 def GPLD8U_POST : AVMGeneralPointerPostLoadInst<"ld8u $dst, [$addr_in+]">;
 def GPLD16_POST : AVMGeneralPointerPostLoadInst<"ld16 $dst, [$addr_in+]">;
-def GPST8 : AVMGeneralPointerStoreInst<"st8 [$addr], $src">;
-def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
 def GPST8_POST : AVMGeneralPointerPostStoreInst<"st8 [$addr_in+], $src">;
 def GPST16_POST : AVMGeneralPointerPostStoreInst<"st16 [$addr_in+], $src">;
 

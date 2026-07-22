@@ -20,7 +20,7 @@ FIXED_CASES = {
     "ADD r0,r1 (full F2)": "add r0, r1",
     "LD8U r4,[r6] (upper one-byte)": "ld8u r4, [r6]",
     "LD16 r0,[r6] (dense F5)": "ld16 r0, [r6]",
-    "LD16 r0,[r1] (cold general F0)": "ld16 r0, [r1]",
+    "LD16 r0,[r1-5] (displaced ED)": "ld16 r0, [r1-5]",
     "LDP8U r0,[q3]": "ldp8u r0, [q3]",
     "BREQ8 (not taken)": "breq8 0",
 }

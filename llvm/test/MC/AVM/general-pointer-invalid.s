@@ -27,11 +27,7 @@ st8 [r0], c0
 st8 [q0], r0
 st16 [sp+0], r0
 ld8u r0, r1
-ld8u r0, [r1+1]
-ld16 r0, [r1-1]
 st8 r0, r1
-st8 [r0+1], r1
-st16 [r0-1], r1
 ld8u [r0], r1
 ld16 [r0+], r1
 st8 r1, [r0]

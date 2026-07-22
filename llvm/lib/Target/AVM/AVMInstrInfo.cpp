@@ -546,9 +546,9 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::CMP32_PSEUDO:
     return get(AVM::CMP32).getSize();
   case AVM::LOAD24_PSEUDO:
-    return get(AVM::GPLD16_POST).getSize() + get(AVM::GPLD8U).getSize();
+    return get(AVM::GPLD16_POST).getSize() + get(AVM::DPLD8U).getSize();
   case AVM::STORE24_PSEUDO:
-    return get(AVM::GPST16_POST).getSize() + get(AVM::GPST8).getSize();
+    return get(AVM::GPST16_POST).getSize() + get(AVM::DPST8).getSize();
   case AVM::PLOAD8U_PSEUDO:
   case AVM::PLOAD8S_PSEUDO:
     return get(AVM::LDP8U).getSize();
@@ -715,10 +715,10 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Fixed(AVMCostKind::Cmp32);
   case AVM::LOAD24_PSEUDO:
     return Fixed(AVMCostKind::Ld16PostIncGeneral) +
-           Fixed(AVMCostKind::Ld8UGeneral);
+           Fixed(AVMCostKind::Ld8UDisplaced);
   case AVM::STORE24_PSEUDO:
     return Fixed(AVMCostKind::St16PostIncGeneral) +
-           Fixed(AVMCostKind::St8General);
+           Fixed(AVMCostKind::St8Displaced);
   case AVM::PLOAD8U_PSEUDO:
     return Fixed(AVMCostKind::Ldp8U);
   case AVM::PLOAD8S_PSEUDO:
@@ -925,14 +925,14 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Fixed(AVMCostKind::St8PostIncDense);
   case AVM::F7ST16_POST:
     return Fixed(AVMCostKind::St16PostIncDense);
-  case AVM::GPLD8U:
-    return Fixed(AVMCostKind::Ld8UGeneral);
-  case AVM::GPLD16:
-    return Fixed(AVMCostKind::Ld16General);
-  case AVM::GPST8:
-    return Fixed(AVMCostKind::St8General);
-  case AVM::GPST16:
-    return Fixed(AVMCostKind::St16General);
+  case AVM::DPLD8U:
+    return Fixed(AVMCostKind::Ld8UDisplaced);
+  case AVM::DPLD16:
+    return Fixed(AVMCostKind::Ld16Displaced);
+  case AVM::DPST8:
+    return Fixed(AVMCostKind::St8Displaced);
+  case AVM::DPST16:
+    return Fixed(AVMCostKind::St16Displaced);
   case AVM::GPLD8U_POST:
     return Fixed(AVMCostKind::Ld8UPostIncGeneral);
   case AVM::GPLD16_POST:

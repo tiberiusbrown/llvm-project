@@ -11,7 +11,7 @@
 // Provenance:
 //   Repository: tiberiusbrown/avm
 //   File:       bench/cycles_instruction.txt
-//   Blob:       63cd3602b6d1ce25a1c1372690859f4c3a6714f0
+//   Blob:       671aed568529ee2f8c3bfa57c937e1d791ea9e5f
 //
 // The fixed and branch costs are copied verbatim from the benchmark. Range
 // entries use the predetermined representative Typical/Minimum/Maximum values
@@ -130,10 +130,10 @@ AVM_FIXED_COST(Ld8UPostIncDense, 39)
 AVM_FIXED_COST(Ld16PostIncDense, 40)
 AVM_FIXED_COST(St8PostIncDense, 38)
 AVM_FIXED_COST(St16PostIncDense, 40)
-AVM_FIXED_COST(Ld8UGeneral, 70)
-AVM_FIXED_COST(Ld16General, 71)
-AVM_FIXED_COST(St8General, 68)
-AVM_FIXED_COST(St16General, 69)
+AVM_FIXED_COST(Ld8UDisplaced, 54)
+AVM_FIXED_COST(Ld16Displaced, 55)
+AVM_FIXED_COST(St8Displaced, 54)
+AVM_FIXED_COST(St16Displaced, 55)
 AVM_FIXED_COST(Ld8UPostIncGeneral, 76)
 AVM_FIXED_COST(Ld16PostIncGeneral, 77)
 AVM_FIXED_COST(St8PostIncGeneral, 73)

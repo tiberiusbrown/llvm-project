@@ -96,15 +96,12 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW46], (instrs MUL16, FNEG)>;
   def : InstRW<[AVMW52], (instrs AND_RR, LDI16)>;
   def : InstRW<[AVMW53], (instrs OR_RR, LDI8)>;
-  def : InstRW<[AVMW54], (instrs XOR_RR, ADDIS8)>;
-  def : InstRW<[AVMW55], (instrs CMPIS8)>;
+  def : InstRW<[AVMW54], (instrs XOR_RR, ADDIS8, DPLD8U, DPST8)>;
+  def : InstRW<[AVMW55], (instrs CMPIS8, DPLD16, DPST16)>;
   def : InstRW<[AVMW60], (instrs LEASP, STSP8)>;
   def : InstRW<[AVMW62], (instrs LDSP8U)>;
   def : InstRW<[AVMW64], (instrs LDSP8S, LDSP16, STSP16)>;
-  def : InstRW<[AVMW68], (instrs GPST8)>;
-  def : InstRW<[AVMW69], (instrs GPST16)>;
-  def : InstRW<[AVMW70], (instrs GPLD8U)>;
-  def : InstRW<[AVMW71], (instrs GPLD16, COLDLDI16)>;
+  def : InstRW<[AVMW71], (instrs COLDLDI16)>;
   def : InstRW<[AVMW72], (instrs LDM8U, STM8, LDM16, STM16)>;
   def : InstRW<[AVMW73], (instrs GPST8_POST)>;
   def : InstRW<[AVMW74], (instrs MOV32_F2, GPST16_POST)>;

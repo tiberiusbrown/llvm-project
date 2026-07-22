@@ -257,24 +257,27 @@ public:
         if (Bytes.size() < 3)
           return Fail;
         const uint8_t Spec = Bytes[2];
+        if ((Spec & 1) == 0) {
+          Size = 1;
+          return Fail;
+        }
         const unsigned DataIndex = Spec >> 5;
         const unsigned AddressIndex = (Spec >> 1) & 7;
         const bool IsWord = Spec & 0x10;
-        const bool IsPost = Spec & 1;
-        if (Secondary == 0x6c && IsPost && DataIndex == AddressIndex) {
+        if (Secondary == 0x6c && DataIndex == AddressIndex) {
           Size = 1;
           return Fail;
         }
         if (Secondary == 0x6c) {
           if (IsWord)
-            MI.setOpcode(IsPost ? AVM::GPLD16_POST : AVM::GPLD16);
+            MI.setOpcode(AVM::GPLD16_POST);
           else
-            MI.setOpcode(IsPost ? AVM::GPLD8U_POST : AVM::GPLD8U);
+            MI.setOpcode(AVM::GPLD8U_POST);
         } else {
           if (IsWord)
-            MI.setOpcode(IsPost ? AVM::GPST16_POST : AVM::GPST16);
+            MI.setOpcode(AVM::GPST16_POST);
           else
-            MI.setOpcode(IsPost ? AVM::GPST8_POST : AVM::GPST8);
+            MI.setOpcode(AVM::GPST8_POST);
         }
         const MCRegister Data = generalPointerRegister(DataIndex);
         const MCRegister Address = generalPointerRegister(AddressIndex);

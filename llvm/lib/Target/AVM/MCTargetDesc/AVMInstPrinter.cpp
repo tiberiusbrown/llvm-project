@@ -181,13 +181,9 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::CMP32: return {"cmp32", 0};
   case AVM::LD32: return {"ld32", 0};
   case AVM::ST32: return {"st32", 0};
-  case AVM::GPLD8U:
   case AVM::GPLD8U_POST: return {"ld8u", 0};
-  case AVM::GPLD16:
   case AVM::GPLD16_POST: return {"ld16", 0};
-  case AVM::GPST8:
   case AVM::GPST8_POST: return {"st8", 0};
-  case AVM::GPST16:
   case AVM::GPST16_POST: return {"st16", 0};
   case AVM::PROGPTR: return {".progptr", 0};
   default:
@@ -574,28 +570,20 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
     OS << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
     break;
-  case AVM::GPLD8U:
-  case AVM::GPLD16:
   case AVM::GPLD8U_POST:
   case AVM::GPLD16_POST:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
     OS << ", [";
     printFullReg(MI->getOperand(1).getReg(), OS);
-    if (MI->getOpcode() == AVM::GPLD8U_POST ||
-        MI->getOpcode() == AVM::GPLD16_POST)
-      OS << '+';
+    OS << '+';
     OS << ']';
     break;
-  case AVM::GPST8:
-  case AVM::GPST16:
   case AVM::GPST8_POST:
   case AVM::GPST16_POST:
     OS << "\t[";
     printFullReg(MI->getOperand(0).getReg(), OS);
-    if (MI->getOpcode() == AVM::GPST8_POST ||
-        MI->getOpcode() == AVM::GPST16_POST)
-      OS << '+';
+    OS << '+';
     OS << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
     break;

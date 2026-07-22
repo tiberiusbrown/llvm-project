@@ -24,6 +24,10 @@ using namespace llvm::AVM;
 TEST(AVMCostModelTest, FixedAndRangeCosts) {
   EXPECT_EQ(getFixedCycles(AVMCostKind::MovUpper), 17U);
   EXPECT_EQ(getFixedCycles(AVMCostKind::Ldp32PostInc), 357U);
+  EXPECT_EQ(getFixedCycles(AVMCostKind::Ld8UDisplaced), 54U);
+  EXPECT_EQ(getFixedCycles(AVMCostKind::Ld16Displaced), 55U);
+  EXPECT_EQ(getFixedCycles(AVMCostKind::St8Displaced), 54U);
+  EXPECT_EQ(getFixedCycles(AVMCostKind::St16Displaced), 55U);
 
   const AVMCycleRange Divide = getCycleRange(AVMCostKind::UDiv16);
   EXPECT_EQ(Divide.Typical, 219U);

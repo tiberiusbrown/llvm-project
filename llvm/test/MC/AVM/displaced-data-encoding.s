@@ -9,7 +9,7 @@ st8 [r5+0], r3
 st16 [r2-1], r4
 st16 [r0+223], r7
 
-# Explicit zero displacement must not select an ordinary-memory encoding.
+# Ordinary lower pointers and explicit zero displacement both select ED.
 ld8u r4, [r5]
 ld8u r0, [r5]
 ld8u r0, [r1]
@@ -35,7 +35,7 @@ st8 [c0 + 1], r0
 # CHECK: encoding: [0xee,0xf0,0xff]
 # CHECK: encoding: [0x41]
 # CHECK: encoding: [0xf5,0x34]
-# CHECK: encoding: [0xf0,0x6c,0x02]
+# CHECK: encoding: [0xed,0x02,0x20]
 # CHECK: encoding: [0xf0,0x6c,0x03]
 # CHECK: encoding: [0xed,0x02,0x20]
 # CHECK: encoding: [0xed,0x66,0x20]

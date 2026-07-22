@@ -14,16 +14,25 @@ body: |
     ; CHECK-LABEL: name: expand_memory
     ; CHECK: $r5 = LD8U $r4
     ; CHECK-NEXT: $r0 = F5LD8U $r4
-    ; CHECK-NEXT: $r5 = GPLD8U $r0
+    ; CHECK-NEXT: $r5 = DPLD8U $r0, 0
     ; CHECK-NEXT: $r5 = LD16 $r4
     ; CHECK-NEXT: $r0 = F5LD16 $r4
-    ; CHECK-NEXT: $r5 = GPLD16 $r0
+    ; CHECK-NEXT: $r5 = DPLD16 $r0, 0
     ; CHECK-NEXT: ST8 $r4, $r5
     ; CHECK-NEXT: F3ST8 $r4, $r0
-    ; CHECK-NEXT: GPST8 $r0, $r5
+    ; CHECK-NEXT: DPST8 $r0, 0, $r5
     ; CHECK-NEXT: ST16 $r4, $r5
     ; CHECK-NEXT: F5ST16 $r4, $r0
-    ; CHECK-NEXT: GPST16 $r0, $r5
+    ; CHECK-NEXT: DPST16 $r0, 0, $r5
+    ; CHECK-NEXT: $r5 = DPLD8U $r0, -32
+    ; CHECK-NEXT: $r5 = DPLD16 $r0, 223
+    ; CHECK-NEXT: DPST8 $r0, 7, $r5
+    ; CHECK-NEXT: DPST16 $r0, -5, $r5
+    ; CHECK-NEXT: $r0 = DPLD16 $r0, 0
+    ; CHECK-NEXT: early-clobber $r6, $r0 = GPLD16_POST $r0
+    ; CHECK-NEXT: $r7 = DPLD8U $r0, 0
+    ; CHECK-NEXT: $r0 = GPST16_POST $r0, $r6
+    ; CHECK-NEXT: DPST8 $r0, 0, $r7
     ; CHECK-NEXT: early-clobber $r5, $r4 = F7LD8U_POST $r4
     ; CHECK-NEXT: early-clobber $r5, $r0 = GPLD8U_POST $r0
     ; CHECK-NEXT: early-clobber $r5, $r4 = F7LD16_POST $r4
@@ -35,19 +44,19 @@ body: |
     ; CHECK-NEXT: $r4 = DEC16 $r4
     ; CHECK-NEXT: $r5 = LD8U $r4
     ; CHECK-NEXT: $r0 = DEC16 $r0
-    ; CHECK-NEXT: $r5 = GPLD8U $r0
+    ; CHECK-NEXT: $r5 = DPLD8U $r0, 0
     ; CHECK-NEXT: $r4 = ADDIS8 $r4, -2
     ; CHECK-NEXT: $r5 = LD16 $r4
     ; CHECK-NEXT: $r0 = COLDADDIS8 $r0, -2
-    ; CHECK-NEXT: $r5 = GPLD16 $r0
+    ; CHECK-NEXT: $r5 = DPLD16 $r0, 0
     ; CHECK-NEXT: $r4 = DEC16 $r4
     ; CHECK-NEXT: ST8 $r4, $r5
     ; CHECK-NEXT: $r0 = DEC16 $r0
-    ; CHECK-NEXT: GPST8 $r0, $r5
+    ; CHECK-NEXT: DPST8 $r0, 0, $r5
     ; CHECK-NEXT: $r4 = ADDIS8 $r4, -2
     ; CHECK-NEXT: ST16 $r4, $r5
     ; CHECK-NEXT: $r0 = COLDADDIS8 $r0, -2
-    ; CHECK-NEXT: GPST16 $r0, $r5
+    ; CHECK-NEXT: DPST16 $r0, 0, $r5
     ; CHECK-NEXT: $r6r7 = LD32 $r0
     ; CHECK-NEXT: ST32 $r0, $r6r7
     ; CHECK-NEXT: $r4 = LDM8U @data
@@ -70,6 +79,13 @@ body: |
     STORE16_PSEUDO $r4, $r5
     STORE16_PSEUDO $r4, $r0
     STORE16_PSEUDO $r0, $r5
+    $r5 = LOAD8U_DISP_PSEUDO $r0, -32
+    $r5 = LOAD16_DISP_PSEUDO $r0, 223
+    STORE8_DISP_PSEUDO $r0, 7, $r5
+    STORE16_DISP_PSEUDO $r0, -5, $r5
+    $r0 = LOAD16_DISP_PSEUDO $r0, 0
+    $r6r7, $r0 = LOAD24_PSEUDO $r0
+    $r0 = STORE24_PSEUDO $r0, $r6r7
     $r5, $r4 = LOAD8U_POST_PSEUDO $r4
     $r5, $r0 = LOAD8U_POST_PSEUDO $r0
     $r5, $r4 = LOAD16_POST_PSEUDO $r4

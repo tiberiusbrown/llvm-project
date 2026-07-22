@@ -1,996 +1,486 @@
 # RUN: llvm-mc -triple=avm -show-encoding %s | FileCheck %s
 
-# Exhaustive dddWaaaP coverage: 240 legal loads and 256 legal stores.
-ld8u r0, [r0]
-ld8u r0, [r1]
+# Exhaustive postincrement spelling coverage: 56 byte loads, 56 word loads,
+# 64 byte stores, and 64 word stores (240 total). Lower pointers use F0
+# dddWaaa1; upper pointers retain the existing dense encodings.
 ld8u r0, [r1+]
-ld8u r0, [r2]
 ld8u r0, [r2+]
-ld8u r0, [r3]
 ld8u r0, [r3+]
-ld8u r0, [r4]
 ld8u r0, [r4+]
-ld8u r0, [r5]
 ld8u r0, [r5+]
-ld8u r0, [r6]
 ld8u r0, [r6+]
-ld8u r0, [r7]
 ld8u r0, [r7+]
-ld16 r0, [r0]
-ld16 r0, [r1]
-ld16 r0, [r1+]
-ld16 r0, [r2]
-ld16 r0, [r2+]
-ld16 r0, [r3]
-ld16 r0, [r3+]
-ld16 r0, [r4]
-ld16 r0, [r4+]
-ld16 r0, [r5]
-ld16 r0, [r5+]
-ld16 r0, [r6]
-ld16 r0, [r6+]
-ld16 r0, [r7]
-ld16 r0, [r7+]
-ld8u r1, [r0]
 ld8u r1, [r0+]
-ld8u r1, [r1]
-ld8u r1, [r2]
 ld8u r1, [r2+]
-ld8u r1, [r3]
 ld8u r1, [r3+]
-ld8u r1, [r4]
 ld8u r1, [r4+]
-ld8u r1, [r5]
 ld8u r1, [r5+]
-ld8u r1, [r6]
 ld8u r1, [r6+]
-ld8u r1, [r7]
 ld8u r1, [r7+]
-ld16 r1, [r0]
-ld16 r1, [r0+]
-ld16 r1, [r1]
-ld16 r1, [r2]
-ld16 r1, [r2+]
-ld16 r1, [r3]
-ld16 r1, [r3+]
-ld16 r1, [r4]
-ld16 r1, [r4+]
-ld16 r1, [r5]
-ld16 r1, [r5+]
-ld16 r1, [r6]
-ld16 r1, [r6+]
-ld16 r1, [r7]
-ld16 r1, [r7+]
-ld8u r2, [r0]
 ld8u r2, [r0+]
-ld8u r2, [r1]
 ld8u r2, [r1+]
-ld8u r2, [r2]
-ld8u r2, [r3]
 ld8u r2, [r3+]
-ld8u r2, [r4]
 ld8u r2, [r4+]
-ld8u r2, [r5]
 ld8u r2, [r5+]
-ld8u r2, [r6]
 ld8u r2, [r6+]
-ld8u r2, [r7]
 ld8u r2, [r7+]
-ld16 r2, [r0]
-ld16 r2, [r0+]
-ld16 r2, [r1]
-ld16 r2, [r1+]
-ld16 r2, [r2]
-ld16 r2, [r3]
-ld16 r2, [r3+]
-ld16 r2, [r4]
-ld16 r2, [r4+]
-ld16 r2, [r5]
-ld16 r2, [r5+]
-ld16 r2, [r6]
-ld16 r2, [r6+]
-ld16 r2, [r7]
-ld16 r2, [r7+]
-ld8u r3, [r0]
 ld8u r3, [r0+]
-ld8u r3, [r1]
 ld8u r3, [r1+]
-ld8u r3, [r2]
 ld8u r3, [r2+]
-ld8u r3, [r3]
-ld8u r3, [r4]
 ld8u r3, [r4+]
-ld8u r3, [r5]
 ld8u r3, [r5+]
-ld8u r3, [r6]
 ld8u r3, [r6+]
-ld8u r3, [r7]
 ld8u r3, [r7+]
-ld16 r3, [r0]
-ld16 r3, [r0+]
-ld16 r3, [r1]
-ld16 r3, [r1+]
-ld16 r3, [r2]
-ld16 r3, [r2+]
-ld16 r3, [r3]
-ld16 r3, [r4]
-ld16 r3, [r4+]
-ld16 r3, [r5]
-ld16 r3, [r5+]
-ld16 r3, [r6]
-ld16 r3, [r6+]
-ld16 r3, [r7]
-ld16 r3, [r7+]
-ld8u r4, [r0]
 ld8u r4, [r0+]
-ld8u r4, [r1]
 ld8u r4, [r1+]
-ld8u r4, [r2]
 ld8u r4, [r2+]
-ld8u r4, [r3]
 ld8u r4, [r3+]
-ld8u r4, [r4]
-ld8u r4, [r5]
 ld8u r4, [r5+]
-ld8u r4, [r6]
 ld8u r4, [r6+]
-ld8u r4, [r7]
 ld8u r4, [r7+]
-ld16 r4, [r0]
-ld16 r4, [r0+]
-ld16 r4, [r1]
-ld16 r4, [r1+]
-ld16 r4, [r2]
-ld16 r4, [r2+]
-ld16 r4, [r3]
-ld16 r4, [r3+]
-ld16 r4, [r4]
-ld16 r4, [r5]
-ld16 r4, [r5+]
-ld16 r4, [r6]
-ld16 r4, [r6+]
-ld16 r4, [r7]
-ld16 r4, [r7+]
-ld8u r5, [r0]
 ld8u r5, [r0+]
-ld8u r5, [r1]
 ld8u r5, [r1+]
-ld8u r5, [r2]
 ld8u r5, [r2+]
-ld8u r5, [r3]
 ld8u r5, [r3+]
-ld8u r5, [r4]
 ld8u r5, [r4+]
-ld8u r5, [r5]
-ld8u r5, [r6]
 ld8u r5, [r6+]
-ld8u r5, [r7]
 ld8u r5, [r7+]
-ld16 r5, [r0]
-ld16 r5, [r0+]
-ld16 r5, [r1]
-ld16 r5, [r1+]
-ld16 r5, [r2]
-ld16 r5, [r2+]
-ld16 r5, [r3]
-ld16 r5, [r3+]
-ld16 r5, [r4]
-ld16 r5, [r4+]
-ld16 r5, [r5]
-ld16 r5, [r6]
-ld16 r5, [r6+]
-ld16 r5, [r7]
-ld16 r5, [r7+]
-ld8u r6, [r0]
 ld8u r6, [r0+]
-ld8u r6, [r1]
 ld8u r6, [r1+]
-ld8u r6, [r2]
 ld8u r6, [r2+]
-ld8u r6, [r3]
 ld8u r6, [r3+]
-ld8u r6, [r4]
 ld8u r6, [r4+]
-ld8u r6, [r5]
 ld8u r6, [r5+]
-ld8u r6, [r6]
-ld8u r6, [r7]
 ld8u r6, [r7+]
-ld16 r6, [r0]
-ld16 r6, [r0+]
-ld16 r6, [r1]
-ld16 r6, [r1+]
-ld16 r6, [r2]
-ld16 r6, [r2+]
-ld16 r6, [r3]
-ld16 r6, [r3+]
-ld16 r6, [r4]
-ld16 r6, [r4+]
-ld16 r6, [r5]
-ld16 r6, [r5+]
-ld16 r6, [r6]
-ld16 r6, [r7]
-ld16 r6, [r7+]
-ld8u r7, [r0]
 ld8u r7, [r0+]
-ld8u r7, [r1]
 ld8u r7, [r1+]
-ld8u r7, [r2]
 ld8u r7, [r2+]
-ld8u r7, [r3]
 ld8u r7, [r3+]
-ld8u r7, [r4]
 ld8u r7, [r4+]
-ld8u r7, [r5]
 ld8u r7, [r5+]
-ld8u r7, [r6]
 ld8u r7, [r6+]
-ld8u r7, [r7]
-ld16 r7, [r0]
+ld16 r0, [r1+]
+ld16 r0, [r2+]
+ld16 r0, [r3+]
+ld16 r0, [r4+]
+ld16 r0, [r5+]
+ld16 r0, [r6+]
+ld16 r0, [r7+]
+ld16 r1, [r0+]
+ld16 r1, [r2+]
+ld16 r1, [r3+]
+ld16 r1, [r4+]
+ld16 r1, [r5+]
+ld16 r1, [r6+]
+ld16 r1, [r7+]
+ld16 r2, [r0+]
+ld16 r2, [r1+]
+ld16 r2, [r3+]
+ld16 r2, [r4+]
+ld16 r2, [r5+]
+ld16 r2, [r6+]
+ld16 r2, [r7+]
+ld16 r3, [r0+]
+ld16 r3, [r1+]
+ld16 r3, [r2+]
+ld16 r3, [r4+]
+ld16 r3, [r5+]
+ld16 r3, [r6+]
+ld16 r3, [r7+]
+ld16 r4, [r0+]
+ld16 r4, [r1+]
+ld16 r4, [r2+]
+ld16 r4, [r3+]
+ld16 r4, [r5+]
+ld16 r4, [r6+]
+ld16 r4, [r7+]
+ld16 r5, [r0+]
+ld16 r5, [r1+]
+ld16 r5, [r2+]
+ld16 r5, [r3+]
+ld16 r5, [r4+]
+ld16 r5, [r6+]
+ld16 r5, [r7+]
+ld16 r6, [r0+]
+ld16 r6, [r1+]
+ld16 r6, [r2+]
+ld16 r6, [r3+]
+ld16 r6, [r4+]
+ld16 r6, [r5+]
+ld16 r6, [r7+]
 ld16 r7, [r0+]
-ld16 r7, [r1]
 ld16 r7, [r1+]
-ld16 r7, [r2]
 ld16 r7, [r2+]
-ld16 r7, [r3]
 ld16 r7, [r3+]
-ld16 r7, [r4]
 ld16 r7, [r4+]
-ld16 r7, [r5]
 ld16 r7, [r5+]
-ld16 r7, [r6]
 ld16 r7, [r6+]
-ld16 r7, [r7]
-st8 [r0], r0
 st8 [r0+], r0
-st8 [r1], r0
 st8 [r1+], r0
-st8 [r2], r0
 st8 [r2+], r0
-st8 [r3], r0
 st8 [r3+], r0
-st8 [r4], r0
 st8 [r4+], r0
-st8 [r5], r0
 st8 [r5+], r0
-st8 [r6], r0
 st8 [r6+], r0
-st8 [r7], r0
 st8 [r7+], r0
-st16 [r0], r0
-st16 [r0+], r0
-st16 [r1], r0
-st16 [r1+], r0
-st16 [r2], r0
-st16 [r2+], r0
-st16 [r3], r0
-st16 [r3+], r0
-st16 [r4], r0
-st16 [r4+], r0
-st16 [r5], r0
-st16 [r5+], r0
-st16 [r6], r0
-st16 [r6+], r0
-st16 [r7], r0
-st16 [r7+], r0
-st8 [r0], r1
 st8 [r0+], r1
-st8 [r1], r1
 st8 [r1+], r1
-st8 [r2], r1
 st8 [r2+], r1
-st8 [r3], r1
 st8 [r3+], r1
-st8 [r4], r1
 st8 [r4+], r1
-st8 [r5], r1
 st8 [r5+], r1
-st8 [r6], r1
 st8 [r6+], r1
-st8 [r7], r1
 st8 [r7+], r1
-st16 [r0], r1
-st16 [r0+], r1
-st16 [r1], r1
-st16 [r1+], r1
-st16 [r2], r1
-st16 [r2+], r1
-st16 [r3], r1
-st16 [r3+], r1
-st16 [r4], r1
-st16 [r4+], r1
-st16 [r5], r1
-st16 [r5+], r1
-st16 [r6], r1
-st16 [r6+], r1
-st16 [r7], r1
-st16 [r7+], r1
-st8 [r0], r2
 st8 [r0+], r2
-st8 [r1], r2
 st8 [r1+], r2
-st8 [r2], r2
 st8 [r2+], r2
-st8 [r3], r2
 st8 [r3+], r2
-st8 [r4], r2
 st8 [r4+], r2
-st8 [r5], r2
 st8 [r5+], r2
-st8 [r6], r2
 st8 [r6+], r2
-st8 [r7], r2
 st8 [r7+], r2
-st16 [r0], r2
-st16 [r0+], r2
-st16 [r1], r2
-st16 [r1+], r2
-st16 [r2], r2
-st16 [r2+], r2
-st16 [r3], r2
-st16 [r3+], r2
-st16 [r4], r2
-st16 [r4+], r2
-st16 [r5], r2
-st16 [r5+], r2
-st16 [r6], r2
-st16 [r6+], r2
-st16 [r7], r2
-st16 [r7+], r2
-st8 [r0], r3
 st8 [r0+], r3
-st8 [r1], r3
 st8 [r1+], r3
-st8 [r2], r3
 st8 [r2+], r3
-st8 [r3], r3
 st8 [r3+], r3
-st8 [r4], r3
 st8 [r4+], r3
-st8 [r5], r3
 st8 [r5+], r3
-st8 [r6], r3
 st8 [r6+], r3
-st8 [r7], r3
 st8 [r7+], r3
-st16 [r0], r3
-st16 [r0+], r3
-st16 [r1], r3
-st16 [r1+], r3
-st16 [r2], r3
-st16 [r2+], r3
-st16 [r3], r3
-st16 [r3+], r3
-st16 [r4], r3
-st16 [r4+], r3
-st16 [r5], r3
-st16 [r5+], r3
-st16 [r6], r3
-st16 [r6+], r3
-st16 [r7], r3
-st16 [r7+], r3
-st8 [r0], r4
 st8 [r0+], r4
-st8 [r1], r4
 st8 [r1+], r4
-st8 [r2], r4
 st8 [r2+], r4
-st8 [r3], r4
 st8 [r3+], r4
-st8 [r4], r4
 st8 [r4+], r4
-st8 [r5], r4
 st8 [r5+], r4
-st8 [r6], r4
 st8 [r6+], r4
-st8 [r7], r4
 st8 [r7+], r4
-st16 [r0], r4
-st16 [r0+], r4
-st16 [r1], r4
-st16 [r1+], r4
-st16 [r2], r4
-st16 [r2+], r4
-st16 [r3], r4
-st16 [r3+], r4
-st16 [r4], r4
-st16 [r4+], r4
-st16 [r5], r4
-st16 [r5+], r4
-st16 [r6], r4
-st16 [r6+], r4
-st16 [r7], r4
-st16 [r7+], r4
-st8 [r0], r5
 st8 [r0+], r5
-st8 [r1], r5
 st8 [r1+], r5
-st8 [r2], r5
 st8 [r2+], r5
-st8 [r3], r5
 st8 [r3+], r5
-st8 [r4], r5
 st8 [r4+], r5
-st8 [r5], r5
 st8 [r5+], r5
-st8 [r6], r5
 st8 [r6+], r5
-st8 [r7], r5
 st8 [r7+], r5
-st16 [r0], r5
-st16 [r0+], r5
-st16 [r1], r5
-st16 [r1+], r5
-st16 [r2], r5
-st16 [r2+], r5
-st16 [r3], r5
-st16 [r3+], r5
-st16 [r4], r5
-st16 [r4+], r5
-st16 [r5], r5
-st16 [r5+], r5
-st16 [r6], r5
-st16 [r6+], r5
-st16 [r7], r5
-st16 [r7+], r5
-st8 [r0], r6
 st8 [r0+], r6
-st8 [r1], r6
 st8 [r1+], r6
-st8 [r2], r6
 st8 [r2+], r6
-st8 [r3], r6
 st8 [r3+], r6
-st8 [r4], r6
 st8 [r4+], r6
-st8 [r5], r6
 st8 [r5+], r6
-st8 [r6], r6
 st8 [r6+], r6
-st8 [r7], r6
 st8 [r7+], r6
-st16 [r0], r6
-st16 [r0+], r6
-st16 [r1], r6
-st16 [r1+], r6
-st16 [r2], r6
-st16 [r2+], r6
-st16 [r3], r6
-st16 [r3+], r6
-st16 [r4], r6
-st16 [r4+], r6
-st16 [r5], r6
-st16 [r5+], r6
-st16 [r6], r6
-st16 [r6+], r6
-st16 [r7], r6
-st16 [r7+], r6
-st8 [r0], r7
 st8 [r0+], r7
-st8 [r1], r7
 st8 [r1+], r7
-st8 [r2], r7
 st8 [r2+], r7
-st8 [r3], r7
 st8 [r3+], r7
-st8 [r4], r7
 st8 [r4+], r7
-st8 [r5], r7
 st8 [r5+], r7
-st8 [r6], r7
 st8 [r6+], r7
-st8 [r7], r7
 st8 [r7+], r7
-st16 [r0], r7
+st16 [r0+], r0
+st16 [r1+], r0
+st16 [r2+], r0
+st16 [r3+], r0
+st16 [r4+], r0
+st16 [r5+], r0
+st16 [r6+], r0
+st16 [r7+], r0
+st16 [r0+], r1
+st16 [r1+], r1
+st16 [r2+], r1
+st16 [r3+], r1
+st16 [r4+], r1
+st16 [r5+], r1
+st16 [r6+], r1
+st16 [r7+], r1
+st16 [r0+], r2
+st16 [r1+], r2
+st16 [r2+], r2
+st16 [r3+], r2
+st16 [r4+], r2
+st16 [r5+], r2
+st16 [r6+], r2
+st16 [r7+], r2
+st16 [r0+], r3
+st16 [r1+], r3
+st16 [r2+], r3
+st16 [r3+], r3
+st16 [r4+], r3
+st16 [r5+], r3
+st16 [r6+], r3
+st16 [r7+], r3
+st16 [r0+], r4
+st16 [r1+], r4
+st16 [r2+], r4
+st16 [r3+], r4
+st16 [r4+], r4
+st16 [r5+], r4
+st16 [r6+], r4
+st16 [r7+], r4
+st16 [r0+], r5
+st16 [r1+], r5
+st16 [r2+], r5
+st16 [r3+], r5
+st16 [r4+], r5
+st16 [r5+], r5
+st16 [r6+], r5
+st16 [r7+], r5
+st16 [r0+], r6
+st16 [r1+], r6
+st16 [r2+], r6
+st16 [r3+], r6
+st16 [r4+], r6
+st16 [r5+], r6
+st16 [r6+], r6
+st16 [r7+], r6
 st16 [r0+], r7
-st16 [r1], r7
 st16 [r1+], r7
-st16 [r2], r7
 st16 [r2+], r7
-st16 [r3], r7
 st16 [r3+], r7
-st16 [r4], r7
 st16 [r4+], r7
-st16 [r5], r7
 st16 [r5+], r7
-st16 [r6], r7
 st16 [r6+], r7
-st16 [r7], r7
 st16 [r7+], r7
 
-# CHECK: encoding: [0xf0,0x6c,0x00]
-# CHECK: encoding: [0xf0,0x6c,0x02]
 # CHECK: encoding: [0xf0,0x6c,0x03]
-# CHECK: encoding: [0xf0,0x6c,0x04]
 # CHECK: encoding: [0xf0,0x6c,0x05]
-# CHECK: encoding: [0xf0,0x6c,0x06]
 # CHECK: encoding: [0xf0,0x6c,0x07]
-# CHECK: encoding: [0xf5,0x30]
 # CHECK: encoding: [0xf7,0x00]
-# CHECK: encoding: [0xf5,0x34]
 # CHECK: encoding: [0xf7,0x08]
-# CHECK: encoding: [0xf5,0x38]
 # CHECK: encoding: [0xf7,0x10]
-# CHECK: encoding: [0xf5,0x3c]
 # CHECK: encoding: [0xf7,0x18]
-# CHECK: encoding: [0xf0,0x6c,0x10]
-# CHECK: encoding: [0xf0,0x6c,0x12]
-# CHECK: encoding: [0xf0,0x6c,0x13]
-# CHECK: encoding: [0xf0,0x6c,0x14]
-# CHECK: encoding: [0xf0,0x6c,0x15]
-# CHECK: encoding: [0xf0,0x6c,0x16]
-# CHECK: encoding: [0xf0,0x6c,0x17]
-# CHECK: encoding: [0xf5,0x40]
-# CHECK: encoding: [0xf7,0x20]
-# CHECK: encoding: [0xf5,0x44]
-# CHECK: encoding: [0xf7,0x28]
-# CHECK: encoding: [0xf5,0x48]
-# CHECK: encoding: [0xf7,0x30]
-# CHECK: encoding: [0xf5,0x4c]
-# CHECK: encoding: [0xf7,0x38]
-# CHECK: encoding: [0xf0,0x6c,0x20]
 # CHECK: encoding: [0xf0,0x6c,0x21]
-# CHECK: encoding: [0xf0,0x6c,0x22]
-# CHECK: encoding: [0xf0,0x6c,0x24]
 # CHECK: encoding: [0xf0,0x6c,0x25]
-# CHECK: encoding: [0xf0,0x6c,0x26]
 # CHECK: encoding: [0xf0,0x6c,0x27]
-# CHECK: encoding: [0xf5,0x31]
 # CHECK: encoding: [0xf7,0x01]
-# CHECK: encoding: [0xf5,0x35]
 # CHECK: encoding: [0xf7,0x09]
-# CHECK: encoding: [0xf5,0x39]
 # CHECK: encoding: [0xf7,0x11]
-# CHECK: encoding: [0xf5,0x3d]
 # CHECK: encoding: [0xf7,0x19]
-# CHECK: encoding: [0xf0,0x6c,0x30]
-# CHECK: encoding: [0xf0,0x6c,0x31]
-# CHECK: encoding: [0xf0,0x6c,0x32]
-# CHECK: encoding: [0xf0,0x6c,0x34]
-# CHECK: encoding: [0xf0,0x6c,0x35]
-# CHECK: encoding: [0xf0,0x6c,0x36]
-# CHECK: encoding: [0xf0,0x6c,0x37]
-# CHECK: encoding: [0xf5,0x41]
-# CHECK: encoding: [0xf7,0x21]
-# CHECK: encoding: [0xf5,0x45]
-# CHECK: encoding: [0xf7,0x29]
-# CHECK: encoding: [0xf5,0x49]
-# CHECK: encoding: [0xf7,0x31]
-# CHECK: encoding: [0xf5,0x4d]
-# CHECK: encoding: [0xf7,0x39]
-# CHECK: encoding: [0xf0,0x6c,0x40]
 # CHECK: encoding: [0xf0,0x6c,0x41]
-# CHECK: encoding: [0xf0,0x6c,0x42]
 # CHECK: encoding: [0xf0,0x6c,0x43]
-# CHECK: encoding: [0xf0,0x6c,0x44]
-# CHECK: encoding: [0xf0,0x6c,0x46]
 # CHECK: encoding: [0xf0,0x6c,0x47]
-# CHECK: encoding: [0xf5,0x32]
 # CHECK: encoding: [0xf7,0x02]
-# CHECK: encoding: [0xf5,0x36]
 # CHECK: encoding: [0xf7,0x0a]
-# CHECK: encoding: [0xf5,0x3a]
 # CHECK: encoding: [0xf7,0x12]
-# CHECK: encoding: [0xf5,0x3e]
 # CHECK: encoding: [0xf7,0x1a]
-# CHECK: encoding: [0xf0,0x6c,0x50]
-# CHECK: encoding: [0xf0,0x6c,0x51]
-# CHECK: encoding: [0xf0,0x6c,0x52]
-# CHECK: encoding: [0xf0,0x6c,0x53]
-# CHECK: encoding: [0xf0,0x6c,0x54]
-# CHECK: encoding: [0xf0,0x6c,0x56]
-# CHECK: encoding: [0xf0,0x6c,0x57]
-# CHECK: encoding: [0xf5,0x42]
-# CHECK: encoding: [0xf7,0x22]
-# CHECK: encoding: [0xf5,0x46]
-# CHECK: encoding: [0xf7,0x2a]
-# CHECK: encoding: [0xf5,0x4a]
-# CHECK: encoding: [0xf7,0x32]
-# CHECK: encoding: [0xf5,0x4e]
-# CHECK: encoding: [0xf7,0x3a]
-# CHECK: encoding: [0xf0,0x6c,0x60]
 # CHECK: encoding: [0xf0,0x6c,0x61]
-# CHECK: encoding: [0xf0,0x6c,0x62]
 # CHECK: encoding: [0xf0,0x6c,0x63]
-# CHECK: encoding: [0xf0,0x6c,0x64]
 # CHECK: encoding: [0xf0,0x6c,0x65]
-# CHECK: encoding: [0xf0,0x6c,0x66]
-# CHECK: encoding: [0xf5,0x33]
 # CHECK: encoding: [0xf7,0x03]
-# CHECK: encoding: [0xf5,0x37]
 # CHECK: encoding: [0xf7,0x0b]
-# CHECK: encoding: [0xf5,0x3b]
 # CHECK: encoding: [0xf7,0x13]
-# CHECK: encoding: [0xf5,0x3f]
 # CHECK: encoding: [0xf7,0x1b]
-# CHECK: encoding: [0xf0,0x6c,0x70]
-# CHECK: encoding: [0xf0,0x6c,0x71]
-# CHECK: encoding: [0xf0,0x6c,0x72]
-# CHECK: encoding: [0xf0,0x6c,0x73]
-# CHECK: encoding: [0xf0,0x6c,0x74]
-# CHECK: encoding: [0xf0,0x6c,0x75]
-# CHECK: encoding: [0xf0,0x6c,0x76]
-# CHECK: encoding: [0xf5,0x43]
-# CHECK: encoding: [0xf7,0x23]
-# CHECK: encoding: [0xf5,0x47]
-# CHECK: encoding: [0xf7,0x2b]
-# CHECK: encoding: [0xf5,0x4b]
-# CHECK: encoding: [0xf7,0x33]
-# CHECK: encoding: [0xf5,0x4f]
-# CHECK: encoding: [0xf7,0x3b]
-# CHECK: encoding: [0xf0,0x6c,0x80]
 # CHECK: encoding: [0xf0,0x6c,0x81]
-# CHECK: encoding: [0xf0,0x6c,0x82]
 # CHECK: encoding: [0xf0,0x6c,0x83]
-# CHECK: encoding: [0xf0,0x6c,0x84]
 # CHECK: encoding: [0xf0,0x6c,0x85]
-# CHECK: encoding: [0xf0,0x6c,0x86]
 # CHECK: encoding: [0xf0,0x6c,0x87]
-# CHECK: encoding: [0x40]
-# CHECK: encoding: [0x41]
 # CHECK: encoding: [0xf7,0x0c]
-# CHECK: encoding: [0x42]
 # CHECK: encoding: [0xf7,0x14]
-# CHECK: encoding: [0x43]
 # CHECK: encoding: [0xf7,0x1c]
-# CHECK: encoding: [0xf0,0x6c,0x90]
-# CHECK: encoding: [0xf0,0x6c,0x91]
-# CHECK: encoding: [0xf0,0x6c,0x92]
-# CHECK: encoding: [0xf0,0x6c,0x93]
-# CHECK: encoding: [0xf0,0x6c,0x94]
-# CHECK: encoding: [0xf0,0x6c,0x95]
-# CHECK: encoding: [0xf0,0x6c,0x96]
-# CHECK: encoding: [0xf0,0x6c,0x97]
-# CHECK: encoding: [0x60]
-# CHECK: encoding: [0x61]
-# CHECK: encoding: [0xf7,0x2c]
-# CHECK: encoding: [0x62]
-# CHECK: encoding: [0xf7,0x34]
-# CHECK: encoding: [0x63]
-# CHECK: encoding: [0xf7,0x3c]
-# CHECK: encoding: [0xf0,0x6c,0xa0]
 # CHECK: encoding: [0xf0,0x6c,0xa1]
-# CHECK: encoding: [0xf0,0x6c,0xa2]
 # CHECK: encoding: [0xf0,0x6c,0xa3]
-# CHECK: encoding: [0xf0,0x6c,0xa4]
 # CHECK: encoding: [0xf0,0x6c,0xa5]
-# CHECK: encoding: [0xf0,0x6c,0xa6]
 # CHECK: encoding: [0xf0,0x6c,0xa7]
-# CHECK: encoding: [0x44]
 # CHECK: encoding: [0xf7,0x05]
-# CHECK: encoding: [0x45]
-# CHECK: encoding: [0x46]
 # CHECK: encoding: [0xf7,0x15]
-# CHECK: encoding: [0x47]
 # CHECK: encoding: [0xf7,0x1d]
-# CHECK: encoding: [0xf0,0x6c,0xb0]
-# CHECK: encoding: [0xf0,0x6c,0xb1]
-# CHECK: encoding: [0xf0,0x6c,0xb2]
-# CHECK: encoding: [0xf0,0x6c,0xb3]
-# CHECK: encoding: [0xf0,0x6c,0xb4]
-# CHECK: encoding: [0xf0,0x6c,0xb5]
-# CHECK: encoding: [0xf0,0x6c,0xb6]
-# CHECK: encoding: [0xf0,0x6c,0xb7]
-# CHECK: encoding: [0x64]
-# CHECK: encoding: [0xf7,0x25]
-# CHECK: encoding: [0x65]
-# CHECK: encoding: [0x66]
-# CHECK: encoding: [0xf7,0x35]
-# CHECK: encoding: [0x67]
-# CHECK: encoding: [0xf7,0x3d]
-# CHECK: encoding: [0xf0,0x6c,0xc0]
 # CHECK: encoding: [0xf0,0x6c,0xc1]
-# CHECK: encoding: [0xf0,0x6c,0xc2]
 # CHECK: encoding: [0xf0,0x6c,0xc3]
-# CHECK: encoding: [0xf0,0x6c,0xc4]
 # CHECK: encoding: [0xf0,0x6c,0xc5]
-# CHECK: encoding: [0xf0,0x6c,0xc6]
 # CHECK: encoding: [0xf0,0x6c,0xc7]
-# CHECK: encoding: [0x48]
 # CHECK: encoding: [0xf7,0x06]
-# CHECK: encoding: [0x49]
 # CHECK: encoding: [0xf7,0x0e]
-# CHECK: encoding: [0x4a]
-# CHECK: encoding: [0x4b]
 # CHECK: encoding: [0xf7,0x1e]
-# CHECK: encoding: [0xf0,0x6c,0xd0]
-# CHECK: encoding: [0xf0,0x6c,0xd1]
-# CHECK: encoding: [0xf0,0x6c,0xd2]
-# CHECK: encoding: [0xf0,0x6c,0xd3]
-# CHECK: encoding: [0xf0,0x6c,0xd4]
-# CHECK: encoding: [0xf0,0x6c,0xd5]
-# CHECK: encoding: [0xf0,0x6c,0xd6]
-# CHECK: encoding: [0xf0,0x6c,0xd7]
-# CHECK: encoding: [0x68]
-# CHECK: encoding: [0xf7,0x26]
-# CHECK: encoding: [0x69]
-# CHECK: encoding: [0xf7,0x2e]
-# CHECK: encoding: [0x6a]
-# CHECK: encoding: [0x6b]
-# CHECK: encoding: [0xf7,0x3e]
-# CHECK: encoding: [0xf0,0x6c,0xe0]
 # CHECK: encoding: [0xf0,0x6c,0xe1]
-# CHECK: encoding: [0xf0,0x6c,0xe2]
 # CHECK: encoding: [0xf0,0x6c,0xe3]
-# CHECK: encoding: [0xf0,0x6c,0xe4]
 # CHECK: encoding: [0xf0,0x6c,0xe5]
-# CHECK: encoding: [0xf0,0x6c,0xe6]
 # CHECK: encoding: [0xf0,0x6c,0xe7]
-# CHECK: encoding: [0x4c]
 # CHECK: encoding: [0xf7,0x07]
-# CHECK: encoding: [0x4d]
 # CHECK: encoding: [0xf7,0x0f]
-# CHECK: encoding: [0x4e]
 # CHECK: encoding: [0xf7,0x17]
-# CHECK: encoding: [0x4f]
-# CHECK: encoding: [0xf0,0x6c,0xf0]
+# CHECK: encoding: [0xf0,0x6c,0x13]
+# CHECK: encoding: [0xf0,0x6c,0x15]
+# CHECK: encoding: [0xf0,0x6c,0x17]
+# CHECK: encoding: [0xf7,0x20]
+# CHECK: encoding: [0xf7,0x28]
+# CHECK: encoding: [0xf7,0x30]
+# CHECK: encoding: [0xf7,0x38]
+# CHECK: encoding: [0xf0,0x6c,0x31]
+# CHECK: encoding: [0xf0,0x6c,0x35]
+# CHECK: encoding: [0xf0,0x6c,0x37]
+# CHECK: encoding: [0xf7,0x21]
+# CHECK: encoding: [0xf7,0x29]
+# CHECK: encoding: [0xf7,0x31]
+# CHECK: encoding: [0xf7,0x39]
+# CHECK: encoding: [0xf0,0x6c,0x51]
+# CHECK: encoding: [0xf0,0x6c,0x53]
+# CHECK: encoding: [0xf0,0x6c,0x57]
+# CHECK: encoding: [0xf7,0x22]
+# CHECK: encoding: [0xf7,0x2a]
+# CHECK: encoding: [0xf7,0x32]
+# CHECK: encoding: [0xf7,0x3a]
+# CHECK: encoding: [0xf0,0x6c,0x71]
+# CHECK: encoding: [0xf0,0x6c,0x73]
+# CHECK: encoding: [0xf0,0x6c,0x75]
+# CHECK: encoding: [0xf7,0x23]
+# CHECK: encoding: [0xf7,0x2b]
+# CHECK: encoding: [0xf7,0x33]
+# CHECK: encoding: [0xf7,0x3b]
+# CHECK: encoding: [0xf0,0x6c,0x91]
+# CHECK: encoding: [0xf0,0x6c,0x93]
+# CHECK: encoding: [0xf0,0x6c,0x95]
+# CHECK: encoding: [0xf0,0x6c,0x97]
+# CHECK: encoding: [0xf7,0x2c]
+# CHECK: encoding: [0xf7,0x34]
+# CHECK: encoding: [0xf7,0x3c]
+# CHECK: encoding: [0xf0,0x6c,0xb1]
+# CHECK: encoding: [0xf0,0x6c,0xb3]
+# CHECK: encoding: [0xf0,0x6c,0xb5]
+# CHECK: encoding: [0xf0,0x6c,0xb7]
+# CHECK: encoding: [0xf7,0x25]
+# CHECK: encoding: [0xf7,0x35]
+# CHECK: encoding: [0xf7,0x3d]
+# CHECK: encoding: [0xf0,0x6c,0xd1]
+# CHECK: encoding: [0xf0,0x6c,0xd3]
+# CHECK: encoding: [0xf0,0x6c,0xd5]
+# CHECK: encoding: [0xf0,0x6c,0xd7]
+# CHECK: encoding: [0xf7,0x26]
+# CHECK: encoding: [0xf7,0x2e]
+# CHECK: encoding: [0xf7,0x3e]
 # CHECK: encoding: [0xf0,0x6c,0xf1]
-# CHECK: encoding: [0xf0,0x6c,0xf2]
 # CHECK: encoding: [0xf0,0x6c,0xf3]
-# CHECK: encoding: [0xf0,0x6c,0xf4]
 # CHECK: encoding: [0xf0,0x6c,0xf5]
-# CHECK: encoding: [0xf0,0x6c,0xf6]
 # CHECK: encoding: [0xf0,0x6c,0xf7]
-# CHECK: encoding: [0x6c]
 # CHECK: encoding: [0xf7,0x27]
-# CHECK: encoding: [0x6d]
 # CHECK: encoding: [0xf7,0x2f]
-# CHECK: encoding: [0x6e]
 # CHECK: encoding: [0xf7,0x37]
-# CHECK: encoding: [0x6f]
-# CHECK: encoding: [0xf0,0x6d,0x00]
 # CHECK: encoding: [0xf0,0x6d,0x01]
-# CHECK: encoding: [0xf0,0x6d,0x02]
 # CHECK: encoding: [0xf0,0x6d,0x03]
-# CHECK: encoding: [0xf0,0x6d,0x04]
 # CHECK: encoding: [0xf0,0x6d,0x05]
-# CHECK: encoding: [0xf0,0x6d,0x06]
 # CHECK: encoding: [0xf0,0x6d,0x07]
-# CHECK: encoding: [0xf3,0x00]
 # CHECK: encoding: [0xf6,0x00]
-# CHECK: encoding: [0xf3,0x04]
 # CHECK: encoding: [0xf6,0x08]
-# CHECK: encoding: [0xf3,0x08]
 # CHECK: encoding: [0xf6,0x10]
-# CHECK: encoding: [0xf3,0x0c]
 # CHECK: encoding: [0xf6,0x18]
-# CHECK: encoding: [0xf0,0x6d,0x10]
-# CHECK: encoding: [0xf0,0x6d,0x11]
-# CHECK: encoding: [0xf0,0x6d,0x12]
-# CHECK: encoding: [0xf0,0x6d,0x13]
-# CHECK: encoding: [0xf0,0x6d,0x14]
-# CHECK: encoding: [0xf0,0x6d,0x15]
-# CHECK: encoding: [0xf0,0x6d,0x16]
-# CHECK: encoding: [0xf0,0x6d,0x17]
-# CHECK: encoding: [0xf5,0x50]
-# CHECK: encoding: [0xf7,0x40]
-# CHECK: encoding: [0xf5,0x54]
-# CHECK: encoding: [0xf7,0x48]
-# CHECK: encoding: [0xf5,0x58]
-# CHECK: encoding: [0xf7,0x50]
-# CHECK: encoding: [0xf5,0x5c]
-# CHECK: encoding: [0xf7,0x58]
-# CHECK: encoding: [0xf0,0x6d,0x20]
 # CHECK: encoding: [0xf0,0x6d,0x21]
-# CHECK: encoding: [0xf0,0x6d,0x22]
 # CHECK: encoding: [0xf0,0x6d,0x23]
-# CHECK: encoding: [0xf0,0x6d,0x24]
 # CHECK: encoding: [0xf0,0x6d,0x25]
-# CHECK: encoding: [0xf0,0x6d,0x26]
 # CHECK: encoding: [0xf0,0x6d,0x27]
-# CHECK: encoding: [0xf3,0x01]
 # CHECK: encoding: [0xf6,0x01]
-# CHECK: encoding: [0xf3,0x05]
 # CHECK: encoding: [0xf6,0x09]
-# CHECK: encoding: [0xf3,0x09]
 # CHECK: encoding: [0xf6,0x11]
-# CHECK: encoding: [0xf3,0x0d]
 # CHECK: encoding: [0xf6,0x19]
-# CHECK: encoding: [0xf0,0x6d,0x30]
-# CHECK: encoding: [0xf0,0x6d,0x31]
-# CHECK: encoding: [0xf0,0x6d,0x32]
-# CHECK: encoding: [0xf0,0x6d,0x33]
-# CHECK: encoding: [0xf0,0x6d,0x34]
-# CHECK: encoding: [0xf0,0x6d,0x35]
-# CHECK: encoding: [0xf0,0x6d,0x36]
-# CHECK: encoding: [0xf0,0x6d,0x37]
-# CHECK: encoding: [0xf5,0x51]
-# CHECK: encoding: [0xf7,0x41]
-# CHECK: encoding: [0xf5,0x55]
-# CHECK: encoding: [0xf7,0x49]
-# CHECK: encoding: [0xf5,0x59]
-# CHECK: encoding: [0xf7,0x51]
-# CHECK: encoding: [0xf5,0x5d]
-# CHECK: encoding: [0xf7,0x59]
-# CHECK: encoding: [0xf0,0x6d,0x40]
 # CHECK: encoding: [0xf0,0x6d,0x41]
-# CHECK: encoding: [0xf0,0x6d,0x42]
 # CHECK: encoding: [0xf0,0x6d,0x43]
-# CHECK: encoding: [0xf0,0x6d,0x44]
 # CHECK: encoding: [0xf0,0x6d,0x45]
-# CHECK: encoding: [0xf0,0x6d,0x46]
 # CHECK: encoding: [0xf0,0x6d,0x47]
-# CHECK: encoding: [0xf3,0x02]
 # CHECK: encoding: [0xf6,0x02]
-# CHECK: encoding: [0xf3,0x06]
 # CHECK: encoding: [0xf6,0x0a]
-# CHECK: encoding: [0xf3,0x0a]
 # CHECK: encoding: [0xf6,0x12]
-# CHECK: encoding: [0xf3,0x0e]
 # CHECK: encoding: [0xf6,0x1a]
-# CHECK: encoding: [0xf0,0x6d,0x50]
-# CHECK: encoding: [0xf0,0x6d,0x51]
-# CHECK: encoding: [0xf0,0x6d,0x52]
-# CHECK: encoding: [0xf0,0x6d,0x53]
-# CHECK: encoding: [0xf0,0x6d,0x54]
-# CHECK: encoding: [0xf0,0x6d,0x55]
-# CHECK: encoding: [0xf0,0x6d,0x56]
-# CHECK: encoding: [0xf0,0x6d,0x57]
-# CHECK: encoding: [0xf5,0x52]
-# CHECK: encoding: [0xf7,0x42]
-# CHECK: encoding: [0xf5,0x56]
-# CHECK: encoding: [0xf7,0x4a]
-# CHECK: encoding: [0xf5,0x5a]
-# CHECK: encoding: [0xf7,0x52]
-# CHECK: encoding: [0xf5,0x5e]
-# CHECK: encoding: [0xf7,0x5a]
-# CHECK: encoding: [0xf0,0x6d,0x60]
 # CHECK: encoding: [0xf0,0x6d,0x61]
-# CHECK: encoding: [0xf0,0x6d,0x62]
 # CHECK: encoding: [0xf0,0x6d,0x63]
-# CHECK: encoding: [0xf0,0x6d,0x64]
 # CHECK: encoding: [0xf0,0x6d,0x65]
-# CHECK: encoding: [0xf0,0x6d,0x66]
 # CHECK: encoding: [0xf0,0x6d,0x67]
-# CHECK: encoding: [0xf3,0x03]
 # CHECK: encoding: [0xf6,0x03]
-# CHECK: encoding: [0xf3,0x07]
 # CHECK: encoding: [0xf6,0x0b]
-# CHECK: encoding: [0xf3,0x0b]
 # CHECK: encoding: [0xf6,0x13]
-# CHECK: encoding: [0xf3,0x0f]
 # CHECK: encoding: [0xf6,0x1b]
-# CHECK: encoding: [0xf0,0x6d,0x70]
-# CHECK: encoding: [0xf0,0x6d,0x71]
-# CHECK: encoding: [0xf0,0x6d,0x72]
-# CHECK: encoding: [0xf0,0x6d,0x73]
-# CHECK: encoding: [0xf0,0x6d,0x74]
-# CHECK: encoding: [0xf0,0x6d,0x75]
-# CHECK: encoding: [0xf0,0x6d,0x76]
-# CHECK: encoding: [0xf0,0x6d,0x77]
-# CHECK: encoding: [0xf5,0x53]
-# CHECK: encoding: [0xf7,0x43]
-# CHECK: encoding: [0xf5,0x57]
-# CHECK: encoding: [0xf7,0x4b]
-# CHECK: encoding: [0xf5,0x5b]
-# CHECK: encoding: [0xf7,0x53]
-# CHECK: encoding: [0xf5,0x5f]
-# CHECK: encoding: [0xf7,0x5b]
-# CHECK: encoding: [0xf0,0x6d,0x80]
 # CHECK: encoding: [0xf0,0x6d,0x81]
-# CHECK: encoding: [0xf0,0x6d,0x82]
 # CHECK: encoding: [0xf0,0x6d,0x83]
-# CHECK: encoding: [0xf0,0x6d,0x84]
 # CHECK: encoding: [0xf0,0x6d,0x85]
-# CHECK: encoding: [0xf0,0x6d,0x86]
 # CHECK: encoding: [0xf0,0x6d,0x87]
-# CHECK: encoding: [0x50]
 # CHECK: encoding: [0xf6,0x04]
-# CHECK: encoding: [0x54]
 # CHECK: encoding: [0xf6,0x0c]
-# CHECK: encoding: [0x58]
 # CHECK: encoding: [0xf6,0x14]
-# CHECK: encoding: [0x5c]
 # CHECK: encoding: [0xf6,0x1c]
-# CHECK: encoding: [0xf0,0x6d,0x90]
-# CHECK: encoding: [0xf0,0x6d,0x91]
-# CHECK: encoding: [0xf0,0x6d,0x92]
-# CHECK: encoding: [0xf0,0x6d,0x93]
-# CHECK: encoding: [0xf0,0x6d,0x94]
-# CHECK: encoding: [0xf0,0x6d,0x95]
-# CHECK: encoding: [0xf0,0x6d,0x96]
-# CHECK: encoding: [0xf0,0x6d,0x97]
-# CHECK: encoding: [0x70]
-# CHECK: encoding: [0xf7,0x44]
-# CHECK: encoding: [0x74]
-# CHECK: encoding: [0xf7,0x4c]
-# CHECK: encoding: [0x78]
-# CHECK: encoding: [0xf7,0x54]
-# CHECK: encoding: [0x7c]
-# CHECK: encoding: [0xf7,0x5c]
-# CHECK: encoding: [0xf0,0x6d,0xa0]
 # CHECK: encoding: [0xf0,0x6d,0xa1]
-# CHECK: encoding: [0xf0,0x6d,0xa2]
 # CHECK: encoding: [0xf0,0x6d,0xa3]
-# CHECK: encoding: [0xf0,0x6d,0xa4]
 # CHECK: encoding: [0xf0,0x6d,0xa5]
-# CHECK: encoding: [0xf0,0x6d,0xa6]
 # CHECK: encoding: [0xf0,0x6d,0xa7]
-# CHECK: encoding: [0x51]
 # CHECK: encoding: [0xf6,0x05]
-# CHECK: encoding: [0x55]
 # CHECK: encoding: [0xf6,0x0d]
-# CHECK: encoding: [0x59]
 # CHECK: encoding: [0xf6,0x15]
-# CHECK: encoding: [0x5d]
 # CHECK: encoding: [0xf6,0x1d]
-# CHECK: encoding: [0xf0,0x6d,0xb0]
-# CHECK: encoding: [0xf0,0x6d,0xb1]
-# CHECK: encoding: [0xf0,0x6d,0xb2]
-# CHECK: encoding: [0xf0,0x6d,0xb3]
-# CHECK: encoding: [0xf0,0x6d,0xb4]
-# CHECK: encoding: [0xf0,0x6d,0xb5]
-# CHECK: encoding: [0xf0,0x6d,0xb6]
-# CHECK: encoding: [0xf0,0x6d,0xb7]
-# CHECK: encoding: [0x71]
-# CHECK: encoding: [0xf7,0x45]
-# CHECK: encoding: [0x75]
-# CHECK: encoding: [0xf7,0x4d]
-# CHECK: encoding: [0x79]
-# CHECK: encoding: [0xf7,0x55]
-# CHECK: encoding: [0x7d]
-# CHECK: encoding: [0xf7,0x5d]
-# CHECK: encoding: [0xf0,0x6d,0xc0]
 # CHECK: encoding: [0xf0,0x6d,0xc1]
-# CHECK: encoding: [0xf0,0x6d,0xc2]
 # CHECK: encoding: [0xf0,0x6d,0xc3]
-# CHECK: encoding: [0xf0,0x6d,0xc4]
 # CHECK: encoding: [0xf0,0x6d,0xc5]
-# CHECK: encoding: [0xf0,0x6d,0xc6]
 # CHECK: encoding: [0xf0,0x6d,0xc7]
-# CHECK: encoding: [0x52]
 # CHECK: encoding: [0xf6,0x06]
-# CHECK: encoding: [0x56]
 # CHECK: encoding: [0xf6,0x0e]
-# CHECK: encoding: [0x5a]
 # CHECK: encoding: [0xf6,0x16]
-# CHECK: encoding: [0x5e]
 # CHECK: encoding: [0xf6,0x1e]
-# CHECK: encoding: [0xf0,0x6d,0xd0]
-# CHECK: encoding: [0xf0,0x6d,0xd1]
-# CHECK: encoding: [0xf0,0x6d,0xd2]
-# CHECK: encoding: [0xf0,0x6d,0xd3]
-# CHECK: encoding: [0xf0,0x6d,0xd4]
-# CHECK: encoding: [0xf0,0x6d,0xd5]
-# CHECK: encoding: [0xf0,0x6d,0xd6]
-# CHECK: encoding: [0xf0,0x6d,0xd7]
-# CHECK: encoding: [0x72]
-# CHECK: encoding: [0xf7,0x46]
-# CHECK: encoding: [0x76]
-# CHECK: encoding: [0xf7,0x4e]
-# CHECK: encoding: [0x7a]
-# CHECK: encoding: [0xf7,0x56]
-# CHECK: encoding: [0x7e]
-# CHECK: encoding: [0xf7,0x5e]
-# CHECK: encoding: [0xf0,0x6d,0xe0]
 # CHECK: encoding: [0xf0,0x6d,0xe1]
-# CHECK: encoding: [0xf0,0x6d,0xe2]
 # CHECK: encoding: [0xf0,0x6d,0xe3]
-# CHECK: encoding: [0xf0,0x6d,0xe4]
 # CHECK: encoding: [0xf0,0x6d,0xe5]
-# CHECK: encoding: [0xf0,0x6d,0xe6]
 # CHECK: encoding: [0xf0,0x6d,0xe7]
-# CHECK: encoding: [0x53]
 # CHECK: encoding: [0xf6,0x07]
-# CHECK: encoding: [0x57]
 # CHECK: encoding: [0xf6,0x0f]
-# CHECK: encoding: [0x5b]
 # CHECK: encoding: [0xf6,0x17]
-# CHECK: encoding: [0x5f]
 # CHECK: encoding: [0xf6,0x1f]
-# CHECK: encoding: [0xf0,0x6d,0xf0]
+# CHECK: encoding: [0xf0,0x6d,0x11]
+# CHECK: encoding: [0xf0,0x6d,0x13]
+# CHECK: encoding: [0xf0,0x6d,0x15]
+# CHECK: encoding: [0xf0,0x6d,0x17]
+# CHECK: encoding: [0xf7,0x40]
+# CHECK: encoding: [0xf7,0x48]
+# CHECK: encoding: [0xf7,0x50]
+# CHECK: encoding: [0xf7,0x58]
+# CHECK: encoding: [0xf0,0x6d,0x31]
+# CHECK: encoding: [0xf0,0x6d,0x33]
+# CHECK: encoding: [0xf0,0x6d,0x35]
+# CHECK: encoding: [0xf0,0x6d,0x37]
+# CHECK: encoding: [0xf7,0x41]
+# CHECK: encoding: [0xf7,0x49]
+# CHECK: encoding: [0xf7,0x51]
+# CHECK: encoding: [0xf7,0x59]
+# CHECK: encoding: [0xf0,0x6d,0x51]
+# CHECK: encoding: [0xf0,0x6d,0x53]
+# CHECK: encoding: [0xf0,0x6d,0x55]
+# CHECK: encoding: [0xf0,0x6d,0x57]
+# CHECK: encoding: [0xf7,0x42]
+# CHECK: encoding: [0xf7,0x4a]
+# CHECK: encoding: [0xf7,0x52]
+# CHECK: encoding: [0xf7,0x5a]
+# CHECK: encoding: [0xf0,0x6d,0x71]
+# CHECK: encoding: [0xf0,0x6d,0x73]
+# CHECK: encoding: [0xf0,0x6d,0x75]
+# CHECK: encoding: [0xf0,0x6d,0x77]
+# CHECK: encoding: [0xf7,0x43]
+# CHECK: encoding: [0xf7,0x4b]
+# CHECK: encoding: [0xf7,0x53]
+# CHECK: encoding: [0xf7,0x5b]
+# CHECK: encoding: [0xf0,0x6d,0x91]
+# CHECK: encoding: [0xf0,0x6d,0x93]
+# CHECK: encoding: [0xf0,0x6d,0x95]
+# CHECK: encoding: [0xf0,0x6d,0x97]
+# CHECK: encoding: [0xf7,0x44]
+# CHECK: encoding: [0xf7,0x4c]
+# CHECK: encoding: [0xf7,0x54]
+# CHECK: encoding: [0xf7,0x5c]
+# CHECK: encoding: [0xf0,0x6d,0xb1]
+# CHECK: encoding: [0xf0,0x6d,0xb3]
+# CHECK: encoding: [0xf0,0x6d,0xb5]
+# CHECK: encoding: [0xf0,0x6d,0xb7]
+# CHECK: encoding: [0xf7,0x45]
+# CHECK: encoding: [0xf7,0x4d]
+# CHECK: encoding: [0xf7,0x55]
+# CHECK: encoding: [0xf7,0x5d]
+# CHECK: encoding: [0xf0,0x6d,0xd1]
+# CHECK: encoding: [0xf0,0x6d,0xd3]
+# CHECK: encoding: [0xf0,0x6d,0xd5]
+# CHECK: encoding: [0xf0,0x6d,0xd7]
+# CHECK: encoding: [0xf7,0x46]
+# CHECK: encoding: [0xf7,0x4e]
+# CHECK: encoding: [0xf7,0x56]
+# CHECK: encoding: [0xf7,0x5e]
 # CHECK: encoding: [0xf0,0x6d,0xf1]
-# CHECK: encoding: [0xf0,0x6d,0xf2]
 # CHECK: encoding: [0xf0,0x6d,0xf3]
-# CHECK: encoding: [0xf0,0x6d,0xf4]
 # CHECK: encoding: [0xf0,0x6d,0xf5]
-# CHECK: encoding: [0xf0,0x6d,0xf6]
 # CHECK: encoding: [0xf0,0x6d,0xf7]
-# CHECK: encoding: [0x73]
 # CHECK: encoding: [0xf7,0x47]
-# CHECK: encoding: [0x77]
 # CHECK: encoding: [0xf7,0x4f]
-# CHECK: encoding: [0x7b]
 # CHECK: encoding: [0xf7,0x57]
-# CHECK: encoding: [0x7f]
 # CHECK: encoding: [0xf7,0x5f]

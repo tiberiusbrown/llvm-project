@@ -569,6 +569,33 @@ private:
     return true;
   }
 
+  bool matchDisplacedDataAddress(SDValue Address, SDValue &Base,
+                                 int64_t &Displacement) {
+    const auto MatchAdd = [&](SDValue CandidateBase, SDValue CandidateOffset) {
+      const auto *Offset = dyn_cast<ConstantSDNode>(CandidateOffset);
+      if (!Offset)
+        return false;
+      Base = CandidateBase;
+      Displacement = Offset->getSExtValue();
+      return true;
+    };
+
+    if (Address.getOpcode() == ISD::ADD) {
+      if (!MatchAdd(Address.getOperand(0), Address.getOperand(1)) &&
+          !MatchAdd(Address.getOperand(1), Address.getOperand(0)))
+        return false;
+    } else if (Address.getOpcode() == ISD::SUB) {
+      const auto *Offset = dyn_cast<ConstantSDNode>(Address.getOperand(1));
+      if (!Offset)
+        return false;
+      Base = Address.getOperand(0);
+      Displacement = -int64_t(Offset->getSExtValue());
+    } else {
+      return false;
+    }
+    return Displacement >= -32 && Displacement <= 223;
+  }
+
   SDValue selectSignExtend8(SDValue Value, const SDLoc &DL) {
     SDNode *Sext =
         CurDAG->getMachineNode(AVM::SEXT8_PSEUDO, DL, MVT::i16, Value);
@@ -661,12 +688,23 @@ private:
     SmallVector<EVT, 3> ResultVTs;
     SmallVector<SDValue, 3> Ops;
     SDValue Symbol;
+    SDValue Base;
+    int64_t Displacement;
 
     if (!IsPair && Load->getAddressingMode() == ISD::UNINDEXED &&
         matchDataSymbol(Address, Symbol)) {
       Opcode = IsByte ? AVM::ABS_LOAD8U_PSEUDO : AVM::ABS_LOAD16_PSEUDO;
       ResultVTs = {MVT::i16, MVT::Other};
       Ops = {Symbol, Load->getChain()};
+    } else if (!IsPair && Load->getAddressingMode() == ISD::UNINDEXED &&
+               matchDisplacedDataAddress(Address, Base, Displacement)) {
+      Opcode = IsByte ? AVM::LOAD8U_DISP_PSEUDO
+                      : AVM::LOAD16_DISP_PSEUDO;
+      ResultVTs = {MVT::i16, MVT::Other};
+      Ops = {Base,
+             CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node),
+                                             MVT::i16),
+             Load->getChain()};
     } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Load->getOffset());
       int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);
@@ -812,11 +850,22 @@ private:
     SmallVector<EVT, 2> ResultVTs;
     SmallVector<SDValue, 4> Ops;
     SDValue Symbol;
+    SDValue Base;
+    int64_t Displacement;
     if (!IsPair && Store->getAddressingMode() == ISD::UNINDEXED &&
         matchDataSymbol(Address, Symbol)) {
       Opcode = IsByte ? AVM::ABS_STORE8_PSEUDO : AVM::ABS_STORE16_PSEUDO;
       ResultVTs = {MVT::Other};
       Ops = {Symbol, StoredValue, Store->getChain()};
+    } else if (!IsPair && Store->getAddressingMode() == ISD::UNINDEXED &&
+               matchDisplacedDataAddress(Address, Base, Displacement)) {
+      Opcode = IsByte ? AVM::STORE8_DISP_PSEUDO
+                      : AVM::STORE16_DISP_PSEUDO;
+      ResultVTs = {MVT::Other};
+      Ops = {Base,
+             CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node),
+                                             MVT::i16),
+             StoredValue, Store->getChain()};
     } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Store->getOffset());
       int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);

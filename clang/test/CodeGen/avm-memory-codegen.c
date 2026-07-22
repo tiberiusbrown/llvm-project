@@ -19,6 +19,16 @@ unsigned short read_word(void) { return word; }
 // CHECK: stm16 [record+1], r4
 void write_record(unsigned short value) { record.value = value; }
 
+// CHECK-LABEL: read_record_member:
+// CHECK: ld16 {{r[0-7]}}, [{{r[0-7]}}+1]
+unsigned short read_record_member(const struct record *p) { return p->value; }
+
+// CHECK-LABEL: write_record_member:
+// CHECK: st16 [{{r[0-7]}}+1], {{r[0-7]}}
+void write_record_member(struct record *p, unsigned short value) {
+  p->value = value;
+}
+
 // CHECK-LABEL: text_address:
 // CHECK: ldi16 r4, text
 const char *text_address(void) { return text; }

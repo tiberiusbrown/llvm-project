@@ -2,7 +2,7 @@
 
 # CHECK: nop
 # CHECK: ldi8{{[ \t]+}}r4, 18
-# CHECK: ld8u{{[ \t]+}}r0, [r0]
+# CHECK: ld8u{{[ \t]+}}r0, [r1+]
 # CHECK: jmpf{{[ \t]+}}0
 # CHECK: st16{{[ \t]+}}[r7+], r7
 

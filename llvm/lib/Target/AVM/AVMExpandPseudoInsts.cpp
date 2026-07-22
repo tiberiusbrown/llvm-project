@@ -56,6 +56,26 @@ public:
       BuildMI(MBB, Before, Before.getDebugLoc(), TII.get(Opcode), Reg)
           .addImm(Value);
     };
+    auto ReplaceWithDisplacedLoad = [&](MachineBasicBlock &MBB,
+                                        MachineInstr &MI, unsigned Opcode,
+                                        int64_t Displacement) {
+      MachineInstrBuilder MIB =
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode));
+      MIB.add(MI.getOperand(0));
+      MIB.add(MI.getOperand(1));
+      MIB.addImm(Displacement).cloneMemRefs(MI);
+      MI.eraseFromParent();
+    };
+    auto ReplaceWithDisplacedStore = [&](MachineBasicBlock &MBB,
+                                         MachineInstr &MI, unsigned Opcode,
+                                         int64_t Displacement) {
+      MachineInstrBuilder MIB =
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode));
+      MIB.add(MI.getOperand(0));
+      MIB.addImm(Displacement);
+      MIB.add(MI.getOperand(1)).cloneMemRefs(MI);
+      MI.eraseFromParent();
+    };
     auto GetBranchOpcode = [](int64_t Cond) {
       switch (Cond) {
       case AVMCC::EQ:
@@ -561,31 +581,67 @@ public:
         case AVM::LOAD8U_PSEUDO: {
           Register Dest = MI.getOperand(0).getReg();
           Register Addr = MI.getOperand(1).getReg();
-          NewOpcode = IsUpper(Addr) ? (IsUpper(Dest) ? AVM::LD8U : AVM::F5LD8U)
-                                    : AVM::GPLD8U;
+          if (!IsUpper(Addr)) {
+            ReplaceWithDisplacedLoad(MBB, MI, AVM::DPLD8U, 0);
+            Changed = true;
+            continue;
+          }
+          NewOpcode = IsUpper(Dest) ? AVM::LD8U : AVM::F5LD8U;
           break;
         }
         case AVM::LOAD16_PSEUDO: {
           Register Dest = MI.getOperand(0).getReg();
           Register Addr = MI.getOperand(1).getReg();
-          NewOpcode = IsUpper(Addr) ? (IsUpper(Dest) ? AVM::LD16 : AVM::F5LD16)
-                                    : AVM::GPLD16;
+          if (!IsUpper(Addr)) {
+            ReplaceWithDisplacedLoad(MBB, MI, AVM::DPLD16, 0);
+            Changed = true;
+            continue;
+          }
+          NewOpcode = IsUpper(Dest) ? AVM::LD16 : AVM::F5LD16;
           break;
         }
         case AVM::STORE8_PSEUDO: {
           Register Addr = MI.getOperand(0).getReg();
           Register Src = MI.getOperand(1).getReg();
-          NewOpcode = IsUpper(Addr) ? (IsUpper(Src) ? AVM::ST8 : AVM::F3ST8)
-                                    : AVM::GPST8;
+          if (!IsUpper(Addr)) {
+            ReplaceWithDisplacedStore(MBB, MI, AVM::DPST8, 0);
+            Changed = true;
+            continue;
+          }
+          NewOpcode = IsUpper(Src) ? AVM::ST8 : AVM::F3ST8;
           break;
         }
         case AVM::STORE16_PSEUDO: {
           Register Addr = MI.getOperand(0).getReg();
           Register Src = MI.getOperand(1).getReg();
-          NewOpcode = IsUpper(Addr) ? (IsUpper(Src) ? AVM::ST16 : AVM::F5ST16)
-                                    : AVM::GPST16;
+          if (!IsUpper(Addr)) {
+            ReplaceWithDisplacedStore(MBB, MI, AVM::DPST16, 0);
+            Changed = true;
+            continue;
+          }
+          NewOpcode = IsUpper(Src) ? AVM::ST16 : AVM::F5ST16;
           break;
         }
+        case AVM::LOAD8U_DISP_PSEUDO:
+          assert(MI.getOperand(2).isImm() && MI.getOperand(2).getImm() >= -32 &&
+                 MI.getOperand(2).getImm() <= 223);
+          NewOpcode = AVM::DPLD8U;
+          break;
+        case AVM::LOAD16_DISP_PSEUDO:
+          assert(MI.getOperand(2).isImm() && MI.getOperand(2).getImm() >= -32 &&
+                 MI.getOperand(2).getImm() <= 223);
+          NewOpcode = AVM::DPLD16;
+          break;
+        case AVM::STORE8_DISP_PSEUDO:
+          assert(MI.getOperand(1).isImm() && MI.getOperand(1).getImm() >= -32 &&
+                 MI.getOperand(1).getImm() <= 223);
+          NewOpcode = AVM::DPST8;
+          break;
+        case AVM::STORE16_DISP_PSEUDO:
+          assert(MI.getOperand(1).isImm() && MI.getOperand(1).getImm() >= -32 &&
+                 MI.getOperand(1).getImm() <= 223);
+          NewOpcode = AVM::DPST16;
+          break;
         case AVM::LOAD32_PSEUDO:
           NewOpcode = AVM::LD32;
           break;
@@ -602,8 +658,10 @@ public:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPLD16_POST), Lo)
               .addDef(Addr)
               .addReg(AddrIn);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPLD8U), Hi)
-              .addReg(Addr);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::DPLD8U), Hi)
+              .addReg(Addr)
+              .addImm(0)
+              .cloneMemRefs(MI);
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -618,9 +676,11 @@ public:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPST16_POST), Addr)
               .addReg(AddrIn)
               .addReg(Lo);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPST8))
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::DPST8))
               .addReg(Addr)
-              .addReg(Hi);
+              .addImm(0)
+              .addReg(Hi)
+              .cloneMemRefs(MI);
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -656,14 +716,20 @@ public:
                   .addReg(AddrIn, getKillRegState(MI.getOperand(2).isKill()));
           if (!IsByte)
             Adjust.addImm(-2);
-          unsigned LoadOpcode =
-              IsUpper(Addr)
-                  ? (IsUpper(Dest) ? (IsByte ? AVM::LD8U : AVM::LD16)
-                                   : (IsByte ? AVM::F5LD8U : AVM::F5LD16))
-                  : (IsByte ? AVM::GPLD8U : AVM::GPLD16);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(LoadOpcode), Dest)
-              .addReg(Addr)
-              .cloneMemRefs(MI);
+          if (!IsUpper(Addr)) {
+            BuildMI(MBB, MI, MI.getDebugLoc(),
+                    TII.get(IsByte ? AVM::DPLD8U : AVM::DPLD16), Dest)
+                .addReg(Addr)
+                .addImm(0)
+                .cloneMemRefs(MI);
+          } else {
+            unsigned LoadOpcode =
+                IsUpper(Dest) ? (IsByte ? AVM::LD8U : AVM::LD16)
+                              : (IsByte ? AVM::F5LD8U : AVM::F5LD16);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(LoadOpcode), Dest)
+                .addReg(Addr)
+                .cloneMemRefs(MI);
+          }
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -683,15 +749,22 @@ public:
                   .addReg(AddrIn, getKillRegState(MI.getOperand(1).isKill()));
           if (!IsByte)
             Adjust.addImm(-2);
-          unsigned StoreOpcode =
-              IsUpper(Addr)
-                  ? (IsUpper(Src) ? (IsByte ? AVM::ST8 : AVM::ST16)
-                                  : (IsByte ? AVM::F3ST8 : AVM::F5ST16))
-                  : (IsByte ? AVM::GPST8 : AVM::GPST16);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(StoreOpcode))
-              .addReg(Addr)
-              .addReg(Src, getKillRegState(MI.getOperand(2).isKill()))
-              .cloneMemRefs(MI);
+          if (!IsUpper(Addr)) {
+            BuildMI(MBB, MI, MI.getDebugLoc(),
+                    TII.get(IsByte ? AVM::DPST8 : AVM::DPST16))
+                .addReg(Addr)
+                .addImm(0)
+                .addReg(Src, getKillRegState(MI.getOperand(2).isKill()))
+                .cloneMemRefs(MI);
+          } else {
+            unsigned StoreOpcode =
+                IsUpper(Src) ? (IsByte ? AVM::ST8 : AVM::ST16)
+                             : (IsByte ? AVM::F3ST8 : AVM::F5ST16);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(StoreOpcode))
+                .addReg(Addr)
+                .addReg(Src, getKillRegState(MI.getOperand(2).isKill()))
+                .cloneMemRefs(MI);
+          }
           MI.eraseFromParent();
           Changed = true;
           continue;

@@ -135,6 +135,22 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
   auto CloneMemRefs = [&](MachineInstrBuilder MIB) -> MachineInstrBuilder {
     return MIB.cloneMemRefs(Old);
   };
+  auto BuildDisplacedLoad = [&](unsigned LoadOpcode, Register Dest,
+                                Register Address, int64_t Displacement,
+                                unsigned AddressState = 0) {
+    return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(LoadOpcode), Dest)
+                            .addReg(Address, AddressState)
+                            .addImm(Displacement));
+  };
+  auto BuildDisplacedStore = [&](unsigned StoreOpcode, Register Address,
+                                 int64_t Displacement, Register Src,
+                                 unsigned AddressState = 0,
+                                 unsigned SrcState = 0) {
+    return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(StoreOpcode))
+                            .addReg(Address, AddressState)
+                            .addImm(Displacement)
+                            .addReg(Src, SrcState));
+  };
   auto GetScratch = [&]() {
     assert(RS && "AVM far frame stores require register scavenging");
     Register Scratch =
@@ -252,32 +268,16 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
 
   if (IsPair) {
     if (Is24) {
-      unsigned AddOpcode = AVM::UpperGPR16RegClass.contains(Address)
-                               ? AVM::ADDIS8
-                               : AVM::COLDADDIS8;
       Register Lo = getSubReg(ValueReg, AVM::sub_lo16);
       Register Hi = getSubReg(ValueReg, AVM::sub_hi16);
       if (IsLoad) {
-        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
-            .addReg(Address)
-            .addImm(2);
-        CloneMemRefs(
-            BuildMI(MBB, MI, DL, TII.get(AVM::GPLD8U), Hi).addReg(Address));
-        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
-            .addReg(Address)
-            .addImm(-2);
-        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPLD16), Lo)
-                         .addReg(Address, RegState::Kill));
+        BuildDisplacedLoad(AVM::DPLD8U, Hi, Address, 2);
+        BuildDisplacedLoad(AVM::DPLD16, Lo, Address, 0, RegState::Kill);
       } else {
-        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPST16))
-                         .addReg(Address)
-                         .addReg(Lo, getKillRegState(IsKill)));
-        BuildMI(MBB, MI, DL, TII.get(AddOpcode), Address)
-            .addReg(Address)
-            .addImm(2);
-        CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::GPST8))
-                         .addReg(Address, RegState::Kill)
-                         .addReg(Hi, getKillRegState(IsKill)));
+        BuildDisplacedStore(AVM::DPST16, Address, 0, Lo, 0,
+                            getKillRegState(IsKill));
+        BuildDisplacedStore(AVM::DPST8, Address, 2, Hi, RegState::Kill,
+                            getKillRegState(IsKill));
       }
     } else if (IsLoad)
       CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::LD32), ValueReg)
@@ -288,17 +288,15 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                        .addReg(ValueReg, getKillRegState(IsKill)));
   } else if (IsLoad) {
     unsigned LoadOpcode =
-        Opcode == AVM::STACK_LOAD16_PSEUDO ? AVM::GPLD16 : AVM::GPLD8U;
-    CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(LoadOpcode), ValueReg)
-                     .addReg(Address, RegState::Kill));
+        Opcode == AVM::STACK_LOAD16_PSEUDO ? AVM::DPLD16 : AVM::DPLD8U;
+    BuildDisplacedLoad(LoadOpcode, ValueReg, Address, 0, RegState::Kill);
     if (Opcode == AVM::STACK_LOAD8S_PSEUDO)
       BuildMI(MBB, MI, DL, TII.get(AVM::SEXT8), ValueReg).addReg(ValueReg);
   } else {
     unsigned StoreOpcode =
-        Opcode == AVM::STACK_STORE8_PSEUDO ? AVM::GPST8 : AVM::GPST16;
-    CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(StoreOpcode))
-                     .addReg(Address, RegState::Kill)
-                     .addReg(ValueReg, getKillRegState(IsKill)));
+        Opcode == AVM::STACK_STORE8_PSEUDO ? AVM::DPST8 : AVM::DPST16;
+    BuildDisplacedStore(StoreOpcode, Address, 0, ValueReg, RegState::Kill,
+                        getKillRegState(IsKill));
   }
 
   Old.eraseFromParent();

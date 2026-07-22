@@ -428,9 +428,9 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
                    4 * *Address);
   }
 
-  void emitGeneralPointer(const MCInst &MI, SmallVectorImpl<char> &Out,
-                          unsigned Secondary, bool IsWord, bool IsPost,
-                          bool IsStore) const {
+  void emitGeneralPointerPost(const MCInst &MI, SmallVectorImpl<char> &Out,
+                              unsigned Secondary, bool IsWord,
+                              bool IsStore) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
         !MI.getOperand(1).isReg()) {
       error(MI, "expected general-pointer register memory operands");
@@ -444,14 +444,14 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       error(MI, "expected full register r0-r7 operands");
       return;
     }
-    if (!IsStore && IsPost && *DataIndex == *AddressIndex) {
+    if (!IsStore && *DataIndex == *AddressIndex) {
       error(MI, "postincrement destination must not overlap address register");
       return;
     }
     emit8(Out, 0xf0);
     emit8(Out, Secondary);
     emit8(Out, (*DataIndex << 5) | (unsigned(IsWord) << 4) |
-                   (*AddressIndex << 1) | unsigned(IsPost));
+                   (*AddressIndex << 1) | 1);
   }
 
   void emitDisplacedData(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -1236,14 +1236,10 @@ public:
     case AVM::CMP32: emitCold32(MI, Out, 0x69, true, false); return;
     case AVM::LD32: emitCold32(MI, Out, 0x6a, false, false); return;
     case AVM::ST32: emitCold32(MI, Out, 0x6b, false, true); return;
-    case AVM::GPLD8U: emitGeneralPointer(MI, Out, 0x6c, false, false, false); return;
-    case AVM::GPLD16: emitGeneralPointer(MI, Out, 0x6c, true, false, false); return;
-    case AVM::GPLD8U_POST: emitGeneralPointer(MI, Out, 0x6c, false, true, false); return;
-    case AVM::GPLD16_POST: emitGeneralPointer(MI, Out, 0x6c, true, true, false); return;
-    case AVM::GPST8: emitGeneralPointer(MI, Out, 0x6d, false, false, true); return;
-    case AVM::GPST16: emitGeneralPointer(MI, Out, 0x6d, true, false, true); return;
-    case AVM::GPST8_POST: emitGeneralPointer(MI, Out, 0x6d, false, true, true); return;
-    case AVM::GPST16_POST: emitGeneralPointer(MI, Out, 0x6d, true, true, true); return;
+    case AVM::GPLD8U_POST: emitGeneralPointerPost(MI, Out, 0x6c, false, false); return;
+    case AVM::GPLD16_POST: emitGeneralPointerPost(MI, Out, 0x6c, true, false); return;
+    case AVM::GPST8_POST: emitGeneralPointerPost(MI, Out, 0x6d, false, true); return;
+    case AVM::GPST16_POST: emitGeneralPointerPost(MI, Out, 0x6d, true, true); return;
     case AVM::DPLD8U: emitDisplacedData(MI, Out, false, false); return;
     case AVM::DPLD16: emitDisplacedData(MI, Out, true, false); return;
     case AVM::DPST8: emitDisplacedData(MI, Out, false, true); return;
