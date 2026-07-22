@@ -65,6 +65,7 @@ def AVMProgramLoadScalarReg : RegisterOperand<AVMGeneralReg, "printFullReg">;
 def AVMProgramLoadPairReg : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 def AVMColdPair : RegisterOperand<AVMProgramPairReg, "printFullReg">;
 def AVMColdDataPointer : RegisterOperand<AVMGeneralReg, "printFullReg">;
+def AVMDataDisp8 : Operand<i32>;
 
 class AVMInst<string Asm, int Bytes, dag Operands = (ins)> : Instruction {
   let Namespace = "AVM";
@@ -486,6 +487,24 @@ class AVMGeneralPointerStoreInst<string Asm>
     : AVMInst<Asm, 3,
               (ins AVMGeneralPointerAddressReg:$addr,
                    AVMGeneralPointerDataReg:$src)> { let mayStore = 1; }
+
+// Displaced data-memory forms are MC-only.  The signed architectural
+// displacement is encoded as an unsigned byte biased by 32; it has no
+// relocation semantics and these records intentionally have no patterns.
+class AVMDisplacedDataLoadInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr,
+                           AVMDataDisp8:$disp)> {
+  let OutOperandList = (outs AVMGeneralPointerDataReg:$dst);
+  let mayLoad = 1;
+  let hasNoSchedulingInfo = 1;
+}
+class AVMDisplacedDataStoreInst<string Asm>
+    : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr,
+                           AVMDataDisp8:$disp,
+                           AVMGeneralPointerDataReg:$src)> {
+  let mayStore = 1;
+  let hasNoSchedulingInfo = 1;
+}
 
 class AVMGeneralPointerPostLoadInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMGeneralPointerAddressReg:$addr_in)> {
@@ -1201,6 +1220,11 @@ def GPST8 : AVMGeneralPointerStoreInst<"st8 [$addr], $src">;
 def GPST16 : AVMGeneralPointerStoreInst<"st16 [$addr], $src">;
 def GPST8_POST : AVMGeneralPointerPostStoreInst<"st8 [$addr_in+], $src">;
 def GPST16_POST : AVMGeneralPointerPostStoreInst<"st16 [$addr_in+], $src">;
+
+def DPLD8U : AVMDisplacedDataLoadInst<"ld8u $dst, [$addr+$disp]">;
+def DPLD16 : AVMDisplacedDataLoadInst<"ld16 $dst, [$addr+$disp]">;
+def DPST8 : AVMDisplacedDataStoreInst<"st8 [$addr+$disp], $src">;
+def DPST16 : AVMDisplacedDataStoreInst<"st16 [$addr+$disp], $src">;
 
 def BREQ8 : AVMConditionalRel8ControlInst<"breq8 $rel"> { let Uses = [CC]; }
 def BRNE8 : AVMConditionalRel8ControlInst<"brne8 $rel"> { let Uses = [CC]; }

@@ -1035,6 +1035,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
   bool parseSpelledDataMemory(MCRegister &Reg, bool &IsFull,
                               bool &PostIncrement,
+                              std::optional<int64_t> &Displacement,
                               std::optional<bool> ExpectedClass = std::nullopt,
                               bool AllowCompactPostIncrement = false) {
     if (!Parser.getTok().is(AsmToken::LBrac))
@@ -1050,13 +1051,42 @@ class AVMAsmParser final : public MCTargetAsmParser {
     } else if (parseSpelledDataReg(Reg, IsFull)) {
       return true;
     }
-    PostIncrement = Parser.getTok().is(AsmToken::Plus);
-    if (PostIncrement) {
-      if (!IsFull && !AllowCompactPostIncrement)
-        return error(Parser.getTok().getLoc(),
-                     "postincrement memory operands are not supported");
+    if (Parser.getTok().is(AsmToken::Plus)) {
+      SMLoc OperatorLoc = Parser.getTok().getLoc();
       Parser.Lex();
+      PostIncrement = Parser.getTok().is(AsmToken::RBrac);
+      if (!PostIncrement) {
+        SMLoc ExprLoc = Parser.getTok().getLoc();
+        const MCExpr *Expr = nullptr;
+        if (Parser.parseExpression(Expr))
+          return true;
+        int64_t Value = 0;
+        if (!Expr->evaluateAsAbsolute(Value))
+          return error(ExprLoc,
+                       "displacement expression must be fully resolvable");
+        Displacement = Value;
+      }
+      if (PostIncrement && !IsFull && !AllowCompactPostIncrement)
+        return error(OperatorLoc,
+                     "postincrement memory operands are not supported");
+    } else if (Parser.getTok().is(AsmToken::Minus)) {
+      Parser.Lex();
+      SMLoc ExprLoc = Parser.getTok().getLoc();
+      const MCExpr *Expr = nullptr;
+      if (Parser.parseExpression(Expr))
+        return true;
+      int64_t Value = 0;
+      if (!Expr->evaluateAsAbsolute(Value))
+        return error(ExprLoc,
+                     "displacement expression must be fully resolvable");
+      if (Value < -223 || Value > 32)
+        return error(ExprLoc,
+                     "displacement is out of range; expected -32 through 223");
+      Displacement = -Value;
     }
+    if (Displacement && (*Displacement < -32 || *Displacement > 223))
+      return error(Parser.getTok().getLoc(),
+                   "displacement is out of range; expected -32 through 223");
     if (!Parser.getTok().is(AsmToken::RBrac))
       return error(Parser.getTok().getLoc(),
                    "expected ']' after data address register");
@@ -1067,6 +1097,7 @@ class AVMAsmParser final : public MCTargetAsmParser {
   bool parseOverloadedMemoryInstruction(unsigned CompactOpcode,
                                         unsigned GeneralOpcode,
                                         unsigned GeneralPostOpcode,
+                                        unsigned DisplacedOpcode,
                                         bool IsStore, StringRef Name,
                                         SMLoc NameLoc,
                                         OperandVector &Operands,
@@ -1074,16 +1105,34 @@ class AVMAsmParser final : public MCTargetAsmParser {
                                         unsigned CompactPostOpcode = 0) {
     MCRegister Data, Address;
     bool DataIsFull = false, AddressIsFull = false, PostIncrement = false;
+    std::optional<int64_t> Displacement;
     if (IsStore) {
       if (parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
-                                 std::nullopt, CompactPostOpcode != 0) ||
+                                 Displacement, std::nullopt,
+                                 CompactPostOpcode != 0) ||
           Parser.parseComma() || parseSpelledDataReg(Data, DataIsFull))
         return true;
     } else {
       if (parseSpelledDataReg(Data, DataIsFull) || Parser.parseComma() ||
           parseSpelledDataMemory(Address, AddressIsFull, PostIncrement,
-                               std::nullopt, CompactPostOpcode != 0))
+                                 Displacement, std::nullopt,
+                                 CompactPostOpcode != 0))
         return true;
+    }
+    if (Displacement) {
+      MCInst Inst;
+      Inst.setOpcode(DisplacedOpcode);
+      if (IsStore) {
+        Inst.addOperand(MCOperand::createReg(Address));
+        Inst.addOperand(MCOperand::createImm(*Displacement));
+        Inst.addOperand(MCOperand::createReg(Data));
+      } else {
+        Inst.addOperand(MCOperand::createReg(Data));
+        Inst.addOperand(MCOperand::createReg(Address));
+        Inst.addOperand(MCOperand::createImm(*Displacement));
+      }
+      return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                               Operands, Name, NameLoc);
     }
     if (!AddressIsFull && DataIsFull && MixedOpcode && !PostIncrement) {
       const auto Source = scalarRegisterIndex(Data);
@@ -1369,16 +1418,14 @@ public:
                                Operands);
     }
     if (Lower == "ld8u") {
-      return parseOverloadedMemoryInstruction(AVM::LD8U, AVM::GPLD8U,
-                                              AVM::GPLD8U_POST, false, Name,
-                                              NameLoc, Operands, AVM::F5LD8U,
-                                              AVM::F7LD8U_POST);
+      return parseOverloadedMemoryInstruction(
+          AVM::LD8U, AVM::GPLD8U, AVM::GPLD8U_POST, AVM::DPLD8U, false, Name,
+          NameLoc, Operands, AVM::F5LD8U, AVM::F7LD8U_POST);
     }
     if (Lower == "st8")
-      return parseOverloadedMemoryInstruction(AVM::ST8, AVM::GPST8,
-                                              AVM::GPST8_POST, true, Name,
-                                              NameLoc, Operands, AVM::F3ST8,
-                                              AVM::F6ST8_POST);
+      return parseOverloadedMemoryInstruction(
+          AVM::ST8, AVM::GPST8, AVM::GPST8_POST, AVM::DPST8, true, Name,
+          NameLoc, Operands, AVM::F3ST8, AVM::F6ST8_POST);
     if (Lower == "mulu8.w")
       return parseF3Multiply(AVM::MULU8W, Name, NameLoc, Operands);
     if (Lower == "muls8.w")
@@ -1386,16 +1433,14 @@ public:
     if (Lower == "mulsu8.w")
       return parseF3Multiply(AVM::MULSU8W, Name, NameLoc, Operands);
     if (Lower == "ld16") {
-      return parseOverloadedMemoryInstruction(AVM::LD16, AVM::GPLD16,
-                                              AVM::GPLD16_POST, false, Name,
-                                              NameLoc, Operands, AVM::F5LD16,
-                                              AVM::F7LD16_POST);
+      return parseOverloadedMemoryInstruction(
+          AVM::LD16, AVM::GPLD16, AVM::GPLD16_POST, AVM::DPLD16, false, Name,
+          NameLoc, Operands, AVM::F5LD16, AVM::F7LD16_POST);
     }
     if (Lower == "st16")
-      return parseOverloadedMemoryInstruction(AVM::ST16, AVM::GPST16,
-                                              AVM::GPST16_POST, true, Name,
-                                              NameLoc, Operands, AVM::F5ST16,
-                                              AVM::F7ST16_POST);
+      return parseOverloadedMemoryInstruction(
+          AVM::ST16, AVM::GPST16, AVM::GPST16_POST, AVM::DPST16, true, Name,
+          NameLoc, Operands, AVM::F5ST16, AVM::F7ST16_POST);
     if (Lower == "ldm8u")
       return parseAbsoluteDataInstruction(AVM::LDM8U, false, Name, NameLoc,
                                           Operands);

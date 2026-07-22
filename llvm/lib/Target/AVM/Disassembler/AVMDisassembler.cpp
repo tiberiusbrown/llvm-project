@@ -1008,6 +1008,38 @@ public:
       return Success;
     }
 
+    if (Bytes[0] == 0xed || Bytes[0] == 0xee) {
+      if (Bytes.size() < 3)
+        return Fail;
+      const uint8_t Spec = Bytes[1];
+      if (Spec & 1) {
+        Size = 1;
+        return Fail;
+      }
+      const unsigned DataIndex = Spec >> 5;
+      const bool IsWord = Spec & 0x10;
+      const unsigned AddressIndex = (Spec >> 1) & 7;
+      const bool IsStore = Bytes[0] == 0xee;
+      if (IsStore)
+        MI.setOpcode(IsWord ? AVM::DPST16 : AVM::DPST8);
+      else
+        MI.setOpcode(IsWord ? AVM::DPLD16 : AVM::DPLD8U);
+      const MCRegister Data = generalPointerRegister(DataIndex);
+      const MCRegister Address = generalPointerRegister(AddressIndex);
+      const int64_t Displacement = int64_t(Bytes[2]) - 32;
+      if (IsStore) {
+        MI.addOperand(MCOperand::createReg(Address));
+        MI.addOperand(MCOperand::createImm(Displacement));
+        MI.addOperand(MCOperand::createReg(Data));
+      } else {
+        MI.addOperand(MCOperand::createReg(Data));
+        MI.addOperand(MCOperand::createReg(Address));
+        MI.addOperand(MCOperand::createImm(Displacement));
+      }
+      Size = 3;
+      return Success;
+    }
+
     if (Bytes[0] == 0xef) {
       MI.setOpcode(AVM::RET);
       Size = 1;

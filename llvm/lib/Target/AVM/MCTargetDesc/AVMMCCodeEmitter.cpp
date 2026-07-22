@@ -454,6 +454,35 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
                    (*AddressIndex << 1) | unsigned(IsPost));
   }
 
+  void emitDisplacedData(const MCInst &MI, SmallVectorImpl<char> &Out,
+                         bool IsWord, bool IsStore) const {
+    if (MI.getNumOperands() != 3 ||
+        !MI.getOperand(IsStore ? 2 : 0).isReg() ||
+        !MI.getOperand(IsStore ? 0 : 1).isReg() ||
+        !MI.getOperand(IsStore ? 1 : 2).isImm()) {
+      error(MI,
+            "expected displaced data-memory register and immediate operands");
+      return;
+    }
+    const MCRegister Data = MI.getOperand(IsStore ? 2 : 0).getReg();
+    const MCRegister Address = MI.getOperand(IsStore ? 0 : 1).getReg();
+    const int64_t Displacement = MI.getOperand(IsStore ? 1 : 2).getImm();
+    const auto DataIndex = generalPointerRegIndex(Data);
+    const auto AddressIndex = generalPointerRegIndex(Address);
+    if (!DataIndex || !AddressIndex) {
+      error(MI, "expected full register r0-r7 operands");
+      return;
+    }
+    if (Displacement < -32 || Displacement > 223) {
+      error(MI, "displacement is out of range; expected -32 through 223");
+      return;
+    }
+    emit8(Out, IsStore ? 0xee : 0xed);
+    emit8(Out, (*DataIndex << 5) | (unsigned(IsWord) << 4) |
+                   (*AddressIndex << 1));
+    emit8(Out, Displacement + 32);
+  }
+
   void emitF7Memory(const MCInst &MI, SmallVectorImpl<char> &Out,
                     unsigned Base, bool IsStore) const {
     if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
@@ -1215,6 +1244,10 @@ public:
     case AVM::GPST16: emitGeneralPointer(MI, Out, 0x6d, true, false, true); return;
     case AVM::GPST8_POST: emitGeneralPointer(MI, Out, 0x6d, false, true, true); return;
     case AVM::GPST16_POST: emitGeneralPointer(MI, Out, 0x6d, true, true, true); return;
+    case AVM::DPLD8U: emitDisplacedData(MI, Out, false, false); return;
+    case AVM::DPLD16: emitDisplacedData(MI, Out, true, false); return;
+    case AVM::DPST8: emitDisplacedData(MI, Out, false, true); return;
+    case AVM::DPST16: emitDisplacedData(MI, Out, true, true); return;
     case AVM::BREQ8: emitRel8(MI, Out, Fixups, 0xd0); return;
     case AVM::BRNE8: emitRel8(MI, Out, Fixups, 0xd1); return;
     case AVM::BRULT8: emitRel8(MI, Out, Fixups, 0xd2); return;

@@ -95,6 +95,10 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::F7LD8U_POST: return {"ld8u", 0};
   case AVM::F7LD16_POST: return {"ld16", 0};
   case AVM::F7ST16_POST: return {"st16", 0};
+  case AVM::DPLD8U: return {"ld8u", 0};
+  case AVM::DPLD16: return {"ld16", 0};
+  case AVM::DPST8: return {"st8", 0};
+  case AVM::DPST16: return {"st16", 0};
   case AVM::ADD32: return {"add32", 0};
   case AVM::SUB32: return {"sub32", 0};
   case AVM::LSR32_1: return {"lsr32.1", 0};
@@ -594,6 +598,25 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
       OS << '+';
     OS << "], ";
     printFullReg(MI->getOperand(1).getReg(), OS);
+    break;
+  case AVM::DPLD8U:
+  case AVM::DPLD16:
+    OS << '\t';
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    OS << ", [";
+    printFullReg(MI->getOperand(1).getReg(), OS);
+    if (MI->getOperand(2).getImm() >= 0)
+      OS << '+';
+    OS << MI->getOperand(2).getImm() << ']';
+    break;
+  case AVM::DPST8:
+  case AVM::DPST16:
+    OS << "\t[";
+    printFullReg(MI->getOperand(0).getReg(), OS);
+    if (MI->getOperand(1).getImm() >= 0)
+      OS << '+';
+    OS << MI->getOperand(1).getImm() << "], ";
+    printFullReg(MI->getOperand(2).getReg(), OS);
     break;
   case AVM::F6ST8_POST:
     OS << "\t[";

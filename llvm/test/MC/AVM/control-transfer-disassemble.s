@@ -22,4 +22,4 @@
 # CHECK: eb{{ *}}callp{{ *}}q3
 # CHECK: ef{{ *}}ret
 # CHECK: ec 00{{ *}}udiv16{{ *}}r0, r0
-# CHECK-COUNT-2: <unknown>
+# CHECK-COUNT-1: <unknown>
