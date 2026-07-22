@@ -30,6 +30,16 @@ define void @debug_services(i8 %value) {
   ret void
 }
 
+define void @timer_result_to_debug() {
+; CHECK-LABEL: timer_result_to_debug:
+; CHECK:       sys millis
+; CHECK:       sys debug_putc
+  %timer = call i16 @llvm.avm.millis()
+  %character = trunc i16 %timer to i8
+  call void @llvm.avm.debug.putc(i8 %character)
+  ret void
+}
+
 define i16 @timer_services() {
 ; CHECK-LABEL: timer_services:
 ; CHECK:       sys millis
@@ -76,36 +86,41 @@ define float @math_services(float %x, float %y) {
 ; MIR-LABEL: name: debug_services
 ; MIR:       SYS_DEBUG_PUTC_PSEUDO
 ; MIR:       SYS_DEBUG_BREAK_PSEUDO
+; MIR-LABEL: name: timer_result_to_debug
+; MIR:       [[DEBUG_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+; MIR-NEXT:  [[DEBUG_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[DEBUG_RESULT]]
+; MIR:       [[DEBUG_INPUT:%[0-9]+]]:r4only = COPY {{%[0-9]+}}
+; MIR-NEXT:  SYS_DEBUG_PUTC_PSEUDO killed [[DEBUG_INPUT]]
 ; MIR-LABEL: name: timer_services
 ; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
 ; MIR-NEXT:  [[TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[TIMER]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[TIMER]]
 ; MIR-LABEL: name: timer32_service
 ; MIR:       [[TIMER32:%[0-9]+]]:q2only = SYS_MILLIS32_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[TIMER32]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[TIMER32]]
 ; MIR-LABEL: name: math_services
 ; MIR:       [[SINF:%[0-9]+]]:q2only = SYS_SINF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[SINF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[SINF]]
 ; MIR:       [[COSF:%[0-9]+]]:q2only = SYS_COSF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[COSF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[COSF]]
 ; MIR:       [[ATAN2F:%[0-9]+]]:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[ATAN2F]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[ATAN2F]]
 ; MIR:       [[TANF:%[0-9]+]]:q2only = SYS_TANF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[TANF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[TANF]]
 ; MIR:       [[EXPF:%[0-9]+]]:q2only = SYS_EXPF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[EXPF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[EXPF]]
 ; MIR:       [[LOGF:%[0-9]+]]:q2only = SYS_LOGF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOGF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOGF]]
 ; MIR:       [[LOG2F:%[0-9]+]]:q2only = SYS_LOG2F_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOG2F]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOG2F]]
 ; MIR:       [[LOG10F:%[0-9]+]]:q2only = SYS_LOG10F_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[LOG10F]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOG10F]]
 ; MIR:       [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[POWF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[POWF]]
 ; MIR:       [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[HYPOTF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[HYPOTF]]
 ; MIR:       [[FMODF:%[0-9]+]]:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = COPY{{.*}} [[FMODF]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[FMODF]]
 
 declare float @llvm.sin.f32(float)
 declare float @llvm.cos.f32(float)

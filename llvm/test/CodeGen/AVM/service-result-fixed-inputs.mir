@@ -1,0 +1,41 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=avm-service-result -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @service_result_fixed_inputs() { ret void }
+...
+---
+name: service_result_fixed_inputs
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; A fixed result used by debug_putc must pass through distinct general and
+    ; fixed intervals, and both copies created here are protected.
+    ; CHECK-LABEL: name: service_result_fixed_inputs
+    ; CHECK: [[DEBUG_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: [[DEBUG_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[DEBUG_RESULT]]
+    ; CHECK-NEXT: [[DEBUG_INPUT:%[0-9]+]]:r4only = nomerge COPY [[DEBUG_GENERAL]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[DEBUG_INPUT]]
+    %0:r4only = SYS_MILLIS_PSEUDO
+    SYS_DEBUG_PUTC_PSEUDO %0
+
+    ; CHECK: [[UNARY_RESULT:%[0-9]+]]:q2only = SYS_MILLIS32_PSEUDO
+    ; CHECK-NEXT: [[UNARY_GENERAL:%[0-9]+]]:gpr32 = nomerge COPY killed [[UNARY_RESULT]]
+    ; CHECK-NEXT: [[UNARY_INPUT:%[0-9]+]]:q2only = nomerge COPY [[UNARY_GENERAL]]
+    ; CHECK-NEXT: {{%[0-9]+}}:q2only = SYS_SINF_PSEUDO [[UNARY_INPUT]]
+    %1:q2only = SYS_MILLIS32_PSEUDO
+    %2:q2only = SYS_SINF_PSEUDO %1
+
+    ; CHECK: [[BINARY_RESULT:%[0-9]+]]:q2only = SYS_MILLIS32_PSEUDO
+    ; CHECK-NEXT: [[BINARY_GENERAL:%[0-9]+]]:gpr32 = nomerge COPY killed [[BINARY_RESULT]]
+    ; CHECK-NEXT: [[BINARY_INPUT:%[0-9]+]]:q3only = nomerge COPY [[BINARY_GENERAL]]
+    ; CHECK: {{%[0-9]+}}:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, [[BINARY_INPUT]]
+    %3:q2only = SYS_MILLIS32_PSEUDO
+    %6:q3only = COPY %3
+    %4:q2only = IMPLICIT_DEF
+    %5:q2only = SYS_POWF_PSEUDO %4, %6
+
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

@@ -1,0 +1,67 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=register-coalescer -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @fixed_service_coalescing() { ret void }
+...
+---
+name: fixed_service_coalescing
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: fixed_service_coalescing
+    ; CHECK: [[GPR16_TO_R4:%[0-9]+]]:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[R4_INPUT:%[0-9]+]]:r4only = COPY [[GPR16_TO_R4]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[R4_INPUT]]
+    ; CHECK-NEXT: KILL [[GPR16_TO_R4]]
+    %0:gpr16 = IMPLICIT_DEF
+    %1:r4only = COPY %0
+    SYS_DEBUG_PUTC_PSEUDO %1
+    KILL %0
+
+    ; CHECK: [[R4_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: [[R4_TO_GPR16:%[0-9]+]]:gpr16 = COPY [[R4_RESULT]]
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: KILL [[R4_TO_GPR16]]
+    %2:r4only = SYS_MILLIS_PSEUDO
+    %3:gpr16 = COPY %2
+    %4:r4only = SYS_MILLIS_PSEUDO
+    KILL %3
+
+    ; CHECK: [[GPR32_TO_Q2:%[0-9]+]]:gpr32 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[Q2_INPUT:%[0-9]+]]:q2only = COPY [[GPR32_TO_Q2]]
+    ; CHECK-NEXT: [[Q2_RESULT:%[0-9]+]]:q2only = SYS_SINF_PSEUDO [[Q2_INPUT]]
+    ; CHECK-NEXT: KILL [[GPR32_TO_Q2]]
+    %5:gpr32 = IMPLICIT_DEF
+    %6:q2only = COPY %5
+    %7:q2only = SYS_SINF_PSEUDO %6
+    KILL %5
+
+    ; CHECK: [[Q2_TO_GPR32:%[0-9]+]]:gpr32 = COPY [[Q2_RESULT]]
+    ; CHECK-NEXT: {{%[0-9]+}}:q2only = SYS_MILLIS32_PSEUDO
+    ; CHECK-NEXT: KILL [[Q2_TO_GPR32]]
+    %8:gpr32 = COPY %7
+    %9:q2only = SYS_MILLIS32_PSEUDO
+    KILL %8
+
+    ; CHECK: [[GPR32_TO_Q3:%[0-9]+]]:gpr32 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[Q3_INPUT:%[0-9]+]]:q3only = COPY [[GPR32_TO_Q3]]
+    ; CHECK-NEXT: [[Q2_OPERAND:%[0-9]+]]:q2only = IMPLICIT_DEF
+    ; CHECK-NEXT: {{%[0-9]+}}:q2only = SYS_POWF_PSEUDO [[Q2_OPERAND]], [[Q3_INPUT]]
+    ; CHECK-NEXT: KILL [[GPR32_TO_Q3]]
+    %10:gpr32 = IMPLICIT_DEF
+    %11:q3only = COPY %10
+    %12:q2only = IMPLICIT_DEF
+    %13:q2only = SYS_POWF_PSEUDO %12, %11
+    KILL %10
+
+    ; An ordinary general-register copy still coalesces.
+    ; CHECK: [[GENERAL:%[0-9]+]]:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: KILL [[GENERAL]]
+    %14:gpr16 = IMPLICIT_DEF
+    %15:gpr16 = COPY %14
+    KILL %15
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

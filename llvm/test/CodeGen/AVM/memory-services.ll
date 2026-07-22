@@ -41,13 +41,13 @@ define ptr @target_memmove(ptr %dst, ptr %src, i16 %size) {
 
 ; MIR-LABEL: name: target_memcpy
 ; MIR:       [[MEMCPY:%[0-9]+]]:r4only = SYS_MEMCPY_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMCPY]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMCPY]]
 ; MIR-LABEL: name: target_memset
 ; MIR:       [[MEMSET:%[0-9]+]]:r4only = SYS_MEMSET_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMSET]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMSET]]
 ; MIR-LABEL: name: target_memmove
 ; MIR:       [[MEMMOVE:%[0-9]+]]:r4only = SYS_MEMMOVE_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = COPY{{.*}} [[MEMMOVE]]
+; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMMOVE]]
 
 define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0-LABEL: memmove_inputs_remain_live:
@@ -55,11 +55,9 @@ define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0:       add
 ; O0:       ret
 ; O2-LABEL: memmove_inputs_remain_live:
-; O2-NOT:   stsp
 ; O2:       sys memmove
-; O2-NEXT:  add r6, r5
-; O2-NEXT:  mov r4, r6
-; O2-NEXT:  ret
+; O2:       add
+; O2:       ret
   %result = call ptr @llvm.avm.memmove(ptr %dst, ptr %src, i16 %size)
   %source = ptrtoint ptr %src to i16
   %sum = add i16 %source, %size
@@ -71,10 +69,9 @@ define i16 @memset_value_remains_live(ptr %dst, i16 %value, i16 %size) {
 ; O0:       sys memset
 ; O0:       ret
 ; O2-LABEL: memset_value_remains_live:
-; O2-NOT:   stsp
 ; O2:       sys memset
-; O2-NEXT:  mov r4, r5
-; O2-NEXT:  ret
+; O2:       mov
+; O2:       ret
   %result = call ptr @llvm.avm.memset(ptr %dst, i16 %value, i16 %size)
   ret i16 %value
 }

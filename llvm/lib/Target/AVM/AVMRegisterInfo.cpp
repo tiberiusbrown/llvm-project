@@ -45,16 +45,42 @@ BitVector AVMRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
+static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
+  return RC == &AVM::R4OnlyRegClass || RC == &AVM::R5OnlyRegClass ||
+         RC == &AVM::R6OnlyRegClass || RC == &AVM::Q0OnlyRegClass ||
+         RC == &AVM::Q1OnlyRegClass || RC == &AVM::Q2OnlyRegClass ||
+         RC == &AVM::Q3OnlyRegClass;
+}
+
+static bool crossesFixedServiceClassBoundary(const TargetRegisterClass *SrcRC,
+                                             const TargetRegisterClass *DstRC,
+                                             const TargetRegisterClass *NewRC) {
+  const bool SrcFixed = isFixedServiceRegisterClass(SrcRC);
+  const bool DstFixed = isFixedServiceRegisterClass(DstRC);
+  const bool NewFixed = isFixedServiceRegisterClass(NewRC);
+
+  if (SrcFixed || DstFixed)
+    return SrcRC != DstRC;
+
+  return NewFixed;
+}
+
+// Fixed service register classes describe short ABI setup/result intervals.
+// They must not absorb a general live interval through coalescing. General and
+// fixed intervals must remain separate so the general interval remains
+// allocatable and spillable.
 bool AVMRegisterInfo::shouldCoalesce(MachineInstr *MI,
-                                     const TargetRegisterClass *, unsigned,
-                                     const TargetRegisterClass *, unsigned,
-                                     const TargetRegisterClass *,
+                                     const TargetRegisterClass *SrcRC, unsigned,
+                                     const TargetRegisterClass *DstRC, unsigned,
+                                     const TargetRegisterClass *NewRC,
                                      LiveIntervals &) const {
-  // AVMServiceResult marks fixed-to-generic copies that cross another fixed
-  // service as NoMerge. Coalescing those copies would widen a singleton
-  // service result back across the later service and can make allocation
-  // impossible. Ordinary copies retain the normal coalescer behavior.
-  return !MI || !MI->getFlag(MachineInstr::NoMerge);
+  if (MI && MI->getFlag(MachineInstr::NoMerge))
+    return false;
+
+  if (crossesFixedServiceClassBoundary(SrcRC, DstRC, NewRC))
+    return false;
+
+  return true;
 }
 
 namespace {

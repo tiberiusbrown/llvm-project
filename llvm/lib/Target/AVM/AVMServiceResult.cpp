@@ -59,9 +59,19 @@ static bool isMemoryService(unsigned Opcode) {
   }
 }
 
-static const TargetRegisterClass *getServiceInputClass(unsigned Opcode,
-                                                       unsigned OperandNo) {
+static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
+  return RC == &AVM::R4OnlyRegClass || RC == &AVM::R5OnlyRegClass ||
+         RC == &AVM::R6OnlyRegClass || RC == &AVM::Q0OnlyRegClass ||
+         RC == &AVM::Q1OnlyRegClass || RC == &AVM::Q2OnlyRegClass ||
+         RC == &AVM::Q3OnlyRegClass;
+}
+
+static const TargetRegisterClass *
+getFixedServiceInputClass(unsigned Opcode, unsigned OperandNo) {
   switch (Opcode) {
+  case AVM::SYS_DEBUG_PUTC_PSEUDO:
+    return OperandNo == 0 ? &AVM::R4OnlyRegClass : nullptr;
+
   case AVM::SYS_SINF_PSEUDO:
   case AVM::SYS_COSF_PSEUDO:
   case AVM::SYS_TANF_PSEUDO:
@@ -204,45 +214,36 @@ public:
         if (Uses.empty())
           continue;
 
-        bool CrossesService = false;
-        for (MachineOperand *Use : Uses) {
-          MachineInstr *User = Use->getParent();
-          if (User->getParent() != &MBB) {
-            CrossesService = true;
-            break;
-          }
-          for (auto It = std::next(MI.getIterator()); It != MBB.end(); ++It) {
-            if (&*It == User)
-              break;
-            if (getGeneralServiceResultClass(It->getOpcode())) {
-              CrossesService = true;
-              break;
-            }
-          }
-          if (CrossesService)
-            break;
-        }
-
         Register GeneralResult = MRI.createVirtualRegister(GeneralRC);
         MachineInstrBuilder Copy =
             BuildMI(MBB, std::next(MI.getIterator()), MI.getDebugLoc(),
                     TII.get(TargetOpcode::COPY), GeneralResult)
                 .addReg(FixedResult, RegState::Kill);
-        if (CrossesService)
-          Copy->setFlag(MachineInstr::NoMerge);
+        Copy->setFlag(MachineInstr::NoMerge);
 
         for (MachineOperand *Use : Uses) {
           MachineInstr *User = Use->getParent();
-          if (const TargetRegisterClass *InputRC = getServiceInputClass(
+          if (const TargetRegisterClass *InputRC = getFixedServiceInputClass(
                   User->getOpcode(), Use->getOperandNo())) {
             Register FixedInput = MRI.createVirtualRegister(InputRC);
-            BuildMI(*User->getParent(), User->getIterator(),
-                    User->getDebugLoc(), TII.get(TargetOpcode::COPY),
-                    FixedInput)
-                .addReg(GeneralResult);
+            MachineInstrBuilder InputCopy =
+                BuildMI(*User->getParent(), User->getIterator(),
+                        User->getDebugLoc(), TII.get(TargetOpcode::COPY),
+                        FixedInput)
+                    .addReg(GeneralResult);
+            InputCopy->setFlag(MachineInstr::NoMerge);
             Use->setReg(FixedInput);
           } else {
             Use->setReg(GeneralResult);
+            // Selection can already have inserted a fixed-class input copy.
+            // Rewriting its source to GeneralResult makes it a general/fixed
+            // boundary copy, so protect it just like a copy created here.
+            if (User->isCopy() && User->getOperand(0).isReg()) {
+              Register CopyDest = User->getOperand(0).getReg();
+              if (CopyDest.isVirtual() &&
+                  isFixedServiceRegisterClass(MRI.getRegClass(CopyDest)))
+                User->setFlag(MachineInstr::NoMerge);
+            }
           }
           Use->setIsKill(false);
         }
