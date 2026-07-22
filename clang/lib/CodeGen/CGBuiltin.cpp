@@ -113,6 +113,7 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_debug_break:
     case AVM::BI__avm_millis:
     case AVM::BI__avm_millis32:
+    case AVM::BI__avm_sqrtf:
     case AVM::BI__avm_sinf:
     case AVM::BI__avm_cosf:
     case AVM::BI__avm_atan2f:
@@ -183,6 +184,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       case AVM::BI__avm_memmove:
         ID = Intrinsic::avm_memmove;
         break;
+      case AVM::BI__avm_sqrtf: {
+        llvm::Value *Arg = CGF->EmitScalarExpr(E->getArg(0));
+        llvm::Function *Sqrt =
+          CGF->CGM.getIntrinsic(llvm::Intrinsic::sqrt, {Arg->getType()});
+        return CGF->Builder.CreateCall(Sqrt, {Arg});
+      }
       default:
         llvm_unreachable("unhandled AVM target builtin");
       }

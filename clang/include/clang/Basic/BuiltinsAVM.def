@@ -18,6 +18,7 @@ BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
 BUILTIN(__avm_millis32, "ULi", "n")
 
+BUILTIN(__avm_sqrtf, "ff", "nc")
 BUILTIN(__avm_sinf, "ff", "nc")
 BUILTIN(__avm_cosf, "ff", "nc")
 BUILTIN(__avm_atan2f, "fff", "nc")
