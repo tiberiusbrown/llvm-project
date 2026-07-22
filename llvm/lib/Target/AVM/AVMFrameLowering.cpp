@@ -8,6 +8,8 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -19,6 +21,8 @@ AVMFrameLowering::AVMFrameLowering()
     : TargetFrameLowering(StackGrowsDown, Align(1), 0, Align(1)) {}
 
 namespace {
+constexpr uint64_t AVMFixedStackLimit = 256;
+
 void emitSPAdjustment(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
                       const DebugLoc &DL, const AVMInstrInfo &TII,
                       int64_t Amount, MachineInstr::MIFlag Flag) {
@@ -46,8 +50,12 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
   MachineFrameInfo &MFI = MF.getFrameInfo();
   if (MFI.hasVarSizedObjects())
     report_fatal_error("dynamic AVM stack allocation is unsupported");
-  if (MFI.getStackSize() > 256)
-    report_fatal_error("AVM fixed frame exceeds 256 bytes");
+  uint64_t StackSize = MFI.getStackSize();
+  if (StackSize > AVMFixedStackLimit) {
+    MF.getFunction().getContext().diagnose(DiagnosticInfoResourceLimit(
+      MF.getFunction(), "AVM stack frame size", StackSize,
+      AVMFixedStackLimit, DS_Error));
+  }
   const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
 
   MachineBasicBlock::iterator MI = MBB.begin();
