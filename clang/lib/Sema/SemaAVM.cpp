@@ -14,10 +14,11 @@
 using namespace clang;
 
 bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  unsigned DataSourceArg;
   switch (BuiltinID) {
   default:
     return false;
-  case AVM::BI__builtin_avm_flash_string:
+  case AVM::BI__builtin_avm_flash_string: {
     if (checkArgCount(TheCall, 1))
       return true;
 
@@ -30,4 +31,34 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
         << Arg->getSourceRange();
     return true;
   }
+
+  case AVM::BI__avm_memcmp:
+  case AVM::BI__avm_strcmp:
+  case AVM::BI__avm_strncpy:
+  case AVM::BI__avm_strncat:
+    DataSourceArg = 1;
+    break;
+  case AVM::BI__avm_strlen:
+    DataSourceArg = 0;
+    break;
+  }
+
+  if (TheCall->getNumArgs() <= DataSourceArg)
+    return false;
+
+  Expr *Arg = TheCall->getArg(DataSourceArg)->IgnoreParenImpCasts();
+  QualType ArgType = Arg->getType();
+  const auto *ArgPointer = ArgType->getAs<PointerType>();
+  if (!ArgPointer ||
+      ArgPointer->getPointeeType().getAddressSpace() == LangAS::Default)
+    return false;
+
+  const FunctionDecl *Callee = TheCall->getDirectCallee();
+  assert(Callee && Callee->getNumParams() > DataSourceArg &&
+         "AVM builtin must have a direct declaration");
+  QualType ParamType = Callee->getParamDecl(DataSourceArg)->getType();
+  Diag(Arg->getExprLoc(), diag::err_typecheck_incompatible_address_space)
+      << ArgType << ParamType << AssignmentAction::Passing
+      << Arg->getSourceRange();
+  return true;
 }

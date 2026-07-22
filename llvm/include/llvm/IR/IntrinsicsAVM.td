@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+def llvm_avm_progptr_ty : LLVMQualPointerType<1>;
+
 let TargetPrefix = "avm" in {
   def int_avm_debug_putc : Intrinsic<[], [llvm_i8_ty],
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
@@ -63,4 +65,71 @@ let TargetPrefix = "avm" in {
        NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
        WriteOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>,
        Returned<ArgIndex<0>>]>;
+
+  def int_avm_memcmp_p :
+      Intrinsic<[llvm_i16_ty],
+                [llvm_ptr_ty, llvm_avm_progptr_ty, llvm_i16_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strcmp_p :
+      Intrinsic<[llvm_i16_ty], [llvm_ptr_ty, llvm_avm_progptr_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strlen_p :
+      Intrinsic<[llvm_i16_ty], [llvm_avm_progptr_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, ReadOnly<ArgIndex<0>>]>;
+
+  def int_avm_memcmp :
+      Intrinsic<[llvm_i16_ty], [llvm_ptr_ty, llvm_ptr_ty, llvm_i16_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strcmp :
+      Intrinsic<[llvm_i16_ty], [llvm_ptr_ty, llvm_ptr_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strlen :
+      Intrinsic<[llvm_i16_ty], [llvm_ptr_ty],
+                [IntrReadMem, IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, ReadOnly<ArgIndex<0>>]>;
+
+  def int_avm_strncpy_p :
+      Intrinsic<[llvm_ptr_ty],
+                [llvm_ptr_ty, llvm_avm_progptr_ty, llvm_i16_ty],
+                [IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 NoAlias<ArgIndex<0>>, NoAlias<ArgIndex<1>>,
+                 Returned<ArgIndex<0>>, WriteOnly<ArgIndex<0>>,
+                 ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strncpy :
+      Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_ptr_ty, llvm_i16_ty],
+                [IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 NoAlias<ArgIndex<0>>, NoAlias<ArgIndex<1>>,
+                 Returned<ArgIndex<0>>, WriteOnly<ArgIndex<0>>,
+                 ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strncat_p :
+      Intrinsic<[llvm_ptr_ty],
+                [llvm_ptr_ty, llvm_avm_progptr_ty, llvm_i16_ty],
+                [IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 NoAlias<ArgIndex<0>>, NoAlias<ArgIndex<1>>,
+                 Returned<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  def int_avm_strncat :
+      Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_ptr_ty, llvm_i16_ty],
+                [IntrArgMemOnly, IntrWillReturn,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 NoAlias<ArgIndex<0>>, NoAlias<ArgIndex<1>>,
+                 Returned<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
 }

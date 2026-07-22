@@ -13,6 +13,26 @@ BUILTIN(__builtin_avm_memcpy_p, "v*v*vC*1Ui", "n")
 BUILTIN(__avm_memcpy_P, "v*v*vC*1Ui", "nA")
 BUILTIN(memcpy_P, "v*v*vC*1Ui", "nA")
 
+BUILTIN(__builtin_avm_memcmp_p, "ivC*vC*1Ui", "nA")
+BUILTIN(__avm_memcmp_P, "ivC*vC*1Ui", "nA")
+BUILTIN(memcmp_P, "ivC*vC*1Ui", "nA")
+
+BUILTIN(__builtin_avm_strcmp_p, "icC*cC*1", "nA")
+BUILTIN(__avm_strcmp_P, "icC*cC*1", "nA")
+BUILTIN(strcmp_P, "icC*cC*1", "nA")
+
+BUILTIN(__builtin_avm_strlen_p, "UicC*1", "nA")
+BUILTIN(__avm_strlen_P, "UicC*1", "nA")
+BUILTIN(strlen_P, "UicC*1", "nA")
+
+BUILTIN(__builtin_avm_strncpy_p, "c*c*cC*1Ui", "nA")
+BUILTIN(__avm_strncpy_P, "c*c*cC*1Ui", "nA")
+BUILTIN(strncpy_P, "c*c*cC*1Ui", "nA")
+
+BUILTIN(__builtin_avm_strncat_p, "c*c*cC*1Ui", "nA")
+BUILTIN(__avm_strncat_P, "c*c*cC*1Ui", "nA")
+BUILTIN(strncat_P, "c*c*cC*1Ui", "nA")
+
 BUILTIN(__avm_debug_putc, "vUc", "n")
 BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
@@ -34,5 +54,10 @@ BUILTIN(__avm_fmodf, "fff", "nc")
 BUILTIN(__avm_memcpy, "v*v*vC*Ui", "nA")
 BUILTIN(__avm_memset, "v*v*iUi", "nA")
 BUILTIN(__avm_memmove, "v*v*vC*Ui", "nA")
+BUILTIN(__avm_memcmp, "ivC*vC*Ui", "nA")
+BUILTIN(__avm_strcmp, "icC*cC*", "nA")
+BUILTIN(__avm_strlen, "UicC*", "nA")
+BUILTIN(__avm_strncpy, "c*c*cC*Ui", "nA")
+BUILTIN(__avm_strncat, "c*c*cC*Ui", "nA")
 
 #undef BUILTIN

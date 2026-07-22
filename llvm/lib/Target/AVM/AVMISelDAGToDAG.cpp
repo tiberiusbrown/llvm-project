@@ -60,6 +60,12 @@ private:
     }
   }
 
+  SDValue normalizeProgramServicePointer(SDValue Value, const SDLoc &DL) {
+    Value = stripProgramPointerNormalization(Value);
+    return SDValue(
+        CurDAG->getMachineNode(AVM::PROG_CANON_PSEUDO, DL, MVT::i32, Value), 0);
+  }
+
   void PreprocessISelDAG() override {
     SmallDenseSet<Register, 4> ProgramPointerInputs;
     for (SDNode &Node : CurDAG->allnodes()) {
@@ -928,21 +934,71 @@ private:
     return true;
   }
 
-  void attachMemoryServiceRefs(SDNode *Node, SDValue Size, bool ReadsAS0,
-                               bool ReadsAS1, bool WritesAS0) {
-    LocationSize MemSize = LocationSize::afterPointer();
-    if (const auto *C = dyn_cast<ConstantSDNode>(Size))
-      MemSize = LocationSize::precise(C->getZExtValue());
+  static LocationSize getServiceAccessSize(SDValue Count) {
+    if (const auto *C = dyn_cast<ConstantSDNode>(Count))
+      return LocationSize::precise(C->getZExtValue());
+    return LocationSize::afterPointer();
+  }
+
+  void attachMemoryServiceRefs(SDNode *Node, unsigned ID,
+                               ArrayRef<SDValue> LogicalOps) {
     MachineFunction &MF = CurDAG->getMachineFunction();
-    SmallVector<MachineMemOperand *, 2> MMOs;
-    if (WritesAS0)
-      MMOs.push_back(MF.getMachineMemOperand(MachinePointerInfo(unsigned(0)),
-                                             MachineMemOperand::MOStore,
-                                             MemSize, Align(1)));
-    if (ReadsAS0 || ReadsAS1)
-      MMOs.push_back(MF.getMachineMemOperand(
-          MachinePointerInfo(unsigned(ReadsAS1 ? 1 : 0)),
-          MachineMemOperand::MOLoad, MemSize, Align(1)));
+    SmallVector<MachineMemOperand *, 3> MMOs;
+    auto AddMMO = [&](unsigned AddressSpace, MachineMemOperand::Flags Flags,
+                      LocationSize Size) {
+      MMOs.push_back(MF.getMachineMemOperand(MachinePointerInfo(AddressSpace),
+                                             Flags, Size, Align(1)));
+    };
+
+    switch (ID) {
+    case Intrinsic::avm_memcpy:
+    case Intrinsic::avm_memmove: {
+      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
+      AddMMO(0, MachineMemOperand::MOStore, Size);
+      AddMMO(0, MachineMemOperand::MOLoad, Size);
+      break;
+    }
+    case Intrinsic::avm_memset:
+      AddMMO(0, MachineMemOperand::MOStore,
+             getServiceAccessSize(LogicalOps[2]));
+      break;
+    case Intrinsic::avm_memcmp:
+    case Intrinsic::avm_memcmp_p: {
+      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
+      AddMMO(0, MachineMemOperand::MOLoad, Size);
+      AddMMO(ID == Intrinsic::avm_memcmp_p ? 1 : 0, MachineMemOperand::MOLoad,
+             Size);
+      break;
+    }
+    case Intrinsic::avm_strcmp:
+    case Intrinsic::avm_strcmp_p:
+      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::afterPointer());
+      AddMMO(ID == Intrinsic::avm_strcmp_p ? 1 : 0, MachineMemOperand::MOLoad,
+             LocationSize::afterPointer());
+      break;
+    case Intrinsic::avm_strlen:
+    case Intrinsic::avm_strlen_p:
+      AddMMO(ID == Intrinsic::avm_strlen_p ? 1 : 0, MachineMemOperand::MOLoad,
+             LocationSize::afterPointer());
+      break;
+    case Intrinsic::avm_strncpy:
+    case Intrinsic::avm_strncpy_p: {
+      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
+      AddMMO(0, MachineMemOperand::MOStore, Size);
+      AddMMO(ID == Intrinsic::avm_strncpy_p ? 1 : 0, MachineMemOperand::MOLoad,
+             Size);
+      break;
+    }
+    case Intrinsic::avm_strncat:
+    case Intrinsic::avm_strncat_p:
+      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::afterPointer());
+      AddMMO(0, MachineMemOperand::MOStore, LocationSize::afterPointer());
+      AddMMO(ID == Intrinsic::avm_strncat_p ? 1 : 0, MachineMemOperand::MOLoad,
+             getServiceAccessSize(LogicalOps[2]));
+      break;
+    default:
+      return;
+    }
     CurDAG->setNodeMemRefs(cast<MachineSDNode>(Node), MMOs);
   }
 
@@ -984,18 +1040,39 @@ private:
       Ops.append(Node->op_begin() + 2, Node->op_end());
       Ops.push_back(Node->getOperand(0));
     }
+    SmallVector<SDValue, 5> LogicalOps = Ops;
 
     if (ID == Intrinsic::avm_memset && Ops[1].getValueType() != MVT::i16)
       Ops[1] = CurDAG->getNode(ISD::ZERO_EXTEND, SDLoc(Node), MVT::i16, Ops[1]);
 
+    switch (ID) {
+    case Intrinsic::avm_memcmp_p:
+      Ops = {LogicalOps[0], LogicalOps[2],
+             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
+             LogicalOps.back()};
+      break;
+    case Intrinsic::avm_strcmp_p:
+      Ops = {LogicalOps[0],
+             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
+             LogicalOps.back()};
+      break;
+    case Intrinsic::avm_strlen_p:
+      Ops = {normalizeProgramServicePointer(LogicalOps[0], SDLoc(Node)),
+             LogicalOps.back()};
+      break;
+    case Intrinsic::avm_strncpy_p:
+    case Intrinsic::avm_strncat_p:
+      Ops = {LogicalOps[0], LogicalOps[2],
+             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
+             LogicalOps.back()};
+      break;
+    default:
+      break;
+    }
+
     SDNode *Selected =
         CurDAG->SelectNodeTo(Node, Opcode, Node->getVTList(), Ops);
-    if (ID == Intrinsic::avm_memcpy)
-      attachMemoryServiceRefs(Selected, Ops[2], true, false, true);
-    else if (ID == Intrinsic::avm_memset)
-      attachMemoryServiceRefs(Selected, Ops[2], false, false, true);
-    else if (ID == Intrinsic::avm_memmove)
-      attachMemoryServiceRefs(Selected, Ops[2], true, false, true);
+    attachMemoryServiceRefs(Selected, ID, LogicalOps);
     return true;
   }
 

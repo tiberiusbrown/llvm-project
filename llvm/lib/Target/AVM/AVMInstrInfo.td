@@ -784,6 +784,89 @@ def SYS_MEMMOVE_PSEUDO
   let mayStore = 1;
 }
 
+// Logical order: lhs, rhs, n.
+// Physical order: r4=lhs/result, r5=n, q3=rhs.
+def SYS_MEMCMP_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins R4Only:$lhs, R5Only:$size,
+                                  Q3Only:$rhs)> {
+  let Constraints = "$result = $lhs";
+  let mayLoad = 1;
+}
+
+def SYS_STRCMP_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins R4Only:$lhs, Q3Only:$rhs)> {
+  let Constraints = "$result = $lhs";
+  let mayLoad = 1;
+}
+
+def SYS_STRLEN_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins Q3Only:$src)> {
+  let mayLoad = 1;
+}
+
+// Logical order: dst, src, n.
+// Physical order: r4=dst/result, r5=n, q3=src.
+def SYS_STRNCPY_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$size,
+                                  Q3Only:$src)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_STRNCAT_P_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$size,
+                                  Q3Only:$src)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_MEMCMP_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins R4Only:$lhs, R5Only:$rhs,
+                                  R6Only:$size)> {
+  let Constraints = "$result = $lhs";
+  let mayLoad = 1;
+}
+
+def SYS_STRCMP_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins R4Only:$lhs, R5Only:$rhs)> {
+  let Constraints = "$result = $lhs";
+  let mayLoad = 1;
+}
+
+def SYS_STRLEN_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$result),
+                             (ins R4Only:$src)> {
+  let Constraints = "$result = $src";
+  let mayLoad = 1;
+}
+
+def SYS_STRNCPY_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$src,
+                                  R6Only:$size)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_STRNCAT_PSEUDO
+    : AVMSystemServicePseudo<(outs R4Only:$dst),
+                             (ins R4Only:$dst_in, R5Only:$src,
+                                  R6Only:$size)> {
+  let Constraints = "$dst = $dst_in";
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
 def ADDIS8_PSEUDO

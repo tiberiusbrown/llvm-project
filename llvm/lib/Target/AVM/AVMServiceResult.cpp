@@ -26,6 +26,16 @@ getGeneralServiceResultClass(unsigned Opcode) {
   case AVM::SYS_MEMCPY_P_PSEUDO:
   case AVM::SYS_MEMSET_PSEUDO:
   case AVM::SYS_MEMMOVE_PSEUDO:
+  case AVM::SYS_MEMCMP_P_PSEUDO:
+  case AVM::SYS_STRCMP_P_PSEUDO:
+  case AVM::SYS_STRLEN_P_PSEUDO:
+  case AVM::SYS_STRNCPY_P_PSEUDO:
+  case AVM::SYS_STRNCAT_P_PSEUDO:
+  case AVM::SYS_MEMCMP_PSEUDO:
+  case AVM::SYS_STRCMP_PSEUDO:
+  case AVM::SYS_STRLEN_PSEUDO:
+  case AVM::SYS_STRNCPY_PSEUDO:
+  case AVM::SYS_STRNCAT_PSEUDO:
     return &AVM::GPR16RegClass;
 
   case AVM::SYS_MILLIS32_PSEUDO:
@@ -53,6 +63,10 @@ static bool isMemoryService(unsigned Opcode) {
   case AVM::SYS_MEMCPY_P_PSEUDO:
   case AVM::SYS_MEMSET_PSEUDO:
   case AVM::SYS_MEMMOVE_PSEUDO:
+  case AVM::SYS_STRNCPY_P_PSEUDO:
+  case AVM::SYS_STRNCAT_P_PSEUDO:
+  case AVM::SYS_STRNCPY_PSEUDO:
+  case AVM::SYS_STRNCAT_PSEUDO:
     return true;
   default:
     return false;
@@ -119,6 +133,9 @@ getFixedServiceInputClass(unsigned Opcode, unsigned OperandNo) {
     return nullptr;
 
   case AVM::SYS_MEMMOVE_PSEUDO:
+  case AVM::SYS_MEMCMP_PSEUDO:
+  case AVM::SYS_STRNCPY_PSEUDO:
+  case AVM::SYS_STRNCAT_PSEUDO:
     if (OperandNo == 1)
       return &AVM::R4OnlyRegClass;
     if (OperandNo == 2)
@@ -126,6 +143,37 @@ getFixedServiceInputClass(unsigned Opcode, unsigned OperandNo) {
     if (OperandNo == 3)
       return &AVM::R6OnlyRegClass;
     return nullptr;
+
+  case AVM::SYS_STRCMP_PSEUDO:
+    if (OperandNo == 1)
+      return &AVM::R4OnlyRegClass;
+    if (OperandNo == 2)
+      return &AVM::R5OnlyRegClass;
+    return nullptr;
+
+  case AVM::SYS_STRLEN_PSEUDO:
+    return OperandNo == 1 ? &AVM::R4OnlyRegClass : nullptr;
+
+  case AVM::SYS_MEMCMP_P_PSEUDO:
+  case AVM::SYS_STRNCPY_P_PSEUDO:
+  case AVM::SYS_STRNCAT_P_PSEUDO:
+    if (OperandNo == 1)
+      return &AVM::R4OnlyRegClass;
+    if (OperandNo == 2)
+      return &AVM::R5OnlyRegClass;
+    if (OperandNo == 3)
+      return &AVM::Q3OnlyRegClass;
+    return nullptr;
+
+  case AVM::SYS_STRCMP_P_PSEUDO:
+    if (OperandNo == 1)
+      return &AVM::R4OnlyRegClass;
+    if (OperandNo == 2)
+      return &AVM::Q3OnlyRegClass;
+    return nullptr;
+
+  case AVM::SYS_STRLEN_P_PSEUDO:
+    return OperandNo == 1 ? &AVM::Q3OnlyRegClass : nullptr;
 
   default:
     return nullptr;

@@ -127,7 +127,27 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_fmodf:
     case AVM::BI__avm_memcpy:
     case AVM::BI__avm_memset:
-    case AVM::BI__avm_memmove: {
+    case AVM::BI__avm_memmove:
+    case AVM::BI__builtin_avm_memcmp_p:
+    case AVM::BI__avm_memcmp_P:
+    case AVM::BImemcmp_P:
+    case AVM::BI__builtin_avm_strcmp_p:
+    case AVM::BI__avm_strcmp_P:
+    case AVM::BIstrcmp_P:
+    case AVM::BI__builtin_avm_strlen_p:
+    case AVM::BI__avm_strlen_P:
+    case AVM::BIstrlen_P:
+    case AVM::BI__builtin_avm_strncpy_p:
+    case AVM::BI__avm_strncpy_P:
+    case AVM::BIstrncpy_P:
+    case AVM::BI__builtin_avm_strncat_p:
+    case AVM::BI__avm_strncat_P:
+    case AVM::BIstrncat_P:
+    case AVM::BI__avm_memcmp:
+    case AVM::BI__avm_strcmp:
+    case AVM::BI__avm_strlen:
+    case AVM::BI__avm_strncpy:
+    case AVM::BI__avm_strncat: {
       Intrinsic::ID ID;
       switch (BuiltinID) {
       case AVM::BI__avm_debug_putc:
@@ -183,6 +203,46 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_memmove:
         ID = Intrinsic::avm_memmove;
+        break;
+      case AVM::BI__builtin_avm_memcmp_p:
+      case AVM::BI__avm_memcmp_P:
+      case AVM::BImemcmp_P:
+        ID = Intrinsic::avm_memcmp_p;
+        break;
+      case AVM::BI__builtin_avm_strcmp_p:
+      case AVM::BI__avm_strcmp_P:
+      case AVM::BIstrcmp_P:
+        ID = Intrinsic::avm_strcmp_p;
+        break;
+      case AVM::BI__builtin_avm_strlen_p:
+      case AVM::BI__avm_strlen_P:
+      case AVM::BIstrlen_P:
+        ID = Intrinsic::avm_strlen_p;
+        break;
+      case AVM::BI__builtin_avm_strncpy_p:
+      case AVM::BI__avm_strncpy_P:
+      case AVM::BIstrncpy_P:
+        ID = Intrinsic::avm_strncpy_p;
+        break;
+      case AVM::BI__builtin_avm_strncat_p:
+      case AVM::BI__avm_strncat_P:
+      case AVM::BIstrncat_P:
+        ID = Intrinsic::avm_strncat_p;
+        break;
+      case AVM::BI__avm_memcmp:
+        ID = Intrinsic::avm_memcmp;
+        break;
+      case AVM::BI__avm_strcmp:
+        ID = Intrinsic::avm_strcmp;
+        break;
+      case AVM::BI__avm_strlen:
+        ID = Intrinsic::avm_strlen;
+        break;
+      case AVM::BI__avm_strncpy:
+        ID = Intrinsic::avm_strncpy;
+        break;
+      case AVM::BI__avm_strncat:
+        ID = Intrinsic::avm_strncat;
         break;
       case AVM::BI__avm_sqrtf: {
         llvm::Value *Arg = CGF->EmitScalarExpr(E->getArg(0));
