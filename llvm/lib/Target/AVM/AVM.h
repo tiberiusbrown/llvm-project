@@ -19,6 +19,7 @@ FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
 FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMExpandPseudoPass();
 FunctionPass *createAVMFinalControlFlowPass();
+FunctionPass *createAVMProgramMemoryWideningPass();
 FunctionPass *createAVMServiceResultPass();
 
 void initializeAVMAsmPrinterPass(PassRegistry &);
@@ -26,6 +27,7 @@ void initializeAVMBranchPolarityPass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 void initializeAVMFinalControlFlowPass(PassRegistry &);
+void initializeAVMProgramMemoryWideningPass(PassRegistry &);
 void initializeAVMServiceResultPass(PassRegistry &);
 } // namespace llvm
 

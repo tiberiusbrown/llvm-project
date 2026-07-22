@@ -229,7 +229,7 @@ define i16 @size_select_i16(i16 %a, i16 %b, i16 %x, i16 %y) #0 {
 define i32 @minsize_select_i32(i16 %a, i16 %b, i32 %x, i32 %y) #1 {
 ; SIZE-LABEL: minsize_select_i32:
 ; SIZE:       cmp
-; SIZE-COUNT-2: cmov.ne
+; SIZE-COUNT-2: cmov.eq
 ; SIZE-NOT:   br
   %cmp = icmp ne i16 %a, %b
   %result = select i1 %cmp, i32 %x, i32 %y

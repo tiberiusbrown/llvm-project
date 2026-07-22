@@ -14,6 +14,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 
 using namespace llvm;
 
@@ -29,6 +30,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
+  initializeAVMProgramMemoryWideningPass(PR);
   initializeAVMServiceResultPass(PR);
 }
 
@@ -87,6 +89,12 @@ public:
 
   void addIRPasses() override {
     TargetPassConfig::addIRPasses();
+
+    if (getOptLevel() != CodeGenOptLevel::None) {
+      addPass(createAVMProgramMemoryWideningPass());
+      addPass(createInstructionCombiningPass());
+    }
+
     addPass(createAtomicExpandLegacyPass());
   }
 

@@ -205,7 +205,7 @@ define i1 @float_unordered_compare(float %a, float %b) {
 
 define i1 @float_is_nan(float %value) {
 ; CHECK-LABEL: float_is_nan:
-; CHECK:       fclass
+; CHECK:       fcmp
   %result = call i1 @llvm.is.fpclass.f32(float %value, i32 3)
   ret i1 %result
 }

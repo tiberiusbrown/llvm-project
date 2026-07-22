@@ -57,8 +57,8 @@ define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O2-LABEL: memmove_inputs_remain_live:
 ; O2-NOT:   stsp
 ; O2:       sys memmove
-; O2-NEXT:  add r5, r6
-; O2-NEXT:  mov r4, r5
+; O2-NEXT:  add r6, r5
+; O2-NEXT:  mov r4, r6
 ; O2-NEXT:  ret
   %result = call ptr @llvm.avm.memmove(ptr %dst, ptr %src, i16 %size)
   %source = ptrtoint ptr %src to i16

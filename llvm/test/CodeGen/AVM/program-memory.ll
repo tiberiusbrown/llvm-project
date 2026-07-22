@@ -33,16 +33,16 @@
 ; OBJ: Size: 6
 ; OBJ: Section: .rodata
 
-@flash_bytes = addrspace(1) constant [8 x i8] c"AVM\00test", align 1
-@flash_word = addrspace(1) constant i16 4660, align 1
-@flash_int = addrspace(1) constant i32 305419896, align 1
-@flash_float = addrspace(1) constant float 1.500000e+00, align 1
-@flash_callback = addrspace(1) constant ptr addrspace(1) @callback, align 1
+@flash_bytes = addrspace(1) externally_initialized constant [8 x i8] c"AVM\00test", align 1
+@flash_word = addrspace(1) externally_initialized constant i16 4660, align 1
+@flash_int = addrspace(1) externally_initialized constant i32 305419896, align 1
+@flash_float = addrspace(1) externally_initialized constant float 1.500000e+00, align 1
+@flash_callback = addrspace(1) externally_initialized constant ptr addrspace(1) @callback, align 1
 @data_callback = global ptr addrspace(1) @callback, align 1
 @data_callback_array = global [3 x ptr addrspace(1)]
     [ptr addrspace(1) @callback, ptr addrspace(1) null,
      ptr addrspace(1) @callback], align 1
-@flash_callback_array = addrspace(1) constant [2 x ptr addrspace(1)]
+@flash_callback_array = addrspace(1) externally_initialized constant [2 x ptr addrspace(1)]
     [ptr addrspace(1) @callback, ptr addrspace(1) null], align 1
 
 define i16 @callback(i16 %value) addrspace(1) {
@@ -212,6 +212,7 @@ define i16 @volatile_program_bytes(ptr addrspace(1) %address) {
 ; CHECK:       ldp8u
 ; CHECK:       ldp8u
 ; CHECK-NOT:   ldp16
+; CHECK-NOT:   ldp32
   %first = load volatile i8, ptr addrspace(1) %address, align 1
   %next = getelementptr i8, ptr addrspace(1) %address, i32 1
   %second = load volatile i8, ptr addrspace(1) %next, align 1

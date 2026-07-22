@@ -429,9 +429,10 @@ class AVMAbsoluteDataStoreInst<string Asm>
   let mayStore = 1;
 }
 
-// Program-space load forms are MC-only.  Their memory operands are canonical
-// program-pointer pairs parsed as a separate address register; the encoder
-// supplies the PSPEC register codes explicitly.
+// Program-space load forms are used by both MC and codegen pseudo expansion.
+// Their memory operands are canonical program-pointer pairs parsed as a
+// separate address register; the encoder supplies the PSPEC register codes
+// explicitly.
 class AVMProgramLoadScalarInst<string Asm>
     : AVMInst<Asm, 3, (ins AVMProgramLoadPairReg:$addr)> {
   let OutOperandList = (outs AVMProgramLoadScalarReg:$dst);

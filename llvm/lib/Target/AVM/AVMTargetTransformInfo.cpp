@@ -184,6 +184,9 @@ void AVMTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
       if (!BlocksUnrolling)
         continue;
 
+      // Generic program-memory unrolling remains disabled. The dedicated
+      // AVMProgramMemoryWidening pass performs only validated factor-two
+      // unrolling that is immediately followed by load combining.
       UP.Threshold = 0;
       UP.PartialThreshold = 0;
       UP.OptSizeThreshold = 0;

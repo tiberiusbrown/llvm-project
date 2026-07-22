@@ -27,6 +27,7 @@ add_llvm_target(AVMCodeGen
   AVMInstrInfo.cpp
   AVMMachineFunctionInfo.cpp
   AVMMCInstLower.cpp
+  AVMProgramMemoryWidening.cpp
   AVMRegisterInfo.cpp
   AVMSelectionDAGInfo.cpp
   AVMServiceResult.cpp
@@ -46,11 +47,13 @@ add_llvm_target(AVMCodeGen
   CodeGen
   CodeGenTypes
   Core
+  InstCombine
   MC
   SelectionDAG
   Support
   Target
   TargetParser
+  TransformUtils
 
   ADD_TO_COMPONENT
   AVM

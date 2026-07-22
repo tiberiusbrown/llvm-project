@@ -6,7 +6,7 @@ define i16 @select_mask_bit(i16 %selector, i16 %true, i16 %false) {
 ; CHECK:       and
 ; CHECK:       tst8
 ; CHECK-NOT:   tst16
-; CHECK:       cmov.ne
+; CHECK:       cmov.eq
   %masked = and i16 %selector, 1
   %condition = icmp ne i16 %masked, 0
   %result = select i1 %condition, i16 %true, i16 %false
