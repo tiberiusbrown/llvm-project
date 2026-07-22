@@ -74,7 +74,8 @@ static bool isMemoryService(unsigned Opcode) {
 }
 
 static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
-  return RC == &AVM::R4OnlyRegClass || RC == &AVM::R5OnlyRegClass ||
+  return RC == &AVM::R0OnlyRegClass || RC == &AVM::R4OnlyRegClass ||
+         RC == &AVM::R5OnlyRegClass ||
          RC == &AVM::R6OnlyRegClass || RC == &AVM::Q0OnlyRegClass ||
          RC == &AVM::Q1OnlyRegClass || RC == &AVM::Q2OnlyRegClass ||
          RC == &AVM::Q3OnlyRegClass;
@@ -83,6 +84,20 @@ static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
 static const TargetRegisterClass *
 getFixedServiceInputClass(unsigned Opcode, unsigned OperandNo) {
   switch (Opcode) {
+  case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
+    if (OperandNo == 0)
+      return &AVM::R4OnlyRegClass;
+    if (OperandNo == 1)
+      return &AVM::R5OnlyRegClass;
+    if (OperandNo == 2)
+      return &AVM::Q3OnlyRegClass;
+    if (OperandNo == 3)
+      return &AVM::R0OnlyRegClass;
+    return nullptr;
+
   case AVM::SYS_DEBUG_PUTC_PSEUDO:
     return OperandNo == 0 ? &AVM::R4OnlyRegClass : nullptr;
 

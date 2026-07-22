@@ -1,7 +1,7 @@
-; RUN: llc -mtriple=avm -O0 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=avm -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefixes=CHECK,CHECK-O0
 ; RUN: llc -mtriple=avm -O2 -verify-machineinstrs < %s | FileCheck %s
 ; RUN: llc -mtriple=avm -O0 -stop-after=avm-service-result < %s -o - \
-; RUN:   | FileCheck %s --check-prefix=MIR
+; RUN:   | FileCheck %s --check-prefixes=MIR,MIR-O0
 ; RUN: llc -mtriple=avm -O2 -stop-after=avm-service-result < %s -o - \
 ; RUN:   | FileCheck %s --check-prefix=MIR
 
@@ -20,6 +20,11 @@ declare float @llvm.avm.log10f(float)
 declare float @llvm.avm.powf(float, float)
 declare float @llvm.avm.hypotf(float, float)
 declare float @llvm.avm.fmodf(float, float)
+declare void @llvm.avm.display()
+declare void @llvm.avm.draw.sprite.overwrite(i16, i16, ptr addrspace(1), i16)
+declare void @llvm.avm.draw.sprite.plus.mask(i16, i16, ptr addrspace(1), i16)
+declare void @llvm.avm.draw.sprite.self.masked(i16, i16, ptr addrspace(1), i16)
+declare void @llvm.avm.draw.sprite.erase(i16, i16, ptr addrspace(1), i16)
 
 define void @debug_services(i8 %value) {
 ; CHECK-LABEL: debug_services:
@@ -83,6 +88,40 @@ define float @math_services(float %x, float %y) {
   ret float %fmod
 }
 
+define void @display_and_sprite_services(i16 %x, i16 %y,
+                                         ptr addrspace(1) %sprite,
+                                         i16 %frame) {
+; CHECK-LABEL: display_and_sprite_services:
+; CHECK-O0:    sys display
+; CHECK:       sys draw_sprite_overwrite
+; CHECK:       sys draw_sprite_plus_mask
+; CHECK:       sys draw_sprite_self_masked
+; CHECK:       sys draw_sprite_erase
+  call void @llvm.avm.display()
+  call void @llvm.avm.draw.sprite.overwrite(i16 %x, i16 %y,
+                                             ptr addrspace(1) %sprite,
+                                             i16 %frame)
+  call void @llvm.avm.draw.sprite.plus.mask(i16 %x, i16 %y,
+                                             ptr addrspace(1) %sprite,
+                                             i16 %frame)
+  call void @llvm.avm.draw.sprite.self.masked(i16 %x, i16 %y,
+                                               ptr addrspace(1) %sprite,
+                                               i16 %frame)
+  call void @llvm.avm.draw.sprite.erase(i16 %x, i16 %y,
+                                         ptr addrspace(1) %sprite,
+                                         i16 %frame)
+  ret void
+}
+
+define void @timer_result_as_sprite_frame(i16 %x, i16 %y,
+                                          ptr addrspace(1) %sprite) {
+  %frame = call i16 @llvm.avm.millis()
+  call void @llvm.avm.draw.sprite.overwrite(i16 %x, i16 %y,
+                                             ptr addrspace(1) %sprite,
+                                             i16 %frame)
+  ret void
+}
+
 ; MIR-LABEL: name: debug_services
 ; MIR:       SYS_DEBUG_PUTC_PSEUDO
 ; MIR:       SYS_DEBUG_BREAK_PSEUDO
@@ -121,6 +160,21 @@ define float @math_services(float %x, float %y) {
 ; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[HYPOTF]]
 ; MIR:       [[FMODF:%[0-9]+]]:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
 ; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[FMODF]]
+; MIR-LABEL: name: display_and_sprite_services
+; MIR-O0:    SYS_DISPLAY_PSEUDO :: (load (s8192), align 1)
+; MIR:       [[X:%[0-9]+]]:r4only = COPY
+; MIR:       [[Y:%[0-9]+]]:r5only = COPY
+; MIR:       [[SPRITE:%[0-9]+]]:q3only = COPY
+; MIR:       [[FRAME:%[0-9]+]]:r0only = COPY
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X]], [[Y]], [[SPRITE]], [[FRAME]] :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_ERASE_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
+; MIR-LABEL: name: timer_result_as_sprite_frame
+; MIR:       [[SPRITE_TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+; MIR-NEXT:  [[SPRITE_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[SPRITE_TIMER]]
+; MIR:       [[SPRITE_FRAME:%[0-9]+]]:r0only = nomerge COPY [[SPRITE_GENERAL]]
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, killed {{%[0-9]+}}, killed [[SPRITE_FRAME]]
 
 declare float @llvm.sin.f32(float)
 declare float @llvm.cos.f32(float)

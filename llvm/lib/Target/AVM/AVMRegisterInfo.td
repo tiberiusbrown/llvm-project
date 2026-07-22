@@ -57,6 +57,7 @@ def ProgPtrGPR32 : RegisterClass<"AVM", [i32], 8,
 // Fixed-register service interfaces.  Keeping these as singleton allocation
 // classes lets the normal register allocator insert parallel-copy-safe setup
 // and preserve input-only values without modeling a service as a call.
+def R0Only : RegisterClass<"AVM", [i16], 8, (add R0)>;
 def R4Only : RegisterClass<"AVM", [i16], 8, (add R4)>;
 def R5Only : RegisterClass<"AVM", [i16], 8, (add R5)>;
 def R6Only : RegisterClass<"AVM", [i16], 8, (add R6)>;

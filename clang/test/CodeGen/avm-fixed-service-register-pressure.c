@@ -6,6 +6,8 @@ typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned long uint32_t;
 
+#define AS1 __attribute__((address_space(1)))
+
 static void putc(uint8_t value) { __avm_debug_putc(value); }
 
 static uint8_t hex_digit(uint8_t value) {
@@ -75,4 +77,17 @@ uint32_t retained_wide_results(volatile uint32_t *p) {
   line32('e', e);
 
   return a ^ (b + c) ^ (d - e);
+}
+
+// CHECK-LABEL: sprite_register_pressure:
+// CHECK: sys draw_sprite_overwrite
+uint32_t sprite_register_pressure(volatile uint16_t *p16,
+                                  volatile uint32_t *p32,
+                                  const void AS1 *sprite) {
+  uint16_t a = (uint16_t)(p16[0] + 0x1234);
+  uint16_t b = (uint16_t)(p16[1] ^ 0x55aa);
+  uint16_t c = (uint16_t)(p16[2] * 3);
+  uint32_t d = p32[0] + p32[1];
+  __avm_draw_sprite_overwrite(a, b, sprite, c);
+  return ((uint32_t)a << 16) ^ ((uint32_t)b + c) ^ d;
 }

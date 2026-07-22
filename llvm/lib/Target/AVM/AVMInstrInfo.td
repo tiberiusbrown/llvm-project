@@ -724,7 +724,26 @@ def SYS_MILLIS_PSEUDO
     : AVMSystemServicePseudo<(outs R4Only:$result), (ins)>;
 def SYS_MILLIS32_PSEUDO
     : AVMSystemServicePseudo<(outs Q2Only:$result), (ins)>;
+def SYS_DISPLAY_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
 }
+}
+
+class AVMSpriteServicePseudo
+    : AVMSystemServicePseudo<
+          (outs),
+          (ins R4Only:$x, R5Only:$y, Q3Only:$sprite, R0Only:$frame)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_DRAW_SPRITE_OVERWRITE_PSEUDO : AVMSpriteServicePseudo;
+def SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO : AVMSpriteServicePseudo;
+def SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO : AVMSpriteServicePseudo;
+def SYS_DRAW_SPRITE_ERASE_PSEUDO : AVMSpriteServicePseudo;
 
 class AVMUnaryMathServicePseudo
     : AVMSystemServicePseudo<(outs Q2Only:$result), (ins Q2Only:$operand)> {

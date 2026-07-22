@@ -951,6 +951,17 @@ private:
     };
 
     switch (ID) {
+    case Intrinsic::avm_display:
+      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::precise(1024));
+      break;
+    case Intrinsic::avm_draw_sprite_overwrite:
+    case Intrinsic::avm_draw_sprite_plus_mask:
+    case Intrinsic::avm_draw_sprite_self_masked:
+    case Intrinsic::avm_draw_sprite_erase:
+      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::precise(1024));
+      AddMMO(0, MachineMemOperand::MOStore, LocationSize::precise(1024));
+      AddMMO(1, MachineMemOperand::MOLoad, LocationSize::afterPointer());
+      break;
     case Intrinsic::avm_memcpy:
     case Intrinsic::avm_memmove: {
       LocationSize Size = getServiceAccessSize(LogicalOps[2]);
@@ -1046,6 +1057,14 @@ private:
       Ops[1] = CurDAG->getNode(ISD::ZERO_EXTEND, SDLoc(Node), MVT::i16, Ops[1]);
 
     switch (ID) {
+    case Intrinsic::avm_draw_sprite_overwrite:
+    case Intrinsic::avm_draw_sprite_plus_mask:
+    case Intrinsic::avm_draw_sprite_self_masked:
+    case Intrinsic::avm_draw_sprite_erase:
+      Ops = {LogicalOps[0], LogicalOps[1],
+             normalizeProgramServicePointer(LogicalOps[2], SDLoc(Node)),
+             LogicalOps[3], LogicalOps.back()};
+      break;
     case Intrinsic::avm_memcmp_p:
       Ops = {LogicalOps[0], LogicalOps[2],
              normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),

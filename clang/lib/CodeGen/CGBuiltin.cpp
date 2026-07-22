@@ -113,6 +113,11 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_debug_break:
     case AVM::BI__avm_millis:
     case AVM::BI__avm_millis32:
+    case AVM::BI__avm_display:
+    case AVM::BI__avm_draw_sprite_overwrite:
+    case AVM::BI__avm_draw_sprite_plus_mask:
+    case AVM::BI__avm_draw_sprite_self_masked:
+    case AVM::BI__avm_draw_sprite_erase:
     case AVM::BI__avm_sqrtf:
     case AVM::BI__avm_sinf:
     case AVM::BI__avm_cosf:
@@ -161,6 +166,21 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_millis32:
         ID = Intrinsic::avm_millis32;
+        break;
+      case AVM::BI__avm_display:
+        ID = Intrinsic::avm_display;
+        break;
+      case AVM::BI__avm_draw_sprite_overwrite:
+        ID = Intrinsic::avm_draw_sprite_overwrite;
+        break;
+      case AVM::BI__avm_draw_sprite_plus_mask:
+        ID = Intrinsic::avm_draw_sprite_plus_mask;
+        break;
+      case AVM::BI__avm_draw_sprite_self_masked:
+        ID = Intrinsic::avm_draw_sprite_self_masked;
+        break;
+      case AVM::BI__avm_draw_sprite_erase:
+        ID = Intrinsic::avm_draw_sprite_erase;
         break;
       case AVM::BI__avm_sinf:
         ID = Intrinsic::avm_sinf;
@@ -254,7 +274,7 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         llvm_unreachable("unhandled AVM target builtin");
       }
 
-      SmallVector<Value *, 3> Args;
+      SmallVector<Value *, 4> Args;
       for (const Expr *Arg : E->arguments())
         Args.push_back(CGF->EmitScalarExpr(Arg));
       return CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
