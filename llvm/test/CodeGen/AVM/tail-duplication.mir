@@ -8,6 +8,7 @@
   target triple = "avm"
   define void @duplicate_latch() { ret void }
   define void @split_conditional_edge() { ret void }
+  define void @clear_copied_liveness_flags() { ret void }
 ...
 ---
 name: duplicate_latch
@@ -91,6 +92,50 @@ body: |
     successors: %bb.1(0x10000000), %bb.4(0x70000000)
     liveins: $r4, $r5
     $r4 = ADD16_PSEUDO $r4, $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: clear_copied_liveness_flags
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r2, $r4, $r5, $r6, $r7, $r0r1:0x1
+
+    ; The removed jump's MachineInstr storage can be recycled for the first
+    ; clone.  Copied liveness flags must still be cleared, while flags on
+    ; instructions that were already in the predecessor remain unchanged.
+    ; Partially overlapping live-in lane masks must be unioned.
+    ; CHECK-LABEL: name: clear_copied_liveness_flags
+    ; CHECK:       bb.0:
+    ; CHECK:       liveins: {{.*}}$r0r1:0x0000000000000003
+    ; CHECK:       dead $r2 = LDI16_PSEUDO 1
+    ; CHECK-NEXT:  $r6 = ADD16_PSEUDO $r6, $r7
+    ; CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; CHECK-NEXT:  BR_CC_PSEUDO %bb.4, 1, implicit $cc
+    ; CHECK-NOT:   JMP_PSEUDO %bb.3
+    ; CHECK:       bb.1:
+    dead $r2 = LDI16_PSEUDO 1
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5, $r6, $r7
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    liveins: $r4, $r5, $r6, $r7, $r0r1:0x2
+
+    ; CHECK:       bb.3:
+    ; CHECK:       dead $r6 = ADD16_PSEUDO killed $r6, killed $r7
+    dead $r6 = ADD16_PSEUDO killed $r6, killed $r7
     CMP16_PSEUDO $r4, $r5, implicit-def $cc
     BR_CC_PSEUDO %bb.1, 0, implicit $cc
 

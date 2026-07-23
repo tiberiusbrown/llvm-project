@@ -11,9 +11,21 @@
 # CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
 # CHECK-NEXT:  BR_CC_PSEUDO %bb.2, 1, implicit $cc
 
+# CHECK-LABEL: name: stale_fallthrough_candidate
+# CHECK:       bb.0:
+# CHECK-NEXT:  successors: %bb.3
+# CHECK-NOT:   JMP_PSEUDO
+# CHECK:       bb.3:
+# CHECK-NEXT:  successors: %bb.1
+# CHECK-NOT:   ADD16_PSEUDO
+# CHECK-NOT:   JMP_PSEUDO
+# CHECK:       bb.1:
+# CHECK:       $r4 = ADD16_PSEUDO $r4, $r5
+
 --- |
   target triple = "avm"
   define void @place_load_tail() { ret void }
+  define void @stale_fallthrough_candidate() { ret void }
 ...
 ---
 name: place_load_tail
@@ -41,5 +53,38 @@ body: |
     JMP_PSEUDO %bb.1
 
   bb.5:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: stale_fallthrough_candidate
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    successors: %bb.2(0x70000000), %bb.6(0x10000000)
+    liveins: $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.6, 0, implicit $cc
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.3:
+    successors: %bb.1(0x80000000)
+    JMP_PSEUDO %bb.1
+
+  bb.4:
+    successors: %bb.3(0x80000000)
+    JMP_PSEUDO %bb.3
+
+  bb.5:
+    successors: %bb.1(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.1
+
+  bb.6:
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...

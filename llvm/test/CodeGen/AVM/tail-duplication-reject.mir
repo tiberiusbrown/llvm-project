@@ -8,6 +8,7 @@
   define void @reject_load() { ret void }
   define void @reject_instruction_limit() { ret void }
   define void @reject_byte_limit() { ret void }
+  define void @reject_inlineasm_indirect_target() { ret void }
 ...
 ---
 name: reject_call
@@ -137,6 +138,46 @@ body: |
     $r0 = LDI16_PSEUDO 4660
     $r0 = LDI16_PSEUDO 4660
     $r0 = LDI16_PSEUDO 4660
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: reject_inlineasm_indirect_target
+body: |
+  bb.0:
+    successors: %bb.1(0x20000000), %bb.3(0x60000000)
+    liveins: $r4
+
+    ; This reaches TailDuplicator::canTailDuplicate only after the AVM pass has
+    ; split the two-successor edge.  Rejection must restore the original jump,
+    ; exact edge probabilities, and pre-existing live-ins, without retaining
+    ; either the temporary block or $r5 from the tail's live-ins.
+    ; CHECK-LABEL: name: reject_inlineasm_indirect_target
+    ; CHECK:       bb.0:
+    ; CHECK-NEXT:  successors: %bb.1(0x20000000), %bb.3(0x60000000)
+    ; CHECK-NEXT:  liveins: $r4
+    ; CHECK:       BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    ; CHECK-NEXT:  JMP_PSEUDO %bb.3
+    ; CHECK-NOT:   bb.5:
+    CMP16_PSEUDO $r4, $r4, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3 (inlineasm-br-indirect-target):
+    successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    liveins: $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
     CMP16_PSEUDO $r4, $r5, implicit-def $cc
     BR_CC_PSEUDO %bb.1, 0, implicit $cc
 

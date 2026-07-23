@@ -870,6 +870,18 @@ bool AVMTailDuplication::runOnMachineFunction(MachineFunction &MF) {
     }
 
     MachineBasicBlock::iterator Jump = Predecessor.getLastNonDebugInstr();
+    // An earlier candidate can move this predecessor or rewrite its
+    // terminators.  Revalidate the cached edge before dereferencing the
+    // terminator or applying profitability estimates that assume an
+    // unconditional jump.
+    if (Jump == Predecessor.end() || !isExplicitUnconditionalBranch(*Jump) ||
+        Jump->getNumExplicitOperands() != 1 || !Jump->getOperand(0).isMBB() ||
+        Jump->getOperand(0).getMBB() != &Tail) {
+      debugDecision(Predecessor, Tail, EdgeProbability, nullptr, nullptr,
+                    "candidate no longer ends in the recorded jump", false);
+      continue;
+    }
+
     double OriginalPlacementScore = 0.0;
     double PlacedScore = 0.0;
     StringRef PlacementReason;
@@ -934,24 +946,36 @@ bool AVMTailDuplication::runOnMachineFunction(MachineFunction &MF) {
 
     SmallPtrSet<const MachineInstr *, 16> OriginalInstructions;
     for (const MachineInstr &MI : *DuplicationPredecessor)
-      OriginalInstructions.insert(&MI);
+      // TailDuplicator removes the predecessor's branch instructions before
+      // allocating the clones.  MachineFunction recycles removed
+      // MachineInstr storage, so retaining a removed branch pointer could make
+      // the first clone look like an original instruction.
+      if (!MI.isBranch())
+        OriginalInstructions.insert(&MI);
+    // isLiveIn returns true for any overlapping lane, not only when the
+    // requested mask is fully covered.  Add every tail mask and canonicalize
+    // the vector so partially overlapping masks are unioned.
     for (const auto &LiveIn : Tail.liveins())
-      if (!DuplicationPredecessor->isLiveIn(LiveIn.PhysReg))
-        DuplicationPredecessor->addLiveIn(LiveIn.PhysReg, LiveIn.LaneMask);
+      DuplicationPredecessor->addLiveIn(LiveIn.PhysReg, LiveIn.LaneMask);
+    DuplicationPredecessor->sortUniqueLiveIns();
 
     SmallVector<MachineBasicBlock *, 1> Selected{DuplicationPredecessor};
     SmallVector<MachineBasicBlock *, 1> DuplicatedPredecessors;
     // Supplying Tail itself as the forced layout predecessor prevents the
     // utility's unrelated "merge the final predecessor" cleanup.  The AVM
-    // transformation deliberately retains the shared original tail.
-    if (!Duplicator.tailDuplicateAndUpdate(
-            /*IsSimple=*/false, &Tail, /*ForcedLayoutPred=*/&Tail,
-            &DuplicatedPredecessors, /*RemovalCallback=*/nullptr, &Selected) ||
-        !is_contained(DuplicatedPredecessors, DuplicationPredecessor)) {
-      debugDecision(Predecessor, Tail, EdgeProbability, &*Metrics, &Profit,
-                    "generic TailDuplicator made no change", false);
-      continue;
-    }
+    // transformation deliberately retains the shared original tail.  With
+    // this single selected predecessor, successful canTailDuplicate above
+    // guarantees that tailDuplicate visits the predecessor, records it in
+    // TDBBs, and sets Changed.  The post-RA path has no later failure, and Tail
+    // is neither the selected predecessor nor a CFG predecessor eligible for
+    // the final merge.
+    bool Duplicated = Duplicator.tailDuplicateAndUpdate(
+        /*IsSimple=*/false, &Tail, /*ForcedLayoutPred=*/&Tail,
+        &DuplicatedPredecessors, /*RemovalCallback=*/nullptr, &Selected);
+    if (!Duplicated ||
+        !is_contained(DuplicatedPredecessors, DuplicationPredecessor))
+      llvm_unreachable(
+          "prevalidated AVM tail-duplication candidate was not duplicated");
 
     clearCopiedLivenessFlags(*DuplicationPredecessor, OriginalInstructions);
     debugDecision(Predecessor, Tail, EdgeProbability, &*Metrics, &Profit,
