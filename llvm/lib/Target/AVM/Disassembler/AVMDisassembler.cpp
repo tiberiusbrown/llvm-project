@@ -685,7 +685,7 @@ public:
         Size = 1;
         return Fail;
       } else {
-        const unsigned PointerIndex = Secondary / 8;
+        const unsigned PointerIndex = (Secondary & 0x1f) / 8;
       const unsigned DataIndex = Secondary & 7;
       if (Secondary < 0x20 || (Secondary >= 0x20 && Secondary < 0x40)) {
         if (DataIndex == 4 + PointerIndex) {
