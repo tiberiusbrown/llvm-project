@@ -1,0 +1,45 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-tail-duplication \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# CHECK-LABEL: name: place_load_tail
+# CHECK:       bb.4:
+# CHECK-NEXT:  successors: %bb.1
+# CHECK-NEXT:  liveins: $sp, $r5
+# CHECK-NOT:   JMP_PSEUDO
+# CHECK:       bb.1:
+# CHECK:       $r4 = LDSP16_COMPACT 0, implicit $sp
+# CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
+# CHECK-NEXT:  BR_CC_PSEUDO %bb.2, 1, implicit $cc
+
+--- |
+  target triple = "avm"
+  define void @place_load_tail() { ret void }
+...
+---
+name: place_load_tail
+body: |
+  bb.0:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.1:
+    successors: %bb.5(0x10000000), %bb.2(0x70000000)
+    liveins: $sp, $r5
+    $r4 = LDSP16_COMPACT 0, implicit $sp
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.5, 0, implicit $cc
+
+  bb.2:
+    successors: %bb.1(0x80000000)
+    JMP_PSEUDO %bb.1
+
+  bb.3:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.4:
+    successors: %bb.1(0x80000000)
+    liveins: $sp, $r5
+    JMP_PSEUDO %bb.1
+
+  bb.5:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

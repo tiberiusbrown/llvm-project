@@ -32,6 +32,7 @@ add_llvm_target(AVMCodeGen
   AVMSelectionDAGInfo.cpp
   AVMServiceResult.cpp
   AVMSubtarget.cpp
+  AVMTailDuplication.cpp
   AVMTargetMachine.cpp
   AVMTargetObjectFile.cpp
   AVMTargetTransformInfo.cpp

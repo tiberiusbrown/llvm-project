@@ -1,0 +1,87 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-tail-duplication \
+# RUN:   -avm-tail-dup-max-bytes=22 -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @reject_branch_range_regression() { ret void }
+...
+---
+name: reject_branch_range_regression
+body: |
+  bb.0:
+    successors: %bb.7(0x00000001), %bb.1(0x7fffffff)
+    liveins: $cc
+
+    ; Both initially-short branches cross the signed-eight-bit boundary if
+    ; the candidate tail is inserted into bb.1.  Their combined cycle penalty
+    ; is larger than the jump saving left after the copied branch changes
+    ; polarity, so the candidate must remain unchanged.
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+
+  bb.1:
+    successors: %bb.5(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: reject_branch_range_regression
+    ; CHECK:       bb.1:
+    ; CHECK-NEXT:  successors: %bb.5
+    ; CHECK:       JMP_PSEUDO %bb.5
+    JMP_PSEUDO %bb.5
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.3:
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+
+  bb.4:
+    successors: %bb.5(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.5
+
+  bb.5:
+    successors: %bb.2(0x00000001), %bb.6(0x7fffffff)
+    liveins: $r4, $r5
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.2, 0, implicit $cc
+
+  bb.6:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.7:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

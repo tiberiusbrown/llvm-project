@@ -1,0 +1,145 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-tail-duplication \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  declare void @callee()
+  define void @reject_call() { ret void }
+  define void @reject_load() { ret void }
+  define void @reject_instruction_limit() { ret void }
+  define void @reject_byte_limit() { ret void }
+...
+---
+name: reject_call
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: reject_call
+    ; CHECK:       bb.0:
+    ; CHECK-NEXT:  successors: %bb.3
+    ; CHECK:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x40000000), %bb.4(0x40000000)
+    liveins: $r4, $r5
+    RELAX_CALL @callee, implicit-def dead $sp, implicit $sp, implicit-def dead $cc
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: reject_load
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: reject_load
+    ; CHECK:       bb.0:
+    ; CHECK-NEXT:  successors: %bb.3
+    ; CHECK:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x40000000), %bb.4(0x40000000)
+    liveins: $r4, $r5
+    $r4 = LOAD16_PSEUDO $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: reject_instruction_limit
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: reject_instruction_limit
+    ; CHECK:       bb.0:
+    ; CHECK-NEXT:  successors: %bb.3
+    ; CHECK:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x40000000), %bb.4(0x40000000)
+    liveins: $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: reject_byte_limit
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: reject_byte_limit
+    ; CHECK:       bb.0:
+    ; CHECK-NEXT:  successors: %bb.3
+    ; CHECK:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x40000000), %bb.4(0x40000000)
+    liveins: $r4, $r5
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    $r0 = LDI16_PSEUDO 4660
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

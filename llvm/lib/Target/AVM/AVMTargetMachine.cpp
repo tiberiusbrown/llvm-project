@@ -26,6 +26,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   RegisterTargetMachine<AVMTargetMachine> X(getTheAVMTarget());
   PassRegistry &PR = *PassRegistry::getPassRegistry();
   initializeAVMAsmPrinterPass(PR);
+  initializeAVMTailDuplicationPass(PR);
+  registerAVMTailDuplicationOptions();
   initializeAVMBranchPolarityPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
@@ -111,6 +113,8 @@ public:
   }
 
   void addPreEmitPass() override {
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(createAVMTailDuplicationPass(getOptLevel()));
     addPass(createAVMBranchPolarityPass());
     addPass(createAVMExpandPseudoPass());
     addPass(&DeadMachineInstructionElimID);

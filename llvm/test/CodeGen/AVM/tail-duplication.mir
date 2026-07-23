@@ -1,0 +1,99 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-tail-duplication \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-tail-duplication \
+# RUN:   -avm-tail-duplication=false -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s --check-prefix=DISABLED
+
+--- |
+  target triple = "avm"
+  define void @duplicate_latch() { ret void }
+  define void @split_conditional_edge() { ret void }
+...
+---
+name: duplicate_latch
+body: |
+  bb.0:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: duplicate_latch
+    ; CHECK:       bb.0:
+    ; CHECK:       successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    ; CHECK:       $r4 = ADD16_PSEUDO $r4, $r5
+    ; CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; CHECK-NEXT:  BR_CC_PSEUDO %bb.4, 1, implicit $cc
+    ; CHECK-NOT:   JMP_PSEUDO %bb.3
+    ; DISABLED-LABEL: name: duplicate_latch
+    ; DISABLED:       bb.0:
+    ; DISABLED:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+
+    ; CHECK:       bb.2:
+    ; CHECK:       successors: %bb.3
+    ; CHECK:       JMP_PSEUDO %bb.3
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    liveins: $r4, $r5
+
+    ; CHECK:       bb.3:
+    ; CHECK:       successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    ; CHECK:       $r4 = ADD16_PSEUDO $r4, $r5
+    ; CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; CHECK-NEXT:  BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    $r4 = ADD16_PSEUDO $r4, $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: split_conditional_edge
+body: |
+  bb.0:
+    successors: %bb.1(0x10000000), %bb.3(0x70000000)
+    liveins: $r4, $r5
+
+    ; CHECK-LABEL: name: split_conditional_edge
+    ; CHECK:       bb.0:
+    ; CHECK:       successors: %bb.1(0x10000000), %bb.5(0x70000000)
+    ; CHECK:       BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    ; CHECK-NOT:   JMP_PSEUDO
+    ; CHECK:       bb.5:
+    ; CHECK:       $r4 = ADD16_PSEUDO $r4, $r5
+    ; CHECK-NEXT:  CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    ; DISABLED-LABEL: name: split_conditional_edge
+    ; DISABLED:       bb.0:
+    ; DISABLED:       BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    ; DISABLED-NEXT:  JMP_PSEUDO %bb.3
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+    JMP_PSEUDO %bb.3
+
+  bb.1:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    successors: %bb.3(0x80000000)
+    liveins: $r4, $r5
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.1(0x10000000), %bb.4(0x70000000)
+    liveins: $r4, $r5
+    $r4 = ADD16_PSEUDO $r4, $r5
+    CMP16_PSEUDO $r4, $r5, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 0, implicit $cc
+
+  bb.4:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
