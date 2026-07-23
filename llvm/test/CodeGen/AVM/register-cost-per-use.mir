@@ -1,0 +1,47 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=greedy,virtregrewriter \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @prefer_frequent_values_in_upper_registers() { ret void }
+...
+---
+name: prefer_frequent_values_in_upper_registers
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; The first four values stay live throughout the block and are used much
+    ; more often than the last two.  CostPerUse should put the hot values in
+    ; compact r4-r7 and the cold values in lower registers.
+    ; CHECK-LABEL: name: prefer_frequent_values_in_upper_registers
+    ; CHECK:       $r{{[4-7]}} = IMPLICIT_DEF
+    ; CHECK-NEXT:  $r{{[4-7]}} = IMPLICIT_DEF
+    ; CHECK-NEXT:  $r{{[4-7]}} = IMPLICIT_DEF
+    ; CHECK-NEXT:  $r{{[4-7]}} = IMPLICIT_DEF
+    ; CHECK-NEXT:  $r{{[0-3]}} = IMPLICIT_DEF
+    ; CHECK-NEXT:  $r{{[0-3]}} = IMPLICIT_DEF
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    %3:gpr16 = IMPLICIT_DEF
+    %4:gpr16 = IMPLICIT_DEF
+    %5:gpr16 = IMPLICIT_DEF
+
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    CMP16_PSEUDO %2, %3, implicit-def $cc
+    CMP16_PSEUDO %0, %2, implicit-def $cc
+    CMP16_PSEUDO %1, %3, implicit-def $cc
+    CMP16_PSEUDO %0, %3, implicit-def $cc
+    CMP16_PSEUDO %1, %2, implicit-def $cc
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    CMP16_PSEUDO %2, %3, implicit-def $cc
+    CMP16_PSEUDO %4, %5, implicit-def $cc
+
+    KILL %0
+    KILL %1
+    KILL %2
+    KILL %3
+    KILL %4
+    KILL %5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

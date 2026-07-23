@@ -11,11 +11,15 @@ class AVMReg<bits<16> Enc, string Name, list<Register> SubRegs = []>
   let HWEncoding = Enc;
 }
 
-// Architectural 16-bit registers.
+// Architectural 16-bit registers.  Lower registers require the slower full
+// encodings for common scalar operations, so bias frequently used values
+// toward R4-R7 without making R0-R3 unavailable.
+let CostPerUse = [1] in {
 def R0 : AVMReg<0, "r0">;
 def R1 : AVMReg<1, "r1">;
 def R2 : AVMReg<2, "r2">;
 def R3 : AVMReg<3, "r3">;
+}
 def R4 : AVMReg<4, "r4">;
 def R5 : AVMReg<5, "r5">;
 def R6 : AVMReg<6, "r6">;
