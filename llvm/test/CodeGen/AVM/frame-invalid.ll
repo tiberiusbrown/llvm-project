@@ -1,12 +1,12 @@
 ; RUN: split-file %s %t
-; RUN: not --crash llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+; RUN: not llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
 ; RUN:   -mtune=avm-interpreter-32u4-v1 -O0 %t/large.ll -o /dev/null 2>&1 \
 ; RUN:   | FileCheck %s --check-prefix=LARGE
 ; RUN: not --crash llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
 ; RUN:   -mtune=avm-interpreter-32u4-v1 -O0 %t/dynamic.ll -o /dev/null 2>&1 \
 ; RUN:   | FileCheck %s --check-prefix=DYNAMIC
 
-; LARGE: LLVM ERROR: AVM fixed frame exceeds 256 bytes
+; LARGE: error: {{.*}}AVM stack frame size (259) exceeds limit (256)
 ; DYNAMIC: LLVM ERROR: dynamic AVM stack allocation is unsupported
 
 ;--- large.ll
