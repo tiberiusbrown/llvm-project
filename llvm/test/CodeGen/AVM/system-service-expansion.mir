@@ -1,0 +1,101 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=avm-expand-system-services -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @save_region() { ret void }
+  define void @different_services() { ret void }
+  define void @output_before_restore() { ret void }
+  define void @tied_result() { ret void }
+  define void @memory_operands() { ret void }
+
+  !0 = !{!1}
+  !1 = distinct !{!1, !"avm.service.test"}
+...
+---
+name: save_region
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r1, $r4
+    ; One incoming r4 value is preserved around the whole region. The second
+    ; identical setup is served by the resident-value cache.
+    ; CHECK-LABEL: name: save_region
+    ; CHECK:      PUSH16 $r4
+    ; CHECK-NEXT: $r4 = COPY16_PSEUDO $r1
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO $r4
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO $r4
+    ; CHECK-NEXT: $r4 = POP16
+    ; CHECK-NEXT: KILL $r4
+    SYS_DEBUG_PUTC_PSEUDO $r1
+    SYS_DEBUG_PUTC_PSEUDO $r1
+    KILL $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: different_services
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r1, $r5, $r6r7
+    ; Residency is shared by distinct descriptor-backed service opcodes.
+    ; CHECK-LABEL: name: different_services
+    ; CHECK:      $r4 = COPY16_PSEUDO $r1
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO $r4
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DEBUG_PUTC_PSEUDO $r1
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r1, $r5, $r6r7, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: output_before_restore
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; The new timer result leaves ABI r4 before the old live-through r4 value
+    ; is restored.
+    ; CHECK-LABEL: name: output_before_restore
+    ; CHECK:      PUSH16 $r4
+    ; CHECK-NEXT: $r4 = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: $r2 = COPY16_PSEUDO $r4
+    ; CHECK-NEXT: $r4 = POP16
+    ; CHECK-NEXT: KILL $r4
+    $r2 = SYS_MILLIS_PSEUDO
+    KILL $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: tied_result
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r1, $r4, $r5, $r6
+    ; A tied destination is the service's new value. Its allocated result is
+    ; copied before the unrelated incoming ABI value is restored.
+    ; CHECK-LABEL: name: tied_result
+    ; CHECK:      PUSH16 $r4
+    ; CHECK-NEXT: $r4 = COPY16_PSEUDO $r1
+    ; CHECK-NEXT: $r4 = SYS_MEMCPY_PSEUDO $r4, $r5, $r6
+    ; CHECK-NEXT: $r1 = COPY16_PSEUDO $r4
+    ; CHECK-NEXT: $r4 = POP16
+    ; CHECK-NEXT: KILL $r4
+    $r1 = SYS_MEMCPY_PSEUDO $r1, $r5, $r6 :: (store unknown-size, align 1), (load unknown-size, align 1)
+    KILL $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: memory_operands
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r5, $r6
+    ; Final pseudos carry explicit physical defs/uses and exactly clone MMOs.
+    ; CHECK-LABEL: name: memory_operands
+    ; CHECK: $r4 = SYS_MEMMOVE_PSEUDO $r4, $r5, $r6 :: (store (s12), !alias.scope !0), (load (s12), !noalias !0)
+    $r4 = SYS_MEMMOVE_PSEUDO $r4, $r5, $r6 :: (store (s12), align 2, !alias.scope !0), (load (s12), align 2, !noalias !0)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+
+...

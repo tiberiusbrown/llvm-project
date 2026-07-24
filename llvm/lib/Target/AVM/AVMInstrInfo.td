@@ -717,13 +717,13 @@ class AVMSystemServicePseudo<dag Outs, dag Ins>
 
 let hasSideEffects = 1 in {
 def SYS_DEBUG_PUTC_PSEUDO
-    : AVMSystemServicePseudo<(outs), (ins R4Only:$value)>;
+    : AVMSystemServicePseudo<(outs), (ins GPR16:$value)>;
 def SYS_DEBUG_BREAK_PSEUDO
     : AVMSystemServicePseudo<(outs), (ins)>;
 def SYS_MILLIS_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result), (ins)>;
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
 def SYS_MILLIS32_PSEUDO
-    : AVMSystemServicePseudo<(outs Q2Only:$result), (ins)>;
+    : AVMSystemServicePseudo<(outs GPR32:$result), (ins)>;
 def SYS_DISPLAY_PSEUDO
     : AVMSystemServicePseudo<(outs), (ins)> {
   let hasSideEffects = 1;
@@ -746,12 +746,12 @@ def SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO : AVMSpriteServicePseudo;
 def SYS_DRAW_SPRITE_ERASE_PSEUDO : AVMSpriteServicePseudo;
 
 class AVMUnaryMathServicePseudo
-    : AVMSystemServicePseudo<(outs Q2Only:$result), (ins Q2Only:$operand)> {
+    : AVMSystemServicePseudo<(outs GPR32:$result), (ins GPR32:$operand)> {
   let Constraints = "$result = $operand";
 }
 class AVMBinaryMathServicePseudo
-    : AVMSystemServicePseudo<(outs Q2Only:$result),
-                             (ins Q2Only:$operand0, Q3Only:$operand1)> {
+    : AVMSystemServicePseudo<(outs GPR32:$result),
+                             (ins GPR32:$operand0, GPR32:$operand1)> {
   let Constraints = "$result = $operand0";
 }
 
@@ -768,119 +768,114 @@ def SYS_HYPOTF_PSEUDO : AVMBinaryMathServicePseudo;
 def SYS_FMODF_PSEUDO : AVMBinaryMathServicePseudo;
 
 def SYS_MEMCPY_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$src,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, GPR16:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
-// The physical order is dst, size, src.  q3[31:24] is deliberately ignored.
 def SYS_MEMCPY_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$size,
-                                  Q3Only:$src)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, ProgPtrGPR32:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
 def SYS_MEMSET_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$value,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, GPR16:$value,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayStore = 1;
 }
 
 def SYS_MEMMOVE_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$src,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, GPR16:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
-// Logical order: lhs, rhs, n.
-// Physical order: r4=lhs/result, r5=n, q3=rhs.
 def SYS_MEMCMP_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins R4Only:$lhs, R5Only:$size,
-                                  Q3Only:$rhs)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$lhs, ProgPtrGPR32:$rhs,
+                                  GPR16:$size)> {
   let Constraints = "$result = $lhs";
   let mayLoad = 1;
 }
 
 def SYS_STRCMP_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins R4Only:$lhs, Q3Only:$rhs)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$lhs, ProgPtrGPR32:$rhs)> {
   let Constraints = "$result = $lhs";
   let mayLoad = 1;
 }
 
 def SYS_STRLEN_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins Q3Only:$src)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins ProgPtrGPR32:$src)> {
   let mayLoad = 1;
 }
 
-// Logical order: dst, src, n.
-// Physical order: r4=dst/result, r5=n, q3=src.
 def SYS_STRNCPY_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$size,
-                                  Q3Only:$src)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, ProgPtrGPR32:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
 def SYS_STRNCAT_P_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$size,
-                                  Q3Only:$src)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, ProgPtrGPR32:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
 def SYS_MEMCMP_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins R4Only:$lhs, R5Only:$rhs,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$lhs, GPR16:$rhs,
+                                  GPR16:$size)> {
   let Constraints = "$result = $lhs";
   let mayLoad = 1;
 }
 
 def SYS_STRCMP_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins R4Only:$lhs, R5Only:$rhs)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$lhs, GPR16:$rhs)> {
   let Constraints = "$result = $lhs";
   let mayLoad = 1;
 }
 
 def SYS_STRLEN_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$result),
-                             (ins R4Only:$src)> {
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$src)> {
   let Constraints = "$result = $src";
   let mayLoad = 1;
 }
 
 def SYS_STRNCPY_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$src,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, GPR16:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;
 }
 
 def SYS_STRNCAT_PSEUDO
-    : AVMSystemServicePseudo<(outs R4Only:$dst),
-                             (ins R4Only:$dst_in, R5Only:$src,
-                                  R6Only:$size)> {
+    : AVMSystemServicePseudo<(outs GPR16:$dst),
+                             (ins GPR16:$dst_in, GPR16:$src,
+                                  GPR16:$size)> {
   let Constraints = "$dst = $dst_in";
   let mayLoad = 1;
   let mayStore = 1;

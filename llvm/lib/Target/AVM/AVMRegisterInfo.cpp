@@ -6,6 +6,7 @@
 #include "AVMFrameLowering.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
+#include "AVMSystemServiceInfo.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -46,84 +47,12 @@ BitVector AVMRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
-static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
-  return RC == &AVM::R0OnlyRegClass || RC == &AVM::R4OnlyRegClass ||
-         RC == &AVM::R5OnlyRegClass || RC == &AVM::R6OnlyRegClass ||
-         RC == &AVM::Q0OnlyRegClass || RC == &AVM::Q1OnlyRegClass ||
-         RC == &AVM::Q2OnlyRegClass || RC == &AVM::Q3OnlyRegClass;
-}
-
-static bool isSpriteService(unsigned Opcode) {
-  switch (Opcode) {
-  case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool AVMRegisterInfo::getRegAllocationHints(
-    Register VirtReg, ArrayRef<MCPhysReg> Order,
-    SmallVectorImpl<MCPhysReg> &Hints, const MachineFunction &MF,
-    const VirtRegMap *VRM, const LiveRegMatrix *Matrix) const {
-  bool BaseImplRetVal = TargetRegisterInfo::getRegAllocationHints(
-      VirtReg, Order, Hints, MF, VRM, Matrix);
-  const MachineRegisterInfo &MRI = MF.getRegInfo();
-  MCPhysReg SpriteHint = 0;
-  bool HardSpriteRunHint = false;
-  std::pair<unsigned, Register> ExistingHint =
-      MRI.getRegAllocationHint(VirtReg);
-  if (ExistingHint.first == AVMRI::SpriteRun &&
-      ExistingHint.second.isPhysical()) {
-    SpriteHint = ExistingHint.second.asMCReg();
-    HardSpriteRunHint = true;
-  }
-  for (const MachineOperand &MO : MRI.reg_nodbg_operands(VirtReg)) {
-    const MachineInstr *MI = MO.getParent();
-    if (!MI || !isSpriteService(MI->getOpcode()))
-      continue;
-    MCPhysReg OperandHint = 0;
-    switch (MO.getOperandNo()) {
-    case 0:
-      OperandHint = AVM::R4;
-      break;
-    case 1:
-      OperandHint = AVM::R5;
-      break;
-    case 2:
-      OperandHint = AVM::R6R7;
-      break;
-    case 3:
-      OperandHint = AVM::R0;
-      break;
-    default:
-      break;
-    }
-    if (!OperandHint)
-      continue;
-    if (SpriteHint && SpriteHint != OperandHint) {
-      SpriteHint = 0;
-      break;
-    }
-    SpriteHint = OperandHint;
-  }
-  if (!SpriteHint || !is_contained(Order, SpriteHint))
-    return BaseImplRetVal;
-
-  llvm::erase(Hints, SpriteHint);
-  Hints.insert(Hints.begin(), SpriteHint);
-  return BaseImplRetVal || HardSpriteRunHint;
-}
-
 static bool crossesFixedServiceClassBoundary(const TargetRegisterClass *SrcRC,
                                              const TargetRegisterClass *DstRC,
                                              const TargetRegisterClass *NewRC) {
-  const bool SrcFixed = isFixedServiceRegisterClass(SrcRC);
-  const bool DstFixed = isFixedServiceRegisterClass(DstRC);
-  const bool NewFixed = isFixedServiceRegisterClass(NewRC);
+  const bool SrcFixed = isAVMFixedServiceRegisterClass(SrcRC);
+  const bool DstFixed = isAVMFixedServiceRegisterClass(DstRC);
+  const bool NewFixed = isAVMFixedServiceRegisterClass(NewRC);
 
   if (SrcFixed || DstFixed)
     return SrcRC != DstRC;
@@ -234,15 +163,14 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                             .addReg(Address, AddressState)
                             .addImm(Displacement));
   };
-  auto BuildDisplacedStore = [&](unsigned StoreOpcode, Register Address,
-                                 int64_t Displacement, Register Src,
-                                 unsigned AddressState = 0,
-                                 unsigned SrcState = 0) {
-    return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(StoreOpcode))
-                            .addReg(Address, AddressState)
-                            .addImm(Displacement)
-                            .addReg(Src, SrcState));
-  };
+  auto BuildDisplacedStore =
+      [&](unsigned StoreOpcode, Register Address, int64_t Displacement,
+          Register Src, unsigned AddressState = 0, unsigned SrcState = 0) {
+        return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(StoreOpcode))
+                                .addReg(Address, AddressState)
+                                .addImm(Displacement)
+                                .addReg(Src, SrcState));
+      };
   auto GetScratch = [&]() {
     assert(RS && "AVM far frame stores require register scavenging");
     Register Scratch =

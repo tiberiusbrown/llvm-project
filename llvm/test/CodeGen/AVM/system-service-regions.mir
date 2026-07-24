@@ -1,0 +1,161 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=avm-system-service-regions -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @system_service_regions() { ret void }
+  define void @loop_invariant() { ret void }
+  define void @affine_inputs() { ret void }
+  define void @output_splits_carrier() { ret void }
+  define void @call_boundary() { ret void }
+  define void @inline_asm_boundary() { ret void }
+  declare void @callee()
+  @program_data = external addrspace(1) global i8
+...
+---
+name: system_service_regions
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; Identical values shared by different services use one fixed carrier.
+    ; CHECK-LABEL: name: system_service_regions
+    ; CHECK: [[VALUE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
+    ; CHECK: [[R4:%[0-9]+]]:r4only = nomerge COPY [[VALUE]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[R4]]
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[R4]], {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:progptrgpr32 = IMPLICIT_DEF
+    %3:gpr16 = IMPLICIT_DEF
+    SYS_DEBUG_PUTC_PSEUDO %0
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %0, %1, %2, %3
+
+    ; A tied q2 result feeding another q2 service remains in fixed carriers.
+    ; CHECK: [[FLOAT:%[0-9]+]]:gpr32 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[Q2IN:%[0-9]+]]:q2only = nomerge COPY [[FLOAT]]
+    ; CHECK-NEXT: [[Q2RESULT:%[0-9]+]]:q2only = SYS_SINF_PSEUDO [[Q2IN]]
+    ; CHECK: {{%[0-9]+}}:gpr32 = SYS_COSF_PSEUDO [[Q2RESULT]]
+    %4:gpr32 = IMPLICIT_DEF
+    %5:gpr32 = SYS_SINF_PSEUDO %4
+    %6:gpr32 = SYS_COSF_PSEUDO %5
+
+    ; A single non-loop service use stays semantic and gets no carrier.
+    ; CHECK: [[SINGLE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[SINGLE]]
+    %7:gpr16 = IMPLICIT_DEF
+    SYS_DEBUG_PUTC_PSEUDO %7
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: loop_invariant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1(0x80000000)
+    %0:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    %3:gpr16 = IMPLICIT_DEF
+    ; One static loop use is enough to place an invariant q3 carrier in the
+    ; preheader.
+    ; CHECK-LABEL: name: loop_invariant
+    ; CHECK:      bb.0:
+    ; CHECK:      [[LOOP_PTR:%[0-9]+]]:q3only = nomerge COPY %0
+    ; CHECK:      bb.1:
+    ; CHECK:      SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, [[LOOP_PTR]], {{%[0-9]+}}
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1(0x40000000), %bb.2(0x40000000)
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %1, %2, %0, %3
+    CMP16_PSEUDO %1, %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: affine_inputs
+tracksRegLiveness: true
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = ADDIS8_PSEUDO %0, 16
+    %2:gpr16 = ADDIS8_PSEUDO %0, 32
+    %3:gpr16 = IMPLICIT_DEF
+    %4:progptrgpr32 = IMPLICIT_DEF
+    %5:gpr16 = IMPLICIT_DEF
+    ; Independent affine values become one running singleton-class chain.
+    ; CHECK-LABEL: name: affine_inputs
+    ; CHECK:      [[X0:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK:      SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X0]],
+    ; CHECK-NEXT: [[X1:%[0-9]+]]:r4only = ADDIS8_PSEUDO [[X0]], 16
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X1]],
+    ; CHECK-NEXT: [[X2:%[0-9]+]]:r4only = ADDIS8_PSEUDO [[X1]], 16
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X2]],
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %0, %3, %4, %5
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %1, %3, %4, %5
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %2, %3, %4, %5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: output_splits_carrier
+tracksRegLiveness: true
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    ; A millis output replaces r4, so an unrelated repeated input value gets
+    ; distinct carriers on either side of that output.
+    ; CHECK-LABEL: name: output_splits_carrier
+    ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
+    ; CHECK-NEXT: {{%[0-9]+}}:gpr16 = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
+    SYS_DEBUG_PUTC_PSEUDO %0
+    SYS_DEBUG_PUTC_PSEUDO %0
+    %1:gpr16 = SYS_MILLIS_PSEUDO
+    SYS_DEBUG_PUTC_PSEUDO %0
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: call_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    ; An ordinary call prevents a fixed carrier from spanning both services.
+    ; CHECK-LABEL: name: call_boundary
+    ; CHECK-NOT:  :r4only
+    ; CHECK:      SYS_DEBUG_PUTC_PSEUDO %0
+    ; CHECK:      CALL_DIRECT_PSEUDO
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO %0
+    ; CHECK-NOT:  :r4only
+    SYS_DEBUG_PUTC_PSEUDO %0
+    CALL_DIRECT_PSEUDO @callee, csr_avm_call, implicit-def $sp, implicit-def dead $cc, implicit $sp
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: inline_asm_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    ; Inline assembly is also a hard region boundary.
+    ; CHECK-LABEL: name: inline_asm_boundary
+    ; CHECK-NOT:  :r4only
+    ; CHECK:      SYS_DEBUG_PUTC_PSEUDO %0
+    ; CHECK-NEXT: INLINEASM &"", 1
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO %0
+    ; CHECK-NOT:  :r4only
+    SYS_DEBUG_PUTC_PSEUDO %0
+    INLINEASM &"", 1
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

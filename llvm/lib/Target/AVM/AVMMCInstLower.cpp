@@ -3,6 +3,7 @@
 #include "AVMMCInstLower.h"
 #include "AVM.h"
 #include "AVMInstrInfo.h"
+#include "AVMSystemServiceInfo.h"
 #include "MCTargetDesc/AVMMCExpr.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -14,29 +15,8 @@
 
 using namespace llvm;
 
-namespace {
-
-int getSystemServiceID(unsigned Opcode) {
-  switch (Opcode) {
-#define AVM_SYS_PSEUDO(Pseudo, ID)                                             \
-  case AVM::Pseudo:                                                            \
-    return ID;
-#define AVM_NO_PSEUDO(Pseudo, ID)
-#define AVM_SYS_DEF(ID, AsmName, PseudoKind, Pseudo, IntrinsicKind, Intrinsic, \
-                    CostKind, Cost)                                            \
-  PseudoKind(Pseudo, ID)
-#include "AVMSystemCalls.inc"
-#undef AVM_SYS_PSEUDO
-#undef AVM_NO_PSEUDO
-  default:
-    return -1;
-  }
-}
-
-} // namespace
-
 void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
-  int Service = getSystemServiceID(MI->getOpcode());
+  int Service = getAVMSystemServiceID(MI->getOpcode());
   if (Service >= 0) {
     OutMI.setOpcode(AVM::SYS);
     OutMI.addOperand(MCOperand::createImm(Service));

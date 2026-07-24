@@ -9,12 +9,6 @@
 #include "AVMGenRegisterInfo.inc"
 
 namespace llvm {
-namespace AVMRI {
-enum RegAllocHint : unsigned {
-  SpriteRun = 1,
-};
-} // namespace AVMRI
-
 class AVMRegisterInfo final : public AVMGenRegisterInfo {
 public:
   AVMRegisterInfo();
@@ -31,11 +25,6 @@ public:
     return true;
   }
   BitVector getReservedRegs(const MachineFunction &MF) const override;
-  bool getRegAllocationHints(Register VirtReg, ArrayRef<MCPhysReg> Order,
-                             SmallVectorImpl<MCPhysReg> &Hints,
-                             const MachineFunction &MF,
-                             const VirtRegMap *VRM = nullptr,
-                             const LiveRegMatrix *Matrix = nullptr) const override;
   bool shouldCoalesce(MachineInstr *MI, const TargetRegisterClass *SrcRC,
                       unsigned SubReg, const TargetRegisterClass *DstRC,
                       unsigned DstSubReg, const TargetRegisterClass *NewRC,

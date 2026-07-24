@@ -2,7 +2,7 @@
 ; RUN:   < %s | FileCheck %s --check-prefixes=CHECK,O0
 ; RUN: llc -mtriple=avm -O2 --frame-pointer=none -verify-machineinstrs \
 ; RUN:   < %s | FileCheck %s --check-prefixes=CHECK,O2
-; RUN: llc -mtriple=avm -O2 -stop-after=avm-service-result < %s -o - \
+; RUN: llc -mtriple=avm -O2 -stop-after=avm-system-service-regions < %s -o - \
 ; RUN:   | FileCheck %s --check-prefix=MIR
 ; RUN: opt -mtriple=avm -passes='default<O2>' -S < %s \
 ; RUN:   | FileCheck %s --check-prefix=OPT
@@ -18,7 +18,7 @@ declare void @llvm.memmove.p0.p0.i16(ptr, ptr, i16, i1 immarg)
 define ptr @target_memcpy(ptr %dst, ptr %src, i16 %size) {
 ; CHECK-LABEL: target_memcpy:
 ; CHECK:       sys memcpy
-; CHECK-NEXT:  ret
+; CHECK:       ret
   %result = call ptr @llvm.avm.memcpy(ptr %dst, ptr %src, i16 %size)
   ret ptr %result
 }
@@ -26,7 +26,7 @@ define ptr @target_memcpy(ptr %dst, ptr %src, i16 %size) {
 define ptr @target_memset(ptr %dst, i16 %value, i16 %size) {
 ; CHECK-LABEL: target_memset:
 ; CHECK:       sys memset
-; CHECK-NEXT:  ret
+; CHECK:       ret
   %result = call ptr @llvm.avm.memset(ptr %dst, i16 %value, i16 %size)
   ret ptr %result
 }
@@ -34,20 +34,17 @@ define ptr @target_memset(ptr %dst, i16 %value, i16 %size) {
 define ptr @target_memmove(ptr %dst, ptr %src, i16 %size) {
 ; CHECK-LABEL: target_memmove:
 ; CHECK:       sys memmove
-; CHECK-NEXT:  ret
+; CHECK:       ret
   %result = call ptr @llvm.avm.memmove(ptr %dst, ptr %src, i16 %size)
   ret ptr %result
 }
 
 ; MIR-LABEL: name: target_memcpy
-; MIR:       [[MEMCPY:%[0-9]+]]:r4only = SYS_MEMCPY_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMCPY]]
+; MIR:       [[MEMCPY:%[0-9]+]]:gpr16 = SYS_MEMCPY_PSEUDO
 ; MIR-LABEL: name: target_memset
-; MIR:       [[MEMSET:%[0-9]+]]:r4only = SYS_MEMSET_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMSET]]
+; MIR:       [[MEMSET:%[0-9]+]]:gpr16 = SYS_MEMSET_PSEUDO
 ; MIR-LABEL: name: target_memmove
-; MIR:       [[MEMMOVE:%[0-9]+]]:r4only = SYS_MEMMOVE_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[MEMMOVE]]
+; MIR:       [[MEMMOVE:%[0-9]+]]:gpr16 = SYS_MEMMOVE_PSEUDO
 
 define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0-LABEL: memmove_inputs_remain_live:

@@ -1,6 +1,7 @@
 //===-- AVMISelDAGToDAG.cpp - AVM DAG instruction selector ---------------===//
 
 #include "AVM.h"
+#include "AVMSystemServiceInfo.h"
 #include "AVMTargetMachine.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -707,13 +708,12 @@ private:
       Ops = {Symbol, Load->getChain()};
     } else if (!IsPair && Load->getAddressingMode() == ISD::UNINDEXED &&
                matchDisplacedDataAddress(Address, Base, Displacement)) {
-      Opcode = IsByte ? AVM::LOAD8U_DISP_PSEUDO
-                      : AVM::LOAD16_DISP_PSEUDO;
+      Opcode = IsByte ? AVM::LOAD8U_DISP_PSEUDO : AVM::LOAD16_DISP_PSEUDO;
       ResultVTs = {MVT::i16, MVT::Other};
-      Ops = {Base,
-             CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node),
-                                             MVT::i16),
-             Load->getChain()};
+      Ops = {
+          Base,
+          CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node), MVT::i16),
+          Load->getChain()};
     } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Load->getOffset());
       int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);
@@ -868,13 +868,12 @@ private:
       Ops = {Symbol, StoredValue, Store->getChain()};
     } else if (!IsPair && Store->getAddressingMode() == ISD::UNINDEXED &&
                matchDisplacedDataAddress(Address, Base, Displacement)) {
-      Opcode = IsByte ? AVM::STORE8_DISP_PSEUDO
-                      : AVM::STORE16_DISP_PSEUDO;
+      Opcode = IsByte ? AVM::STORE8_DISP_PSEUDO : AVM::STORE16_DISP_PSEUDO;
       ResultVTs = {MVT::Other};
-      Ops = {Base,
-             CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node),
-                                             MVT::i16),
-             StoredValue, Store->getChain()};
+      Ops = {
+          Base,
+          CurDAG->getSignedTargetConstant(Displacement, SDLoc(Node), MVT::i16),
+          StoredValue, Store->getChain()};
     } else if (IsIndexed && !IsPair) {
       const auto *Increment = dyn_cast<ConstantSDNode>(Store->getOffset());
       int64_t ExpectedOffset = (IsByte ? 1 : 2) * (IsPreDec ? -1 : 1);
@@ -937,14 +936,9 @@ private:
     return true;
   }
 
-  static LocationSize getServiceAccessSize(SDValue Count) {
-    if (const auto *C = dyn_cast<ConstantSDNode>(Count))
-      return LocationSize::precise(C->getZExtValue());
-    return LocationSize::afterPointer();
-  }
-
-  void attachMemoryServiceRefs(SDNode *Node, unsigned ID,
-                               ArrayRef<SDValue> LogicalOps) {
+  void attachSystemServiceMemoryRefs(SDNode *Node,
+                                     const AVMSystemServiceInfo &Info,
+                                     ArrayRef<SDValue> LogicalOps) {
     MachineFunction &MF = CurDAG->getMachineFunction();
     SmallVector<MachineMemOperand *, 3> MMOs;
     auto GetPointerInfo = [&](SDValue Value,
@@ -967,91 +961,78 @@ private:
         case ISD::ADDRSPACECAST:
           Value = Value.getOperand(0);
           continue;
+        case ISD::CopyFromReg: {
+          const auto *RegNode = dyn_cast<RegisterSDNode>(Value.getOperand(1));
+          if (!RegNode || !RegNode->getReg().isVirtual())
+            return MachinePointerInfo(AddressSpace);
+
+          SDValue Source;
+          for (SDNode &Candidate : CurDAG->allnodes()) {
+            if (Candidate.getOpcode() != ISD::CopyToReg)
+              continue;
+            const auto *CandidateReg =
+                dyn_cast<RegisterSDNode>(Candidate.getOperand(1));
+            if (!CandidateReg || CandidateReg->getReg() != RegNode->getReg())
+              continue;
+            if (Source)
+              return MachinePointerInfo(AddressSpace);
+            Source = Candidate.getOperand(2);
+          }
+          if (!Source)
+            return MachinePointerInfo(AddressSpace);
+          Value = Source;
+          continue;
+        }
         default:
           return MachinePointerInfo(AddressSpace);
         }
       }
       return MachinePointerInfo(AddressSpace);
     };
-    auto AddMMO = [&](SDValue Pointer, unsigned AddressSpace,
-                      MachineMemOperand::Flags Flags, LocationSize Size) {
-      MMOs.push_back(MF.getMachineMemOperand(
-          GetPointerInfo(Pointer, AddressSpace), Flags, Size, Align(1)));
-    };
-    auto AddFramebufferMMO = [&](MachineMemOperand::Flags Flags) {
-      const GlobalVariable *Framebuffer =
-          MF.getFunction().getParent()->getNamedGlobal("__avm_framebuffer");
-      assert(Framebuffer && "sprite intrinsic requires framebuffer object");
-      MMOs.push_back(MF.getMachineMemOperand(
-          MachinePointerInfo(Framebuffer), Flags, LocationSize::precise(1024),
-          Align(1)));
-    };
 
-    switch (ID) {
-    case Intrinsic::avm_display:
-      AddMMO(SDValue(), 0, MachineMemOperand::MOLoad,
-             LocationSize::precise(1024));
-      break;
-    case Intrinsic::avm_draw_sprite_overwrite:
-    case Intrinsic::avm_draw_sprite_plus_mask:
-    case Intrinsic::avm_draw_sprite_self_masked:
-    case Intrinsic::avm_draw_sprite_erase:
-      AddFramebufferMMO(MachineMemOperand::MOLoad);
-      AddFramebufferMMO(MachineMemOperand::MOStore);
-      AddMMO(LogicalOps[2], 1, MachineMemOperand::MOLoad,
-             LocationSize::afterPointer());
-      break;
-    case Intrinsic::avm_memcpy:
-    case Intrinsic::avm_memmove: {
-      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore, Size);
-      AddMMO(LogicalOps[1], 0, MachineMemOperand::MOLoad, Size);
-      break;
-    }
-    case Intrinsic::avm_memset:
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore,
-             getServiceAccessSize(LogicalOps[2]));
-      break;
-    case Intrinsic::avm_memcmp:
-    case Intrinsic::avm_memcmp_p: {
-      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad, Size);
-      AddMMO(LogicalOps[1], ID == Intrinsic::avm_memcmp_p ? 1 : 0,
-             MachineMemOperand::MOLoad, Size);
-      break;
-    }
-    case Intrinsic::avm_strcmp:
-    case Intrinsic::avm_strcmp_p:
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad,
-             LocationSize::afterPointer());
-      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strcmp_p ? 1 : 0,
-             MachineMemOperand::MOLoad, LocationSize::afterPointer());
-      break;
-    case Intrinsic::avm_strlen:
-    case Intrinsic::avm_strlen_p:
-      AddMMO(LogicalOps[0], ID == Intrinsic::avm_strlen_p ? 1 : 0,
-             MachineMemOperand::MOLoad, LocationSize::afterPointer());
-      break;
-    case Intrinsic::avm_strncpy:
-    case Intrinsic::avm_strncpy_p: {
-      LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore, Size);
-      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strncpy_p ? 1 : 0,
-             MachineMemOperand::MOLoad, Size);
-      break;
-    }
-    case Intrinsic::avm_strncat:
-    case Intrinsic::avm_strncat_p:
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad,
-             LocationSize::afterPointer());
-      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore,
-             LocationSize::afterPointer());
-      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strncat_p ? 1 : 0,
-             MachineMemOperand::MOLoad,
-             getServiceAccessSize(LogicalOps[2]));
-      break;
-    default:
-      return;
+    for (const AVMServiceMemoryAccessInfo &Access : Info.MemoryAccesses) {
+      MachinePointerInfo PtrInfo(Access.AddressSpace);
+      switch (Access.BaseKind) {
+      case AVMServiceMemoryBaseKind::LogicalArgument:
+        if (Access.LogicalArgumentIndex < LogicalOps.size())
+          PtrInfo = GetPointerInfo(LogicalOps[Access.LogicalArgumentIndex],
+                                   Access.AddressSpace);
+        if (!PtrInfo.V && !Access.FixedGlobalName.empty())
+          if (const GlobalVariable *Framebuffer =
+                  MF.getFunction().getParent()->getNamedGlobal(
+                      Access.FixedGlobalName))
+            // Some IntrArgMemOnly values are already hidden behind virtual
+            // registers at O0. The descriptor's fallback keeps their known
+            // fixed-global identity without changing the logical base.
+            PtrInfo = MachinePointerInfo(Framebuffer);
+        break;
+      case AVMServiceMemoryBaseKind::FixedGlobal:
+        if (const GlobalVariable *GV =
+                MF.getFunction().getParent()->getNamedGlobal(
+                    Access.FixedGlobalName))
+          PtrInfo = MachinePointerInfo(GV);
+        break;
+      case AVMServiceMemoryBaseKind::UnknownAddressSpace:
+        break;
+      }
+
+      LocationSize Size = LocationSize::afterPointer();
+      switch (Access.SizeKind) {
+      case AVMServiceMemorySizeKind::Constant:
+        Size = LocationSize::precise(Access.ConstantSize);
+        break;
+      case AVMServiceMemorySizeKind::LogicalArgument:
+        assert(Access.SizeLogicalArgumentIndex < LogicalOps.size() &&
+               "invalid service memory-size argument");
+        if (const auto *C = dyn_cast<ConstantSDNode>(
+                LogicalOps[Access.SizeLogicalArgumentIndex]))
+          Size = LocationSize::precise(C->getZExtValue());
+        break;
+      case AVMServiceMemorySizeKind::AfterPointer:
+        break;
+      }
+      MMOs.push_back(
+          MF.getMachineMemOperand(PtrInfo, Access.Flags, Size, Align(1)));
     }
     CurDAG->setNodeMemRefs(cast<MachineSDNode>(Node), MMOs);
   }
@@ -1087,54 +1068,52 @@ private:
       return false;
     }
 
+    const AVMSystemServiceInfo &Info = getRequiredAVMSystemServiceInfo(Opcode);
+    const bool HasChain = Node->getOpcode() != ISD::INTRINSIC_WO_CHAIN;
+    SmallVector<SDValue, 5> LogicalOps;
+    if (HasChain)
+      LogicalOps.append(Node->op_begin() + 2, Node->op_end());
+    else
+      LogicalOps.append(Node->op_begin() + 1, Node->op_end());
+
     SmallVector<SDValue, 5> Ops;
-    if (Node->getOpcode() == ISD::INTRINSIC_WO_CHAIN) {
-      Ops.append(Node->op_begin() + 1, Node->op_end());
-    } else {
-      Ops.append(Node->op_begin() + 2, Node->op_end());
+    unsigned PreviousLogicalIndex = 0;
+    bool FirstInput = true;
+    for (const AVMServiceInputInfo &Input : Info.Inputs) {
+      assert(
+          (FirstInput || Input.LogicalArgumentIndex >= PreviousLogicalIndex) &&
+          "service inputs must be in logical argument order");
+      FirstInput = false;
+      PreviousLogicalIndex = Input.LogicalArgumentIndex;
+      if (!Input.PassToMachine &&
+          Input.LogicalArgumentIndex >= LogicalOps.size())
+        continue;
+      assert(Input.LogicalArgumentIndex < LogicalOps.size() &&
+             "intrinsic and service descriptor disagree");
+      SDValue Value = LogicalOps[Input.LogicalArgumentIndex];
+      switch (Input.PointerPolicy) {
+      case AVMServicePointerPolicy::None:
+        break;
+      case AVMServicePointerPolicy::IgnorePadding:
+        Value = stripProgramPointerNormalization(Value);
+        break;
+      case AVMServicePointerPolicy::RequireNormalized:
+        Value = normalizeProgramServicePointer(Value, SDLoc(Node));
+        break;
+      }
+      if (!Input.PassToMachine)
+        continue;
+      if (Input.Kind == AVMServiceValueKind::I16 &&
+          Value.getValueType() != MVT::i16)
+        Value = CurDAG->getNode(ISD::ZERO_EXTEND, SDLoc(Node), MVT::i16, Value);
+      Ops.push_back(Value);
+    }
+    if (HasChain)
       Ops.push_back(Node->getOperand(0));
-    }
-    SmallVector<SDValue, 5> LogicalOps = Ops;
-
-    if (ID == Intrinsic::avm_memset && Ops[1].getValueType() != MVT::i16)
-      Ops[1] = CurDAG->getNode(ISD::ZERO_EXTEND, SDLoc(Node), MVT::i16, Ops[1]);
-
-    switch (ID) {
-    case Intrinsic::avm_draw_sprite_overwrite:
-    case Intrinsic::avm_draw_sprite_plus_mask:
-    case Intrinsic::avm_draw_sprite_self_masked:
-    case Intrinsic::avm_draw_sprite_erase:
-      Ops = {LogicalOps[0], LogicalOps[1],
-             stripProgramPointerNormalization(LogicalOps[2]),
-             LogicalOps[3], LogicalOps.back()};
-      break;
-    case Intrinsic::avm_memcmp_p:
-      Ops = {LogicalOps[0], LogicalOps[2],
-             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
-             LogicalOps.back()};
-      break;
-    case Intrinsic::avm_strcmp_p:
-      Ops = {LogicalOps[0],
-             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
-             LogicalOps.back()};
-      break;
-    case Intrinsic::avm_strlen_p:
-      Ops = {normalizeProgramServicePointer(LogicalOps[0], SDLoc(Node)),
-             LogicalOps.back()};
-      break;
-    case Intrinsic::avm_strncpy_p:
-    case Intrinsic::avm_strncat_p:
-      Ops = {LogicalOps[0], LogicalOps[2],
-             normalizeProgramServicePointer(LogicalOps[1], SDLoc(Node)),
-             LogicalOps.back()};
-      break;
-    default:
-      break;
-    }
 
     SDNode *Selected =
         CurDAG->SelectNodeTo(Node, Opcode, Node->getVTList(), Ops);
-    attachMemoryServiceRefs(Selected, ID, LogicalOps);
+    attachSystemServiceMemoryRefs(Selected, Info, LogicalOps);
     return true;
   }
 

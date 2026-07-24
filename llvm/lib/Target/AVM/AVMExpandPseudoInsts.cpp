@@ -4,9 +4,6 @@
 #include "AVMCostModel.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/IR/Function.h"
@@ -19,24 +16,6 @@ using namespace llvm;
 #define PASS_NAME "AVM post-RA pseudo instruction expansion"
 
 namespace {
-struct SpriteCopy {
-  Register Dest;
-  Register Src;
-  bool FromStack = false;
-};
-
-static bool isSpriteService(unsigned Opcode) {
-  switch (Opcode) {
-  case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
-    return true;
-  default:
-    return false;
-  }
-}
-
 class AVMExpandPseudo final : public MachineFunctionPass {
 public:
   static char ID;
@@ -46,116 +25,19 @@ public:
 
   bool runOnMachineFunction(MachineFunction &MF) override {
     const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
-    const AVMRegisterInfo &TRI = TII.getRegisterInfo();
     bool Changed = false;
 
     auto IsUpper = [](Register Reg) {
       return AVM::UpperGPR16RegClass.contains(Reg);
     };
     auto EmitMove = [&](MachineBasicBlock &MBB, MachineInstr &Before,
-                         Register Dest, Register Src, unsigned SrcState = 0) {
+                        Register Dest, Register Src, unsigned SrcState = 0) {
       if (Dest == Src)
         return;
 
       unsigned Opcode = IsUpper(Dest) && IsUpper(Src) ? AVM::MOV : AVM::MOV_RR;
       BuildMI(MBB, Before, Before.getDebugLoc(), TII.get(Opcode), Dest)
           .addReg(Src, SrcState);
-    };
-    auto EmitSpriteService = [&](MachineBasicBlock &MBB, MachineInstr &MI,
-                                 uint8_t LiveAfter) {
-      assert(isSpriteService(MI.getOpcode()) &&
-             "expected sprite service pseudo");
-
-      const Register Pointer = MI.getOperand(2).getReg();
-      SmallVector<SpriteCopy, 5> Copies = {
-          {AVM::R4, MI.getOperand(0).getReg()},
-          {AVM::R5, MI.getOperand(1).getReg()},
-          {AVM::R6, TRI.getSubReg(Pointer, AVM::sub_lo16)},
-          {AVM::R7, TRI.getSubReg(Pointer, AVM::sub_hi16)},
-          {AVM::R0, MI.getOperand(3).getReg()},
-      };
-      llvm::erase_if(Copies,
-                     [](const SpriteCopy &Copy) {
-                       return Copy.Dest == Copy.Src;
-                     });
-
-      SmallVector<Register, 5> Saved;
-      for (const SpriteCopy &Copy : Copies) {
-        unsigned Encoding = TRI.getEncodingValue(Copy.Dest);
-        if (!(LiveAfter & (1u << Encoding)) ||
-            llvm::is_contained(Saved, Copy.Dest))
-          continue;
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::PUSH16))
-            .addReg(Copy.Dest);
-        Saved.push_back(Copy.Dest);
-      }
-
-      SmallSet<Register, 5> Sources;
-      for (const SpriteCopy &Copy : Copies)
-        Sources.insert(Copy.Src);
-      Register Scratch;
-      for (Register Candidate : {AVM::R1, AVM::R2, AVM::R3}) {
-        unsigned Encoding = TRI.getEncodingValue(Candidate);
-        if (!(LiveAfter & (1u << Encoding)) &&
-            !Sources.contains(Candidate)) {
-          Scratch = Candidate;
-          break;
-        }
-      }
-
-      while (!Copies.empty()) {
-        auto IsSource = [&](Register Reg) {
-          return llvm::any_of(Copies, [&](const SpriteCopy &Copy) {
-            return !Copy.FromStack && Copy.Src == Reg;
-          });
-        };
-        auto Ready = llvm::find_if(Copies, [&](const SpriteCopy &Copy) {
-          return !IsSource(Copy.Dest);
-        });
-        if (Ready != Copies.end()) {
-          if (Ready->FromStack) {
-            Register Dest = Ready->Dest;
-            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::POP16), Dest);
-            Copies.erase(Ready);
-            for (SpriteCopy &Copy : Copies) {
-              if (!Copy.FromStack)
-                continue;
-              Copy.Src = Dest;
-              Copy.FromStack = false;
-            }
-          } else {
-            EmitMove(MBB, MI, Ready->Dest, Ready->Src);
-            Copies.erase(Ready);
-          }
-          continue;
-        }
-
-        Register CycleValue = Copies.front().Dest;
-        if (Scratch) {
-          EmitMove(MBB, MI, Scratch, CycleValue);
-          for (SpriteCopy &Copy : Copies)
-            if (!Copy.FromStack && Copy.Src == CycleValue)
-              Copy.Src = Scratch;
-        } else {
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::PUSH16))
-              .addReg(CycleValue);
-          for (SpriteCopy &Copy : Copies)
-            if (!Copy.FromStack && Copy.Src == CycleValue)
-              Copy.FromStack = true;
-        }
-      }
-
-      MachineInstrBuilder Sys =
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(MI.getOpcode()))
-              .addReg(AVM::R4)
-              .addReg(AVM::R5)
-              .addReg(AVM::R6R7)
-              .addReg(AVM::R0);
-      Sys.cloneMemRefs(MI);
-
-      for (Register Reg : llvm::reverse(Saved))
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::POP16), Reg);
-      MI.eraseFromParent();
     };
     auto EmitImmediate = [&](MachineBasicBlock &MBB, MachineInstr &Before,
                              Register Reg, uint16_t Value) {
@@ -264,35 +146,10 @@ public:
                  : FullOpcode;
     };
 
-    DenseMap<const MachineInstr *, uint8_t> SpriteLiveAfter;
-    for (MachineBasicBlock &MBB : MF) {
-      LivePhysRegs LiveRegs(TRI);
-      LiveRegs.addLiveOuts(MBB);
-      for (MachineInstr &MI : llvm::reverse(MBB)) {
-        if (isSpriteService(MI.getOpcode())) {
-          uint8_t Mask = 0;
-          for (Register Reg :
-               {AVM::R0, AVM::R1, AVM::R2, AVM::R3,
-                AVM::R4, AVM::R5, AVM::R6, AVM::R7})
-            if (LiveRegs.contains(Reg))
-              Mask |= 1u << TRI.getEncodingValue(Reg);
-          SpriteLiveAfter[&MI] = Mask;
-        }
-        LiveRegs.stepBackward(MI);
-      }
-    }
-
     for (MachineBasicBlock &MBB : MF) {
       for (MachineInstr &MI : make_early_inc_range(MBB)) {
         unsigned NewOpcode = 0;
         switch (MI.getOpcode()) {
-        case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
-        case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
-        case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
-        case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
-          EmitSpriteService(MBB, MI, SpriteLiveAfter.lookup(&MI));
-          Changed = true;
-          continue;
         case AVM::COPY16_PSEUDO:
           EmitMove(MBB, MI, MI.getOperand(0).getReg(),
                    MI.getOperand(1).getReg(),
@@ -866,9 +723,9 @@ public:
                 .addImm(0)
                 .cloneMemRefs(MI);
           } else {
-            unsigned LoadOpcode =
-                IsUpper(Dest) ? (IsByte ? AVM::LD8U : AVM::LD16)
-                              : (IsByte ? AVM::F5LD8U : AVM::F5LD16);
+            unsigned LoadOpcode = IsUpper(Dest)
+                                      ? (IsByte ? AVM::LD8U : AVM::LD16)
+                                      : (IsByte ? AVM::F5LD8U : AVM::F5LD16);
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(LoadOpcode), Dest)
                 .addReg(Addr)
                 .cloneMemRefs(MI);
@@ -900,9 +757,9 @@ public:
                 .addReg(Src, getKillRegState(MI.getOperand(2).isKill()))
                 .cloneMemRefs(MI);
           } else {
-            unsigned StoreOpcode =
-                IsUpper(Src) ? (IsByte ? AVM::ST8 : AVM::ST16)
-                             : (IsByte ? AVM::F3ST8 : AVM::F5ST16);
+            unsigned StoreOpcode = IsUpper(Src)
+                                       ? (IsByte ? AVM::ST8 : AVM::ST16)
+                                       : (IsByte ? AVM::F3ST8 : AVM::F5ST16);
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(StoreOpcode))
                 .addReg(Addr)
                 .addReg(Src, getKillRegState(MI.getOperand(2).isKill()))

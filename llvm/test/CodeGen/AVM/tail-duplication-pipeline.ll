@@ -6,6 +6,7 @@
 
 ; O2:      AVM late tail duplication
 ; O2-NEXT: AVM measured branch polarity
+; O2-NEXT: AVM post-RA system-service expansion
 ; O2-NEXT: AVM post-RA pseudo instruction expansion
 ; O2-NEXT: Remove dead machine instructions
 ; O2-NEXT: AVM final control-flow cleanup

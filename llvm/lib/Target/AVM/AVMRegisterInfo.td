@@ -58,13 +58,18 @@ def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 8, (add R4R5, R6R7)>;
 def ProgPtrGPR32 : RegisterClass<"AVM", [i32], 8,
                                  (add R4R5, R6R7, R0R1, R2R3)>;
 
-// Fixed-register service interfaces.  Keeping these as singleton allocation
-// classes lets the normal register allocator insert parallel-copy-safe setup
-// and preserve input-only values without modeling a service as a call.
+// Singleton classes are pre-RA fixed-service carriers and operands of other
+// genuinely fixed target operations. System-service pseudos themselves use
+// semantic general classes; the descriptor-driven service passes introduce
+// these carriers only where keeping a value in its ABI register is profitable.
 def R0Only : RegisterClass<"AVM", [i16], 8, (add R0)>;
+def R1Only : RegisterClass<"AVM", [i16], 8, (add R1)>;
+def R2Only : RegisterClass<"AVM", [i16], 8, (add R2)>;
+def R3Only : RegisterClass<"AVM", [i16], 8, (add R3)>;
 def R4Only : RegisterClass<"AVM", [i16], 8, (add R4)>;
 def R5Only : RegisterClass<"AVM", [i16], 8, (add R5)>;
 def R6Only : RegisterClass<"AVM", [i16], 8, (add R6)>;
+def R7Only : RegisterClass<"AVM", [i16], 8, (add R7)>;
 def Q0Only : RegisterClass<"AVM", [i32, f32], 8, (add R0R1)>;
 def Q1Only : RegisterClass<"AVM", [i32, f32], 8, (add R2R3)>;
 def Q2Only : RegisterClass<"AVM", [i32, f32], 8, (add R4R5)>;

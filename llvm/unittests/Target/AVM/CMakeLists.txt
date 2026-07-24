@@ -10,4 +10,5 @@ include_directories(
 
 add_llvm_target_unittest(AVMCostModelTests
   AVMCostModelTest.cpp
+  AVMSystemServiceInfoTest.cpp
   )

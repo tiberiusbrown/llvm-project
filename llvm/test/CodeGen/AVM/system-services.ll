@@ -1,9 +1,9 @@
 ; RUN: llc -mtriple=avm -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefixes=CHECK,CHECK-O0
 ; RUN: llc -mtriple=avm -O2 -verify-machineinstrs < %s | FileCheck %s
-; RUN: llc -mtriple=avm -O0 -stop-after=avm-service-result < %s -o - \
+; RUN: llc -mtriple=avm -O0 -stop-after=avm-system-service-regions < %s -o - \
 ; RUN:   | FileCheck %s --check-prefixes=MIR,MIR-O0
-; RUN: llc -mtriple=avm -O2 -stop-after=avm-service-result < %s -o - \
-; RUN:   | FileCheck %s --check-prefix=MIR
+; RUN: llc -mtriple=avm -O2 -stop-after=avm-system-service-regions < %s -o - \
+; RUN:   | FileCheck %s --check-prefixes=MIR,MIR-O2
 
 declare void @llvm.avm.debug.putc(i8)
 declare void @llvm.avm.debug.break()
@@ -152,54 +152,40 @@ define void @global_sprite_object_mmo() {
 ; MIR:       SYS_DEBUG_PUTC_PSEUDO
 ; MIR:       SYS_DEBUG_BREAK_PSEUDO
 ; MIR-LABEL: name: timer_result_to_debug
-; MIR:       [[DEBUG_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
-; MIR-NEXT:  [[DEBUG_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[DEBUG_RESULT]]
-; MIR:       [[DEBUG_INPUT:%[0-9]+]]:r4only = COPY {{%[0-9]+}}
-; MIR-NEXT:  SYS_DEBUG_PUTC_PSEUDO killed [[DEBUG_INPUT]]
+; MIR:       [[DEBUG_RESULT:%[0-9]+]]:gpr16 = SYS_MILLIS_PSEUDO
+; MIR:       [[DEBUG_CHARACTER:%[0-9]+]]:gpr16 = ZEXT8_PSEUDO [[DEBUG_RESULT]]
+; MIR:       SYS_DEBUG_PUTC_PSEUDO{{.*}} [[DEBUG_CHARACTER]]
 ; MIR-LABEL: name: timer_services
-; MIR:       {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
-; MIR-NEXT:  [[TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr16 = nomerge COPY{{.*}} [[TIMER]]
+; MIR:       {{%[0-9]+}}:gpr16 = SYS_MILLIS_PSEUDO
+; MIR-NEXT:  [[TIMER:%[0-9]+]]:gpr16 = SYS_MILLIS_PSEUDO
 ; MIR-LABEL: name: timer32_service
-; MIR:       [[TIMER32:%[0-9]+]]:q2only = SYS_MILLIS32_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[TIMER32]]
+; MIR:       [[TIMER32:%[0-9]+]]:gpr32 = SYS_MILLIS32_PSEUDO
 ; MIR-LABEL: name: math_services
-; MIR:       [[SINF:%[0-9]+]]:q2only = SYS_SINF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[SINF]]
-; MIR:       [[COSF:%[0-9]+]]:q2only = SYS_COSF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[COSF]]
-; MIR:       [[ATAN2F:%[0-9]+]]:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[ATAN2F]]
-; MIR:       [[TANF:%[0-9]+]]:q2only = SYS_TANF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[TANF]]
-; MIR:       [[EXPF:%[0-9]+]]:q2only = SYS_EXPF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[EXPF]]
-; MIR:       [[LOGF:%[0-9]+]]:q2only = SYS_LOGF_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOGF]]
-; MIR:       [[LOG2F:%[0-9]+]]:q2only = SYS_LOG2F_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOG2F]]
-; MIR:       [[LOG10F:%[0-9]+]]:q2only = SYS_LOG10F_PSEUDO
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[LOG10F]]
-; MIR:       [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[POWF]]
-; MIR:       [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[HYPOTF]]
-; MIR:       [[FMODF:%[0-9]+]]:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[FMODF]]
+; MIR-O2:    [[SINF:%[0-9]+]]:q2only = SYS_SINF_PSEUDO
+; MIR-O2:    [[COSF:%[0-9]+]]:q2only = SYS_COSF_PSEUDO
+; MIR-O2:    [[ATAN2F:%[0-9]+]]:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-O2:    [[TANF:%[0-9]+]]:q2only = SYS_TANF_PSEUDO
+; MIR-O2:    [[EXPF:%[0-9]+]]:q2only = SYS_EXPF_PSEUDO
+; MIR-O2:    [[LOGF:%[0-9]+]]:q2only = SYS_LOGF_PSEUDO
+; MIR-O2:    [[LOG2F:%[0-9]+]]:q2only = SYS_LOG2F_PSEUDO
+; MIR-O2:    [[LOG10F:%[0-9]+]]:q2only = SYS_LOG10F_PSEUDO
+; MIR-O2:    [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-O2:    [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-O2:    [[FMODF:%[0-9]+]]:gpr32 = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
 ; MIR-LABEL: name: display_and_sprite_services
-; MIR-O0:    SYS_DISPLAY_PSEUDO :: (load (s8192), align 1)
-; MIR-NOT:   :r4only = COPY
-; MIR-NOT:   :r5only = COPY
-; MIR-NOT:   :q3only = COPY
-; MIR-NOT:   :r0only = COPY
-; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR-O0:    SYS_DISPLAY_PSEUDO :: (load (s8192) from @__avm_framebuffer, align 1)
+; MIR-O2:    [[X:%[0-9]+]]:r4only = nomerge COPY
+; MIR-O2:    [[Y:%[0-9]+]]:r5only = nomerge COPY
+; MIR-O2:    [[SPRITE:%[0-9]+]]:q3only = nomerge COPY
+; MIR-O2:    [[FRAME:%[0-9]+]]:r0only = nomerge COPY
+; MIR-O0:    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR-O2:    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X]], [[Y]], [[SPRITE]], [[FRAME]] :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR:       SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR:       SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR:       SYS_DRAW_SPRITE_ERASE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR-LABEL: name: timer_result_as_sprite_frame
-; MIR:       [[SPRITE_TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
-; MIR-NEXT:  [[SPRITE_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[SPRITE_TIMER]]
-; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, [[SPRITE_GENERAL]]
+; MIR:       [[SPRITE_TIMER:%[0-9]+]]:gpr16 = SYS_MILLIS_PSEUDO
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}[[SPRITE_TIMER]]
 ; MIR-LABEL: name: inttoptr_sprite_unnormalized
 ; MIR-NOT:   PROG_CANON_PSEUDO
 ; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO

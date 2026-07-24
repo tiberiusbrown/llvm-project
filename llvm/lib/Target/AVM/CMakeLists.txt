@@ -19,6 +19,7 @@ add_llvm_target(AVMCodeGen
   AVMAsmPrinter.cpp
   AVMBranchPolarity.cpp
   AVMCostModel.cpp
+  AVMExpandSystemServices.cpp
   AVMExpandPseudoInsts.cpp
   AVMFinalControlFlow.cpp
   AVMFrameLowering.cpp
@@ -30,7 +31,8 @@ add_llvm_target(AVMCodeGen
   AVMProgramMemoryWidening.cpp
   AVMRegisterInfo.cpp
   AVMSelectionDAGInfo.cpp
-  AVMServiceResult.cpp
+  AVMSystemServiceInfo.cpp
+  AVMSystemServiceRegions.cpp
   AVMSubtarget.cpp
   AVMTailDuplication.cpp
   AVMTargetMachine.cpp

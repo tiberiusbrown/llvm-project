@@ -86,24 +86,31 @@ void *(*avm_memmove_address)(void *, const void *, unsigned int) =
 
 // ASM-LABEL: ordinary_fill:
 // ASM:       sys memset
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: builtin_fill:
 // ASM:       sys memset
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: target_fill:
 // ASM:       sys memset
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: ordinary_move:
 // ASM:       sys memmove
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: builtin_move:
 // ASM:       sys memmove
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: target_move:
 // ASM:       sys memmove
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: target_copy:
 // ASM:       sys memcpy
+// ASM-NEXT:  pop16 r4
 // ASM-NEXT:  ret
 // ASM-LABEL: small_fill:
 // ASM-NOT:   sys memset

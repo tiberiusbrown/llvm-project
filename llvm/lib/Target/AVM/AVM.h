@@ -22,7 +22,8 @@ FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMExpandPseudoPass();
 FunctionPass *createAVMFinalControlFlowPass();
 FunctionPass *createAVMProgramMemoryWideningPass();
-FunctionPass *createAVMServiceResultPass();
+FunctionPass *createAVMSystemServiceRegionsPass();
+FunctionPass *createAVMExpandSystemServicesPass();
 
 void initializeAVMAsmPrinterPass(PassRegistry &);
 void initializeAVMTailDuplicationPass(PassRegistry &);
@@ -32,7 +33,8 @@ void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 void initializeAVMFinalControlFlowPass(PassRegistry &);
 void initializeAVMProgramMemoryWideningPass(PassRegistry &);
-void initializeAVMServiceResultPass(PassRegistry &);
+void initializeAVMSystemServiceRegionsPass(PassRegistry &);
+void initializeAVMExpandSystemServicesPass(PassRegistry &);
 } // namespace llvm
 
 #endif

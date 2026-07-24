@@ -1,5 +1,6 @@
 # RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
-# RUN:   -run-pass=avm-expand-pseudo -verify-machineinstrs %s -o - \
+# RUN:   -run-pass=avm-expand-system-services,avm-expand-pseudo \
+# RUN:   -verify-machineinstrs %s -o - \
 # RUN:   | FileCheck %s
 
 --- |
@@ -61,11 +62,11 @@ body: |
     ; r4 <- r5 <- r6 <- r0 <- r4 is one parallel-copy cycle.
     ; CHECK-LABEL: name: complete_cycle
     ; CHECK: $r7 = MOV_RR $r1
-    ; CHECK-NEXT: $r2 = MOV_RR $r4
+    ; CHECK-NEXT: $r1 = MOV_RR $r4
     ; CHECK: $r4 = MOV $r5
     ; CHECK: $r5 = MOV $r6
     ; CHECK: $r6 = MOV_RR $r0
-    ; CHECK: $r0 = MOV_RR $r2
+    ; CHECK: $r0 = MOV_RR $r1
     ; CHECK: SYS_DRAW_SPRITE_ERASE_PSEUDO $r4, $r5, $r6r7, $r0
     SYS_DRAW_SPRITE_ERASE_PSEUDO $r5, $r6, $r0r1, $r4
     RET_PSEUDO implicit-def dead $sp, implicit $sp

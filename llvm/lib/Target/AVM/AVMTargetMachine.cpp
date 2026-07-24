@@ -33,7 +33,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
   initializeAVMProgramMemoryWideningPass(PR);
-  initializeAVMServiceResultPass(PR);
+  initializeAVMSystemServiceRegionsPass(PR);
+  initializeAVMExpandSystemServicesPass(PR);
 }
 
 AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
@@ -105,7 +106,9 @@ public:
     return false;
   }
 
-  void addPreRegAlloc() override { addPass(createAVMServiceResultPass()); }
+  void addPreRegAlloc() override {
+    addPass(createAVMSystemServiceRegionsPass());
+  }
 
   void addPreSched2() override {
     if (getOptLevel() != CodeGenOptLevel::None)
@@ -116,6 +119,7 @@ public:
     if (getOptLevel() != CodeGenOptLevel::None)
       addPass(createAVMTailDuplicationPass(getOptLevel()));
     addPass(createAVMBranchPolarityPass());
+    addPass(createAVMExpandSystemServicesPass());
     addPass(createAVMExpandPseudoPass());
     addPass(&DeadMachineInstructionElimID);
     addPass(createAVMFinalControlFlowPass());
