@@ -995,7 +995,9 @@ def CALL_INDIRECT_PSEUDO
 
 def FRAMEADDR_PSEUDO
     : AVMCodeGenPseudo<(outs PTR16:$dst),
-                       (ins i16imm:$fi, i16imm:$offset)>;
+                       (ins i16imm:$fi, i16imm:$offset)> {
+  let Uses = [SP];
+}
 
 def DATA_ADDR_PSEUDO
     : AVMCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
@@ -1133,11 +1135,13 @@ def ZEXT8_PSEUDO
 class AVMStackLoadPseudo<RegisterClass RC>
     : AVMCodeGenPseudo<(outs RC:$dst),
                        (ins i16imm:$fi, i16imm:$offset)> {
+  let Uses = [SP];
   let mayLoad = 1;
 }
 class AVMStackStorePseudo<RegisterClass RC>
     : AVMCodeGenPseudo<(outs),
                        (ins i16imm:$fi, i16imm:$offset, RC:$src)> {
+  let Uses = [SP];
   let mayStore = 1;
 }
 

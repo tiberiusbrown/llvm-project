@@ -178,6 +178,12 @@ static bool isRegionBarrier(const MachineInstr &MI) {
                       [](const MachineOperand &MO) { return MO.isRegMask(); });
 }
 
+static bool touchesArchitecturalStack(
+    const MachineInstr &MI, const TargetRegisterInfo &TRI) {
+  return MI.readsRegister(AVM::SP, &TRI) ||
+         MI.modifiesRegister(AVM::SP, &TRI);
+}
+
 static bool aliasesAnySaved(const MachineInstr &MI,
                             ArrayRef<SavedPhysValue> Saved,
                             const TargetRegisterInfo &TRI) {
@@ -248,11 +254,19 @@ public:
         const AVMSystemServiceInfo *Info =
             getAVMSystemServiceInfo(MI.getOpcode());
         if (!Info) {
+          const bool RegionBarrier = isRegionBarrier(MI);
+          const bool StackBoundary = touchesArchitecturalStack(MI, TRI);
+
           if (!ActiveSaved.empty() &&
-              (isRegionBarrier(MI) || aliasesAnySaved(MI, ActiveSaved, TRI)))
+              (RegionBarrier || StackBoundary ||
+              aliasesAnySaved(MI, ActiveSaved, TRI)))
             RestoreSaved(MI.getIterator(), MI.getDebugLoc());
 
-          bool InvalidateAll = isRegionBarrier(MI);
+          // No architectural PUSH16 save may remain active while an instruction
+          // observes or changes the architectural stack pointer.
+          assert(ActiveSaved.empty() || !StackBoundary);
+
+          bool InvalidateAll = RegionBarrier;
           for (MCPhysReg Reg : {AVM::R0, AVM::R1, AVM::R2, AVM::R3, AVM::R4,
                                 AVM::R5, AVM::R6, AVM::R7})
             if (InvalidateAll || MI.modifiesRegister(Reg, &TRI))
