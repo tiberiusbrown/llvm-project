@@ -97,7 +97,8 @@ bool AVMRegisterInfo::shouldCoalesce(MachineInstr *MI,
     return false;
 
   if (crossesFixedServiceClassBoundary(SrcRC, DstRC, NewRC))
-    return isOneUseGeneralToFixedServiceCopy(MI);
+    //return isOneUseGeneralToFixedServiceCopy(MI);
+    return false;
 
   return true;
 }

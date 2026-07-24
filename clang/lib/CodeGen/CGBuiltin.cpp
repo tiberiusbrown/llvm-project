@@ -118,6 +118,11 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_draw_sprite_plus_mask:
     case AVM::BI__avm_draw_sprite_self_masked:
     case AVM::BI__avm_draw_sprite_erase:
+    case AVM::BI__avm_set_sprite:
+    case AVM::BI__avm_draw_overwrite:
+    case AVM::BI__avm_draw_plus_mask:
+    case AVM::BI__avm_draw_self_masked:
+    case AVM::BI__avm_draw_erase:
     case AVM::BI__avm_sqrtf:
     case AVM::BI__avm_sinf:
     case AVM::BI__avm_cosf:
@@ -181,6 +186,21 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_draw_sprite_erase:
         ID = Intrinsic::avm_draw_sprite_erase;
+        break;
+      case AVM::BI__avm_set_sprite:
+        ID = Intrinsic::avm_set_sprite;
+        break;
+      case AVM::BI__avm_draw_overwrite:
+        ID = Intrinsic::avm_draw_overwrite;
+        break;
+      case AVM::BI__avm_draw_plus_mask:
+        ID = Intrinsic::avm_draw_plus_mask;
+        break;
+      case AVM::BI__avm_draw_self_masked:
+        ID = Intrinsic::avm_draw_self_masked;
+        break;
+      case AVM::BI__avm_draw_erase:
+        ID = Intrinsic::avm_draw_erase;
         break;
       case AVM::BI__avm_sinf:
         ID = Intrinsic::avm_sinf;
@@ -278,6 +298,34 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       for (const Expr *Arg : E->arguments())
         Args.push_back(CGF->EmitScalarExpr(Arg));
       switch (BuiltinID) {
+      case AVM::BI__avm_set_sprite:
+      case AVM::BI__avm_draw_overwrite:
+      case AVM::BI__avm_draw_plus_mask:
+      case AVM::BI__avm_draw_self_masked:
+      case AVM::BI__avm_draw_erase: {
+        constexpr llvm::StringLiteral CurrentSpriteName("__avm_current_sprite");
+        llvm::Module &M = CGF->CGM.getModule();
+        llvm::ArrayType *CurrentSpriteTy =
+            llvm::ArrayType::get(CGF->Int8Ty, 5);
+        GlobalVariable *CurrentSprite =
+            M.getGlobalVariable(CurrentSpriteName, /*AllowInternal=*/true);
+        if (!CurrentSprite)
+          CurrentSprite = new GlobalVariable(
+              M, CurrentSpriteTy, /*isConstant=*/false,
+              GlobalValue::ExternalLinkage, /*Initializer=*/nullptr,
+              CurrentSpriteName, /*InsertBefore=*/nullptr,
+              GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
+        CurrentSprite->setAlignment(Align(1));
+        if (!StringRef(M.getModuleInlineAsm())
+                 .contains(".globl __avm_current_sprite"))
+          M.appendModuleInlineAsm(".globl __avm_current_sprite");
+        Args.push_back(
+            CGF->Builder.CreateConstInBoundsGEP2_32(CurrentSpriteTy, CurrentSprite,
+                                                    0, 0));
+        if(BuiltinID == AVM::BI__avm_set_sprite)
+          break;
+        LLVM_FALLTHROUGH;
+      }
       case AVM::BI__avm_draw_sprite_overwrite:
       case AVM::BI__avm_draw_sprite_plus_mask:
       case AVM::BI__avm_draw_sprite_self_masked:

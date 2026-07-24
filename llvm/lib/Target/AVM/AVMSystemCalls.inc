@@ -94,8 +94,10 @@ AVM_SYS_DEF(0x1b, strncpy, AVM_SYS_PSEUDO, SYS_STRNCPY_PSEUDO,
             AVM_SYS_INTRINSIC, avm_strncpy, AVM_NO_COST, AVM_NO_COST)
 AVM_SYS_DEF(0x1c, strncat, AVM_SYS_PSEUDO, SYS_STRNCAT_PSEUDO,
             AVM_SYS_INTRINSIC, avm_strncat, AVM_NO_COST, AVM_NO_COST)
+
 AVM_SYS_DEF(0x1d, display, AVM_SYS_PSEUDO, SYS_DISPLAY_PSEUDO,
             AVM_SYS_INTRINSIC, avm_display, AVM_NO_COST, AVM_NO_COST)
+
 AVM_SYS_DEF(0x1e, draw_sprite_overwrite, AVM_SYS_PSEUDO,
             SYS_DRAW_SPRITE_OVERWRITE_PSEUDO, AVM_SYS_INTRINSIC,
             avm_draw_sprite_overwrite, AVM_NO_COST, AVM_NO_COST)
@@ -108,6 +110,23 @@ AVM_SYS_DEF(0x20, draw_sprite_self_masked, AVM_SYS_PSEUDO,
 AVM_SYS_DEF(0x21, draw_sprite_erase, AVM_SYS_PSEUDO,
             SYS_DRAW_SPRITE_ERASE_PSEUDO, AVM_SYS_INTRINSIC,
             avm_draw_sprite_erase, AVM_NO_COST, AVM_NO_COST)
+
+AVM_SYS_DEF(0x22, set_sprite, AVM_SYS_PSEUDO,
+            SYS_SET_SPRITE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_set_sprite, AVM_NO_COST, AVM_NO_COST)
+
+AVM_SYS_DEF(0x23, draw_overwrite, AVM_SYS_PSEUDO,
+            SYS_DRAW_OVERWRITE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_overwrite, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x24, draw_plus_mask, AVM_SYS_PSEUDO,
+            SYS_DRAW_PLUS_MASK_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_plus_mask, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x25, draw_self_masked, AVM_SYS_PSEUDO,
+            SYS_DRAW_SELF_MASKED_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_self_masked, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x26, draw_erase, AVM_SYS_PSEUDO,
+            SYS_DRAW_ERASE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_erase, AVM_NO_COST, AVM_NO_COST)
 
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF

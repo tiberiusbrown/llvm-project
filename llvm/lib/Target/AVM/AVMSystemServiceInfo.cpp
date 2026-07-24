@@ -210,6 +210,51 @@ static constexpr AVMServiceMemoryAccessInfo SpriteMemory[] = {
      0, 0},
 };
 
+static constexpr AVMServiceInputInfo SetSpriteInputs[] = {
+    {0, VK::ProgramPointer, AVM::R4R5, PP::IgnorePadding, true},
+
+    // Compiler-only memory anchor for:
+    //   uint24_t pointer;
+    //   uint8_t width;
+    //   uint8_t height;
+    {1, VK::I16, MCPhysReg(), PP::None, false},
+};
+static constexpr AVMServiceMemoryAccessInfo SetSpriteMemory[] = {
+    // width and height at offsets 0 and 1
+    {MB::LogicalArgument, 0, "", 1,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 2},
+
+    // raw pointer + width + height
+    {MB::LogicalArgument, 1, "__avm_current_sprite", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 5},
+};
+
+static constexpr AVMServiceInputInfo SpriteNoPtrInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true}, // x
+    {1, VK::I16, AVM::R5, PP::None, true}, // y
+    {2, VK::I16, AVM::R6, PP::None, true}, // frame
+
+    // Compiler-only selected-sprite-state anchor.
+    {3, VK::I16, MCPhysReg(), PP::None, false},
+
+    // Compiler-only framebuffer anchor.
+    {4, VK::I16, MCPhysReg(), PP::None, false},
+};
+static constexpr AVMServiceMemoryAccessInfo SpriteNoPtrMemory[] = {
+    {MB::LogicalArgument, 3, "__avm_current_sprite", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 5},
+
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
+
+    // Selected sprite data at a runtime-cached, unknown AS1 address.
+    {MB::UnknownAddressSpace, 0, "", 1,
+     MachineMemOperand::MOLoad, MS::AfterPointer, 0, 0},
+};
+
 #define SERVICE(Pseudo, Inputs, Outputs, Memory)                               \
   static constexpr AVMSystemServiceInfo Pseudo##Info = {                       \
       AVM::Pseudo, Pseudo##ServiceID, Pseudo##ServiceName,                     \
@@ -249,6 +294,11 @@ SERVICE(SYS_DRAW_SPRITE_OVERWRITE_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_ERASE_PSEUDO, SpriteInputs, {}, SpriteMemory);
+SERVICE(SYS_SET_SPRITE_PSEUDO, SetSpriteInputs, {}, SetSpriteMemory);
+SERVICE(SYS_DRAW_OVERWRITE_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
+SERVICE(SYS_DRAW_PLUS_MASK_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
+SERVICE(SYS_DRAW_SELF_MASKED_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
+SERVICE(SYS_DRAW_ERASE_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
 
 #undef SERVICE
 

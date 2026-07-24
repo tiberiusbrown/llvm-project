@@ -745,6 +745,30 @@ def SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO : AVMSpriteServicePseudo;
 def SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO : AVMSpriteServicePseudo;
 def SYS_DRAW_SPRITE_ERASE_PSEUDO : AVMSpriteServicePseudo;
 
+class AVMSetSpriteServicePseudo
+    : AVMSystemServicePseudo<
+          (outs),
+          (ins ProgPtrGPR32:$sprite)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+def SYS_SET_SPRITE_PSEUDO : AVMSetSpriteServicePseudo;
+
+class AVMSpriteNoPtrServicePseudo
+    : AVMSystemServicePseudo<
+          (outs),
+          (ins GPR16:$x, GPR16:$y, GPR16:$frame)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_DRAW_OVERWRITE_PSEUDO : AVMSpriteNoPtrServicePseudo;
+def SYS_DRAW_PLUS_MASK_PSEUDO : AVMSpriteNoPtrServicePseudo;
+def SYS_DRAW_SELF_MASKED_PSEUDO : AVMSpriteNoPtrServicePseudo;
+def SYS_DRAW_ERASE_PSEUDO : AVMSpriteNoPtrServicePseudo;
+
 class AVMUnaryMathServicePseudo
     : AVMSystemServicePseudo<(outs GPR32:$result), (ins GPR32:$operand)> {
   let Constraints = "$result = $operand";

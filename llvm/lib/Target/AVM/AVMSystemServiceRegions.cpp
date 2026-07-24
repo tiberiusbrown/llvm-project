@@ -654,6 +654,14 @@ static bool fixedServiceClassesOverlap(const TargetRegisterClass *LHS,
   return false;
 }
 
+static bool isPhysicalRegisterCopy(const MachineInstr &MI) {
+  if (!MI.isCopy() || MI.getNumExplicitOperands() < 2)
+    return false;
+
+  const MachineOperand &Src = MI.getOperand(1);
+  return Src.isReg() && Src.getReg().isPhysical();
+}
+
 // Folding a general source into a singleton carrier extends the singleton live
 // range back to the source definition.  Restrict deterministic folding to
 // adjacent setup sequences: only debug instructions and non-overlapping fixed
@@ -664,6 +672,9 @@ static bool canFoldOneUseCarrierCopy(
     const TargetRegisterInfo &TRI) {
   MachineInstr *Def = MRI.getVRegDef(Src);
   if (!Def || Def->getParent() != Copy.getParent())
+    return false;
+  
+  if (isPhysicalRegisterCopy(*Def))
     return false;
 
   auto CopyIt = Copy.getIterator();

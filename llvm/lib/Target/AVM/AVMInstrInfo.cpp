@@ -61,7 +61,9 @@ void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
         .addReg(SrcReg, getKillRegState(KillSrc));
     return;
   }
-  report_fatal_error("unsupported AVM physical-register copy");
+  report_fatal_error(
+    Twine("unsupported AVM physical-register copy: ") +
+    RI.getName(SrcReg) + " -> " + RI.getName(DestReg));
 }
 
 void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,

@@ -41,6 +41,30 @@ let TargetPrefix = "avm" in {
   def int_avm_draw_sprite_self_masked : AVMSpriteIntrinsic;
   def int_avm_draw_sprite_erase : AVMSpriteIntrinsic;
 
+  class AVMSetSpriteIntrinsic
+      : Intrinsic<[],
+                  [llvm_avm_progptr_ty, llvm_ptr_ty],
+                  [IntrArgMemOnly, IntrHasSideEffects, IntrWillReturn,
+                   IntrNoCallback, IntrNoFree,
+                   ReadOnly<ArgIndex<0>>,
+                   NoCapture<ArgIndex<1>>,
+                   WriteOnly<ArgIndex<1>>]>;
+  def int_avm_set_sprite : AVMSetSpriteIntrinsic;
+
+  class AVMSpriteNoPtrIntrinsic
+      : Intrinsic<[],
+                  [llvm_i16_ty, llvm_i16_ty, llvm_i16_ty,
+                  llvm_ptr_ty, llvm_ptr_ty],
+                  [IntrHasSideEffects, IntrWillReturn,
+                  IntrNoCallback, IntrNoFree,
+                  NoCapture<ArgIndex<3>>,
+                  ReadOnly<ArgIndex<3>>,
+                  NoCapture<ArgIndex<4>>]>;
+  def int_avm_draw_overwrite : AVMSpriteNoPtrIntrinsic;
+  def int_avm_draw_plus_mask : AVMSpriteNoPtrIntrinsic;
+  def int_avm_draw_self_masked : AVMSpriteNoPtrIntrinsic;
+  def int_avm_draw_erase : AVMSpriteNoPtrIntrinsic;
+
   class AVMUnaryMathIntrinsic
       : Intrinsic<[llvm_float_ty], [llvm_float_ty],
                   [IntrNoMem, IntrSpeculatable, IntrWillReturn, IntrNoCallback,
