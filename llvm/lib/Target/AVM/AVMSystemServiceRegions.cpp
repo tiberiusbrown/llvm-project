@@ -107,6 +107,34 @@ static bool hasOutputBetween(ArrayRef<MachineInstr *> Services,
   return false;
 }
 
+static bool serviceHasConflictingInput(const MachineInstr &MI,
+                                       MCPhysReg PhysReg, Register Value,
+                                       const TargetRegisterInfo &TRI) {
+  const AVMSystemServiceInfo &Info =
+      getRequiredAVMSystemServiceInfo(MI.getOpcode());
+  unsigned OperandNo = Info.Outputs.size();
+  for (const AVMServiceInputInfo &Input : Info.Inputs) {
+    if (!Input.PassToMachine)
+      continue;
+    const MachineOperand &MO = MI.getOperand(OperandNo++);
+    if (TRI.regsOverlap(Input.PhysReg, PhysReg) && MO.isReg() &&
+        MO.getReg() != Value)
+      return true;
+  }
+  return false;
+}
+
+static bool hasConflictingInputBetween(ArrayRef<MachineInstr *> Services,
+                                       unsigned FirstIndex,
+                                       unsigned LastIndex, MCPhysReg PhysReg,
+                                       Register Value,
+                                       const TargetRegisterInfo &TRI) {
+  for (unsigned I = FirstIndex + 1; I < LastIndex; ++I)
+    if (serviceHasConflictingInput(*Services[I], PhysReg, Value, TRI))
+      return true;
+  return false;
+}
+
 static std::optional<AffineValue> decomposeAffineI16(Register Reg,
                                                      MachineRegisterInfo &MRI) {
   if (!Reg.isVirtual())
@@ -356,22 +384,18 @@ static bool formTiedResultChains(ArrayRef<MachineInstr *> Services,
           EscapingUses.push_back(&Use);
       }
 
-      // Previously this transformation was performed only when the result
-      // fed another SYS input using the same ABI register. Also create a
-      // short fixed carrier when the result escapes to ordinary code.
-      if (CoveredUses.empty() && EscapingUses.empty())
-        continue;
-
+      // Always expose the tied ABI register to register allocation, including
+      // when the result is dead.  The input carrier is intentionally mergeable:
+      // AVMRegisterInfo permits only a one-use general source to coalesce into
+      // the fixed carrier.
       Register InputReg = MI->getOperand(TiedOperandNo).getReg();
       const TargetRegisterClass *FixedRC =
           getAVMFixedRegisterClass(Output.PhysReg, Output.Kind);
       assert(FixedRC && "invalid tied service output register");
       Register FixedInput = MRI.createVirtualRegister(FixedRC);
-      MachineInstrBuilder InCopy =
-          BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
-                  TII.get(TargetOpcode::COPY), FixedInput)
-              .addReg(InputReg);
-      InCopy->setFlag(MachineInstr::NoMerge);
+      BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
+              TII.get(TargetOpcode::COPY), FixedInput)
+          .addReg(InputReg);
       Register FixedResult = MRI.createVirtualRegister(FixedRC);
       OutputMO.setReg(FixedResult);
       MI->getOperand(TiedOperandNo).setReg(FixedInput);
@@ -446,8 +470,12 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
       if (Candidate.PhysReg != Use.Input->PhysReg ||
           Candidate.Kind != Use.Input->Kind || Candidate.Value != Value)
         continue;
-      if (!hasOutputBetween(Services, Candidate.Uses.back().ServiceIndex,
-                            Use.ServiceIndex, Use.Input->PhysReg, TRI))
+      unsigned PreviousIndex = Candidate.Uses.back().ServiceIndex;
+      if (!hasOutputBetween(Services, PreviousIndex, Use.ServiceIndex,
+                            Use.Input->PhysReg, TRI) &&
+          !hasConflictingInputBetween(Services, PreviousIndex,
+                                      Use.ServiceIndex, Use.Input->PhysReg,
+                                      Value, TRI))
         Group = &Candidate;
       break;
     }
@@ -512,6 +540,76 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
   return Changed;
 }
 
+// Give every service operand that was not handled by an affine, common, or
+// tied-result transform a short fixed-register carrier.  This makes the ABI
+// occupancy visible to greedy RA while keeping semantic values in general
+// classes outside the service instruction.
+static bool createLocalServiceCarriers(ArrayRef<MachineInstr *> Services,
+                                       MachineRegisterInfo &MRI,
+                                       const TargetInstrInfo &TII) {
+  bool Changed = false;
+  for (MachineInstr *MI : Services) {
+    const AVMSystemServiceInfo &Info =
+        getRequiredAVMSystemServiceInfo(MI->getOpcode());
+
+    for (const AVMServiceOutputInfo &Output : Info.Outputs) {
+      assert(Output.ResultIndex < Info.Outputs.size() &&
+             "invalid service result index");
+      MachineOperand &OutputMO = MI->getOperand(Output.ResultIndex);
+      if (!OutputMO.isReg() || !OutputMO.getReg().isVirtual())
+        continue;
+
+      Register GeneralResult = OutputMO.getReg();
+      const TargetRegisterClass *FixedRC =
+          getAVMFixedRegisterClass(Output.PhysReg, Output.Kind);
+      assert(FixedRC && "invalid fixed service output register");
+      if (MRI.getRegClass(GeneralResult) == FixedRC)
+        continue;
+
+      bool HasUses = !MRI.use_nodbg_empty(GeneralResult);
+      Register FixedResult = MRI.createVirtualRegister(FixedRC);
+      OutputMO.setReg(FixedResult);
+      if (HasUses) {
+        MachineInstrBuilder OutCopy =
+            BuildMI(*MI->getParent(), std::next(MI->getIterator()),
+                    MI->getDebugLoc(), TII.get(TargetOpcode::COPY),
+                    GeneralResult)
+                .addReg(FixedResult);
+        OutCopy->setFlag(MachineInstr::NoMerge);
+      }
+      Changed = true;
+    }
+
+    unsigned OperandNo = Info.Outputs.size();
+    for (const AVMServiceInputInfo &Input : Info.Inputs) {
+      if (!Input.PassToMachine)
+        continue;
+      MachineOperand &InputMO = MI->getOperand(OperandNo++);
+      if (!InputMO.isReg() || !InputMO.getReg().isVirtual())
+        continue;
+
+      Register GeneralInput = InputMO.getReg();
+      const TargetRegisterClass *FixedRC =
+          getAVMFixedRegisterClass(Input.PhysReg, Input.Kind);
+      assert(FixedRC && "invalid fixed service input register");
+      if (MRI.getRegClass(GeneralInput) == FixedRC)
+        continue;
+
+      Register FixedInput = MRI.createVirtualRegister(FixedRC);
+      // Do not mark this copy NoMerge.  The target coalescer may fold a
+      // one-use general input into the fixed carrier, but still rejects longer
+      // general live ranges at the fixed/general class boundary.
+      BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
+              TII.get(TargetOpcode::COPY), FixedInput)
+          .addReg(GeneralInput);
+      InputMO.setReg(FixedInput);
+      InputMO.setIsKill(false);
+      Changed = true;
+    }
+  }
+  return Changed;
+}
+
 class AVMSystemServiceRegions final : public MachineFunctionPass {
 public:
   static char ID;
@@ -570,6 +668,7 @@ public:
             Changed |= formTiedResultChains(Services, MRI, TII, TRI);
             Changed |= chainAffineInputs(Services, MRI, TII, TRI);
             Changed |= createCommonCarriers(Services, MRI, MLI, MDT, TII, TRI);
+            Changed |= createLocalServiceCarriers(Services, MRI, TII);
           }
           RegionBegin = RegionEnd;
         }

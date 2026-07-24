@@ -60,6 +60,30 @@ static bool crossesFixedServiceClassBoundary(const TargetRegisterClass *SrcRC,
   return NewFixed;
 }
 
+static bool isOneUseGeneralToFixedServiceCopy(MachineInstr *MI) {
+  if (!MI || !MI->isCopy() || MI->getNumExplicitOperands() < 2)
+    return false;
+
+  const MachineOperand &DstMO = MI->getOperand(0);
+  const MachineOperand &SrcMO = MI->getOperand(1);
+  if (!DstMO.isReg() || !SrcMO.isReg())
+    return false;
+  Register Dst = DstMO.getReg();
+  Register Src = SrcMO.getReg();
+  if (!Dst.isVirtual() || !Src.isVirtual())
+    return false;
+
+  MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
+  if (!isAVMFixedServiceRegisterClass(MRI.getRegClass(Dst)) ||
+      isAVMFixedServiceRegisterClass(MRI.getRegClass(Src)) ||
+      !MRI.hasOneNonDBGUse(Src))
+    return false;
+
+  for (const MachineOperand &Use : MRI.use_nodbg_operands(Src))
+    return Use.getParent() == MI && Use.getOperandNo() == 1;
+  return false;
+}
+
 // Fixed service register classes describe short ABI setup/result intervals.
 // They must not absorb a general live interval through coalescing. General and
 // fixed intervals must remain separate so the general interval remains
@@ -73,7 +97,7 @@ bool AVMRegisterInfo::shouldCoalesce(MachineInstr *MI,
     return false;
 
   if (crossesFixedServiceClassBoundary(SrcRC, DstRC, NewRC))
-    return false;
+    return isOneUseGeneralToFixedServiceCopy(MI);
 
   return true;
 }

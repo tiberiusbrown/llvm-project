@@ -10,6 +10,9 @@
   define void @output_splits_carrier() { ret void }
   define void @call_boundary() { ret void }
   define void @inline_asm_boundary() { ret void }
+  define void @dead_tied_result() { ret void }
+  define void @local_output() { ret void }
+  define void @conflicting_inputs() { ret void }
   declare void @callee()
   @program_data = external addrspace(1) global i8
 ...
@@ -23,8 +26,10 @@ body: |
     ; CHECK: [[VALUE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
     ; CHECK: [[R4:%[0-9]+]]:r4only = nomerge COPY [[VALUE]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[R4]]
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[R4]], {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}
-    %0:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[Y:%[0-9]+]]:r5only = COPY %1
+    ; CHECK-NEXT: [[SPRITE:%[0-9]+]]:q3only = COPY %2
+    ; CHECK-NEXT: [[FRAME:%[0-9]+]]:r0only = COPY %3
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[R4]], [[Y]], [[SPRITE]], [[FRAME]]    %0:gpr16 = IMPLICIT_DEF
     %1:gpr16 = IMPLICIT_DEF
     %2:progptrgpr32 = IMPLICIT_DEF
     %3:gpr16 = IMPLICIT_DEF
@@ -33,16 +38,18 @@ body: |
 
     ; A tied q2 result feeding another q2 service remains in fixed carriers.
     ; CHECK: [[FLOAT:%[0-9]+]]:gpr32 = IMPLICIT_DEF
-    ; CHECK-NEXT: [[Q2IN:%[0-9]+]]:q2only = nomerge COPY [[FLOAT]]
+    ; CHECK-NEXT: [[Q2IN:%[0-9]+]]:q2only = COPY [[FLOAT]]
     ; CHECK-NEXT: [[Q2RESULT:%[0-9]+]]:q2only = SYS_SINF_PSEUDO [[Q2IN]]
-    ; CHECK: {{%[0-9]+}}:gpr32 = SYS_COSF_PSEUDO [[Q2RESULT]]
+    ; CHECK-NEXT: [[Q2COSIN:%[0-9]+]]:q2only = COPY [[Q2RESULT]]
+    ; CHECK-NEXT: {{%[0-9]+}}:q2only = SYS_COSF_PSEUDO [[Q2COSIN]]
     %4:gpr32 = IMPLICIT_DEF
     %5:gpr32 = SYS_SINF_PSEUDO %4
     %6:gpr32 = SYS_COSF_PSEUDO %5
 
-    ; A single non-loop service use stays semantic and gets no carrier.
+    ; A single non-loop service use gets a short local carrier.
     ; CHECK: [[SINGLE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
-    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[SINGLE]]
+    ; CHECK-NEXT: [[SINGLE_R4:%[0-9]+]]:r4only = COPY [[SINGLE]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[SINGLE_R4]]
     %7:gpr16 = IMPLICIT_DEF
     SYS_DEBUG_PUTC_PSEUDO %7
     RET_PSEUDO implicit-def dead $sp, implicit $sp
@@ -112,7 +119,7 @@ body: |
     ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = nomerge COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
-    ; CHECK-NEXT: {{%[0-9]+}}:gpr16 = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
     ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = nomerge COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
@@ -131,11 +138,11 @@ body: |
     %0:gpr16 = IMPLICIT_DEF
     ; An ordinary call prevents a fixed carrier from spanning both services.
     ; CHECK-LABEL: name: call_boundary
-    ; CHECK-NOT:  :r4only
-    ; CHECK:      SYS_DEBUG_PUTC_PSEUDO %0
-    ; CHECK:      CALL_DIRECT_PSEUDO
-    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO %0
-    ; CHECK-NOT:  :r4only
+    ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
+    ; CHECK-NEXT: CALL_DIRECT_PSEUDO
+    ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     SYS_DEBUG_PUTC_PSEUDO %0
     CALL_DIRECT_PSEUDO @callee, csr_avm_call, implicit-def $sp, implicit-def dead $cc, implicit $sp
     SYS_DEBUG_PUTC_PSEUDO %0
@@ -149,13 +156,69 @@ body: |
     %0:gpr16 = IMPLICIT_DEF
     ; Inline assembly is also a hard region boundary.
     ; CHECK-LABEL: name: inline_asm_boundary
-    ; CHECK-NOT:  :r4only
-    ; CHECK:      SYS_DEBUG_PUTC_PSEUDO %0
+    ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
     ; CHECK-NEXT: INLINEASM &"", 1
-    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO %0
-    ; CHECK-NOT:  :r4only
+    ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     SYS_DEBUG_PUTC_PSEUDO %0
     INLINEASM &"", 1
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: dead_tied_result
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; A dead tied result still exposes all fixed ABI inputs to RA, but needs no
+    ; copy back to a general result.
+    ; CHECK-LABEL: name: dead_tied_result
+    ; CHECK:      [[LHS:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: [[RHS:%[0-9]+]]:r5only = COPY %1
+    ; CHECK-NEXT: [[SIZE:%[0-9]+]]:r6only = COPY %2
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MEMCMP_PSEUDO [[LHS]], [[RHS]], [[SIZE]]
+    ; CHECK-NEXT: RET_PSEUDO
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    %3:gpr16 = SYS_MEMCMP_PSEUDO %0, %1, %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: local_output
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; An untied result is produced in its fixed ABI register, copied to a
+    ; general value, and then given a new local input carrier at its next SYS.
+    ; CHECK-LABEL: name: local_output
+    ; CHECK:      [[FIXED_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
+    ; CHECK-NEXT: [[GENERAL:%[0-9]+]]:gpr16 = nomerge COPY [[FIXED_RESULT]]
+    ; CHECK-NEXT: [[ARG:%[0-9]+]]:r4only = COPY [[GENERAL]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[ARG]]
+    %0:gpr16 = SYS_MILLIS_PSEUDO
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: conflicting_inputs
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; A different value in the same ABI register splits an otherwise repeated
+    ; common carrier.
+    ; CHECK-LABEL: name: conflicting_inputs
+    ; CHECK:      [[A0:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[A0]]
+    ; CHECK-NEXT: [[B:%[0-9]+]]:r4only = COPY %1
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[B]]
+    ; CHECK-NEXT: [[A1:%[0-9]+]]:r4only = COPY %0
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[A1]]
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    SYS_DEBUG_PUTC_PSEUDO %0
+    SYS_DEBUG_PUTC_PSEUDO %1
     SYS_DEBUG_PUTC_PSEUDO %0
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
