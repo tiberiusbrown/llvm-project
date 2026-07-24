@@ -327,9 +327,19 @@ static bool formTiedResultChains(ArrayRef<MachineInstr *> Services,
         continue;
       Register GeneralResult = OutputMO.getReg();
 
+      int TiedOperandNo = getAVMServiceInputOperandIndex(
+          Info, static_cast<unsigned>(Output.TiedLogicalInput));
+      assert(TiedOperandNo >= 0 && "tied service input must be explicit");
+
       SmallVector<MachineOperand *, 4> CoveredUses;
       SmallVector<MachineOperand *, 4> EscapingUses;
       for (MachineOperand &Use : MRI.use_nodbg_operands(GeneralResult)) {
+        // If the tied input already uses the same virtual register as the
+        // result, it is not an escaping use of the produced result.
+        if (Use.getParent() == MI &&
+            Use.getOperandNo() == static_cast<unsigned>(TiedOperandNo))
+          continue;
+
         MachineInstr *User = Use.getParent();
         auto Found = llvm::find(Services, User);
         const AVMServiceInputInfo *LaterInput =
@@ -345,12 +355,13 @@ static bool formTiedResultChains(ArrayRef<MachineInstr *> Services,
         else
           EscapingUses.push_back(&Use);
       }
-      if (CoveredUses.empty())
+
+      // Previously this transformation was performed only when the result
+      // fed another SYS input using the same ABI register. Also create a
+      // short fixed carrier when the result escapes to ordinary code.
+      if (CoveredUses.empty() && EscapingUses.empty())
         continue;
 
-      int TiedOperandNo = getAVMServiceInputOperandIndex(
-          Info, static_cast<unsigned>(Output.TiedLogicalInput));
-      assert(TiedOperandNo >= 0 && "tied service input must be explicit");
       Register InputReg = MI->getOperand(TiedOperandNo).getReg();
       const TargetRegisterClass *FixedRC =
           getAVMFixedRegisterClass(Output.PhysReg, Output.Kind);
