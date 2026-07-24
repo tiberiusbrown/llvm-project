@@ -197,8 +197,8 @@ static constexpr AVMServiceMemoryAccessInfo StrncatMemory[] = {
 static constexpr AVMServiceInputInfo SpriteInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
     {1, VK::I16, AVM::R5, PP::None, true},
-    {2, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
-    {3, VK::I16, AVM::R0, PP::None, true},
+    {2, VK::ProgramPointer, AVM::R2R3, PP::IgnorePadding, true},
+    {3, VK::I16, AVM::R6, PP::None, true},
     {4, VK::I16, MCPhysReg(), PP::None, false},
 };
 static constexpr AVMServiceMemoryAccessInfo SpriteMemory[] = {
