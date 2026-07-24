@@ -24,7 +24,7 @@ body: |
     ; Identical values shared by different services use one fixed carrier.
     ; CHECK-LABEL: name: system_service_regions
     ; CHECK: [[VALUE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
-    ; CHECK: [[R4:%[0-9]+]]:r4only = nomerge COPY [[VALUE]]
+    ; CHECK: [[R4:%[0-9]+]]:r4only = COPY [[VALUE]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[R4]]
     ; CHECK-NEXT: [[Y:%[0-9]+]]:r5only = COPY %1
     ; CHECK-NEXT: [[SPRITE:%[0-9]+]]:q3only = COPY %2
@@ -68,7 +68,7 @@ body: |
     ; preheader.
     ; CHECK-LABEL: name: loop_invariant
     ; CHECK:      bb.0:
-    ; CHECK:      [[LOOP_PTR:%[0-9]+]]:q3only = nomerge COPY %0
+    ; CHECK:      [[LOOP_PTR:%[0-9]+]]:q3only = COPY %0
     ; CHECK:      bb.1:
     ; CHECK:      SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, [[LOOP_PTR]], {{%[0-9]+}}
     JMP_PSEUDO %bb.1
@@ -96,7 +96,7 @@ body: |
     %5:gpr16 = IMPLICIT_DEF
     ; Independent affine values become one running singleton-class chain.
     ; CHECK-LABEL: name: affine_inputs
-    ; CHECK:      [[X0:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK:      [[X0:%[0-9]+]]:r4only = COPY %0
     ; CHECK:      SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X0]],
     ; CHECK-NEXT: [[X1:%[0-9]+]]:r4only = ADDIS8_PSEUDO [[X0]], 16
     ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X1]],
@@ -116,11 +116,11 @@ body: |
     ; A millis output replaces r4, so an unrelated repeated input value gets
     ; distinct carriers on either side of that output.
     ; CHECK-LABEL: name: output_splits_carrier
-    ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
     ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
-    ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = nomerge COPY %0
+    ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     SYS_DEBUG_PUTC_PSEUDO %0

@@ -1,0 +1,44 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=avm-system-service-regions -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @fold_one_use_carrier() { ret void }
+  define void @equivalent_constant_inputs() { ret void }
+  @program_data = external addrspace(1) global i8
+...
+---
+name: fold_one_use_carrier
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; A value defined immediately before its only fixed-carrier copy is
+    ; constrained directly to the singleton class and the COPY disappears.
+    ; CHECK-LABEL: name: fold_one_use_carrier
+    ; CHECK:      [[ARG:%[0-9]+]]:r4only = IMPLICIT_DEF
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[ARG]]
+    ; CHECK-NEXT: RET_PSEUDO
+    %0:gpr16 = IMPLICIT_DEF
+    SYS_DEBUG_PUTC_PSEUDO %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: equivalent_constant_inputs
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; Distinct PROG_ADDR values for the same global share one q3 carrier.  The
+    ; first materialization folds directly into q3, and both services use it.
+    ; CHECK-LABEL: name: equivalent_constant_inputs
+    ; CHECK:      [[PTR:%[0-9]+]]:q3only = PROG_ADDR_PSEUDO @program_data
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[PTR]]
+    ; CHECK:      {{%[0-9]+}}:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[PTR]]
+    ; CHECK-NEXT: RET_PSEUDO
+    %0:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
+    %1:gpr16 = SYS_STRLEN_P_PSEUDO %0
+    %2:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
+    %3:gpr16 = SYS_STRLEN_P_PSEUDO %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

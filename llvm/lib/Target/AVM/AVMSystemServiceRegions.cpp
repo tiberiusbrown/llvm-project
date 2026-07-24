@@ -107,8 +107,12 @@ static bool hasOutputBetween(ArrayRef<MachineInstr *> Services,
   return false;
 }
 
+static bool areEquivalentServiceValues(Register LHS, Register RHS,
+                                       MachineRegisterInfo &MRI);
+
 static bool serviceHasConflictingInput(const MachineInstr &MI,
                                        MCPhysReg PhysReg, Register Value,
+                                       MachineRegisterInfo &MRI,
                                        const TargetRegisterInfo &TRI) {
   const AVMSystemServiceInfo &Info =
       getRequiredAVMSystemServiceInfo(MI.getOpcode());
@@ -118,7 +122,7 @@ static bool serviceHasConflictingInput(const MachineInstr &MI,
       continue;
     const MachineOperand &MO = MI.getOperand(OperandNo++);
     if (TRI.regsOverlap(Input.PhysReg, PhysReg) && MO.isReg() &&
-        MO.getReg() != Value)
+        !areEquivalentServiceValues(MO.getReg(), Value, MRI))
       return true;
   }
   return false;
@@ -128,9 +132,10 @@ static bool hasConflictingInputBetween(ArrayRef<MachineInstr *> Services,
                                        unsigned FirstIndex,
                                        unsigned LastIndex, MCPhysReg PhysReg,
                                        Register Value,
+                                       MachineRegisterInfo &MRI,
                                        const TargetRegisterInfo &TRI) {
   for (unsigned I = FirstIndex + 1; I < LastIndex; ++I)
-    if (serviceHasConflictingInput(*Services[I], PhysReg, Value, TRI))
+    if (serviceHasConflictingInput(*Services[I], PhysReg, Value, MRI, TRI))
       return true;
   return false;
 }
@@ -284,11 +289,10 @@ static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
     assert(FixedRC && "invalid fixed i16 service register");
     MachineBasicBlock &MBB = *Run.front().MI->getParent();
     Register Chain = MRI.createVirtualRegister(FixedRC);
-    MachineInstrBuilder Initial = BuildMI(MBB, Run.front().MI->getIterator(),
-                                          Run.front().MI->getDebugLoc(),
-                                          TII.get(TargetOpcode::COPY), Chain)
-                                      .addReg(Values.front().Reg);
-    Initial->setFlag(MachineInstr::NoMerge);
+    BuildMI(MBB, Run.front().MI->getIterator(),
+            Run.front().MI->getDebugLoc(),
+            TII.get(TargetOpcode::COPY), Chain)
+        .addReg(Values.front().Reg);
     Run.front().MI->getOperand(Run.front().OperandNo).setReg(Chain);
     Run.front().MI->getOperand(Run.front().OperandNo).setIsKill(false);
 
@@ -442,6 +446,37 @@ static bool isConstantMaterialization(const MachineInstr &MI) {
   return HasConstantSource;
 }
 
+// Treat separately selected copies of the same constant or program address as
+// the same service value.  This allows a fixed carrier to remain resident even
+// when SelectionDAG produced distinct virtual registers for equivalent
+// materializations.
+static bool areEquivalentServiceValues(Register LHS, Register RHS,
+                                       MachineRegisterInfo &MRI) {
+  if (LHS == RHS)
+    return true;
+  if (!LHS.isVirtual() || !RHS.isVirtual())
+    return false;
+
+  MachineInstr *LHSDef = MRI.getVRegDef(LHS);
+  MachineInstr *RHSDef = MRI.getVRegDef(RHS);
+  if (!LHSDef || !RHSDef || LHSDef->getOpcode() != RHSDef->getOpcode() ||
+      !isConstantMaterialization(*LHSDef) ||
+      !isConstantMaterialization(*RHSDef) ||
+      LHSDef->getNumOperands() != RHSDef->getNumOperands())
+    return false;
+
+  for (unsigned I = 0; I != LHSDef->getNumOperands(); ++I) {
+    const MachineOperand &LHSOp = LHSDef->getOperand(I);
+    const MachineOperand &RHSOp = RHSDef->getOperand(I);
+    if (I == 0 && LHSOp.isReg() && LHSOp.isDef() && RHSOp.isReg() &&
+        RHSOp.isDef())
+      continue;
+    if (!LHSOp.isIdenticalTo(RHSOp))
+      return false;
+  }
+  return true;
+}
+
 static bool canHoistDefinition(MachineInstr &Def, MachineLoop &Loop,
                                const TargetInstrInfo &TII) {
   bool ConstantMaterialization = isConstantMaterialization(Def);
@@ -468,14 +503,15 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
     CarrierGroup *Group = nullptr;
     for (CarrierGroup &Candidate : llvm::reverse(Groups)) {
       if (Candidate.PhysReg != Use.Input->PhysReg ||
-          Candidate.Kind != Use.Input->Kind || Candidate.Value != Value)
+          Candidate.Kind != Use.Input->Kind ||
+          !areEquivalentServiceValues(Candidate.Value, Value, MRI))
         continue;
       unsigned PreviousIndex = Candidate.Uses.back().ServiceIndex;
       if (!hasOutputBetween(Services, PreviousIndex, Use.ServiceIndex,
                             Use.Input->PhysReg, TRI) &&
           !hasConflictingInputBetween(Services, PreviousIndex,
                                       Use.ServiceIndex, Use.Input->PhysReg,
-                                      Value, TRI))
+                                      Value, MRI, TRI))
         Group = &Candidate;
       break;
     }
@@ -526,11 +562,9 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
     }
 
     Register Carrier = MRI.createVirtualRegister(FixedRC);
-    MachineInstrBuilder Copy =
-        BuildMI(*InsertBlock, InsertAt, Group.Uses.front().MI->getDebugLoc(),
-                TII.get(TargetOpcode::COPY), Carrier)
-            .addReg(Group.Value);
-    Copy->setFlag(MachineInstr::NoMerge);
+    BuildMI(*InsertBlock, InsertAt, Group.Uses.front().MI->getDebugLoc(),
+            TII.get(TargetOpcode::COPY), Carrier)
+        .addReg(Group.Value);
     for (const ServiceUse &Use : Group.Uses) {
       Use.MI->getOperand(Use.OperandNo).setReg(Carrier);
       Use.MI->getOperand(Use.OperandNo).setIsKill(false);
@@ -610,6 +644,95 @@ static bool createLocalServiceCarriers(ArrayRef<MachineInstr *> Services,
   return Changed;
 }
 
+static bool fixedServiceClassesOverlap(const TargetRegisterClass *LHS,
+                                       const TargetRegisterClass *RHS,
+                                       const TargetRegisterInfo &TRI) {
+  for (MCPhysReg LHSReg : LHS->getRegisters())
+    for (MCPhysReg RHSReg : RHS->getRegisters())
+      if (TRI.regsOverlap(LHSReg, RHSReg))
+        return true;
+  return false;
+}
+
+// Folding a general source into a singleton carrier extends the singleton live
+// range back to the source definition.  Restrict deterministic folding to
+// adjacent setup sequences: only debug instructions and non-overlapping fixed
+// carrier copies may appear between the definition and carrier copy.
+static bool canFoldOneUseCarrierCopy(
+    const MachineInstr &Copy, Register Src,
+    const TargetRegisterClass *FixedRC, MachineRegisterInfo &MRI,
+    const TargetRegisterInfo &TRI) {
+  MachineInstr *Def = MRI.getVRegDef(Src);
+  if (!Def || Def->getParent() != Copy.getParent())
+    return false;
+
+  auto CopyIt = Copy.getIterator();
+  auto End = Def->getParent()->end();
+  for (auto It = std::next(Def->getIterator()); It != CopyIt; ++It) {
+    if (It == End)
+      return false;
+    if (It->isDebugInstr())
+      continue;
+    if (!It->isCopy() || It->getNumExplicitOperands() < 2 ||
+        !It->getOperand(0).isReg() ||
+        !It->getOperand(0).getReg().isVirtual())
+      return false;
+
+    const TargetRegisterClass *OtherRC =
+        MRI.getRegClass(It->getOperand(0).getReg());
+    if (!isAVMFixedServiceRegisterClass(OtherRC) ||
+        fixedServiceClassesOverlap(FixedRC, OtherRC, TRI))
+      return false;
+  }
+  return true;
+}
+
+// Deterministically fold short one-use setup values into their singleton
+// service classes.  The ordinary coalescer remains responsible for longer
+// common carriers where interference analysis is required.
+static bool foldOneUseCarrierCopies(MachineFunction &MF,
+                                    MachineRegisterInfo &MRI,
+                                    const TargetRegisterInfo &TRI) {
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    for (auto It = MBB.begin(); It != MBB.end();) {
+      MachineInstr &MI = *It++;
+      if (!MI.isCopy() || MI.getFlag(MachineInstr::NoMerge) ||
+          MI.getNumExplicitOperands() < 2)
+        continue;
+
+      MachineOperand &DstMO = MI.getOperand(0);
+      MachineOperand &SrcMO = MI.getOperand(1);
+      if (!DstMO.isReg() || !SrcMO.isReg())
+        continue;
+      Register Dst = DstMO.getReg();
+      Register Src = SrcMO.getReg();
+      if (!Dst.isVirtual() || !Src.isVirtual())
+        continue;
+
+      const TargetRegisterClass *FixedRC = MRI.getRegClass(Dst);
+      if (!isAVMFixedServiceRegisterClass(FixedRC) ||
+          isAVMFixedServiceRegisterClass(MRI.getRegClass(Src)))
+        continue;
+
+      MachineOperand *OnlyUse = MRI.getOneNonDBGUse(Src);
+      if (!OnlyUse || OnlyUse->getParent() != &MI ||
+          OnlyUse->getOperandNo() != 1 ||
+          !canFoldOneUseCarrierCopy(MI, Src, FixedRC, MRI, TRI))
+        continue;
+
+      if (!MRI.constrainRegClass(Src, FixedRC))
+        continue;
+
+      MRI.replaceRegWith(Dst, Src);
+      MRI.clearKillFlags(Src);
+      MI.eraseFromParent();
+      Changed = true;
+    }
+  }
+  return Changed;
+}
+
 class AVMSystemServiceRegions final : public MachineFunctionPass {
 public:
   static char ID;
@@ -673,6 +796,7 @@ public:
           RegionBegin = RegionEnd;
         }
       }
+      Changed |= foldOneUseCarrierCopies(MF, MRI, TRI);
     }
 
     // Avoid aggressive one-use rematerialization perturbing fixed-carrier
