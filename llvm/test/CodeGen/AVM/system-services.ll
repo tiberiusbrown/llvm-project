@@ -21,10 +21,16 @@ declare float @llvm.avm.powf(float, float)
 declare float @llvm.avm.hypotf(float, float)
 declare float @llvm.avm.fmodf(float, float)
 declare void @llvm.avm.display()
-declare void @llvm.avm.draw.sprite.overwrite(i16, i16, ptr addrspace(1), i16)
-declare void @llvm.avm.draw.sprite.plus.mask(i16, i16, ptr addrspace(1), i16)
-declare void @llvm.avm.draw.sprite.self.masked(i16, i16, ptr addrspace(1), i16)
-declare void @llvm.avm.draw.sprite.erase(i16, i16, ptr addrspace(1), i16)
+@__avm_framebuffer = external global [1024 x i8], align 1
+@sprite_object = external addrspace(1) global [8 x i8], align 1
+
+declare void @llvm.avm.draw.sprite.overwrite(i16, i16, ptr addrspace(1), i16,
+                                              ptr)
+declare void @llvm.avm.draw.sprite.plus.mask(i16, i16, ptr addrspace(1), i16,
+                                              ptr)
+declare void @llvm.avm.draw.sprite.self.masked(i16, i16, ptr addrspace(1), i16,
+                                                ptr)
+declare void @llvm.avm.draw.sprite.erase(i16, i16, ptr addrspace(1), i16, ptr)
 
 define void @debug_services(i8 %value) {
 ; CHECK-LABEL: debug_services:
@@ -100,16 +106,20 @@ define void @display_and_sprite_services(i16 %x, i16 %y,
   call void @llvm.avm.display()
   call void @llvm.avm.draw.sprite.overwrite(i16 %x, i16 %y,
                                              ptr addrspace(1) %sprite,
-                                             i16 %frame)
+                                             i16 %frame,
+                                             ptr @__avm_framebuffer)
   call void @llvm.avm.draw.sprite.plus.mask(i16 %x, i16 %y,
                                              ptr addrspace(1) %sprite,
-                                             i16 %frame)
+                                             i16 %frame,
+                                             ptr @__avm_framebuffer)
   call void @llvm.avm.draw.sprite.self.masked(i16 %x, i16 %y,
                                                ptr addrspace(1) %sprite,
-                                               i16 %frame)
+                                               i16 %frame,
+                                               ptr @__avm_framebuffer)
   call void @llvm.avm.draw.sprite.erase(i16 %x, i16 %y,
                                          ptr addrspace(1) %sprite,
-                                         i16 %frame)
+                                         i16 %frame,
+                                         ptr @__avm_framebuffer)
   ret void
 }
 
@@ -118,7 +128,23 @@ define void @timer_result_as_sprite_frame(i16 %x, i16 %y,
   %frame = call i16 @llvm.avm.millis()
   call void @llvm.avm.draw.sprite.overwrite(i16 %x, i16 %y,
                                              ptr addrspace(1) %sprite,
-                                             i16 %frame)
+                                             i16 %frame,
+                                             ptr @__avm_framebuffer)
+  ret void
+}
+
+define void @inttoptr_sprite_unnormalized(i32 %bits) {
+  %sprite = inttoptr i32 %bits to ptr addrspace(1)
+  call void @llvm.avm.draw.sprite.overwrite(
+      i16 1, i16 2, ptr addrspace(1) %sprite, i16 3,
+      ptr @__avm_framebuffer)
+  ret void
+}
+
+define void @global_sprite_object_mmo() {
+  call void @llvm.avm.draw.sprite.overwrite(
+      i16 1, i16 2, ptr addrspace(1) @sprite_object, i16 3,
+      ptr @__avm_framebuffer)
   ret void
 }
 
@@ -162,19 +188,23 @@ define void @timer_result_as_sprite_frame(i16 %x, i16 %y,
 ; MIR-NEXT:  {{%[0-9]+}}:gpr32 = nomerge COPY{{.*}} [[FMODF]]
 ; MIR-LABEL: name: display_and_sprite_services
 ; MIR-O0:    SYS_DISPLAY_PSEUDO :: (load (s8192), align 1)
-; MIR:       [[X:%[0-9]+]]:r4only = COPY
-; MIR:       [[Y:%[0-9]+]]:r5only = COPY
-; MIR:       [[SPRITE:%[0-9]+]]:q3only = COPY
-; MIR:       [[FRAME:%[0-9]+]]:r0only = COPY
-; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[X]], [[Y]], [[SPRITE]], [[FRAME]] :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
-; MIR:       SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
-; MIR:       SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
-; MIR:       SYS_DRAW_SPRITE_ERASE_PSEUDO{{.*}} :: (load (s8192), align 1), (store (s8192), align 1), (load unknown-size, align 1, addrspace 1)
+; MIR-NOT:   :r4only = COPY
+; MIR-NOT:   :r5only = COPY
+; MIR-NOT:   :q3only = COPY
+; MIR-NOT:   :r0only = COPY
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR:       SYS_DRAW_SPRITE_ERASE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR-LABEL: name: timer_result_as_sprite_frame
 ; MIR:       [[SPRITE_TIMER:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
 ; MIR-NEXT:  [[SPRITE_GENERAL:%[0-9]+]]:gpr16 = nomerge COPY killed [[SPRITE_TIMER]]
-; MIR:       [[SPRITE_FRAME:%[0-9]+]]:r0only = nomerge COPY [[SPRITE_GENERAL]]
-; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, killed {{%[0-9]+}}, killed [[SPRITE_FRAME]]
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, [[SPRITE_GENERAL]]
+; MIR-LABEL: name: inttoptr_sprite_unnormalized
+; MIR-NOT:   PROG_CANON_PSEUDO
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO
+; MIR-LABEL: name: global_sprite_object_mmo
+; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size from @sprite_object, align 1, addrspace 1)
 
 declare float @llvm.sin.f32(float)
 declare float @llvm.cos.f32(float)

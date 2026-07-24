@@ -1,0 +1,103 @@
+# RUN: llc -mtriple=avm-unknown-arduboyfx -mcpu=avm1 \
+# RUN:   -run-pass=avm-expand-pseudo -verify-machineinstrs %s -o - \
+# RUN:   | FileCheck %s
+
+--- |
+  target triple = "avm-unknown-arduboyfx"
+  define void @identity() { ret void }
+  define void @scalar_swap() { ret void }
+  define void @scalar_q3_overlap() { ret void }
+  define void @complete_cycle() { ret void }
+  define void @stack_cycle() { ret void }
+  define void @reloaded_input() { ret void }
+...
+---
+name: identity
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r4, $r5, $r6r7
+    ; CHECK-LABEL: name: identity
+    ; CHECK-NOT: MOV
+    ; CHECK: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: scalar_swap
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r4, $r5, $r6r7
+    ; CHECK-LABEL: name: scalar_swap
+    ; CHECK: $r1 = MOV_RR $r4
+    ; CHECK-NEXT: $r4 = MOV $r5
+    ; CHECK-NEXT: $r5 = MOV_RR $r1
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r5, $r4, $r6r7, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: scalar_q3_overlap
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r4r5, $r6
+    ; CHECK-LABEL: name: scalar_q3_overlap
+    ; CHECK: $r7 = MOV $r5
+    ; CHECK-NEXT: $r1 = MOV_RR $r4
+    ; CHECK-NEXT: $r4 = MOV $r6
+    ; CHECK-NEXT: $r6 = MOV_RR $r1
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO $r6, $r5, $r4r5, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: complete_cycle
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0r1, $r4, $r5, $r6
+    ; r4 <- r5 <- r6 <- r0 <- r4 is one parallel-copy cycle.
+    ; CHECK-LABEL: name: complete_cycle
+    ; CHECK: $r7 = MOV_RR $r1
+    ; CHECK-NEXT: $r2 = MOV_RR $r4
+    ; CHECK: $r4 = MOV $r5
+    ; CHECK: $r5 = MOV $r6
+    ; CHECK: $r6 = MOV_RR $r0
+    ; CHECK: $r0 = MOV_RR $r2
+    ; CHECK: SYS_DRAW_SPRITE_ERASE_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DRAW_SPRITE_ERASE_PSEUDO $r5, $r6, $r0r1, $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: stack_cycle
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r1, $r2, $r3, $r4, $r5, $r6r7
+    ; With every non-ABI scalar live, the swap uses one temporary stack slot.
+    ; CHECK-LABEL: name: stack_cycle
+    ; CHECK: PUSH16 $r4
+    ; CHECK-NEXT: $r4 = MOV $r5
+    ; CHECK-NEXT: $r5 = POP16
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r5, $r4, $r6r7, $r0
+    KILL $r1, $r2, $r3
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: reloaded_input
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r5, $r6r7, $sp
+    ; A register-allocated spill reload is a normal physical input.
+    ; CHECK-LABEL: name: reloaded_input
+    ; CHECK: $r1 = LDSP16 0
+    ; CHECK-NEXT: $r4 = MOV_RR $r1
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    $r1 = LDSP16 0, implicit $sp
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r1, $r5, $r6r7, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

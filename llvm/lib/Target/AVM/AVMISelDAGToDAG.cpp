@@ -2,11 +2,14 @@
 
 #include "AVM.h"
 #include "AVMTargetMachine.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/IntrinsicsAVM.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -944,67 +947,107 @@ private:
                                ArrayRef<SDValue> LogicalOps) {
     MachineFunction &MF = CurDAG->getMachineFunction();
     SmallVector<MachineMemOperand *, 3> MMOs;
-    auto AddMMO = [&](unsigned AddressSpace, MachineMemOperand::Flags Flags,
-                      LocationSize Size) {
-      MMOs.push_back(MF.getMachineMemOperand(MachinePointerInfo(AddressSpace),
-                                             Flags, Size, Align(1)));
+    auto GetPointerInfo = [&](SDValue Value,
+                              unsigned AddressSpace) -> MachinePointerInfo {
+      SmallPtrSet<SDNode *, 8> Visited;
+      while (Value && Visited.insert(Value.getNode()).second) {
+        if (const auto *GA = dyn_cast<GlobalAddressSDNode>(Value))
+          return MachinePointerInfo(GA->getGlobal(), GA->getOffset());
+        if (Value->isMachineOpcode() &&
+            (Value->getMachineOpcode() == AVM::DATA_ADDR_PSEUDO ||
+             Value->getMachineOpcode() == AVM::PROG_ADDR_PSEUDO)) {
+          Value = Value.getOperand(0);
+          continue;
+        }
+        switch (Value.getOpcode()) {
+        case AVMISD::WRAPPER:
+        case AVMISD::PROG_WRAPPER:
+        case AVMISD::NORMALIZE_PROGPTR:
+        case ISD::BITCAST:
+        case ISD::ADDRSPACECAST:
+          Value = Value.getOperand(0);
+          continue;
+        default:
+          return MachinePointerInfo(AddressSpace);
+        }
+      }
+      return MachinePointerInfo(AddressSpace);
+    };
+    auto AddMMO = [&](SDValue Pointer, unsigned AddressSpace,
+                      MachineMemOperand::Flags Flags, LocationSize Size) {
+      MMOs.push_back(MF.getMachineMemOperand(
+          GetPointerInfo(Pointer, AddressSpace), Flags, Size, Align(1)));
+    };
+    auto AddFramebufferMMO = [&](MachineMemOperand::Flags Flags) {
+      const GlobalVariable *Framebuffer =
+          MF.getFunction().getParent()->getNamedGlobal("__avm_framebuffer");
+      assert(Framebuffer && "sprite intrinsic requires framebuffer object");
+      MMOs.push_back(MF.getMachineMemOperand(
+          MachinePointerInfo(Framebuffer), Flags, LocationSize::precise(1024),
+          Align(1)));
     };
 
     switch (ID) {
     case Intrinsic::avm_display:
-      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::precise(1024));
+      AddMMO(SDValue(), 0, MachineMemOperand::MOLoad,
+             LocationSize::precise(1024));
       break;
     case Intrinsic::avm_draw_sprite_overwrite:
     case Intrinsic::avm_draw_sprite_plus_mask:
     case Intrinsic::avm_draw_sprite_self_masked:
     case Intrinsic::avm_draw_sprite_erase:
-      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::precise(1024));
-      AddMMO(0, MachineMemOperand::MOStore, LocationSize::precise(1024));
-      AddMMO(1, MachineMemOperand::MOLoad, LocationSize::afterPointer());
+      AddFramebufferMMO(MachineMemOperand::MOLoad);
+      AddFramebufferMMO(MachineMemOperand::MOStore);
+      AddMMO(LogicalOps[2], 1, MachineMemOperand::MOLoad,
+             LocationSize::afterPointer());
       break;
     case Intrinsic::avm_memcpy:
     case Intrinsic::avm_memmove: {
       LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(0, MachineMemOperand::MOStore, Size);
-      AddMMO(0, MachineMemOperand::MOLoad, Size);
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore, Size);
+      AddMMO(LogicalOps[1], 0, MachineMemOperand::MOLoad, Size);
       break;
     }
     case Intrinsic::avm_memset:
-      AddMMO(0, MachineMemOperand::MOStore,
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore,
              getServiceAccessSize(LogicalOps[2]));
       break;
     case Intrinsic::avm_memcmp:
     case Intrinsic::avm_memcmp_p: {
       LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(0, MachineMemOperand::MOLoad, Size);
-      AddMMO(ID == Intrinsic::avm_memcmp_p ? 1 : 0, MachineMemOperand::MOLoad,
-             Size);
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad, Size);
+      AddMMO(LogicalOps[1], ID == Intrinsic::avm_memcmp_p ? 1 : 0,
+             MachineMemOperand::MOLoad, Size);
       break;
     }
     case Intrinsic::avm_strcmp:
     case Intrinsic::avm_strcmp_p:
-      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::afterPointer());
-      AddMMO(ID == Intrinsic::avm_strcmp_p ? 1 : 0, MachineMemOperand::MOLoad,
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad,
              LocationSize::afterPointer());
+      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strcmp_p ? 1 : 0,
+             MachineMemOperand::MOLoad, LocationSize::afterPointer());
       break;
     case Intrinsic::avm_strlen:
     case Intrinsic::avm_strlen_p:
-      AddMMO(ID == Intrinsic::avm_strlen_p ? 1 : 0, MachineMemOperand::MOLoad,
-             LocationSize::afterPointer());
+      AddMMO(LogicalOps[0], ID == Intrinsic::avm_strlen_p ? 1 : 0,
+             MachineMemOperand::MOLoad, LocationSize::afterPointer());
       break;
     case Intrinsic::avm_strncpy:
     case Intrinsic::avm_strncpy_p: {
       LocationSize Size = getServiceAccessSize(LogicalOps[2]);
-      AddMMO(0, MachineMemOperand::MOStore, Size);
-      AddMMO(ID == Intrinsic::avm_strncpy_p ? 1 : 0, MachineMemOperand::MOLoad,
-             Size);
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore, Size);
+      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strncpy_p ? 1 : 0,
+             MachineMemOperand::MOLoad, Size);
       break;
     }
     case Intrinsic::avm_strncat:
     case Intrinsic::avm_strncat_p:
-      AddMMO(0, MachineMemOperand::MOLoad, LocationSize::afterPointer());
-      AddMMO(0, MachineMemOperand::MOStore, LocationSize::afterPointer());
-      AddMMO(ID == Intrinsic::avm_strncat_p ? 1 : 0, MachineMemOperand::MOLoad,
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOLoad,
+             LocationSize::afterPointer());
+      AddMMO(LogicalOps[0], 0, MachineMemOperand::MOStore,
+             LocationSize::afterPointer());
+      AddMMO(LogicalOps[1], ID == Intrinsic::avm_strncat_p ? 1 : 0,
+             MachineMemOperand::MOLoad,
              getServiceAccessSize(LogicalOps[2]));
       break;
     default:
@@ -1062,7 +1105,7 @@ private:
     case Intrinsic::avm_draw_sprite_self_masked:
     case Intrinsic::avm_draw_sprite_erase:
       Ops = {LogicalOps[0], LogicalOps[1],
-             normalizeProgramServicePointer(LogicalOps[2], SDLoc(Node)),
+             stripProgramPointerNormalization(LogicalOps[2]),
              LogicalOps[3], LogicalOps.back()};
       break;
     case Intrinsic::avm_memcmp_p:

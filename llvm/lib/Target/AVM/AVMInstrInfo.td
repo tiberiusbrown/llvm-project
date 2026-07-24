@@ -734,7 +734,7 @@ def SYS_DISPLAY_PSEUDO
 class AVMSpriteServicePseudo
     : AVMSystemServicePseudo<
           (outs),
-          (ins R4Only:$x, R5Only:$y, Q3Only:$sprite, R0Only:$frame)> {
+          (ins GPR16:$x, GPR16:$y, ProgPtrGPR32:$sprite, GPR16:$frame)> {
   let hasSideEffects = 1;
   let mayLoad = 1;
   let mayStore = 1;

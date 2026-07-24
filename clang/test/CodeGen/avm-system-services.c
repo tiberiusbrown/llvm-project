@@ -57,6 +57,8 @@ float pressure(float x, float y) {
   return __avm_sinf(x) + __avm_powf(x, y);
 }
 
+// CHECK: module asm ".globl __avm_framebuffer"
+// CHECK: @__avm_framebuffer = external global [1024 x i8], align 1
 // CHECK-LABEL: define{{.*}} void @debug_services
 // CHECK: call{{.*}} void @llvm.avm.debug.putc(i8
 // CHECK: call{{.*}} void @llvm.avm.debug.break()
@@ -83,10 +85,12 @@ float pressure(float x, float y) {
 // CHECK: call{{.*}} ptr @llvm.avm.memmove
 // CHECK-LABEL: define{{.*}} void @display_and_sprite_services
 // CHECK: call{{.*}} void @llvm.avm.display()
-// CHECK: call{{.*}} void @llvm.avm.draw.sprite.overwrite(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
-// CHECK: call{{.*}} void @llvm.avm.draw.sprite.plus.mask(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
-// CHECK: call{{.*}} void @llvm.avm.draw.sprite.self.masked(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
-// CHECK: call{{.*}} void @llvm.avm.draw.sprite.erase(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
+// CHECK: call{{.*}} void @llvm.avm.draw.sprite.overwrite(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
+// CHECK: call{{.*}} void @llvm.avm.draw.sprite.plus.mask(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
+// CHECK: call{{.*}} void @llvm.avm.draw.sprite.self.masked(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
+// CHECK: call{{.*}} void @llvm.avm.draw.sprite.erase(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
+// CHECK: declare void @llvm.avm.draw.sprite.overwrite(i16, i16, ptr addrspace(1) readonly captures(none), i16, ptr captures(none)) addrspace(1) #[[SPRITE_ATTR:[0-9]+]]
+// CHECK: attributes #[[SPRITE_ATTR]] = { nocallback nofree nounwind willreturn memory(argmem: readwrite) }
 // ASM-O0-LABEL: display_and_sprite_services:
 // ASM-O0-DAG: sys display
 // ASM-DAG: sys draw_sprite_overwrite

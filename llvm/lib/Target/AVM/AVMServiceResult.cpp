@@ -7,9 +7,11 @@
 
 #include "AVM.h"
 #include "AVMInstrInfo.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/InitializePasses.h"
 
@@ -73,6 +75,217 @@ static bool isMemoryService(unsigned Opcode) {
   }
 }
 
+static bool isSpriteService(unsigned Opcode) {
+  switch (Opcode) {
+  case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
+  case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
+    return true;
+  default:
+    return false;
+  }
+}
+
+struct SpriteCoordinate {
+  Register Reg;
+  Register Base;
+  int64_t Offset = 0;
+  SmallVector<MachineInstr *, 2> Setup;
+};
+
+static std::optional<SpriteCoordinate>
+getSpriteCoordinate(Register Reg, MachineRegisterInfo &MRI) {
+  if (!Reg.isVirtual())
+    return std::nullopt;
+
+  SpriteCoordinate Result{Reg, Reg};
+  SmallVector<MachineInstr *, 2> Defs;
+  for (MachineInstr &Def : MRI.def_instructions(Reg))
+    Defs.push_back(&Def);
+
+  // An arbitrary definition can serve as the common zero-offset base.
+  if (Defs.size() == 1 && !Defs.front()->isCopy() &&
+      Defs.front()->getOpcode() != AVM::ADDIS8_PSEUDO)
+    return Result;
+
+  // Before two-address conversion the selected add still names its semantic
+  // base directly.
+  if (Defs.size() == 1 &&
+      Defs.front()->getOpcode() == AVM::ADDIS8_PSEUDO) {
+    MachineInstr *Add = Defs.front();
+    if (!Add->getOperand(1).isReg() || !Add->getOperand(2).isImm())
+      return std::nullopt;
+    Register Base = Add->getOperand(1).getReg();
+    if (!Base.isVirtual() || Base == Reg)
+      return std::nullopt;
+    Result.Base = Base;
+    Result.Offset = Add->getOperand(2).getImm();
+    Result.Setup.push_back(Add);
+    return Result;
+  }
+
+  MachineInstr *Copy = nullptr;
+  MachineInstr *Add = nullptr;
+  for (MachineInstr *Def : Defs) {
+    if (Def->isCopy())
+      Copy = Def;
+    else if (Def->getOpcode() == AVM::ADDIS8_PSEUDO)
+      Add = Def;
+    else
+      return std::nullopt;
+  }
+  if (!Copy || !Copy->getOperand(1).isReg())
+    return std::nullopt;
+
+  Register Base = Copy->getOperand(1).getReg();
+  if (!Base.isVirtual() || Base == Reg)
+    return std::nullopt;
+  Result.Base = Base;
+  Result.Setup.push_back(Copy);
+
+  if (Add) {
+    if (Add->getOperand(1).getReg() != Reg ||
+        !Add->getOperand(2).isImm())
+      return std::nullopt;
+    Result.Offset = Add->getOperand(2).getImm();
+    Result.Setup.push_back(Add);
+  }
+  return Result;
+}
+
+// Fully unrolled sprite rows commonly leave every base-plus-constant X value
+// live across the surrounding row loop. Re-form that arithmetic as one
+// loop-local running coordinate. Besides avoiding artificial pressure, this
+// lets allocation keep X in r4 across the register-preserving services.
+static bool chainSpriteCoordinates(MachineBasicBlock &MBB,
+                                   MachineRegisterInfo &MRI,
+                                   const TargetInstrInfo &TII,
+                                   MachineLoopInfo &MLI) {
+  bool Changed = false;
+
+  for (auto It = MBB.begin(); It != MBB.end();) {
+    if (!isSpriteService(It->getOpcode())) {
+      ++It;
+      continue;
+    }
+
+    SmallVector<MachineInstr *, 16> Run;
+    while (It != MBB.end() && isSpriteService(It->getOpcode())) {
+      Run.push_back(&*It);
+      ++It;
+    }
+    if (Run.size() < 2)
+      continue;
+
+    auto HintCommonOperand = [&](unsigned OperandNo, Register PhysReg) {
+      Register Reg = Run.front()->getOperand(OperandNo).getReg();
+      if (!Reg.isVirtual() ||
+          !llvm::all_of(Run, [=](const MachineInstr *Sprite) {
+            return Sprite->getOperand(OperandNo).getReg() == Reg;
+          }))
+        return;
+      MRI.setRegAllocationHint(Reg, AVMRI::SpriteRun, PhysReg);
+    };
+    HintCommonOperand(1, AVM::R5);
+    HintCommonOperand(2, AVM::R6R7);
+    HintCommonOperand(3, AVM::R0);
+
+    Register Pointer = Run.front()->getOperand(2).getReg();
+    bool CommonPointer =
+        llvm::all_of(Run, [Pointer](const MachineInstr *Sprite) {
+          return Sprite->getOperand(2).getReg() == Pointer;
+        });
+    if (CommonPointer && Pointer.isVirtual()) {
+      MachineInstr *PointerDef = MRI.getVRegDef(Pointer);
+      MachineLoop *Loop = MLI.getLoopFor(&MBB);
+      MachineBasicBlock *Preheader = Loop ? Loop->getLoopPreheader() : nullptr;
+      if (PointerDef && PointerDef->getParent() == &MBB && Preheader &&
+          PointerDef->getOpcode() == AVM::PROG_ADDR_PSEUDO) {
+        PointerDef->removeFromParent();
+        Preheader->insert(Preheader->getFirstTerminator(), PointerDef);
+        Changed = true;
+      }
+    }
+
+    SmallVector<SpriteCoordinate, 16> Coordinates;
+    bool Valid = true;
+    for (MachineInstr *Sprite : Run) {
+      auto Coordinate =
+          getSpriteCoordinate(Sprite->getOperand(0).getReg(), MRI);
+      if (!Coordinate) {
+        Valid = false;
+        break;
+      }
+      Coordinates.push_back(std::move(*Coordinate));
+    }
+    if (!Valid)
+      continue;
+
+    Register Base = Coordinates.front().Base;
+    int64_t PreviousOffset = Coordinates.front().Offset;
+    for (unsigned I = 1; I != Coordinates.size(); ++I) {
+      int64_t Delta = Coordinates[I].Offset - PreviousOffset;
+      if (Coordinates[I].Base != Base || !isInt<8>(Delta)) {
+        Valid = false;
+        break;
+      }
+      for (MachineOperand &Use :
+           MRI.use_nodbg_operands(Coordinates[I].Reg)) {
+        MachineInstr *User = Use.getParent();
+        if (!is_contained(Run, User) || Use.getOperandNo() != 0) {
+          Valid = false;
+          break;
+        }
+      }
+      if (!Valid)
+        break;
+      PreviousOffset = Coordinates[I].Offset;
+    }
+    if (!Valid)
+      continue;
+
+    Register Chain = MRI.createVirtualRegister(&AVM::GPR16RegClass);
+    MachineInstrBuilder ChainCopy =
+        BuildMI(MBB, Run.front()->getIterator(), Run.front()->getDebugLoc(),
+                TII.get(TargetOpcode::COPY), Chain)
+            .addReg(Coordinates.front().Reg);
+    // Keep the loop-invariant base separate from the service-carried
+    // coordinate so the latter can remain in r4 across the whole row.
+    ChainCopy->setFlag(MachineInstr::NoMerge);
+    Run.front()->getOperand(0).setReg(Chain);
+    Run.front()->getOperand(0).setIsKill(false);
+
+    PreviousOffset = Coordinates.front().Offset;
+    for (unsigned I = 1; I != Coordinates.size(); ++I) {
+      int64_t Delta = Coordinates[I].Offset - PreviousOffset;
+      if (Delta != 0) {
+        Register Next = MRI.createVirtualRegister(&AVM::GPR16RegClass);
+        BuildMI(MBB, Run[I]->getIterator(), Run[I]->getDebugLoc(),
+                TII.get(AVM::ADDIS8_PSEUDO), Next)
+            .addReg(Chain)
+            .addImm(Delta);
+        Chain = Next;
+      }
+      Run[I]->getOperand(0).setReg(Chain);
+      Run[I]->getOperand(0).setIsKill(false);
+      PreviousOffset = Coordinates[I].Offset;
+    }
+
+    SmallPtrSet<MachineInstr *, 32> DeadSetup;
+    for (unsigned I = 1; I != Coordinates.size(); ++I)
+      DeadSetup.insert_range(Coordinates[I].Setup);
+    for (MachineInstr *Setup : DeadSetup) {
+      Register Def = Setup->getOperand(0).getReg();
+      if (Def != Coordinates.front().Reg && MRI.use_nodbg_empty(Def))
+        Setup->eraseFromParent();
+    }
+    Changed = true;
+  }
+
+  return Changed;
+}
+
 static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
   return RC == &AVM::R0OnlyRegClass || RC == &AVM::R4OnlyRegClass ||
          RC == &AVM::R5OnlyRegClass ||
@@ -84,20 +297,6 @@ static bool isFixedServiceRegisterClass(const TargetRegisterClass *RC) {
 static const TargetRegisterClass *
 getFixedServiceInputClass(unsigned Opcode, unsigned OperandNo) {
   switch (Opcode) {
-  case AVM::SYS_DRAW_SPRITE_OVERWRITE_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO:
-  case AVM::SYS_DRAW_SPRITE_ERASE_PSEUDO:
-    if (OperandNo == 0)
-      return &AVM::R4OnlyRegClass;
-    if (OperandNo == 1)
-      return &AVM::R5OnlyRegClass;
-    if (OperandNo == 2)
-      return &AVM::Q3OnlyRegClass;
-    if (OperandNo == 3)
-      return &AVM::R0OnlyRegClass;
-    return nullptr;
-
   case AVM::SYS_DEBUG_PUTC_PSEUDO:
     return OperandNo == 0 ? &AVM::R4OnlyRegClass : nullptr;
 
@@ -203,12 +402,20 @@ public:
 
   StringRef getPassName() const override { return PASS_NAME; }
 
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<MachineLoopInfoWrapperPass>();
+    AU.setPreservesCFG();
+    MachineFunctionPass::getAnalysisUsage(AU);
+  }
+
   bool runOnMachineFunction(MachineFunction &MF) override {
     MachineRegisterInfo &MRI = MF.getRegInfo();
     const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+    MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLI();
     bool Changed = false;
 
     for (MachineBasicBlock &MBB : MF) {
+      Changed |= chainSpriteCoordinates(MBB, MRI, TII, MLI);
       for (MachineInstr &MI : make_early_inc_range(MBB)) {
         const TargetRegisterClass *GeneralRC =
             getGeneralServiceResultClass(MI.getOpcode());

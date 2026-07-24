@@ -274,9 +274,38 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         llvm_unreachable("unhandled AVM target builtin");
       }
 
-      SmallVector<Value *, 4> Args;
+      SmallVector<Value *, 5> Args;
       for (const Expr *Arg : E->arguments())
         Args.push_back(CGF->EmitScalarExpr(Arg));
+      switch (BuiltinID) {
+      case AVM::BI__avm_draw_sprite_overwrite:
+      case AVM::BI__avm_draw_sprite_plus_mask:
+      case AVM::BI__avm_draw_sprite_self_masked:
+      case AVM::BI__avm_draw_sprite_erase: {
+        constexpr llvm::StringLiteral FramebufferName("__avm_framebuffer");
+        llvm::Module &M = CGF->CGM.getModule();
+        llvm::ArrayType *FramebufferTy =
+            llvm::ArrayType::get(CGF->Int8Ty, 1024);
+        GlobalVariable *Framebuffer =
+            M.getGlobalVariable(FramebufferName, /*AllowInternal=*/true);
+        if (!Framebuffer)
+          Framebuffer = new GlobalVariable(
+              M, FramebufferTy, /*isConstant=*/false,
+              GlobalValue::ExternalLinkage, /*Initializer=*/nullptr,
+              FramebufferName, /*InsertBefore=*/nullptr,
+              GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
+        Framebuffer->setAlignment(Align(1));
+        if (!StringRef(M.getModuleInlineAsm())
+                 .contains(".globl __avm_framebuffer"))
+          M.appendModuleInlineAsm(".globl __avm_framebuffer");
+        Args.push_back(
+            CGF->Builder.CreateConstInBoundsGEP2_32(FramebufferTy, Framebuffer,
+                                                    0, 0));
+        break;
+      }
+      default:
+        break;
+      }
       return CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
     }
     default:

@@ -21,6 +21,15 @@ body: |
     SYS_DEBUG_PUTC_PSEUDO %1
     KILL %0
 
+    ; R0Only follows the same fixed/general boundary policy as the other
+    ; service register classes.
+    ; CHECK: [[GPR16_TO_R0:%[0-9]+]]:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[R0_INPUT:%[0-9]+]]:r0only = COPY [[GPR16_TO_R0]]
+    ; CHECK-NEXT: KILL [[GPR16_TO_R0]]
+    %16:gpr16 = IMPLICIT_DEF
+    %17:r0only = COPY %16
+    KILL %16
+
     ; CHECK: [[R4_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
     ; CHECK-NEXT: [[R4_TO_GPR16:%[0-9]+]]:gpr16 = COPY [[R4_RESULT]]
     ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MILLIS_PSEUDO
