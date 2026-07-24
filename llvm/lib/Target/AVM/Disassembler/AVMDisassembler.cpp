@@ -922,7 +922,14 @@ public:
       case 0xd5: MI.setOpcode(AVM::CALL8); break;
       case 0xd8: MI.setOpcode(AVM::BRUGE8); break;
       case 0xd9: MI.setOpcode(AVM::BRSGE8); break;
-      case 0xd6: MI.setOpcode(AVM::ADJSP); break;
+      case 0xd6: {
+        MI.setOpcode(AVM::ADJSP);
+        const int64_t Adjustment =
+            int64_t(Bytes[1]) - ((Bytes[1] & 0x80) ? 256 : 0);
+        MI.addOperand(MCOperand::createImm(Adjustment));
+        Size = 2;
+        return Success;
+      }
       default:
         if (!isKnownSystemService(Bytes[1])) {
           Size = 1;
