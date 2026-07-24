@@ -1086,9 +1086,28 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
   if (Op.getOpcode() == ISD::SRA && Count == 1)
     return DAG.getNode(AVMISD::SRA32_1, DL, MVT::i32, Value);
 
-  SDValue Low = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
-  SDValue ShiftedHigh = DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Value);
-  SDValue High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
+  SDValue Low;
+  SDValue High;
+
+  if (Value.getOpcode() == ISD::ZERO_EXTEND &&
+      Value.getOperand(0).getValueType() == MVT::i16) {
+    // Avoid materializing the wide zero extension and then extracting its
+    // statically-zero high word.
+    Low = Value.getOperand(0);
+    High = DAG.getConstant(0, DL, MVT::i16);
+  } else if (Value.getOpcode() == ISD::SIGN_EXTEND &&
+            Value.getOperand(0).getValueType() == MVT::i16) {
+    Low = Value.getOperand(0);
+    High = DAG.getNode(
+        ISD::SRA, DL, MVT::i16, Low,
+        DAG.getConstant(15, DL, MVT::i16));
+  } else {
+    Low = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
+    SDValue ShiftedHigh =
+        DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Value);
+    High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
+  }
+
   auto ShiftCount = [&](uint64_t Amount) {
     return DAG.getConstant(Amount, DL, MVT::i16);
   };
