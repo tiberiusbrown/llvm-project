@@ -468,6 +468,12 @@ bool MachineCSEImpl::isProfitableToCSE(Register CSReg, Register Reg,
   }
   if (!MayIncreasePressure) return true;
 
+  if (MayIncreasePressure &&
+      CSBB != MI->getParent() &&
+      CSBB->succ_size() > 1 &&
+      TII->isReMaterializable(*MI))
+    return false;
+
   // Heuristics #1: Don't CSE "cheap" computation if the def is not local or in
   // an immediate predecessor. We don't want to increase register pressure and
   // end up causing other computation to be spilled.
