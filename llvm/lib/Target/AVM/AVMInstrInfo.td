@@ -567,6 +567,14 @@ class AVMPureCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
   let mayStore = 0;
 }
 
+// Cheap pure pseudos whose values may be recomputed at a use instead of kept
+// live or spilled.  Rematerializability is intentionally separate from purity:
+// expensive arithmetic and other pure operations should not inherit it.
+class AVMRematCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
+    : AVMPureCodeGenPseudo<Outs, Ins, Pat> {
+  let isReMaterializable = 1;
+}
+
 // Memory pseudos have modeled load/store effects and no additional unmodeled
 // side effects.  Derived classes specify mayLoad and/or mayStore as needed.
 class AVMMemoryCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
@@ -627,17 +635,15 @@ def SEXT8_PSEUDO
                              (sext_inreg GPR16:$src, i8))]> {
   let Constraints = "$dst = $src";
 }
-let isReMaterializable = 1 in {
 def LDI8_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
-                       [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
+    : AVMRematCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+                            [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
 def LDI16_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
-                       [(set GPR16:$dst, (i16 imm:$imm))]>;
+    : AVMRematCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+                            [(set GPR16:$dst, (i16 imm:$imm))]>;
 def LDI32_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst),
-                           (ins i16imm:$lo, i16imm:$hi)>;
-}
+    : AVMRematCodeGenPseudo<(outs GPR32:$dst),
+                            (ins i16imm:$lo, i16imm:$hi)>;
 def ZEXT16_32_PSEUDO
     : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO
@@ -678,7 +684,7 @@ def SRA32_16_PSEUDO
           [(set GPR32:$dst, (AVMsra32_16 GPR32:$src))]>;
 def SEXT24_32_PSEUDO : AVMUnary32Pseudo;
 def PROG_ADDR_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
+    : AVMRematCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
 def PROG_CANON_PSEUDO : AVMUnary32Pseudo;
 def ADD16_PSEUDO : AVMBinary16Pseudo<add> { let isCommutable = 1; }
 def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
@@ -926,8 +932,8 @@ def SYS_STRNCAT_PSEUDO
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
 def ADDIS8_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
-                       (ins GPR16:$src, i16imm:$imm)> {
+    : AVMRematCodeGenPseudo<(outs GPR16:$dst),
+                            (ins GPR16:$src, i16imm:$imm)> {
   let Constraints = "$dst = $src";
 }
 
@@ -1042,7 +1048,7 @@ def FRAMEADDR_PSEUDO
 }
 
 def DATA_ADDR_PSEUDO
-    : AVMPureCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
+    : AVMRematCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
 
 class AVMIndirectLoadPseudo
     : AVMMemoryCodeGenPseudo<(outs GPR16:$dst), (ins PTR16:$addr)> {
