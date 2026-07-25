@@ -1268,6 +1268,38 @@ bool MachineSinking::isProfitableToSinkTo(Register Reg, MachineInstr &MI,
   if (MBB == SuccToSinkTo)
     return false;
 
+  MachineCycle *MCycle = CI->getCycle(MBB);
+
+  // Sinking a tied two-address instruction that consumes a loop-header PHI
+  // extends the loop-carried value across the source block. This can make
+  // allocation substantially harder even when aggregate register pressure is
+  // unchanged, because the fresh result is replaced by a constrained
+  // recurrence.
+  if (MCycle) {
+    for (unsigned OpIdx = 0, E = MI.getNumOperands(); OpIdx != E; ++OpIdx) {
+      const MachineOperand &MO = MI.getOperand(OpIdx);
+
+      if (!MO.isReg() || !MO.isUse() || !MO.getReg().isVirtual() ||
+          !MI.isRegTiedToDefOperand(OpIdx))
+        continue;
+
+      MachineInstr *DefMI = MRI->getVRegDef(MO.getReg());
+      if (!DefMI)
+        continue;
+
+      MachineCycle *DefCycle = CI->getCycle(DefMI->getParent());
+      bool IsLoopHeaderPHI =
+          DefCycle == MCycle && DefMI->isPHI() && DefCycle->isReducible() &&
+          DefCycle->getHeader() == DefMI->getParent();
+      if (!IsLoopHeaderPHI)
+        continue;
+
+      LLVM_DEBUG(
+          dbgs() << "Not profitable to sink tied use of loop-header PHI.\n");
+      return false;
+    }
+  }
+
   // It is profitable if SuccToSinkTo does not post dominate current block.
   if (!PDT->dominates(SuccToSinkTo, MBB))
     return true;
@@ -1294,8 +1326,6 @@ bool MachineSinking::isProfitableToSinkTo(Register Reg, MachineInstr &MI,
   if (MachineBasicBlock *MBB2 =
           FindSuccToSinkTo(MI, SuccToSinkTo, BreakPHIEdge, AllSuccessors))
     return isProfitableToSinkTo(Reg, MI, SuccToSinkTo, MBB2, AllSuccessors);
-
-  MachineCycle *MCycle = CI->getCycle(MBB);
 
   // If the instruction is not inside a cycle, it is not profitable to sink MI
   // to a post dominate block SuccToSinkTo.
@@ -1332,13 +1362,12 @@ bool MachineSinking::isProfitableToSinkTo(Register Reg, MachineInstr &MI,
       if (!DefMI)
         continue;
       MachineCycle *Cycle = CI->getCycle(DefMI->getParent());
-      // DefMI is defined outside of cycle. There should be no live range
-      // impact for this operand. Defination outside of cycle means:
-      // 1: defination is outside of cycle.
-      // 2: defination is in this cycle, but it is a PHI in the cycle header.
-      if (Cycle != MCycle || (DefMI->isPHI() && Cycle && Cycle->isReducible() &&
-                              Cycle->getHeader() == DefMI->getParent()))
+
+      if (Cycle != MCycle ||
+          (DefMI->isPHI() && Cycle && Cycle->isReducible() &&
+          Cycle->getHeader() == DefMI->getParent()))
         continue;
+
       // The DefMI is defined inside the cycle.
       // If sinking this operand makes some register pressure set exceed limit,
       // it is not profitable.
