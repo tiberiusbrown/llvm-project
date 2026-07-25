@@ -55,7 +55,7 @@ let TargetPrefix = "avm" in {
       : Intrinsic<[],
                   [llvm_i16_ty, llvm_i16_ty, llvm_i16_ty,
                   llvm_ptr_ty, llvm_ptr_ty],
-                  [IntrHasSideEffects, IntrWillReturn,
+                  [IntrArgMemOnly, IntrHasSideEffects, IntrWillReturn,
                   IntrNoCallback, IntrNoFree,
                   NoCapture<ArgIndex<3>>,
                   ReadOnly<ArgIndex<3>>,
