@@ -205,6 +205,14 @@ static bool setupIsSafe(const AffineValue &Value) {
   });
 }
 
+static bool isUseCoveredByRun(const MachineOperand &MO,
+                              ArrayRef<ServiceUse> Run) {
+  return llvm::any_of(Run, [&](const ServiceUse &Service) {
+    return Service.MI == MO.getParent() &&
+           Service.OperandNo == MO.getOperandNo();
+  });
+}
+
 static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
                               MachineRegisterInfo &MRI,
                               const TargetInstrInfo &TII,
@@ -261,24 +269,46 @@ static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
         }))
       continue;
 
+    SmallPtrSet<MachineInstr *, 32> CoveredSetup;
+    for (const AffineValue &Value : Values)
+      CoveredSetup.insert_range(Value.Setup);
+
+    SmallDenseSet<Register, 16> CheckedRegs;
+
     Register Base = Values.front().Base;
     int64_t PreviousOffset = Values.front().Offset;
+
     for (unsigned I = 1; I != Values.size(); ++I) {
       int64_t Delta = Values[I].Offset - PreviousOffset;
       if (Values[I].Base != Base || !isInt<8>(Delta)) {
         Valid = false;
         break;
       }
-      for (MachineOperand &Use : MRI.use_nodbg_operands(Values[I].Reg)) {
-        MachineInstr *User = Use.getParent();
-        if ((User != Run[I].MI || Use.getOperandNo() != Run[I].OperandNo) &&
-            !llvm::is_contained(Values[I].Setup, User)) {
-          Valid = false;
-          break;
+
+      Register Reg = Values[I].Reg;
+
+      // The common affine root is intentionally retained. Its other uses include
+      // the setup instructions that originally materialized the derived values.
+      if (Reg != Base && CheckedRegs.insert(Reg).second) {
+        for (MachineOperand &Use : MRI.use_nodbg_operands(Reg)) {
+          MachineInstr *User = Use.getParent();
+
+          bool CoveredServiceUse =
+              llvm::any_of(Run, [&](const ServiceUse &Service) {
+                return Service.MI == User &&
+                      Service.OperandNo == Use.getOperandNo();
+              });
+
+          if (!CoveredServiceUse && !CoveredSetup.contains(User)) {
+            Valid = false;
+            break;
+          }
         }
       }
+
       if (!Valid)
         break;
+
       PreviousOffset = Values[I].Offset;
     }
     if (!Valid)

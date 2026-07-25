@@ -556,111 +556,129 @@ class AVMCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
   let hasNoSchedulingInfo = 1;
 }
 
+// Pseudos whose complete effects are represented by their explicit operands,
+// implicit Defs/Uses, and other instruction properties.  Keeping this separate
+// from AVMCodeGenPseudo leaves calls, returns, control flow, and miscellaneous
+// special pseudos conservative by default.
+class AVMPureCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
+    : AVMCodeGenPseudo<Outs, Ins, Pat> {
+  let hasSideEffects = 0;
+  let mayLoad = 0;
+  let mayStore = 0;
+}
+
+// Memory pseudos have modeled load/store effects and no additional unmodeled
+// side effects.  Derived classes specify mayLoad and/or mayStore as needed.
+class AVMMemoryCodeGenPseudo<dag Outs, dag Ins, list<dag> Pat = []>
+    : AVMCodeGenPseudo<Outs, Ins, Pat> {
+  let hasSideEffects = 0;
+  let mayLoad = 0;
+  let mayStore = 0;
+}
+
 class AVMBinary16Pseudo<SDPatternOperator Op>
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR16:$lhs, GPR16:$rhs),
                        [(set GPR16:$dst, (Op GPR16:$lhs, GPR16:$rhs))]> {
   let Constraints = "$dst = $lhs";
 }
 
 class AVMTwoAddr16Pseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR16:$src1, GPR16:$src2)> {
   let Constraints = "$dst = $src1";
 }
 
 class AVMUpperTwoAddr16Pseudo
-    : AVMCodeGenPseudo<(outs UpperGPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs UpperGPR16:$dst),
                        (ins UpperGPR16:$src1, UpperGPR16:$src2)> {
   let Constraints = "$dst = $src1";
 }
 
 class AVMUnary16Pseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
   let Constraints = "$dst = $src";
 }
 
 class AVMBinary32Pseudo
-    : AVMCodeGenPseudo<(outs GPR32:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst),
                        (ins GPR32:$lhs, GPR32:$rhs)> {
   let Constraints = "$dst = $lhs";
 }
 
 class AVMUnary32Pseudo
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)> {
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)> {
   let Constraints = "$dst = $src";
 }
 
 class AVMUpperUnary16ImmPseudo
-    : AVMCodeGenPseudo<(outs UpperGPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs UpperGPR16:$dst),
                        (ins UpperGPR16:$src, i16imm:$count)> {
   let Constraints = "$dst = $src";
 }
 
 def COPY16_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)>;
 def COPY32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
 def SEXT8_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src),
                        [(set GPR16:$dst,
                              (sext_inreg GPR16:$src, i8))]> {
   let Constraints = "$dst = $src";
 }
 let isReMaterializable = 1 in {
 def LDI8_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
                        [(set GPR16:$dst, AVMImmZExt8:$imm)]>;
 def LDI16_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$imm),
                        [(set GPR16:$dst, (i16 imm:$imm))]>;
 def LDI32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst),
-                       (ins i16imm:$lo, i16imm:$hi)> {
-  let hasSideEffects = 0;
-}
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst),
+                           (ins i16imm:$lo, i16imm:$hi)>;
 }
 def ZEXT16_32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def SEXT16_32_PSEUDO
-    : AVMCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
+    : AVMPureCodeGenPseudo<(outs UpperGPR32:$dst), (ins GPR16:$src)>;
 def BUILD_HI16_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR16:$src),
           [(set GPR32:$dst, (AVMbuild_hi16 GPR16:$src))]>;
 def LSR32_1_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMlsr32_1 GPR32:$src))]> {
   let Constraints = "$dst = $src";
 }
 def SRA32_1_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMsra32_1 GPR32:$src))]> {
   let Constraints = "$dst = $src";
 }
 def SHL32_16_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMshl32_16 GPR32:$src))]>;
 def SRL32_16_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMsrl32_16 GPR32:$src))]>;
 def SRA32_16_PSEUDO
-    : AVMCodeGenPseudo<
+    : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMsra32_16 GPR32:$src))]>;
 def SEXT24_32_PSEUDO : AVMUnary32Pseudo;
 def PROG_ADDR_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
 def PROG_CANON_PSEUDO : AVMUnary32Pseudo;
 def ADD16_PSEUDO : AVMBinary16Pseudo<add> { let isCommutable = 1; }
 def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
@@ -685,26 +703,26 @@ def FNEG_PSEUDO : AVMUnary32Pseudo;
 def FABS_PSEUDO : AVMUnary32Pseudo;
 def FSQRT_PSEUDO : AVMUnary32Pseudo;
 def S16TOF_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def U16TOF_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
 def S32TOF_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
 def U32TOF_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
 def FTOS16_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
 def FTOU16_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
 def FTOS32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
 def FTOU32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
 def FCMP_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR32:$left, GPR32:$right)>;
 def FCLASS_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
 
 // Typed semantic system-service pseudos.  AVMMCInstLower maps these to the
 // corresponding SYS encoding only after physical allocation.  Memory pseudos
@@ -908,7 +926,7 @@ def SYS_STRNCAT_PSEUDO
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
 def ADDIS8_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR16:$src, i16imm:$imm)> {
   let Constraints = "$dst = $src";
 }
@@ -924,7 +942,7 @@ def SDIV16_PSEUDO : AVMTwoAddr16Pseudo;
 def SREM16_PSEUDO : AVMTwoAddr16Pseudo;
 
 def SHL16_SMALL_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR16:$src, i16imm:$count)> {
   let Constraints = "$dst = $src";
 }
@@ -937,7 +955,7 @@ def SHL16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
 def LSR16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
 def ASR16V_PSEUDO : AVMUpperTwoAddr16Pseudo;
 
-class AVMCCProducerPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
+class AVMCCProducerPseudo<dag Ins> : AVMPureCodeGenPseudo<(outs), Ins> {
   let Defs = [CC];
 }
 
@@ -951,12 +969,12 @@ def TST8_PSEUDO : AVMCCProducerPseudo<(ins GPR16:$value)>;
 def TST16_PSEUDO : AVMCCProducerPseudo<(ins GPR16:$value)>;
 
 def CSET_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$cond)> {
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins i16imm:$cond)> {
   let Uses = [CC];
 }
 
 def CMOV16_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
                        (ins GPR16:$true_value, GPR16:$false_value,
                             i16imm:$cond)> {
   let Constraints = "$dst = $false_value";
@@ -965,7 +983,7 @@ def CMOV16_PSEUDO
 }
 
 def CMOV32_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst),
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst),
                        (ins GPR32:$true_value, GPR32:$false_value,
                             i16imm:$cond)> {
   let Constraints = "$dst = $false_value";
@@ -1018,69 +1036,69 @@ def CALL_INDIRECT_PSEUDO
     : AVMCallPseudo<(ins GPR32:$target, variable_ops)>;
 
 def FRAMEADDR_PSEUDO
-    : AVMCodeGenPseudo<(outs PTR16:$dst),
+    : AVMPureCodeGenPseudo<(outs PTR16:$dst),
                        (ins i16imm:$fi, i16imm:$offset)> {
   let Uses = [SP];
 }
 
 def DATA_ADDR_PSEUDO
-    : AVMCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
+    : AVMPureCodeGenPseudo<(outs PTR16:$dst), (ins AVMDataAddr16:$addr)>;
 
 class AVMIndirectLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins PTR16:$addr)> {
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst), (ins PTR16:$addr)> {
   let mayLoad = 1;
 }
 class AVMIndirectStorePseudo
-    : AVMCodeGenPseudo<(outs), (ins PTR16:$addr, GPR16:$src)> {
+    : AVMMemoryCodeGenPseudo<(outs), (ins PTR16:$addr, GPR16:$src)> {
   let mayStore = 1;
 }
 class AVMIndirectPairLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins PTR16:$addr)> {
+    : AVMMemoryCodeGenPseudo<(outs GPR32:$dst), (ins PTR16:$addr)> {
   let mayLoad = 1;
 }
 class AVMIndirectPairStorePseudo
-    : AVMCodeGenPseudo<(outs), (ins PTR16:$addr, GPR32:$src)> {
+    : AVMMemoryCodeGenPseudo<(outs), (ins PTR16:$addr, GPR32:$src)> {
   let mayStore = 1;
 }
 class AVMPostIncLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
                        (ins PTR16:$addr_in)> {
   let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
 }
 class AVMPostIncStorePseudo
-    : AVMCodeGenPseudo<(outs PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs PTR16:$addr),
                        (ins PTR16:$addr_in, GPR16:$src)> {
   let Constraints = "$addr = $addr_in";
   let mayStore = 1;
 }
 class AVMPreDecLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst, PTR16:$addr),
                        (ins PTR16:$addr_in)> {
   let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
 }
 class AVMPreDecStorePseudo
-    : AVMCodeGenPseudo<(outs PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs PTR16:$addr),
                        (ins PTR16:$addr_in, GPR16:$src)> {
   let Constraints = "$addr = $addr_in";
   let mayStore = 1;
 }
 class AVMAbsoluteLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins AVMDataAddr16:$addr)> {
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst), (ins AVMDataAddr16:$addr)> {
   let mayLoad = 1;
 }
 class AVMAbsoluteStorePseudo
-    : AVMCodeGenPseudo<(outs), (ins AVMDataAddr16:$addr, GPR16:$src)> {
+    : AVMMemoryCodeGenPseudo<(outs), (ins AVMDataAddr16:$addr, GPR16:$src)> {
   let mayStore = 1;
 }
 class AVMDisplacedLoadPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst),
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst),
                        (ins PTR16:$addr, i16imm:$disp)> {
   let mayLoad = 1;
 }
 class AVMDisplacedStorePseudo
-    : AVMCodeGenPseudo<(outs),
+    : AVMMemoryCodeGenPseudo<(outs),
                        (ins PTR16:$addr, i16imm:$disp, GPR16:$src)> {
   let mayStore = 1;
 }
@@ -1096,13 +1114,13 @@ def STORE16_DISP_PSEUDO : AVMDisplacedStorePseudo;
 def LOAD32_PSEUDO : AVMIndirectPairLoadPseudo;
 def STORE32_PSEUDO : AVMIndirectPairStorePseudo;
 def LOAD24_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR32:$dst, PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs GPR32:$dst, PTR16:$addr),
                        (ins PTR16:$addr_in)> {
   let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
 }
 def STORE24_PSEUDO
-    : AVMCodeGenPseudo<(outs PTR16:$addr),
+    : AVMMemoryCodeGenPseudo<(outs PTR16:$addr),
                        (ins PTR16:$addr_in, GPR32:$src)> {
   let Constraints = "$addr = $addr_in";
   let mayStore = 1;
@@ -1121,21 +1139,21 @@ def ABS_STORE8_PSEUDO : AVMAbsoluteStorePseudo;
 def ABS_STORE16_PSEUDO : AVMAbsoluteStorePseudo;
 
 class AVMProgramLoadScalarPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$addr)> {
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$addr)> {
   let mayLoad = 1;
 }
 class AVMProgramLoadPairPseudo
-    : AVMCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$addr)> {
+    : AVMMemoryCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$addr)> {
   let mayLoad = 1;
 }
 class AVMProgramPostLoadScalarPseudo
-    : AVMCodeGenPseudo<(outs GPR16:$dst, GPR32:$addr),
+    : AVMMemoryCodeGenPseudo<(outs GPR16:$dst, GPR32:$addr),
                        (ins GPR32:$addr_in)> {
   let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
 }
 class AVMProgramPostLoadPairPseudo
-    : AVMCodeGenPseudo<(outs GPR32:$dst, GPR32:$addr),
+    : AVMMemoryCodeGenPseudo<(outs GPR32:$dst, GPR32:$addr),
                        (ins GPR32:$addr_in)> {
   let Constraints = "@earlyclobber $dst, $addr = $addr_in";
   let mayLoad = 1;
@@ -1152,18 +1170,18 @@ def PLOAD24_POST_PSEUDO : AVMProgramPostLoadPairPseudo;
 def PLOAD32_POST_PSEUDO : AVMProgramPostLoadPairPseudo;
 
 def ZEXT8_PSEUDO
-    : AVMCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
+    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR16:$src)> {
   let Constraints = "$dst = $src";
 }
 
 class AVMStackLoadPseudo<RegisterClass RC>
-    : AVMCodeGenPseudo<(outs RC:$dst),
+    : AVMMemoryCodeGenPseudo<(outs RC:$dst),
                        (ins i16imm:$fi, i16imm:$offset)> {
   let Uses = [SP];
   let mayLoad = 1;
 }
 class AVMStackStorePseudo<RegisterClass RC>
-    : AVMCodeGenPseudo<(outs),
+    : AVMMemoryCodeGenPseudo<(outs),
                        (ins i16imm:$fi, i16imm:$offset, RC:$src)> {
   let Uses = [SP];
   let mayStore = 1;
@@ -1180,7 +1198,7 @@ def STACK_STORE24_PSEUDO : AVMStackStorePseudo<GPR32>;
 def STACK_STORE32_PSEUDO : AVMStackStorePseudo<GPR32>;
 
 class AVMOutgoingStorePseudo<RegisterClass RC>
-    : AVMCodeGenPseudo<(outs), (ins i16imm:$offset, RC:$src)> {
+    : AVMMemoryCodeGenPseudo<(outs), (ins i16imm:$offset, RC:$src)> {
   let Uses = [SP];
   let mayStore = 1;
 }
