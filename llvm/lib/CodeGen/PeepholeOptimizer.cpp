@@ -1503,6 +1503,14 @@ bool PeepholeOptimizer::foldRedundantCopy(MachineInstr &MI) {
   if (MRI->getRegClass(DstReg) != MRI->getRegClass(PrevDstReg))
     return false;
 
+  if (!TII->isProfitableToFoldRedundantCopy(*PrevCopy, MI, *MRI)) {
+    // Keep the current copy as the candidate for subsequent copies of the same
+    // source so a target veto does not force them to compare against an older,
+    // longer-lived value.
+    CopySrcMIs[SrcPair] = &MI;
+    return false;
+  }
+
   MRI->replaceRegWith(DstReg, PrevDstReg);
 
   // Lifetime of the previous copy has been extended.

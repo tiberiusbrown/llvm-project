@@ -558,6 +558,19 @@ public:
   /// a load of 0).
   virtual bool simplifyInstruction(MachineInstr &MI) const { return false; }
 
+  /// Return true if it is profitable to eliminate \p Copy by replacing all
+  /// uses of its destination with the destination of \p PrevCopy.
+  ///
+  /// Both instructions copy the same register and subregister to virtual
+  /// registers in the same register class. Targets may return false when
+  /// extending the live range of \p PrevCopy's destination would make register
+  /// allocation more difficult.
+  virtual bool isProfitableToFoldRedundantCopy(
+      const MachineInstr &PrevCopy, const MachineInstr &Copy,
+      const MachineRegisterInfo &MRI) const {
+    return true;
+  }
+
   /// A pair composed of a register and a sub-register index.
   /// Used to give some type checking when modeling Reg:SubReg.
   struct RegSubRegPair {

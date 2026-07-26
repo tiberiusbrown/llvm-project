@@ -30,6 +30,42 @@ bool AVMInstrInfo::isReMaterializableImpl(const MachineInstr &MI) const {
   return TargetInstrInfo::isReMaterializableImpl(MI);
 }
 
+bool AVMInstrInfo::isProfitableToFoldRedundantCopy(
+    const MachineInstr &PrevCopy, const MachineInstr &Copy,
+    const MachineRegisterInfo &MRI) const {
+  assert(PrevCopy.isCopy() && Copy.isCopy() && "expected COPY instructions");
+
+  const MachineOperand &Src = Copy.getOperand(1);
+  Register SrcReg = Src.getReg();
+  Register PrevDstReg = PrevCopy.getOperand(0).getReg();
+  Register DstReg = Copy.getOperand(0).getReg();
+
+  if (!SrcReg.isVirtual() || Src.getSubReg() ||
+      !PrevDstReg.isVirtual() || !DstReg.isVirtual())
+    return true;
+
+  // Folding a later GPR16-to-UpperGPR16 copy into an earlier one can resurrect
+  // an already-consumed four-register-class value and keep it live across
+  // intervening operations. Let the register coalescer reconsider these copies
+  // later, when live intervals are available.
+  if (MRI.getRegClass(SrcReg) != &AVM::GPR16RegClass ||
+      MRI.getRegClass(PrevDstReg) != &AVM::UpperGPR16RegClass ||
+      MRI.getRegClass(DstReg) != &AVM::UpperGPR16RegClass ||
+      !MRI.hasOneNonDBGUse(PrevDstReg) ||
+      !MRI.hasOneNonDBGUse(DstReg) ||
+      PrevCopy.getParent() != Copy.getParent())
+    return true;
+
+  auto I = PrevCopy.getIterator();
+  const auto E = Copy.getIterator();
+  for (++I; I != E; ++I) {
+    if (!I->isDebugInstr() && I->readsRegister(PrevDstReg, &RI))
+      return false;
+  }
+
+  return true;
+}
+
 void AVMInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator MI,
                                const DebugLoc &DL, Register DestReg,

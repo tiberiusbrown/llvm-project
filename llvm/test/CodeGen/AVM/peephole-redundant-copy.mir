@@ -1,0 +1,40 @@
+# RUN: llc -mtriple=avm -run-pass=peephole-opt -o - %s | FileCheck %s
+
+# Preserve a later constrained copy when folding it would extend an earlier
+# UpperGPR16 value past its only use.
+#
+# CHECK-LABEL: name: preserve_intervening_use
+# CHECK: %0:gpr16 = IMPLICIT_DEF
+# CHECK: %1:uppergpr16 = COPY %0
+# CHECK: $r4 = COPY %1
+# CHECK: %2:uppergpr16 = COPY %0
+# CHECK: $r5 = COPY %2
+---
+name: preserve_intervening_use
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    %1:uppergpr16 = COPY %0
+    $r4 = COPY %1
+    %2:uppergpr16 = COPY %0
+    $r5 = COPY %2
+...
+
+# Continue folding when the earlier constrained value has not yet been used.
+#
+# CHECK-LABEL: name: fold_without_intervening_use
+# CHECK: %0:gpr16 = IMPLICIT_DEF
+# CHECK: %1:uppergpr16 = COPY %0
+# CHECK-NOT: %2:uppergpr16 = COPY %0
+# CHECK: $r4 = COPY %1
+# CHECK: $r5 = COPY %1
+---
+name: fold_without_intervening_use
+body: |
+  bb.0:
+    %0:gpr16 = IMPLICIT_DEF
+    %1:uppergpr16 = COPY %0
+    %2:uppergpr16 = COPY %0
+    $r4 = COPY %1
+    $r5 = COPY %2
+...

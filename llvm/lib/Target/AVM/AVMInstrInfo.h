@@ -32,6 +32,9 @@ public:
                    const DebugLoc &DL, Register DestReg, Register SrcReg,
                    bool KillSrc, bool RenamableDest = false,
                    bool RenamableSrc = false) const override;
+  bool isProfitableToFoldRedundantCopy(
+      const MachineInstr &PrevCopy, const MachineInstr &Copy,
+      const MachineRegisterInfo &MRI) const override;
 
   void storeRegToStackSlot(
       MachineBasicBlock &MBB, MachineBasicBlock::iterator MI, Register SrcReg,
