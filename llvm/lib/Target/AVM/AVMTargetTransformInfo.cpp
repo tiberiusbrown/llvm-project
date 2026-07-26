@@ -168,38 +168,13 @@ void AVMTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
     }
   };
 
-  auto IsSpriteService = [](const CallBase &Call) {
-    const auto *II = dyn_cast<IntrinsicInst>(&Call);
-    if (!II)
-      return false;
-    switch (II->getIntrinsicID()) {
-    case Intrinsic::avm_draw_sprite_overwrite:
-    case Intrinsic::avm_draw_sprite_self_masked:
-    case Intrinsic::avm_draw_sprite_plus_mask:
-    case Intrinsic::avm_draw_sprite_erase:
-      return true;
-    default:
-      return false;
-    }
-  };
-
-  unsigned SpriteCalls = 0;
-  for (BasicBlock *BB : L->blocks())
-    for (Instruction &I : *BB)
-      if (const auto *Call = dyn_cast<CallBase>(&I))
-        SpriteCalls += IsSpriteService(*Call);
-  const bool BlocksSpriteUnrolling =
-      SpriteCalls != 0 && (!L->isInnermost() || SpriteCalls > 1);
-
   for (BasicBlock *BB : L->blocks()) {
     for (Instruction &I : *BB) {
       bool BlocksUnrolling = false;
       if (const auto *Load = dyn_cast<LoadInst>(&I))
         BlocksUnrolling = Load->getPointerAddressSpace() == 1;
       else if (const auto *Call = dyn_cast<CallBase>(&I))
-        BlocksUnrolling =
-            IsExpensiveService(*Call) ||
-            (IsSpriteService(*Call) && BlocksSpriteUnrolling);
+        BlocksUnrolling = IsExpensiveService(*Call);
       else
         BlocksUnrolling = I.getOpcode() == Instruction::UDiv ||
                           I.getOpcode() == Instruction::SDiv ||
