@@ -168,6 +168,9 @@ void AVMTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
     }
   };
 
+  UP.MaxIterationsCountToAnalyze =
+    std::max(UP.MaxIterationsCountToAnalyze, 64u);
+
   for (BasicBlock *BB : L->blocks()) {
     for (Instruction &I : *BB) {
       bool BlocksUnrolling = false;
