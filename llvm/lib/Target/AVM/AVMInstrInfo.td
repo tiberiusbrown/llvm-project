@@ -793,6 +793,18 @@ def SYS_DRAW_PLUS_MASK_PSEUDO : AVMSpriteNoPtrServicePseudo;
 def SYS_DRAW_SELF_MASKED_PSEUDO : AVMSpriteNoPtrServicePseudo;
 def SYS_DRAW_ERASE_PSEUDO : AVMSpriteNoPtrServicePseudo;
 
+class AVMFilledRectServicePseudo
+    : AVMSystemServicePseudo<
+          (outs),
+          (ins GPR16:$x, GPR16:$y, GPR16:$width, GPR16:$height)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_DRAW_FILLED_RECT_WHITE_PSEUDO : AVMFilledRectServicePseudo;
+def SYS_DRAW_FILLED_RECT_BLACK_PSEUDO : AVMFilledRectServicePseudo;
+
 class AVMUnaryMathServicePseudo
     : AVMSystemServicePseudo<(outs GPR32:$result), (ins GPR32:$operand)> {
   let Constraints = "$result = $operand";

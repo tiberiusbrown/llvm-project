@@ -1263,13 +1263,30 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   case ISD::INTRINSIC_VOID: {
     const auto *ID = cast<ConstantSDNode>(Op.getOperand(1));
-    if (ID->getZExtValue() != Intrinsic::avm_debug_putc)
-      report_fatal_error("unexpected AVM intrinsic with an i8 operand");
     SDLoc DL(Op);
-    SDValue Value =
-        DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Op.getOperand(2));
-    return DAG.getNode(ISD::INTRINSIC_VOID, DL, MVT::Other, Op.getOperand(0),
-                       Op.getOperand(1), Value);
+
+    SmallVector<SDValue, 8> Ops(Op->op_begin(), Op->op_end());
+
+    auto PromoteUnsignedByte = [&](unsigned OperandIndex) {
+      assert(Ops[OperandIndex].getValueType() == MVT::i8 &&
+            "expected an i8 intrinsic operand");
+      Ops[OperandIndex] =
+          DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Ops[OperandIndex]);
+    };
+
+    switch (ID->getZExtValue()) {
+    case Intrinsic::avm_debug_putc:
+    case Intrinsic::avm_draw_filled_rect_white:
+    case Intrinsic::avm_draw_filled_rect_black:
+      for (unsigned I = 2; I != Ops.size(); ++I)
+        if (Ops[I].getValueType() == MVT::i8)
+          Ops[I] = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Ops[I]);
+      break;
+    default:
+      report_fatal_error("unexpected AVM intrinsic with an i8 operand");
+    }
+
+    return DAG.getNode(ISD::INTRINSIC_VOID, DL, MVT::Other, Ops);
   }
   case ISD::BR_CC:
     return LowerBRCC(Op, DAG);

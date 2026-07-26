@@ -123,6 +123,8 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_draw_plus_mask:
     case AVM::BI__avm_draw_self_masked:
     case AVM::BI__avm_draw_erase:
+    case AVM::BI__avm_draw_filled_rect_white:
+    case AVM::BI__avm_draw_filled_rect_black:
     case AVM::BI__avm_sqrtf:
     case AVM::BI__avm_sinf:
     case AVM::BI__avm_cosf:
@@ -201,6 +203,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_draw_erase:
         ID = Intrinsic::avm_draw_erase;
+        break;
+      case AVM::BI__avm_draw_filled_rect_white:
+        ID = Intrinsic::avm_draw_filled_rect_white;
+        break;
+      case AVM::BI__avm_draw_filled_rect_black:
+        ID = Intrinsic::avm_draw_filled_rect_black;
         break;
       case AVM::BI__avm_sinf:
         ID = Intrinsic::avm_sinf;
@@ -327,6 +335,8 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         LLVM_FALLTHROUGH;
       }
       case AVM::BI__avm_draw_sprite_overwrite:
+      case AVM::BI__avm_draw_filled_rect_white:
+      case AVM::BI__avm_draw_filled_rect_black:
       case AVM::BI__avm_draw_sprite_plus_mask:
       case AVM::BI__avm_draw_sprite_self_masked:
       case AVM::BI__avm_draw_sprite_erase: {

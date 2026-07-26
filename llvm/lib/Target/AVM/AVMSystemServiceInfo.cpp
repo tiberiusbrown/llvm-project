@@ -255,6 +255,23 @@ static constexpr AVMServiceMemoryAccessInfo SpriteNoPtrMemory[] = {
      MachineMemOperand::MOLoad, MS::AfterPointer, 0, 0},
 };
 
+static constexpr AVMServiceInputInfo FilledRectInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true}, // x
+    {1, VK::I16, AVM::R5, PP::None, true}, // y
+    {2, VK::I16, AVM::R6, PP::None, true}, // zero-extended width
+    {3, VK::I16, AVM::R7, PP::None, true}, // zero-extended height
+
+    // Compiler-only framebuffer anchor.
+    {4, VK::I16, MCPhysReg(), PP::None, false},
+};
+static constexpr AVMServiceMemoryAccessInfo FilledRectMemory[] = {
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
+};
+
 #define SERVICE(Pseudo, Inputs, Outputs, Memory)                               \
   static constexpr AVMSystemServiceInfo Pseudo##Info = {                       \
       AVM::Pseudo, Pseudo##ServiceID, Pseudo##ServiceName,                     \
@@ -299,6 +316,10 @@ SERVICE(SYS_DRAW_OVERWRITE_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
 SERVICE(SYS_DRAW_PLUS_MASK_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
 SERVICE(SYS_DRAW_SELF_MASKED_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
 SERVICE(SYS_DRAW_ERASE_PSEUDO, SpriteNoPtrInputs, {}, SpriteNoPtrMemory);
+SERVICE(SYS_DRAW_FILLED_RECT_WHITE_PSEUDO, FilledRectInputs, {},
+        FilledRectMemory);
+SERVICE(SYS_DRAW_FILLED_RECT_BLACK_PSEUDO, FilledRectInputs, {},
+        FilledRectMemory);
 
 #undef SERVICE
 

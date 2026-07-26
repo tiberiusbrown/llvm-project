@@ -51,6 +51,9 @@ BUILTIN(__avm_draw_plus_mask, "viiUi", "n")
 BUILTIN(__avm_draw_self_masked, "viiUi", "n")
 BUILTIN(__avm_draw_erase, "viiUi", "n")
 
+BUILTIN(__avm_draw_filled_rect_white, "viiUcUc", "n")
+BUILTIN(__avm_draw_filled_rect_black, "viiUcUc", "n")
+
 BUILTIN(__avm_sqrtf, "ff", "nc")
 BUILTIN(__avm_sinf, "ff", "nc")
 BUILTIN(__avm_cosf, "ff", "nc")

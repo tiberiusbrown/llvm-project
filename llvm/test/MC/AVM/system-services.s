@@ -21,3 +21,11 @@ sys draw_sprite_self_masked
 sys draw_sprite_erase
 # CHECK: sys draw_sprite_erase{{.*}}encoding: [0xd7,0x21]
 # DIS: sys draw_sprite_erase
+
+sys draw_filled_rect_white
+# CHECK: sys draw_filled_rect_white{{.*}}encoding: [0xd7,0x27]
+# DIS: sys draw_filled_rect_white
+
+sys draw_filled_rect_black
+# CHECK: sys draw_filled_rect_black{{.*}}encoding: [0xd7,0x28]
+# DIS: sys draw_filled_rect_black

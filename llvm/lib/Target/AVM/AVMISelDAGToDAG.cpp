@@ -1315,6 +1315,8 @@ private:
       Opcode = AVM::OUT_STORE8_PSEUDO;
     else if (Store->getMemoryVT() == MVT::i16)
       Opcode = AVM::OUT_STORE16_PSEUDO;
+    else if (Store->getMemoryVT() == MVT::i24)
+      Opcode = AVM::OUT_STORE24_PSEUDO;
     else if (Store->getMemoryVT() == MVT::i32 ||
              Store->getMemoryVT() == MVT::f32)
       Opcode = AVM::OUT_STORE32_PSEUDO;

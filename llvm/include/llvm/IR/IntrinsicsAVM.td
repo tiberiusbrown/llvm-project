@@ -65,6 +65,16 @@ let TargetPrefix = "avm" in {
   def int_avm_draw_self_masked : AVMSpriteNoPtrIntrinsic;
   def int_avm_draw_erase : AVMSpriteNoPtrIntrinsic;
 
+  class AVMFilledRectIntrinsic
+      : Intrinsic<[],
+                  [llvm_i16_ty, llvm_i16_ty, llvm_i8_ty, llvm_i8_ty,
+                   llvm_ptr_ty],
+                  [IntrArgMemOnly, IntrHasSideEffects, IntrWillReturn,
+                   IntrNoCallback, IntrNoFree,
+                   NoCapture<ArgIndex<4>>]>;
+  def int_avm_draw_filled_rect_white : AVMFilledRectIntrinsic;
+  def int_avm_draw_filled_rect_black : AVMFilledRectIntrinsic;
+
   class AVMUnaryMathIntrinsic
       : Intrinsic<[llvm_float_ty], [llvm_float_ty],
                   [IntrNoMem, IntrSpeculatable, IntrWillReturn, IntrNoCallback,

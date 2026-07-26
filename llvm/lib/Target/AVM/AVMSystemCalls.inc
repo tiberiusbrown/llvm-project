@@ -128,6 +128,13 @@ AVM_SYS_DEF(0x26, draw_erase, AVM_SYS_PSEUDO,
             SYS_DRAW_ERASE_PSEUDO, AVM_SYS_INTRINSIC,
             avm_draw_erase, AVM_NO_COST, AVM_NO_COST)
 
+AVM_SYS_DEF(0x27, draw_filled_rect_white, AVM_SYS_PSEUDO,
+            SYS_DRAW_FILLED_RECT_WHITE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_filled_rect_white, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x28, draw_filled_rect_black, AVM_SYS_PSEUDO,
+            SYS_DRAW_FILLED_RECT_BLACK_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_filled_rect_black, AVM_NO_COST, AVM_NO_COST)
+
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF
 #endif

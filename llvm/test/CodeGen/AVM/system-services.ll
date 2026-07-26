@@ -32,6 +32,9 @@ declare void @llvm.avm.draw.sprite.self.masked(i16, i16, ptr addrspace(1), i16,
                                                 ptr)
 declare void @llvm.avm.draw.sprite.erase(i16, i16, ptr addrspace(1), i16, ptr)
 
+declare void @llvm.avm.draw.filled.rect.white(i16, i16, i8, i8, ptr)
+declare void @llvm.avm.draw.filled.rect.black(i16, i16, i8, i8, ptr)
+
 define void @debug_services(i8 %value) {
 ; CHECK-LABEL: debug_services:
 ; CHECK:       sys debug_putc
@@ -123,6 +126,19 @@ define void @display_and_sprite_services(i16 %x, i16 %y,
   ret void
 }
 
+define void @filled_rect_services(i16 %x, i16 %y, i8 %width, i8 %height) {
+; CHECK-LABEL: filled_rect_services:
+; CHECK:       sys draw_filled_rect_white
+; CHECK:       sys draw_filled_rect_black
+  call void @llvm.avm.draw.filled.rect.white(
+      i16 %x, i16 %y, i8 %width, i8 %height,
+      ptr @__avm_framebuffer)
+  call void @llvm.avm.draw.filled.rect.black(
+      i16 %x, i16 %y, i8 %width, i8 %height,
+      ptr @__avm_framebuffer)
+  ret void
+}
+
 define void @timer_result_as_sprite_frame(i16 %x, i16 %y,
                                           ptr addrspace(1) %sprite) {
   %frame = call i16 @llvm.avm.millis()
@@ -183,6 +199,9 @@ define void @global_sprite_object_mmo() {
 ; MIR:       SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR:       SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
 ; MIR:       SYS_DRAW_SPRITE_ERASE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
+; MIR-LABEL: name: filled_rect_services
+; MIR:       SYS_DRAW_FILLED_RECT_WHITE_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
+; MIR:       SYS_DRAW_FILLED_RECT_BLACK_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-LABEL: name: timer_result_as_sprite_frame
 ; MIR:       [[SPRITE_TIMER:%[0-9]+]]:gpr16 = SYS_MILLIS_PSEUDO
 ; MIR:       SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}[[SPRITE_TIMER]]
