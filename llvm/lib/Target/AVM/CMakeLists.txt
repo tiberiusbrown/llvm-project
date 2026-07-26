@@ -18,6 +18,7 @@ add_public_tablegen_target(AVMCommonTableGen)
 add_llvm_target(AVMCodeGen
   AVMAsmPrinter.cpp
   AVMBranchPolarity.cpp
+  AVMCanonicalizeBooleans.cpp
   AVMCostModel.cpp
   AVMExpandSystemServices.cpp
   AVMExpandPseudoInsts.cpp

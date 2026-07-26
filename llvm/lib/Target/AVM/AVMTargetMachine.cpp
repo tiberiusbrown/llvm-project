@@ -29,6 +29,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMTailDuplicationPass(PR);
   registerAVMTailDuplicationOptions();
   initializeAVMBranchPolarityPass(PR);
+  initializeAVMCanonicalizeBooleansPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
@@ -107,6 +108,8 @@ public:
   }
 
   void addPreRegAlloc() override {
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(createAVMCanonicalizeBooleansPass());
     addPass(createAVMSystemServiceRegionsPass());
   }
 

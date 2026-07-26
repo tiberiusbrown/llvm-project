@@ -19,6 +19,7 @@ FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
 FunctionPass *createAVMTailDuplicationPass(
     CodeGenOptLevel OptLevel = CodeGenOptLevel::Default);
 FunctionPass *createAVMBranchPolarityPass();
+FunctionPass *createAVMCanonicalizeBooleansPass();
 FunctionPass *createAVMExpandPseudoPass();
 FunctionPass *createAVMFinalControlFlowPass();
 FunctionPass *createAVMProgramMemoryWideningPass();
@@ -29,6 +30,7 @@ void initializeAVMAsmPrinterPass(PassRegistry &);
 void initializeAVMTailDuplicationPass(PassRegistry &);
 void registerAVMTailDuplicationOptions();
 void initializeAVMBranchPolarityPass(PassRegistry &);
+void initializeAVMCanonicalizeBooleansPass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 void initializeAVMFinalControlFlowPass(PassRegistry &);
