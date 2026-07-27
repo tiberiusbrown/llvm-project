@@ -37,7 +37,7 @@ BUILTIN(__avm_debug_putc, "vUc", "n")
 BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
 BUILTIN(__avm_millis32, "ULi", "n")
-BUILTIN(__avm_display, "v", "n")
+BUILTIN(__avm_display, "vb", "n")
 
 BUILTIN(__avm_draw_sprite_overwrite, "viivC*1Ui", "n")
 BUILTIN(__avm_draw_sprite_plus_mask, "viivC*1Ui", "n")

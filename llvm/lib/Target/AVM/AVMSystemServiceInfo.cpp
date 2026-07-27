@@ -47,8 +47,13 @@ static constexpr AVMServiceOutputInfo Millis32Outputs[] = {
     {0, VK::I32, AVM::R4R5, -1},
 };
 
+static constexpr AVMServiceInputInfo DisplayInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+};
 static constexpr AVMServiceMemoryAccessInfo DisplayMemory[] = {
     {MB::FixedGlobal, 0, "__avm_framebuffer", 0, MachineMemOperand::MOLoad,
+     MS::Constant, 0, 1024},
+    {MB::FixedGlobal, 0, "__avm_framebuffer", 0, MachineMemOperand::MOStore,
      MS::Constant, 0, 1024},
 };
 
@@ -281,7 +286,7 @@ SERVICE(SYS_DEBUG_PUTC_PSEUDO, DebugPutcInputs, {}, {});
 SERVICE(SYS_DEBUG_BREAK_PSEUDO, {}, {}, {});
 SERVICE(SYS_MILLIS_PSEUDO, {}, MillisOutputs, {});
 SERVICE(SYS_MILLIS32_PSEUDO, {}, Millis32Outputs, {});
-SERVICE(SYS_DISPLAY_PSEUDO, {}, {}, DisplayMemory);
+SERVICE(SYS_DISPLAY_PSEUDO, DisplayInputs, {}, DisplayMemory);
 SERVICE(SYS_SINF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});
 SERVICE(SYS_COSF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});
 SERVICE(SYS_ATAN2F_PSEUDO, BinaryMathInputs, BinaryMathOutputs, {});

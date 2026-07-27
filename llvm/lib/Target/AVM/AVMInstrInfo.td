@@ -749,9 +749,10 @@ def SYS_MILLIS_PSEUDO
 def SYS_MILLIS32_PSEUDO
     : AVMSystemServicePseudo<(outs GPR32:$result), (ins)>;
 def SYS_DISPLAY_PSEUDO
-    : AVMSystemServicePseudo<(outs), (ins)> {
+    : AVMSystemServicePseudo<(outs), (ins GPR16:$clear)> {
   let hasSideEffects = 1;
   let mayLoad = 1;
+  let mayStore = 1;
 }
 }
 

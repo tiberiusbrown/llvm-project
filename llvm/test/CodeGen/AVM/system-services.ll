@@ -20,7 +20,7 @@ declare float @llvm.avm.log10f(float)
 declare float @llvm.avm.powf(float, float)
 declare float @llvm.avm.hypotf(float, float)
 declare float @llvm.avm.fmodf(float, float)
-declare void @llvm.avm.display()
+declare void @llvm.avm.display(i16)
 @__avm_framebuffer = external global [1024 x i8], align 1
 @sprite_object = external addrspace(1) global [8 x i8], align 1
 
@@ -70,6 +70,13 @@ define i32 @timer32_service() {
   ret i32 %result
 }
 
+define void @display_service(i16 %clear) {
+; CHECK-LABEL: display_service:
+; CHECK:       sys display
+  call void @llvm.avm.display(i16 %clear)
+  ret void
+}
+
 define float @math_services(float %x, float %y) {
 ; CHECK-LABEL: math_services:
 ; CHECK:       sys sinf
@@ -106,7 +113,7 @@ define void @display_and_sprite_services(i16 %x, i16 %y,
 ; CHECK:       sys draw_sprite_plus_mask
 ; CHECK:       sys draw_sprite_self_masked
 ; CHECK:       sys draw_sprite_erase
-  call void @llvm.avm.display()
+  call void @llvm.avm.display(i16 0)
   call void @llvm.avm.draw.sprite.overwrite(i16 %x, i16 %y,
                                              ptr addrspace(1) %sprite,
                                              i16 %frame,
@@ -188,8 +195,10 @@ define void @global_sprite_object_mmo() {
 ; MIR-O2:    [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
 ; MIR-O2:    [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
 ; MIR-O2:    [[FMODF:%[0-9]+]]:gpr32 = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-LABEL: name: display_service
+; MIR:       SYS_DISPLAY_PSEUDO {{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-LABEL: name: display_and_sprite_services
-; MIR-O0:    SYS_DISPLAY_PSEUDO :: (load (s8192) from @__avm_framebuffer, align 1)
+; MIR-O0:    SYS_DISPLAY_PSEUDO {{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-O2:    [[X:%[0-9]+]]:r4only = nomerge COPY
 ; MIR-O2:    [[Y:%[0-9]+]]:r5only = nomerge COPY
 ; MIR-O2:    [[SPRITE:%[0-9]+]]:q3only = nomerge COPY

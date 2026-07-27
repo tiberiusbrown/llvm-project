@@ -305,6 +305,9 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       SmallVector<Value *, 5> Args;
       for (const Expr *Arg : E->arguments())
         Args.push_back(CGF->EmitScalarExpr(Arg));
+      if (BuiltinID == AVM::BI__avm_display)
+        Args[0] = CGF->Builder.CreateZExt(Args[0], CGF->Int16Ty);
+
       switch (BuiltinID) {
       case AVM::BI__avm_set_sprite:
       case AVM::BI__avm_draw_overwrite:

@@ -24,8 +24,8 @@ let TargetPrefix = "avm" in {
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
 
-  def int_avm_display : Intrinsic<[], [],
-      [IntrReadMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+  def int_avm_display : Intrinsic<[], [llvm_i16_ty],
+      [IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
 
   class AVMSpriteIntrinsic
