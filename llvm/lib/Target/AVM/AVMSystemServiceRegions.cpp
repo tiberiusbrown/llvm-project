@@ -456,6 +456,7 @@ struct CarrierGroup {
   AVMServiceValueKind Kind;
   Register Value;
   SmallVector<ServiceUse, 4> Uses;
+  SmallVector<Register, 4> OriginalValues;
 };
 
 static bool isConstantMaterialization(const MachineInstr &MI) {
@@ -507,6 +508,41 @@ static bool areEquivalentServiceValues(Register LHS, Register RHS,
   return true;
 }
 
+static bool isImmediateMaterialization(Register Value,
+                                       MachineRegisterInfo &MRI) {
+  if (!Value.isVirtual())
+    return false;
+  MachineInstr *Def = MRI.getVRegDef(Value);
+  if (!Def)
+    return false;
+  switch (Def->getOpcode()) {
+  case AVM::LDI8_PSEUDO:
+  case AVM::LDI16_PSEUDO:
+    return Def->getNumExplicitOperands() == 2 &&
+           Def->getOperand(1).isImm();
+  case AVM::LDI32_PSEUDO:
+    return Def->getNumExplicitOperands() == 3 &&
+           Def->getOperand(1).isImm() && Def->getOperand(2).isImm();
+  default:
+    return false;
+  }
+}
+
+static bool materializeImmediateCarrier(
+    Register Value, Register Dest, MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator InsertAt, const DebugLoc &DL,
+    MachineRegisterInfo &MRI, const TargetInstrInfo &TII) {
+  if (!isImmediateMaterialization(Value, MRI))
+    return false;
+
+  MachineInstr *Def = MRI.getVRegDef(Value);
+  MachineInstrBuilder MIB =
+      BuildMI(MBB, InsertAt, DL, TII.get(Def->getOpcode()), Dest);
+  for (unsigned I = 1; I != Def->getNumExplicitOperands(); ++I)
+    MIB.add(Def->getOperand(I));
+  return true;
+}
+
 static bool canHoistDefinition(MachineInstr &Def, MachineLoop &Loop,
                                const TargetInstrInfo &TII) {
   bool ConstantMaterialization = isConstantMaterialization(Def);
@@ -519,14 +555,48 @@ static bool canHoistDefinition(MachineInstr &Def, MachineLoop &Loop,
          !Def.isCall() && !Def.isInlineAsm() && !Def.isBarrier();
 }
 
+static bool loopConflictsWithCarrier(
+    MachineLoop &Loop, MCPhysReg PhysReg, Register Value,
+    MachineRegisterInfo &MRI, const TargetRegisterInfo &TRI) {
+  for (MachineBasicBlock *MBB : Loop.blocks()) {
+    for (MachineInstr &MI : *MBB) {
+      const AVMSystemServiceInfo *Info =
+          getAVMSystemServiceInfo(MI.getOpcode());
+      if (!Info)
+        continue;
+
+      // A service result in this register destroys a loop-carried input.
+      for (const AVMServiceOutputInfo &Output : Info->Outputs)
+        if (TRI.regsOverlap(Output.PhysReg, PhysReg))
+          return true;
+
+      unsigned OperandNo = Info->Outputs.size();
+      for (const AVMServiceInputInfo &Input : Info->Inputs) {
+        if (!Input.PassToMachine)
+          continue;
+
+        const MachineOperand &MO = MI.getOperand(OperandNo++);
+        if (!TRI.regsOverlap(Input.PhysReg, PhysReg))
+          continue;
+
+        if (!MO.isReg() ||
+            !areEquivalentServiceValues(MO.getReg(), Value, MRI))
+          return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
                                  MachineRegisterInfo &MRI, MachineLoopInfo &MLI,
                                  MachineDominatorTree &MDT,
                                  const TargetInstrInfo &TII,
                                  const TargetRegisterInfo &TRI) {
-  (void)MDT;
+  SmallVector<ServiceUse, 8> AllUses = collectServiceUses(Services);
   SmallVector<CarrierGroup, 8> Groups;
-  for (const ServiceUse &Use : collectServiceUses(Services)) {
+  for (const ServiceUse &Use : AllUses) {
     Register Value = Use.MI->getOperand(Use.OperandNo).getReg();
     if (!Value.isVirtual())
       continue;
@@ -546,14 +616,29 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
       break;
     }
     if (!Group) {
-      Groups.push_back({Use.Input->PhysReg, Use.Input->Kind, Value, {Use}});
+      Groups.push_back(
+          {Use.Input->PhysReg, Use.Input->Kind, Value, {Use}, {Value}});
       continue;
     }
     Group->Uses.push_back(Use);
+    Group->OriginalValues.push_back(Value);
   }
 
   bool Changed = false;
   for (CarrierGroup &Group : Groups) {
+    // An earlier persistent carrier may already have replaced this group's
+    // service operands with an equivalent value home in another fixed register.
+    bool ReplacedByEarlierCarrier = false;
+    for (auto [I, Use] : llvm::enumerate(Group.Uses)) {
+      const MachineOperand &MO = Use.MI->getOperand(Use.OperandNo);
+      if (!MO.isReg() || MO.getReg() != Group.OriginalValues[I]) {
+        ReplacedByEarlierCarrier = true;
+        break;
+      }
+    }
+    if (ReplacedByEarlierCarrier)
+      continue;
+
     const TargetRegisterClass *FixedRC =
         getAVMFixedRegisterClass(Group.PhysReg, Group.Kind);
     assert(FixedRC && "invalid fixed service input register");
@@ -572,6 +657,11 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
         LoopInvariant = true;
       else if (canHoistDefinition(*Def, *Loop, TII))
         LoopInvariant = true;
+
+      if (LoopInvariant &&
+          loopConflictsWithCarrier(*Loop, Group.PhysReg, Group.Value, MRI, TRI))
+        LoopInvariant = false;
+
       if (LoopInvariant)
         Preheader = Loop->getLoopPreheader();
       if (!Preheader)
@@ -585,19 +675,46 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
     if (LoopInvariant) {
       InsertBlock = Preheader;
       InsertAt = Preheader->getFirstTerminator();
-      if (Def && Loop->contains(Def)) {
+      if (Def && Loop->contains(Def) &&
+          !isImmediateMaterialization(Group.Value, MRI)) {
         Def->removeFromParent();
         Preheader->insert(InsertAt, Def);
       }
     }
 
     Register Carrier = MRI.createVirtualRegister(FixedRC);
-    BuildMI(*InsertBlock, InsertAt, Group.Uses.front().MI->getDebugLoc(),
-            TII.get(TargetOpcode::COPY), Carrier)
-        .addReg(Group.Value);
+    if (!materializeImmediateCarrier(
+            Group.Value, Carrier, *InsertBlock, InsertAt,
+            Group.Uses.front().MI->getDebugLoc(), MRI, TII))
+      BuildMI(*InsertBlock, InsertAt, Group.Uses.front().MI->getDebugLoc(),
+              TII.get(TargetOpcode::COPY), Carrier)
+          .addReg(Group.Value);
+
     for (const ServiceUse &Use : Group.Uses) {
       Use.MI->getOperand(Use.OperandNo).setReg(Carrier);
       Use.MI->getOperand(Use.OperandNo).setIsKill(false);
+    }
+
+    // A loop-carried fixed value that survived loopConflictsWithCarrier is a
+    // safe value home for equivalent operands in other service registers.
+    // Reusing it avoids keeping the original general value live across the loop;
+    // createLocalServiceCarriers will add only the required fixed-to-fixed copy.
+    if (LoopInvariant) {
+      for (const ServiceUse &Other : AllUses) {
+        if (Other.Input->Kind != Group.Kind ||
+            !Loop->contains(Other.MI->getParent()) ||
+            !MDT.dominates(InsertBlock, Other.MI->getParent()))
+          continue;
+
+        MachineOperand &OtherMO =
+            Other.MI->getOperand(Other.OperandNo);
+        if (!OtherMO.isReg() ||
+            !areEquivalentServiceValues(OtherMO.getReg(), Group.Value, MRI))
+          continue;
+
+        OtherMO.setReg(Carrier);
+        OtherMO.setIsKill(false);
+      }
     }
     Changed = true;
   }
@@ -660,14 +777,42 @@ static bool createLocalServiceCarriers(ArrayRef<MachineInstr *> Services,
         continue;
 
       Register FixedInput = MRI.createVirtualRegister(FixedRC);
-      // Do not mark this copy NoMerge.  The target coalescer may fold a
-      // one-use general input into the fixed carrier, but still rejects longer
-      // general live ranges at the fixed/general class boundary.
-      BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
-              TII.get(TargetOpcode::COPY), FixedInput)
-          .addReg(GeneralInput);
+      const TargetRegisterClass *GeneralRC = MRI.getRegClass(GeneralInput);
+      bool Materialized =
+          !isAVMFixedServiceRegisterClass(GeneralRC) &&
+          MRI.hasOneNonDBGUse(GeneralInput) &&
+          materializeImmediateCarrier(
+              GeneralInput, FixedInput, *MI->getParent(), MI->getIterator(),
+              MI->getDebugLoc(), MRI, TII);
+      if (!Materialized) {
+        // Keep values already resident in another fixed carrier as copies:
+        // an upper-register MOV is cheaper than reloading the immediate.
+        BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
+                TII.get(TargetOpcode::COPY), FixedInput)
+            .addReg(GeneralInput);
+      }
       InputMO.setReg(FixedInput);
       InputMO.setIsKill(false);
+      Changed = true;
+    }
+  }
+  return Changed;
+}
+
+static bool eraseDeadImmediateMaterializations(MachineFunction &MF,
+                                               MachineRegisterInfo &MRI) {
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    for (auto It = MBB.begin(); It != MBB.end();) {
+      MachineInstr &MI = *It++;
+      unsigned Opcode = MI.getOpcode();
+      if (Opcode != AVM::LDI8_PSEUDO && Opcode != AVM::LDI16_PSEUDO &&
+          Opcode != AVM::LDI32_PSEUDO)
+        continue;
+      Register Def = MI.getOperand(0).getReg();
+      if (!Def.isVirtual() || !MRI.use_nodbg_empty(Def))
+        continue;
+      MI.eraseFromParent();
       Changed = true;
     }
   }
@@ -838,6 +983,7 @@ public:
         }
       }
       Changed |= foldOneUseCarrierCopies(MF, MRI, TRI);
+      Changed |= eraseDeadImmediateMaterializations(MF, MRI);
     }
 
     // Avoid aggressive one-use rematerialization perturbing fixed-carrier
