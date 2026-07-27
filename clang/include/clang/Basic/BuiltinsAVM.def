@@ -37,6 +37,13 @@ BUILTIN(__avm_debug_putc, "vUc", "n")
 BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
 BUILTIN(__avm_millis32, "ULi", "n")
+BUILTIN(__avm_buttons, "Uc", "n")
+BUILTIN(__avm_idle, "v", "n")
+BUILTIN(__avm_generate_random_seed, "Ui", "n")
+BUILTIN(__avm_save, "v", "n")
+BUILTIN(__avm_load, "b", "n")
+BUILTIN(__avm_save_exists, "b", "n")
+
 BUILTIN(__avm_display, "vb", "n")
 
 BUILTIN(__avm_draw_sprite_overwrite, "viivC*1Ui", "n")

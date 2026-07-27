@@ -135,6 +135,20 @@ AVM_SYS_DEF(0x28, draw_filled_rect_black, AVM_SYS_PSEUDO,
             SYS_DRAW_FILLED_RECT_BLACK_PSEUDO, AVM_SYS_INTRINSIC,
             avm_draw_filled_rect_black, AVM_NO_COST, AVM_NO_COST)
 
+AVM_SYS_DEF(0x29, buttons, AVM_SYS_PSEUDO, SYS_BUTTONS_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_buttons, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x2a, idle, AVM_SYS_PSEUDO, SYS_IDLE_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_idle, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x2b, generate_random_seed, AVM_SYS_PSEUDO,
+            SYS_GENERATE_RANDOM_SEED_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_generate_random_seed, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x2c, save, AVM_SYS_PSEUDO, SYS_SAVE_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_save, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x2d, load, AVM_SYS_PSEUDO, SYS_LOAD_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_load, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x2e, save_exists, AVM_SYS_PSEUDO, SYS_SAVE_EXISTS_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_save_exists, AVM_NO_COST, AVM_NO_COST)
+
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF
 #endif

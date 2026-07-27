@@ -277,6 +277,20 @@ static constexpr AVMServiceMemoryAccessInfo FilledRectMemory[] = {
      MachineMemOperand::MOStore, MS::Constant, 0, 1024},
 };
 
+// The persisted prefix begins at a fixed architectural address, but its size
+// is read from the image header at runtime and is not an intrinsic operand.
+// Until the backend has a first-class saved-prefix object, use an unknown AS0
+// base and unknown size.  This is conservative with respect to every possible
+// .saved access while still distinguishing save (read) from load (write).
+static constexpr AVMServiceMemoryAccessInfo PersistenceSaveMemory[] = {
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+static constexpr AVMServiceMemoryAccessInfo PersistenceLoadMemory[] = {
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOStore,
+     MS::AfterPointer, 0, 0},
+};
+
 #define SERVICE(Pseudo, Inputs, Outputs, Memory)                               \
   static constexpr AVMSystemServiceInfo Pseudo##Info = {                       \
       AVM::Pseudo, Pseudo##ServiceID, Pseudo##ServiceName,                     \
@@ -286,6 +300,12 @@ SERVICE(SYS_DEBUG_PUTC_PSEUDO, DebugPutcInputs, {}, {});
 SERVICE(SYS_DEBUG_BREAK_PSEUDO, {}, {}, {});
 SERVICE(SYS_MILLIS_PSEUDO, {}, MillisOutputs, {});
 SERVICE(SYS_MILLIS32_PSEUDO, {}, Millis32Outputs, {});
+SERVICE(SYS_BUTTONS_PSEUDO, {}, R4Output, {});
+SERVICE(SYS_IDLE_PSEUDO, {}, {}, {});
+SERVICE(SYS_GENERATE_RANDOM_SEED_PSEUDO, {}, R4Output, {});
+SERVICE(SYS_SAVE_PSEUDO, {}, {}, PersistenceSaveMemory);
+SERVICE(SYS_LOAD_PSEUDO, {}, R4Output, PersistenceLoadMemory);
+SERVICE(SYS_SAVE_EXISTS_PSEUDO, {}, R4Output, {});
 SERVICE(SYS_DISPLAY_PSEUDO, DisplayInputs, {}, DisplayMemory);
 SERVICE(SYS_SINF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});
 SERVICE(SYS_COSF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});

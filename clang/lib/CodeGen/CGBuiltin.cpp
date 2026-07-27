@@ -113,6 +113,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_debug_break:
     case AVM::BI__avm_millis:
     case AVM::BI__avm_millis32:
+    case AVM::BI__avm_buttons:
+    case AVM::BI__avm_idle:
+    case AVM::BI__avm_generate_random_seed:
+    case AVM::BI__avm_save:
+    case AVM::BI__avm_load:
+    case AVM::BI__avm_save_exists:
     case AVM::BI__avm_display:
     case AVM::BI__avm_draw_sprite_overwrite:
     case AVM::BI__avm_draw_sprite_plus_mask:
@@ -173,6 +179,24 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_millis32:
         ID = Intrinsic::avm_millis32;
+        break;
+      case AVM::BI__avm_buttons:
+        ID = Intrinsic::avm_buttons;
+        break;
+      case AVM::BI__avm_idle:
+        ID = Intrinsic::avm_idle;
+        break;
+      case AVM::BI__avm_generate_random_seed:
+        ID = Intrinsic::avm_generate_random_seed;
+        break;
+      case AVM::BI__avm_save:
+        ID = Intrinsic::avm_save;
+        break;
+      case AVM::BI__avm_load:
+        ID = Intrinsic::avm_load;
+        break;
+      case AVM::BI__avm_save_exists:
+        ID = Intrinsic::avm_save_exists;
         break;
       case AVM::BI__avm_display:
         ID = Intrinsic::avm_display;

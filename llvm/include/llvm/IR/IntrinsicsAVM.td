@@ -24,6 +24,30 @@ let TargetPrefix = "avm" in {
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
 
+  // Platform state is externally observable or evolving.  Keep all six
+  // operations chained so they cannot be removed, speculated, duplicated, or
+  // reordered across one another.  The persistence byte count is read by the
+  // runtime from the image header, so save/load conservatively model unknown-
+  // size address-space-zero memory effects.
+  def int_avm_buttons : Intrinsic<[llvm_i8_ty], [],
+      [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+  def int_avm_idle : Intrinsic<[], [],
+      [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+  def int_avm_generate_random_seed : Intrinsic<[llvm_i16_ty], [],
+      [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+  def int_avm_save : Intrinsic<[], [],
+      [IntrReadMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+  def int_avm_load : Intrinsic<[llvm_i1_ty], [],
+      [IntrWriteMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+  def int_avm_save_exists : Intrinsic<[llvm_i1_ty], [],
+      [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+       IntrNoFree]>;
+
   def int_avm_display : Intrinsic<[], [llvm_i16_ty],
       [IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;

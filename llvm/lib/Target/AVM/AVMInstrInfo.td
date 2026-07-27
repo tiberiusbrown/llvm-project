@@ -748,6 +748,22 @@ def SYS_MILLIS_PSEUDO
     : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
 def SYS_MILLIS32_PSEUDO
     : AVMSystemServicePseudo<(outs GPR32:$result), (ins)>;
+def SYS_BUTTONS_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
+def SYS_IDLE_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins)>;
+def SYS_GENERATE_RANDOM_SEED_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
+def SYS_SAVE_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins)> {
+  let mayLoad = 1;
+}
+def SYS_LOAD_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)> {
+  let mayStore = 1;
+}
+def SYS_SAVE_EXISTS_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
 def SYS_DISPLAY_PSEUDO
     : AVMSystemServicePseudo<(outs), (ins GPR16:$clear)> {
   let hasSideEffects = 1;

@@ -162,6 +162,11 @@ void AVMTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
     case Intrinsic::avm_powf:
     case Intrinsic::avm_hypotf:
     case Intrinsic::avm_fmodf:
+    case Intrinsic::avm_idle:
+    case Intrinsic::avm_generate_random_seed:
+    case Intrinsic::avm_save:
+    case Intrinsic::avm_load:
+    case Intrinsic::avm_save_exists:
       return true;
     default:
       return false;
