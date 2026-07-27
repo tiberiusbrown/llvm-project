@@ -667,7 +667,31 @@ static bool createCommonCarriers(ArrayRef<MachineInstr *> Services,
       if (!Preheader)
         LoopInvariant = false;
     }
-    if (Group.Uses.size() < 2 && !LoopInvariant)
+    // A one-use loop-invariant immediate is cheaper and much less disruptive
+    // when rematerialized in the required register at the service.  Keeping it
+    // in a singleton fixed class across the loop gives greedy RA a long, cheap
+    // interval that it may evict and spill even when the physical register is
+    // ultimately available.  Retain a persistent immediate carrier only when
+    // it has multiple uses in this register or can also serve an equivalent
+    // operand in another fixed service register.
+    bool HasCrossRegisterReuse = false;
+    if (LoopInvariant && isImmediateMaterialization(Group.Value, MRI)) {
+      HasCrossRegisterReuse = llvm::any_of(AllUses, [&](const ServiceUse &Other) {
+        if (Other.Input->Kind != Group.Kind ||
+            Other.Input->PhysReg == Group.PhysReg ||
+            !Loop->contains(Other.MI->getParent()))
+          return false;
+        const MachineOperand &OtherMO =
+            Other.MI->getOperand(Other.OperandNo);
+        return OtherMO.isReg() &&
+               areEquivalentServiceValues(OtherMO.getReg(), Group.Value, MRI);
+      });
+    }
+
+    if (Group.Uses.size() < 2 &&
+        (!LoopInvariant ||
+         (isImmediateMaterialization(Group.Value, MRI) &&
+          !HasCrossRegisterReuse)))
       continue;
 
     MachineBasicBlock *InsertBlock = UseBlock;
@@ -776,21 +800,34 @@ static bool createLocalServiceCarriers(ArrayRef<MachineInstr *> Services,
       if (MRI.getRegClass(GeneralInput) == FixedRC)
         continue;
 
-      Register FixedInput = MRI.createVirtualRegister(FixedRC);
       const TargetRegisterClass *GeneralRC = MRI.getRegClass(GeneralInput);
-      bool Materialized =
-          !isAVMFixedServiceRegisterClass(GeneralRC) &&
-          MRI.hasOneNonDBGUse(GeneralInput) &&
+
+      // A local immediate setup has no parallel-copy dependency, so define the
+      // architectural ABI register directly.  Keeping even this tiny value in
+      // a spillable singleton virtual class lets greedy RA evict it and emit a
+      // store/reload pair.  An explicit physical definition is the same model
+      // used by ordinary fixed-register argument setup: RA must route flexible
+      // live ranges around it, but cannot spill the ABI setup itself.
+      //
+      // Do this only for immediate materializations.  General and fixed-source
+      // copies remain virtual until RA so AVMExpandSystemServices can resolve
+      // swaps and other parallel-copy cycles safely.
+      if (!isAVMFixedServiceRegisterClass(GeneralRC) &&
           materializeImmediateCarrier(
-              GeneralInput, FixedInput, *MI->getParent(), MI->getIterator(),
-              MI->getDebugLoc(), MRI, TII);
-      if (!Materialized) {
-        // Keep values already resident in another fixed carrier as copies:
-        // an upper-register MOV is cheaper than reloading the immediate.
-        BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
-                TII.get(TargetOpcode::COPY), FixedInput)
-            .addReg(GeneralInput);
+              GeneralInput, Input.PhysReg, *MI->getParent(),
+              MI->getIterator(), MI->getDebugLoc(), MRI, TII)) {
+        InputMO.setReg(Input.PhysReg);
+        InputMO.setIsKill(false);
+        Changed = true;
+        continue;
       }
+
+      Register FixedInput = MRI.createVirtualRegister(FixedRC);
+      // Keep values already resident in another fixed carrier as copies:
+      // an upper-register MOV is cheaper than reloading the immediate.
+      BuildMI(*MI->getParent(), MI->getIterator(), MI->getDebugLoc(),
+              TII.get(TargetOpcode::COPY), FixedInput)
+          .addReg(GeneralInput);
       InputMO.setReg(FixedInput);
       InputMO.setIsKill(false);
       Changed = true;
