@@ -391,7 +391,18 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       default:
         break;
       }
-      return CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
+
+      Value *Result =
+          CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
+      switch (BuiltinID) {
+      case AVM::BI__avm_buttons:
+        return CGF->Builder.CreateTrunc(Result, CGF->Int8Ty);
+      case AVM::BI__avm_load:
+      case AVM::BI__avm_save_exists:
+        return CGF->Builder.CreateIsNotNull(Result);
+      default:
+        return Result;
+      }
     }
     default:
       return nullptr;

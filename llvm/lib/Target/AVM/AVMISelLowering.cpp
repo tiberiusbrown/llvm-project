@@ -568,6 +568,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setMaxAtomicSizeInBitsSupported(32);
 
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
+                   MVT::i1, Promote);
+  setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
                    MVT::i8, Legal);
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD}, MVT::i32, MVT::i24, Legal);
   setTruncStoreAction(MVT::i16, MVT::i8, Legal);

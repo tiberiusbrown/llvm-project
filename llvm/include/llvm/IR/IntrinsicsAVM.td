@@ -29,7 +29,12 @@ let TargetPrefix = "avm" in {
   // reordered across one another.  The persistence byte count is read by the
   // runtime from the image header, so save/load conservatively model unknown-
   // size address-space-zero memory effects.
-  def int_avm_buttons : Intrinsic<[llvm_i8_ty], [],
+  //
+  // AVM SelectionDAG has legal scalar integer register values at i16 and i32.  Services
+  // that architecturally define the complete r4 therefore expose an i16 IR
+  // container here.  Clang narrows buttons to i8 and canonicalizes load/save-
+  // exists to _Bool at the builtin boundary.
+  def int_avm_buttons : Intrinsic<[llvm_i16_ty], [],
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
   def int_avm_idle : Intrinsic<[], [],
@@ -39,12 +44,12 @@ let TargetPrefix = "avm" in {
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
   def int_avm_save : Intrinsic<[], [],
-      [IntrReadMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
+      [IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
-  def int_avm_load : Intrinsic<[llvm_i1_ty], [],
+  def int_avm_load : Intrinsic<[llvm_i16_ty], [],
       [IntrWriteMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
-  def int_avm_save_exists : Intrinsic<[llvm_i1_ty], [],
+  def int_avm_save_exists : Intrinsic<[llvm_i16_ty], [],
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
 

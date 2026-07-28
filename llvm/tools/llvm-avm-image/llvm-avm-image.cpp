@@ -25,6 +25,9 @@ static cl::opt<std::string> Output("o", cl::value_desc("file"),
                                    cl::Required);
 static cl::alias OutputLong("output", cl::desc("Alias for -o"),
                             cl::aliasopt(Output));
+static cl::opt<bool> Development(
+    "development",
+    cl::desc("Append a 4 KiB erased save area to the output image"));
 
 namespace {
 constexpr uint32_t HeaderSize = 0x100;
@@ -33,6 +36,8 @@ constexpr uint32_t MaxDataSize = 1024;
 constexpr uint32_t MaxProgramAddress = 0xffffff;
 constexpr uint32_t MaxPayloadEnd = 0xfffef8;
 constexpr uint32_t MaxFileSize = 0xffff00;
+constexpr uint32_t MaxFlashSize = 0x1000000;
+constexpr uint32_t DevelopmentSaveSize = 0x1000;
 constexpr uint32_t AVMProgSpace = 0x10000000;
 constexpr uint32_t AVMDataSpace = 0x20000000;
 
@@ -250,6 +255,8 @@ static Error packageELF(StringRef InputName) {
   Expected<uint32_t> FileSize = finalFileSize(PayloadEnd);
   if (!FileSize)
     return FileSize.takeError();
+  if (Development && *FileSize > MaxFlashSize - DevelopmentSaveSize)
+    return bad("AVM development image leaves no room for a 4 KiB save area");
   SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
   Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
@@ -267,6 +274,11 @@ static Error packageELF(StringRef InputName) {
   write16le(Image.data() + Tail + 4, *FileSize / PageSize);
   write16le(Image.data() + Tail + 6, 0);
   write32le(Image.data() + 0xfc, crc32(ArrayRef<uint8_t>(Image).take_front(0xfc)));
+
+  // Keep the AVM tail and its page count tied to the executable image. The
+  // optional save sector is raw erased flash outside the flat image.
+  if (Development)
+    Image.resize(Image.size() + DevelopmentSaveSize, 0xff);
 
   Expected<std::unique_ptr<FileOutputBuffer>> Buffer =
       FileOutputBuffer::create(Output, Image.size());

@@ -44,7 +44,8 @@ void persistence_sequence(void) {
 }
 
 // CHECK-LABEL: define{{.*}} i8 @platform_buttons
-// CHECK: call i8 @llvm.avm.buttons()
+// CHECK: [[BUTTONS:%.*]] = call i16 @llvm.avm.buttons()
+// CHECK: trunc i16 [[BUTTONS]] to i8
 // CHECK-LABEL: define{{.*}} void @platform_idle
 // CHECK: call void @llvm.avm.idle()
 // CHECK-LABEL: define{{.*}} i16 @platform_random_seed
@@ -52,16 +53,18 @@ void persistence_sequence(void) {
 // CHECK-LABEL: define{{.*}} void @persistence_save
 // CHECK: call void @llvm.avm.save()
 // CHECK-LABEL: define{{.*}} i1 @persistence_load
-// CHECK: call i1 @llvm.avm.load()
+// CHECK: [[LOAD:%.*]] = call i16 @llvm.avm.load()
+// CHECK: icmp ne i16 [[LOAD]], 0
 // CHECK-LABEL: define{{.*}} i1 @persistence_save_exists
-// CHECK: call i1 @llvm.avm.save.exists()
+// CHECK: [[EXISTS:%.*]] = call i16 @llvm.avm.save.exists()
+// CHECK: icmp ne i16 [[EXISTS]], 0
 // CHECK-LABEL: define{{.*}} i16 @repeated_buttons
-// CHECK: call i8 @llvm.avm.buttons()
-// CHECK: call i8 @llvm.avm.buttons()
+// CHECK: call i16 @llvm.avm.buttons()
+// CHECK: call i16 @llvm.avm.buttons()
 // CHECK-LABEL: define{{.*}} void @persistence_sequence
 // CHECK: call void @llvm.avm.save()
-// CHECK-NEXT: call i1 @llvm.avm.load()
-// CHECK-NEXT: call i1 @llvm.avm.save.exists()
+// CHECK: call i16 @llvm.avm.load()
+// CHECK: call i16 @llvm.avm.save.exists()
 
 // ASM-LABEL: platform_buttons:
 // ASM: sys buttons
