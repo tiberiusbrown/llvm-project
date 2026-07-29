@@ -212,4 +212,24 @@ let TargetPrefix = "avm" in {
                  NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
                  NoAlias<ArgIndex<0>>, NoAlias<ArgIndex<1>>,
                  Returned<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
+  // The variadic list can contain data- and program-space pointers whose
+  // pointees are not explicit intrinsic operands.  Leave the overall memory
+  // effect conservative while retaining precise non-capture and per-argument
+  // access attributes for the direct pointers.
+  def int_avm_vsnprintf :
+      Intrinsic<[llvm_i16_ty],
+                [llvm_ptr_ty, llvm_i16_ty, llvm_ptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<2>>,
+                 NoCapture<ArgIndex<3>>, WriteOnly<ArgIndex<0>>,
+                 ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>]>;
+
+  def int_avm_vsnprintf_p :
+      Intrinsic<[llvm_i16_ty],
+                [llvm_ptr_ty, llvm_i16_ty, llvm_avm_progptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<2>>,
+                 NoCapture<ArgIndex<3>>, WriteOnly<ArgIndex<0>>,
+                 ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>]>;
 }

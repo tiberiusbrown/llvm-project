@@ -165,7 +165,11 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_strcmp:
     case AVM::BI__avm_strlen:
     case AVM::BI__avm_strncpy:
-    case AVM::BI__avm_strncat: {
+    case AVM::BI__avm_strncat:
+    case AVM::BI__builtin_avm_vsnprintf:
+    case AVM::BI__avm_vsnprintf:
+    case AVM::BI__builtin_avm_vsnprintf_p:
+    case AVM::BI__avm_vsnprintf_P: {
       Intrinsic::ID ID;
       switch (BuiltinID) {
       case AVM::BI__avm_debug_putc:
@@ -315,6 +319,14 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_strncat:
         ID = Intrinsic::avm_strncat;
+        break;
+      case AVM::BI__builtin_avm_vsnprintf:
+      case AVM::BI__avm_vsnprintf:
+        ID = Intrinsic::avm_vsnprintf;
+        break;
+      case AVM::BI__builtin_avm_vsnprintf_p:
+      case AVM::BI__avm_vsnprintf_P:
+        ID = Intrinsic::avm_vsnprintf_p;
         break;
       case AVM::BI__avm_sqrtf: {
         llvm::Value *Arg = CGF->EmitScalarExpr(E->getArg(0));

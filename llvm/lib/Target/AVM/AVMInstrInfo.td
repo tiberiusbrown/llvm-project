@@ -958,6 +958,26 @@ def SYS_STRNCAT_PSEUDO
   let mayStore = 1;
 }
 
+def SYS_VSNPRINTF_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$dst, GPR16:$size,
+                                  GPR16:$format, GPR16:$ap)> {
+  let Constraints = "$result = $dst";
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_VSNPRINTF_P_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$dst, GPR16:$size,
+                                  ProgPtrGPR32:$format, GPR16:$ap)> {
+  let Constraints = "$result = $dst";
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
 def ADDIS8_PSEUDO

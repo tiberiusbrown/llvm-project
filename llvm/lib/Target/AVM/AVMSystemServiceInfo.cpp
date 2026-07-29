@@ -199,6 +199,47 @@ static constexpr AVMServiceMemoryAccessInfo StrncatMemory[] = {
      MS::LogicalArgument, 2, 0},
 };
 
+static constexpr AVMServiceInputInfo VsnprintfInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true}, // destination/result
+    {1, VK::I16, AVM::R5, PP::None, true}, // destination size
+    {2, VK::I16, AVM::R6, PP::None, true}, // RAM format
+    {3, VK::I16, AVM::R2, PP::None, true}, // va_list cursor
+};
+static constexpr AVMServiceInputInfo VsnprintfPInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+    {2, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
+    {3, VK::I16, AVM::R2, PP::None, true},
+};
+// Besides their explicit format and va_list pointers, both services can read
+// arbitrary AS0 strings through %s and arbitrary AS1 strings through %S.
+// Unknown-address-space MMOs preserve those indirect effects without claiming
+// that the pointees are based on the va_list object itself.
+static constexpr AVMServiceMemoryAccessInfo VsnprintfMemory[] = {
+    {MB::LogicalArgument, 0, "", 0, MachineMemOperand::MOStore,
+     MS::LogicalArgument, 1, 0},
+    {MB::LogicalArgument, 2, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+static constexpr AVMServiceMemoryAccessInfo VsnprintfPMemory[] = {
+    {MB::LogicalArgument, 0, "", 0, MachineMemOperand::MOStore,
+     MS::LogicalArgument, 1, 0},
+    {MB::LogicalArgument, 2, "", 1, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+
 static constexpr AVMServiceInputInfo SpriteInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
     {1, VK::I16, AVM::R5, PP::None, true},
@@ -332,6 +373,10 @@ SERVICE(SYS_STRCMP_PSEUDO, StrcmpInputs, TiedR4Output, StrcmpMemory);
 SERVICE(SYS_STRLEN_PSEUDO, StrlenInputs, TiedR4Output, StrlenMemory);
 SERVICE(SYS_STRNCPY_PSEUDO, MemoryInputs, TiedR4Output, StrncpyMemory);
 SERVICE(SYS_STRNCAT_PSEUDO, MemoryInputs, TiedR4Output, StrncatMemory);
+SERVICE(SYS_VSNPRINTF_PSEUDO, VsnprintfInputs, TiedR4Output,
+        VsnprintfMemory);
+SERVICE(SYS_VSNPRINTF_P_PSEUDO, VsnprintfPInputs, TiedR4Output,
+        VsnprintfPMemory);
 SERVICE(SYS_DRAW_SPRITE_OVERWRITE_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO, SpriteInputs, {}, SpriteMemory);

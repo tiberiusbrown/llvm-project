@@ -29,3 +29,11 @@ sys draw_filled_rect_white
 sys draw_filled_rect_black
 # CHECK: sys draw_filled_rect_black{{.*}}encoding: [0xd7,0x28]
 # DIS: sys draw_filled_rect_black
+
+sys vsnprintf
+# CHECK: sys vsnprintf{{.*}}encoding: [0xd7,0x2f]
+# DIS: sys vsnprintf
+
+sys vsnprintf_p
+# CHECK: sys vsnprintf_p{{.*}}encoding: [0xd7,0x30]
+# DIS: sys vsnprintf_p

@@ -33,6 +33,15 @@ BUILTIN(__builtin_avm_strncat_p, "c*c*cC*1Ui", "nA")
 BUILTIN(__avm_strncat_P, "c*c*cC*1Ui", "nA")
 BUILTIN(strncat_P, "c*c*cC*1Ui", "nA")
 
+// Do not attach Clang's generic vprintf-format attribute here.  AVM's native
+// formatter intentionally accepts a restricted grammar, and its %S extension
+// consumes an address-space-1 char pointer rather than a wide string.
+BUILTIN(__builtin_avm_vsnprintf, "ic*zcC*a", "nA")
+BUILTIN(__avm_vsnprintf, "ic*zcC*a", "nA")
+
+BUILTIN(__builtin_avm_vsnprintf_p, "ic*zcC*1a", "nA")
+BUILTIN(__avm_vsnprintf_P, "ic*zcC*1a", "nA")
+
 BUILTIN(__avm_debug_putc, "vUc", "n")
 BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
