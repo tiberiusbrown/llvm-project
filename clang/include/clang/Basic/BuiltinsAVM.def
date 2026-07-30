@@ -33,12 +33,16 @@ BUILTIN(__builtin_avm_strncat_p, "c*c*cC*1Ui", "nA")
 BUILTIN(__avm_strncat_P, "c*c*cC*1Ui", "nA")
 BUILTIN(strncat_P, "c*c*cC*1Ui", "nA")
 
-// Do not attach Clang's generic vprintf-format attribute here.  AVM's native
+// Do not attach Clang's generic printf-format attributes here. AVM's native
 // formatter intentionally accepts a restricted grammar, and its %S extension
 // consumes an address-space-1 char pointer rather than a wide string.
+BUILTIN(__builtin_avm_snprintf, "ic*zcC*.", "n")
+BUILTIN(__avm_snprintf, "ic*zcC*.", "n")
 BUILTIN(__builtin_avm_vsnprintf, "ic*zcC*a", "nA")
 BUILTIN(__avm_vsnprintf, "ic*zcC*a", "nA")
 
+BUILTIN(__builtin_avm_snprintf_p, "ic*zcC*1.", "n")
+BUILTIN(__avm_snprintf_P, "ic*zcC*1.", "n")
 BUILTIN(__builtin_avm_vsnprintf_p, "ic*zcC*1a", "nA")
 BUILTIN(__avm_vsnprintf_P, "ic*zcC*1a", "nA")
 
@@ -47,7 +51,11 @@ BUILTIN(__avm_set_text_mode, "vUc", "n")
 BUILTIN(__avm_draw_text, "ULiiicC*", "n")
 BUILTIN(__avm_draw_text_P, "ULiiicC*1", "n")
 // These use AVM's restricted formatter grammar; do not attach Clang's generic
-// printf-format attribute.
+// printf-format attributes.
+BUILTIN(__builtin_avm_draw_textf, "ULiiicC*.", "n")
+BUILTIN(__avm_draw_textf, "ULiiicC*.", "n")
+BUILTIN(__builtin_avm_draw_textf_p, "ULiiicC*1.", "n")
+BUILTIN(__avm_draw_textf_P, "ULiiicC*1.", "n")
 BUILTIN(__avm_draw_textfv, "ULiiicC*a", "n")
 BUILTIN(__avm_draw_textfv_P, "ULiiicC*1a", "n")
 

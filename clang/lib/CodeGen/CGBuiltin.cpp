@@ -38,6 +38,7 @@
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include <optional>
+#include <string>
 #include <utility>
 
 using namespace clang;
@@ -71,6 +72,124 @@ static bool shouldEmitBuiltinAsIR(unsigned BuiltinID,
   return false;
 }
 
+static Value *getAVMCompilerOnlyAnchor(CodeGenFunction &CGF, StringRef Name,
+                                       uint64_t Size) {
+  llvm::Module &M = CGF.CGM.getModule();
+  llvm::ArrayType *AnchorTy = llvm::ArrayType::get(CGF.Int8Ty, Size);
+  GlobalVariable *Anchor =
+      M.getGlobalVariable(Name, /*AllowInternal=*/true);
+  if (!Anchor)
+    Anchor = new GlobalVariable(
+        M, AnchorTy, /*isConstant=*/false, GlobalValue::ExternalLinkage,
+        /*Initializer=*/nullptr, Name, /*InsertBefore=*/nullptr,
+        GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
+  Anchor->setAlignment(Align(1));
+
+  std::string GlobalDirective = (Twine(".globl ") + Name).str();
+  if (!StringRef(M.getModuleInlineAsm()).contains(GlobalDirective))
+    M.appendModuleInlineAsm(GlobalDirective);
+
+  return CGF.Builder.CreateConstInBoundsGEP2_32(AnchorTy, Anchor, 0, 0);
+}
+
+/// Emit an AVM true-variadic formatting builtin by constructing the packed
+/// unnamed-argument sequence consumed by the corresponding va_list service.
+///
+/// Sema restricts these arguments to promoted scalar values and pointers. AVM
+/// gives every variadic slot one-byte alignment, so concatenating each value's
+/// memory representation exactly matches va_arg: promoted int is two bytes,
+/// long and floating values are four bytes, data pointers are two bytes, and
+/// address-space-1 pointers are three bytes.
+static Value *EmitAVMVariadicFormattingBuiltin(CodeGenFunction &CGF,
+                                               unsigned BuiltinID,
+                                               const CallExpr *E) {
+  constexpr unsigned FixedArgCount = 3;
+  Intrinsic::ID ID;
+  bool IsTextDrawing = false;
+
+  switch (BuiltinID) {
+  case AVM::BI__builtin_avm_snprintf:
+  case AVM::BI__avm_snprintf:
+    ID = Intrinsic::avm_vsnprintf;
+    break;
+  case AVM::BI__builtin_avm_snprintf_p:
+  case AVM::BI__avm_snprintf_P:
+    ID = Intrinsic::avm_vsnprintf_p;
+    break;
+  case AVM::BI__builtin_avm_draw_textf:
+  case AVM::BI__avm_draw_textf:
+    ID = Intrinsic::avm_draw_textfv;
+    IsTextDrawing = true;
+    break;
+  case AVM::BI__builtin_avm_draw_textf_p:
+  case AVM::BI__avm_draw_textf_P:
+    ID = Intrinsic::avm_draw_textfv_p;
+    IsTextDrawing = true;
+    break;
+  default:
+    llvm_unreachable("not an AVM variadic formatting builtin");
+  }
+
+  assert(E->getNumArgs() >= FixedArgCount &&
+         "AVM variadic builtin is missing a fixed argument");
+
+  SmallVector<Value *, 6> Args;
+  for (unsigned I = 0; I != FixedArgCount; ++I)
+    Args.push_back(CGF.EmitScalarExpr(E->getArg(I)));
+
+  ASTContext &Context = CGF.getContext();
+  uint64_t PackedSize = 0;
+  for (unsigned I = FixedArgCount; I != E->getNumArgs(); ++I)
+    PackedSize +=
+        Context.getTypeSizeInChars(E->getArg(I)->getType()).getQuantity();
+
+  AllocaInst *PackedAlloca = nullptr;
+  Value *PackedPointer;
+  if (PackedSize == 0) {
+    // Reading an absent argument is already undefined behavior. Avoid a dummy
+    // stack byte for formats that consume no unnamed arguments.
+    PackedPointer = ConstantPointerNull::get(CGF.VoidPtrTy);
+  } else {
+    llvm::ArrayType *PackedTy = llvm::ArrayType::get(CGF.Int8Ty, PackedSize);
+    PackedAlloca = CGF.CreateTempAlloca(PackedTy, "avm.varargs");
+    PackedAlloca->setAlignment(Align(1));
+    CGF.EmitLifetimeStart(PackedAlloca);
+    PackedPointer =
+        CGF.Builder.CreateConstInBoundsGEP2_32(PackedTy, PackedAlloca, 0, 0);
+
+    uint64_t Offset = 0;
+    for (unsigned I = FixedArgCount; I != E->getNumArgs(); ++I) {
+      const Expr *Arg = E->getArg(I);
+      QualType Ty = Arg->getType();
+      uint64_t ArgSize = Context.getTypeSizeInChars(Ty).getQuantity();
+      Value *ArgValue = CGF.EmitScalarExpr(Arg);
+      assert(CGF.CGM.getDataLayout()
+                     .getTypeStoreSize(ArgValue->getType())
+                     .getFixedValue() == ArgSize &&
+             "AVM scalar memory size disagrees with LLVM data layout");
+      Value *Slot = CGF.Builder.CreateConstInBoundsGEP1_32(
+          CGF.Int8Ty, PackedPointer, static_cast<unsigned>(Offset));
+      CGF.Builder.CreateStore(
+          ArgValue, Address(Slot, ArgValue->getType(), CharUnits::One()));
+      Offset += ArgSize;
+    }
+    assert(Offset == PackedSize && "incorrect AVM variadic frame size");
+  }
+
+  Args.push_back(PackedPointer);
+  if (IsTextDrawing) {
+    Args.push_back(
+        getAVMCompilerOnlyAnchor(CGF, "__avm_text_state", /*Size=*/7));
+    Args.push_back(
+        getAVMCompilerOnlyAnchor(CGF, "__avm_framebuffer", /*Size=*/1024));
+  }
+
+  Value *Result = CGF.Builder.CreateCall(CGF.CGM.getIntrinsic(ID), Args);
+  if (PackedAlloca)
+    CGF.EmitLifetimeEnd(PackedAlloca);
+  return Result;
+}
+
 static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
                                         unsigned BuiltinID, const CallExpr *E,
                                         ReturnValueSlot ReturnValue,
@@ -93,6 +212,16 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
           cast<clang::StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
       return CGF->CGM.GetAddrOfAVMFlashString(Literal).getPointer();
     }
+    case AVM::BI__builtin_avm_snprintf:
+    case AVM::BI__avm_snprintf:
+    case AVM::BI__builtin_avm_snprintf_p:
+    case AVM::BI__avm_snprintf_P:
+    case AVM::BI__builtin_avm_draw_textf:
+    case AVM::BI__avm_draw_textf:
+    case AVM::BI__builtin_avm_draw_textf_p:
+    case AVM::BI__avm_draw_textf_P:
+      return EmitAVMVariadicFormattingBuiltin(*CGF, BuiltinID, E);
+
     case AVM::BI__builtin_avm_memcpy_p:
     case AVM::BI__avm_memcpy_P:
     case AVM::BImemcpy_P: {

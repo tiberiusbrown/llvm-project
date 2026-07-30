@@ -77,22 +77,12 @@ draw_textfv_P(int16_t x, int16_t baseline_y, avm_flash_string_t format,
       __avm_draw_textfv_P(x, baseline_y, format, args));
 }
 
-static __inline__ avm_text_cursor_t
-draw_textf(int16_t x, int16_t baseline_y, const char *format, ...) {
-  va_list args;
-  va_start(args, format);
-  uint32_t packed = __avm_draw_textfv(x, baseline_y, format, args);
-  va_end(args);
-  return __avm_text_cursor_from_u32(packed);
-}
-
-static __inline__ avm_text_cursor_t
-draw_textf_P(int16_t x, int16_t baseline_y, avm_flash_string_t format, ...) {
-  va_list args;
-  va_start(args, format);
-  uint32_t packed = __avm_draw_textfv_P(x, baseline_y, format, args);
-  va_end(args);
-  return __avm_text_cursor_from_u32(packed);
-}
+// A C function cannot forward its unnamed arguments without constructing a
+// va_list. These macros retain the cursor-valued API while allowing Clang to
+// expand the true-variadic builtin directly at the caller.
+#define draw_textf(...)                                                       \
+  __avm_text_cursor_from_u32(__avm_draw_textf(__VA_ARGS__))
+#define draw_textf_P(...)                                                     \
+  __avm_text_cursor_from_u32(__avm_draw_textf_P(__VA_ARGS__))
 
 #endif // __AVM_TEXT_H

@@ -32,6 +32,31 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     return true;
   }
 
+  case AVM::BI__builtin_avm_snprintf:
+  case AVM::BI__avm_snprintf:
+  case AVM::BI__builtin_avm_snprintf_p:
+  case AVM::BI__avm_snprintf_P:
+  case AVM::BI__builtin_avm_draw_textf:
+  case AVM::BI__avm_draw_textf:
+  case AVM::BI__builtin_avm_draw_textf_p:
+  case AVM::BI__avm_draw_textf_P: {
+    bool Invalid = false;
+    for (unsigned I = 3; I != TheCall->getNumArgs(); ++I) {
+      Expr *Arg = TheCall->getArg(I);
+      if (Arg->isTypeDependent())
+        continue;
+      QualType Ty = Arg->getType();
+      if (Ty->isIntegerType() || Ty->isEnumeralType() ||
+          Ty->isRealFloatingType() || Ty->isPointerType() ||
+          Ty->isNullPtrType())
+        continue;
+      Diag(Arg->getExprLoc(), diag::err_avm_variadic_builtin_arg)
+          << I + 1 << Ty << Arg->getSourceRange();
+      Invalid = true;
+    }
+    return Invalid;
+  }
+
   case AVM::BI__avm_memcmp:
   case AVM::BI__avm_strcmp:
   case AVM::BI__avm_strncpy:
