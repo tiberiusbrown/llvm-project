@@ -91,3 +91,16 @@ uint32_t sprite_register_pressure(volatile uint16_t *p16,
   __avm_draw_sprite_overwrite(a, b, sprite, c);
   return ((uint32_t)a << 16) ^ ((uint32_t)b + c) ^ d;
 }
+
+// CHECK-LABEL: text_register_pressure:
+// CHECK: sys draw_text
+uint32_t text_register_pressure(volatile uint16_t *p16,
+                                volatile uint32_t *p32,
+                                const char *text) {
+  uint16_t a = (uint16_t)(p16[0] + 0x1234);
+  uint16_t b = (uint16_t)(p16[1] ^ 0x55aa);
+  uint16_t c = (uint16_t)(p16[2] * 3);
+  uint32_t d = p32[0] + p32[1];
+  uint32_t cursor = __avm_draw_text(a, b, text);
+  return cursor ^ ((uint32_t)a << 16) ^ ((uint32_t)b + c) ^ d;
+}

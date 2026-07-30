@@ -978,6 +978,42 @@ def SYS_VSNPRINTF_P_PSEUDO
   let mayStore = 1;
 }
 
+def SYS_SET_TEXT_FONT_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins ProgPtrGPR32:$font)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_SET_TEXT_MODE_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins GPR16:$mode)> {
+  let hasSideEffects = 1;
+  let mayStore = 1;
+}
+
+class AVMDrawTextServicePseudo<dag Ins>
+    : AVMSystemServicePseudo<(outs GPR32:$cursor), Ins> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def SYS_DRAW_TEXT_PSEUDO
+    : AVMDrawTextServicePseudo<
+          (ins GPR16:$x, GPR16:$y, GPR16:$string)>;
+
+def SYS_DRAW_TEXT_P_PSEUDO
+    : AVMDrawTextServicePseudo<
+          (ins GPR16:$x, GPR16:$y, ProgPtrGPR32:$string)>;
+
+def SYS_DRAW_TEXTFV_PSEUDO
+    : AVMDrawTextServicePseudo<
+          (ins GPR16:$x, GPR16:$y, GPR16:$format, GPR16:$ap)>;
+
+def SYS_DRAW_TEXTFV_P_PSEUDO
+    : AVMDrawTextServicePseudo<
+          (ins GPR16:$x, GPR16:$y, ProgPtrGPR32:$format, GPR16:$ap)>;
+
 def INC16_PSEUDO : AVMUnary16Pseudo;
 def DEC16_PSEUDO : AVMUnary16Pseudo;
 def ADDIS8_PSEUDO

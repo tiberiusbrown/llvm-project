@@ -169,7 +169,13 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__builtin_avm_vsnprintf:
     case AVM::BI__avm_vsnprintf:
     case AVM::BI__builtin_avm_vsnprintf_p:
-    case AVM::BI__avm_vsnprintf_P: {
+    case AVM::BI__avm_vsnprintf_P:
+    case AVM::BI__avm_set_text_font:
+    case AVM::BI__avm_set_text_mode:
+    case AVM::BI__avm_draw_text:
+    case AVM::BI__avm_draw_text_P:
+    case AVM::BI__avm_draw_textfv:
+    case AVM::BI__avm_draw_textfv_P: {
       Intrinsic::ID ID;
       switch (BuiltinID) {
       case AVM::BI__avm_debug_putc:
@@ -328,6 +334,24 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       case AVM::BI__avm_vsnprintf_P:
         ID = Intrinsic::avm_vsnprintf_p;
         break;
+      case AVM::BI__avm_set_text_font:
+        ID = Intrinsic::avm_set_text_font;
+        break;
+      case AVM::BI__avm_set_text_mode:
+        ID = Intrinsic::avm_set_text_mode;
+        break;
+      case AVM::BI__avm_draw_text:
+        ID = Intrinsic::avm_draw_text;
+        break;
+      case AVM::BI__avm_draw_text_P:
+        ID = Intrinsic::avm_draw_text_p;
+        break;
+      case AVM::BI__avm_draw_textfv:
+        ID = Intrinsic::avm_draw_textfv;
+        break;
+      case AVM::BI__avm_draw_textfv_P:
+        ID = Intrinsic::avm_draw_textfv_p;
+        break;
       case AVM::BI__avm_sqrtf: {
         llvm::Value *Arg = CGF->EmitScalarExpr(E->getArg(0));
         llvm::Function *Sqrt =
@@ -398,6 +422,54 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         Args.push_back(
             CGF->Builder.CreateConstInBoundsGEP2_32(FramebufferTy, Framebuffer,
                                                     0, 0));
+        break;
+      }
+      case AVM::BI__avm_set_text_font:
+      case AVM::BI__avm_set_text_mode:
+      case AVM::BI__avm_draw_text:
+      case AVM::BI__avm_draw_text_P:
+      case AVM::BI__avm_draw_textfv:
+      case AVM::BI__avm_draw_textfv_P: {
+        constexpr llvm::StringLiteral TextStateName("__avm_text_state");
+        llvm::Module &M = CGF->CGM.getModule();
+        llvm::ArrayType *TextStateTy =
+            llvm::ArrayType::get(CGF->Int8Ty, 7);
+        GlobalVariable *TextState =
+            M.getGlobalVariable(TextStateName, /*AllowInternal=*/true);
+        if (!TextState)
+          TextState = new GlobalVariable(
+              M, TextStateTy, /*isConstant=*/false,
+              GlobalValue::ExternalLinkage, /*Initializer=*/nullptr,
+              TextStateName, /*InsertBefore=*/nullptr,
+              GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
+        TextState->setAlignment(Align(1));
+        if (!StringRef(M.getModuleInlineAsm())
+                 .contains(".globl __avm_text_state"))
+          M.appendModuleInlineAsm(".globl __avm_text_state");
+        Args.push_back(CGF->Builder.CreateConstInBoundsGEP2_32(
+            TextStateTy, TextState, 0, 0));
+
+        if (BuiltinID == AVM::BI__avm_set_text_font ||
+            BuiltinID == AVM::BI__avm_set_text_mode)
+          break;
+
+        constexpr llvm::StringLiteral FramebufferName("__avm_framebuffer");
+        llvm::ArrayType *FramebufferTy =
+            llvm::ArrayType::get(CGF->Int8Ty, 1024);
+        GlobalVariable *Framebuffer =
+            M.getGlobalVariable(FramebufferName, /*AllowInternal=*/true);
+        if (!Framebuffer)
+          Framebuffer = new GlobalVariable(
+              M, FramebufferTy, /*isConstant=*/false,
+              GlobalValue::ExternalLinkage, /*Initializer=*/nullptr,
+              FramebufferName, /*InsertBefore=*/nullptr,
+              GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
+        Framebuffer->setAlignment(Align(1));
+        if (!StringRef(M.getModuleInlineAsm())
+                 .contains(".globl __avm_framebuffer"))
+          M.appendModuleInlineAsm(".globl __avm_framebuffer");
+        Args.push_back(CGF->Builder.CreateConstInBoundsGEP2_32(
+            FramebufferTy, Framebuffer, 0, 0));
         break;
       }
       default:

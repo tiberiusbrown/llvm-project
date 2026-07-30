@@ -104,7 +104,7 @@ static constexpr AVMServiceMemoryAccessInfo MemcpyPMemory[] = {
 
 static constexpr AVMServiceInputInfo MemcmpPInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
-    {1, VK::ProgramPointer, AVM::R6R7, PP::RequireNormalized, true},
+    {1, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
     {2, VK::I16, AVM::R5, PP::None, true},
 };
 static constexpr AVMServiceMemoryAccessInfo MemcmpPMemory[] = {
@@ -116,7 +116,7 @@ static constexpr AVMServiceMemoryAccessInfo MemcmpPMemory[] = {
 
 static constexpr AVMServiceInputInfo StrcmpPInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
-    {1, VK::ProgramPointer, AVM::R6R7, PP::RequireNormalized, true},
+    {1, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
 };
 static constexpr AVMServiceMemoryAccessInfo StrcmpPMemory[] = {
     {MB::LogicalArgument, 0, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
@@ -126,7 +126,7 @@ static constexpr AVMServiceMemoryAccessInfo StrcmpPMemory[] = {
 };
 
 static constexpr AVMServiceInputInfo StrlenPInputs[] = {
-    {0, VK::ProgramPointer, AVM::R6R7, PP::RequireNormalized, true},
+    {0, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
 };
 static constexpr AVMServiceOutputInfo R4Output[] = {
     {0, VK::I16, AVM::R4, -1},
@@ -138,7 +138,7 @@ static constexpr AVMServiceMemoryAccessInfo StrlenPMemory[] = {
 
 static constexpr AVMServiceInputInfo StrncpyPInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
-    {1, VK::ProgramPointer, AVM::R6R7, PP::RequireNormalized, true},
+    {1, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
     {2, VK::I16, AVM::R5, PP::None, true},
 };
 static constexpr AVMServiceMemoryAccessInfo StrncpyPMemory[] = {
@@ -234,6 +234,123 @@ static constexpr AVMServiceMemoryAccessInfo VsnprintfPMemory[] = {
      0, 0},
     {MB::LogicalArgument, 3, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
      0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+
+static constexpr AVMServiceOutputInfo TextCursorOutput[] = {
+    {0, VK::I32, AVM::R4R5, -1},
+};
+
+static constexpr AVMServiceInputInfo SetTextFontInputs[] = {
+    {0, VK::ProgramPointer, AVM::R4R5, PP::IgnorePadding, true},
+    {1, VK::I16, MCPhysReg(), PP::None, false}, // selected-text-state anchor
+};
+static constexpr AVMServiceMemoryAccessInfo SetTextFontMemory[] = {
+    {MB::LogicalArgument, 0, "", 1, MachineMemOperand::MOLoad, MS::Constant, 0,
+     3},
+    {MB::LogicalArgument, 1, "__avm_text_state", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 7},
+};
+
+static constexpr AVMServiceInputInfo SetTextModeInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, MCPhysReg(), PP::None, false}, // selected-text-state anchor
+};
+static constexpr AVMServiceMemoryAccessInfo SetTextModeMemory[] = {
+    // The mode is one byte within the seven-byte state object. Model the whole
+    // object so mode changes alias every draw's selected-state read.
+    {MB::LogicalArgument, 1, "__avm_text_state", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 7},
+};
+
+static constexpr AVMServiceInputInfo DrawTextInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+    {2, VK::I16, AVM::R6, PP::None, true},
+    {3, VK::I16, MCPhysReg(), PP::None, false}, // text-state anchor
+    {4, VK::I16, MCPhysReg(), PP::None, false}, // framebuffer anchor
+};
+static constexpr AVMServiceInputInfo DrawTextPInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+    {2, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
+    {3, VK::I16, MCPhysReg(), PP::None, false},
+    {4, VK::I16, MCPhysReg(), PP::None, false},
+};
+static constexpr AVMServiceInputInfo DrawTextFVInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+    {2, VK::I16, AVM::R6, PP::None, true},
+    {3, VK::I16, AVM::R2, PP::None, true},
+    {4, VK::I16, MCPhysReg(), PP::None, false},
+    {5, VK::I16, MCPhysReg(), PP::None, false},
+};
+static constexpr AVMServiceInputInfo DrawTextFVPInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+    {2, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
+    {3, VK::I16, AVM::R2, PP::None, true},
+    {4, VK::I16, MCPhysReg(), PP::None, false},
+    {5, VK::I16, MCPhysReg(), PP::None, false},
+};
+
+static constexpr AVMServiceMemoryAccessInfo DrawTextMemory[] = {
+    {MB::LogicalArgument, 2, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "__avm_text_state", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 7},
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
+    // Glyph records and images are reached through the cached glyph-table
+    // pointer in selected text state.
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+static constexpr AVMServiceMemoryAccessInfo DrawTextPMemory[] = {
+    {MB::LogicalArgument, 2, "", 1, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "__avm_text_state", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 7},
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+    {MB::LogicalArgument, 4, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+
+static constexpr AVMServiceMemoryAccessInfo DrawTextFVMemory[] = {
+    {MB::LogicalArgument, 2, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 4, "__avm_text_state", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 7},
+    {MB::LogicalArgument, 5, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+    {MB::LogicalArgument, 5, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+};
+static constexpr AVMServiceMemoryAccessInfo DrawTextFVPMemory[] = {
+    {MB::LogicalArgument, 2, "", 1, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 3, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 4, "__avm_text_state", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 7},
+    {MB::LogicalArgument, 5, "__avm_framebuffer", 0,
+     MachineMemOperand::MOLoad, MS::Constant, 0, 1024},
+    {MB::LogicalArgument, 5, "__avm_framebuffer", 0,
+     MachineMemOperand::MOStore, MS::Constant, 0, 1024},
     {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
      MS::AfterPointer, 0, 0},
     {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
@@ -377,6 +494,16 @@ SERVICE(SYS_VSNPRINTF_PSEUDO, VsnprintfInputs, TiedR4Output,
         VsnprintfMemory);
 SERVICE(SYS_VSNPRINTF_P_PSEUDO, VsnprintfPInputs, TiedR4Output,
         VsnprintfPMemory);
+SERVICE(SYS_SET_TEXT_FONT_PSEUDO, SetTextFontInputs, {}, SetTextFontMemory);
+SERVICE(SYS_SET_TEXT_MODE_PSEUDO, SetTextModeInputs, {}, SetTextModeMemory);
+SERVICE(SYS_DRAW_TEXT_PSEUDO, DrawTextInputs, TextCursorOutput,
+        DrawTextMemory);
+SERVICE(SYS_DRAW_TEXT_P_PSEUDO, DrawTextPInputs, TextCursorOutput,
+        DrawTextPMemory);
+SERVICE(SYS_DRAW_TEXTFV_PSEUDO, DrawTextFVInputs, TextCursorOutput,
+        DrawTextFVMemory);
+SERVICE(SYS_DRAW_TEXTFV_P_PSEUDO, DrawTextFVPInputs, TextCursorOutput,
+        DrawTextFVPMemory);
 SERVICE(SYS_DRAW_SPRITE_OVERWRITE_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO, SpriteInputs, {}, SpriteMemory);
 SERVICE(SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO, SpriteInputs, {}, SpriteMemory);

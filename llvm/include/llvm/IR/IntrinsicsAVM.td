@@ -232,4 +232,62 @@ let TargetPrefix = "avm" in {
                  NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<2>>,
                  NoCapture<ArgIndex<3>>, WriteOnly<ArgIndex<0>>,
                  ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>]>;
+
+  // Text-state anchors model the interpreter-private selected font and mode.
+  // Drawing intrinsics also carry the fixed framebuffer as a hidden operand.
+  // The selected font's program-space data is reached indirectly through text
+  // state, so drawing remains conservatively memory-effecting rather than
+  // claiming IntrArgMemOnly.
+  def int_avm_set_text_font :
+      Intrinsic<[], [llvm_avm_progptr_ty, llvm_ptr_ty],
+                [IntrArgMemOnly, IntrHasSideEffects, IntrWillReturn,
+                 IntrNoCallback, IntrNoFree, NoCapture<ArgIndex<0>>,
+                 NoCapture<ArgIndex<1>>, ReadOnly<ArgIndex<0>>,
+                 WriteOnly<ArgIndex<1>>]>;
+
+  def int_avm_set_text_mode :
+      Intrinsic<[], [llvm_i8_ty, llvm_ptr_ty],
+                [IntrArgMemOnly, IntrHasSideEffects, IntrWillReturn,
+                 IntrNoCallback, IntrNoFree, NoCapture<ArgIndex<1>>,
+                 WriteOnly<ArgIndex<1>>]>;
+
+  def int_avm_draw_text :
+      Intrinsic<[llvm_i32_ty],
+                [llvm_i16_ty, llvm_i16_ty, llvm_ptr_ty, llvm_ptr_ty,
+                 llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<2>>, NoCapture<ArgIndex<3>>,
+                 NoCapture<ArgIndex<4>>, ReadOnly<ArgIndex<2>>,
+                 ReadOnly<ArgIndex<3>>]>;
+
+  def int_avm_draw_text_p :
+      Intrinsic<[llvm_i32_ty],
+                [llvm_i16_ty, llvm_i16_ty, llvm_avm_progptr_ty, llvm_ptr_ty,
+                 llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<2>>, NoCapture<ArgIndex<3>>,
+                 NoCapture<ArgIndex<4>>, ReadOnly<ArgIndex<2>>,
+                 ReadOnly<ArgIndex<3>>]>;
+
+  // Like vsnprintf, formatted text may read AS0 and AS1 pointees indirectly
+  // through the packed variadic list.
+  def int_avm_draw_textfv :
+      Intrinsic<[llvm_i32_ty],
+                [llvm_i16_ty, llvm_i16_ty, llvm_ptr_ty, llvm_ptr_ty,
+                 llvm_ptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<2>>, NoCapture<ArgIndex<3>>,
+                 NoCapture<ArgIndex<4>>, NoCapture<ArgIndex<5>>,
+                 ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>,
+                 ReadOnly<ArgIndex<4>>]>;
+
+  def int_avm_draw_textfv_p :
+      Intrinsic<[llvm_i32_ty],
+                [llvm_i16_ty, llvm_i16_ty, llvm_avm_progptr_ty, llvm_ptr_ty,
+                 llvm_ptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<2>>, NoCapture<ArgIndex<3>>,
+                 NoCapture<ArgIndex<4>>, NoCapture<ArgIndex<5>>,
+                 ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>,
+                 ReadOnly<ArgIndex<4>>]>;
 }

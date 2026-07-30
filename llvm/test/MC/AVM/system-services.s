@@ -37,3 +37,27 @@ sys vsnprintf
 sys vsnprintf_p
 # CHECK: sys vsnprintf_p{{.*}}encoding: [0xd7,0x30]
 # DIS: sys vsnprintf_p
+
+sys set_text_font
+# CHECK: sys set_text_font{{.*}}encoding: [0xd7,0x31]
+# DIS: sys set_text_font
+
+sys set_text_mode
+# CHECK: sys set_text_mode{{.*}}encoding: [0xd7,0x32]
+# DIS: sys set_text_mode
+
+sys draw_text
+# CHECK: sys draw_text{{.*}}encoding: [0xd7,0x33]
+# DIS: sys draw_text
+
+sys draw_text_p
+# CHECK: sys draw_text_p{{.*}}encoding: [0xd7,0x34]
+# DIS: sys draw_text_p
+
+sys draw_textfv
+# CHECK: sys draw_textfv{{.*}}encoding: [0xd7,0x35]
+# DIS: sys draw_textfv
+
+sys draw_textfv_p
+# CHECK: sys draw_textfv_p{{.*}}encoding: [0xd7,0x36]
+# DIS: sys draw_textfv_p

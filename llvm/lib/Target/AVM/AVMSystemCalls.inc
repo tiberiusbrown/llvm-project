@@ -153,6 +153,21 @@ AVM_SYS_DEF(0x2f, vsnprintf, AVM_SYS_PSEUDO, SYS_VSNPRINTF_PSEUDO,
             AVM_SYS_INTRINSIC, avm_vsnprintf, AVM_NO_COST, AVM_NO_COST)
 AVM_SYS_DEF(0x30, vsnprintf_p, AVM_SYS_PSEUDO, SYS_VSNPRINTF_P_PSEUDO,
             AVM_SYS_INTRINSIC, avm_vsnprintf_p, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x31, set_text_font, AVM_SYS_PSEUDO,
+            SYS_SET_TEXT_FONT_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_set_text_font, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x32, set_text_mode, AVM_SYS_PSEUDO,
+            SYS_SET_TEXT_MODE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_set_text_mode, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x33, draw_text, AVM_SYS_PSEUDO, SYS_DRAW_TEXT_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_draw_text, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x34, draw_text_p, AVM_SYS_PSEUDO, SYS_DRAW_TEXT_P_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_draw_text_p, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x35, draw_textfv, AVM_SYS_PSEUDO, SYS_DRAW_TEXTFV_PSEUDO,
+            AVM_SYS_INTRINSIC, avm_draw_textfv, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x36, draw_textfv_p, AVM_SYS_PSEUDO,
+            SYS_DRAW_TEXTFV_P_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_draw_textfv_p, AVM_NO_COST, AVM_NO_COST)
 
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF

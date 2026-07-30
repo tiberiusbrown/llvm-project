@@ -50,6 +50,7 @@ set(arm_common_files
 
 set(avm_files
   avm/pgmspace.h
+  avm/text.h
   )
 
 set(arm_only_files

@@ -42,6 +42,15 @@ BUILTIN(__avm_vsnprintf, "ic*zcC*a", "nA")
 BUILTIN(__builtin_avm_vsnprintf_p, "ic*zcC*1a", "nA")
 BUILTIN(__avm_vsnprintf_P, "ic*zcC*1a", "nA")
 
+BUILTIN(__avm_set_text_font, "vvC*1", "n")
+BUILTIN(__avm_set_text_mode, "vUc", "n")
+BUILTIN(__avm_draw_text, "ULiiicC*", "n")
+BUILTIN(__avm_draw_text_P, "ULiiicC*1", "n")
+// These use AVM's restricted formatter grammar; do not attach Clang's generic
+// printf-format attribute.
+BUILTIN(__avm_draw_textfv, "ULiiicC*a", "n")
+BUILTIN(__avm_draw_textfv_P, "ULiiicC*1a", "n")
+
 BUILTIN(__avm_debug_putc, "vUc", "n")
 BUILTIN(__avm_debug_break, "v", "n")
 BUILTIN(__avm_millis, "Ui", "n")
