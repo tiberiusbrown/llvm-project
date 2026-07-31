@@ -1280,6 +1280,7 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     case Intrinsic::avm_debug_putc:
     case Intrinsic::avm_draw_filled_rect_white:
     case Intrinsic::avm_draw_filled_rect_black:
+    case Intrinsic::avm_set_text_mode:
       for (unsigned I = 2; I != Ops.size(); ++I)
         if (Ops[I].getValueType() == MVT::i8)
           Ops[I] = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Ops[I]);
