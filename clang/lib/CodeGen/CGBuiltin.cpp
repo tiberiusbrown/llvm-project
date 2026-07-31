@@ -103,11 +103,16 @@ static Value *getAVMCompilerOnlyAnchor(CodeGenFunction &CGF, StringRef Name,
 static Value *EmitAVMVariadicFormattingBuiltin(CodeGenFunction &CGF,
                                                unsigned BuiltinID,
                                                const CallExpr *E) {
-  constexpr unsigned FixedArgCount = 3;
+  unsigned FixedArgCount = 3;
   Intrinsic::ID ID;
   bool IsTextDrawing = false;
 
   switch (BuiltinID) {
+  case AVM::BI__builtin_avm_debug_printf_p:
+  case AVM::BI__avm_debug_printf_P:
+    ID = Intrinsic::avm_debug_printfv_p;
+    FixedArgCount = 1;
+    break;
   case AVM::BI__builtin_avm_snprintf:
   case AVM::BI__avm_snprintf:
     ID = Intrinsic::avm_vsnprintf;
@@ -212,6 +217,8 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
           cast<clang::StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());
       return CGF->CGM.GetAddrOfAVMFlashString(Literal).getPointer();
     }
+    case AVM::BI__builtin_avm_debug_printf_p:
+    case AVM::BI__avm_debug_printf_P:
     case AVM::BI__builtin_avm_snprintf:
     case AVM::BI__avm_snprintf:
     case AVM::BI__builtin_avm_snprintf_p:
@@ -299,6 +306,8 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_vsnprintf:
     case AVM::BI__builtin_avm_vsnprintf_p:
     case AVM::BI__avm_vsnprintf_P:
+    case AVM::BI__builtin_avm_debug_printfv_p:
+    case AVM::BI__avm_debug_printfv_P:
     case AVM::BI__avm_set_text_font:
     case AVM::BI__avm_set_text_mode:
     case AVM::BI__avm_draw_text:
@@ -462,6 +471,10 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       case AVM::BI__builtin_avm_vsnprintf_p:
       case AVM::BI__avm_vsnprintf_P:
         ID = Intrinsic::avm_vsnprintf_p;
+        break;
+      case AVM::BI__builtin_avm_debug_printfv_p:
+      case AVM::BI__avm_debug_printfv_P:
+        ID = Intrinsic::avm_debug_printfv_p;
         break;
       case AVM::BI__avm_set_text_font:
         ID = Intrinsic::avm_set_text_font;

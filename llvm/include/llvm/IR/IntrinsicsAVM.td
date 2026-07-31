@@ -233,6 +233,14 @@ let TargetPrefix = "avm" in {
                  NoCapture<ArgIndex<3>>, WriteOnly<ArgIndex<0>>,
                  ReadOnly<ArgIndex<2>>, ReadOnly<ArgIndex<3>>]>;
 
+  // Like the other formatted-output services, the packed va_list can contain
+  // pointers to AS0 and AS1 strings that are not explicit intrinsic operands.
+  def int_avm_debug_printfv_p :
+      Intrinsic<[llvm_i16_ty], [llvm_avm_progptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
   // Text-state anchors model the interpreter-private selected font and mode.
   // Drawing intrinsics also carry the fixed framebuffer as a hidden operand.
   // The selected font's program-space data is reached indirectly through text

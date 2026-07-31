@@ -46,6 +46,11 @@ BUILTIN(__avm_snprintf_P, "ic*zcC*1.", "n")
 BUILTIN(__builtin_avm_vsnprintf_p, "ic*zcC*1a", "nA")
 BUILTIN(__avm_vsnprintf_P, "ic*zcC*1a", "nA")
 
+BUILTIN(__builtin_avm_debug_printf_p, "icC*1.", "n")
+BUILTIN(__avm_debug_printf_P, "icC*1.", "n")
+BUILTIN(__builtin_avm_debug_printfv_p, "icC*1a", "nA")
+BUILTIN(__avm_debug_printfv_P, "icC*1a", "nA")
+
 BUILTIN(__avm_set_text_font, "vvC*1", "n")
 BUILTIN(__avm_set_text_mode, "vUc", "n")
 BUILTIN(__avm_draw_text, "ULiiicC*", "n")

@@ -32,6 +32,8 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     return true;
   }
 
+  case AVM::BI__builtin_avm_debug_printf_p:
+  case AVM::BI__avm_debug_printf_P:
   case AVM::BI__builtin_avm_snprintf:
   case AVM::BI__avm_snprintf:
   case AVM::BI__builtin_avm_snprintf_p:
@@ -41,7 +43,12 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   case AVM::BI__builtin_avm_draw_textf_p:
   case AVM::BI__avm_draw_textf_P: {
     bool Invalid = false;
-    for (unsigned I = 3; I != TheCall->getNumArgs(); ++I) {
+    unsigned FirstVariadicArg = 3;
+    if (BuiltinID == AVM::BI__builtin_avm_debug_printf_p ||
+        BuiltinID == AVM::BI__avm_debug_printf_P)
+      FirstVariadicArg = 1;
+
+    for (unsigned I = FirstVariadicArg; I != TheCall->getNumArgs(); ++I) {
       Expr *Arg = TheCall->getArg(I);
       if (Arg->isTypeDependent())
         continue;

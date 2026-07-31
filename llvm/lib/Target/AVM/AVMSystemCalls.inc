@@ -168,6 +168,9 @@ AVM_SYS_DEF(0x35, draw_textfv, AVM_SYS_PSEUDO, SYS_DRAW_TEXTFV_PSEUDO,
 AVM_SYS_DEF(0x36, draw_textfv_p, AVM_SYS_PSEUDO,
             SYS_DRAW_TEXTFV_P_PSEUDO, AVM_SYS_INTRINSIC,
             avm_draw_textfv_p, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x37, debug_printfv_p, AVM_SYS_PSEUDO,
+            SYS_DEBUG_PRINTFV_P_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_debug_printfv_p, AVM_NO_COST, AVM_NO_COST)
 
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF
