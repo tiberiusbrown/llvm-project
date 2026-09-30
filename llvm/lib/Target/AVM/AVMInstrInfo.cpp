@@ -659,6 +659,12 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   auto IsUpper = [](Register Reg) {
     return Reg.isPhysical() && AVM::UpperGPR16RegClass.contains(Reg);
   };
+  auto GetPhysicalSubReg = [&](Register Reg, unsigned SubReg) -> Register {
+    // Before register allocation, the physical subregister is unknown.
+    if (Reg.isPhysical())
+      return getRegisterInfo().getSubReg(Reg, SubReg);
+    return Register();
+  };
   auto ImmediateLatency = [&](Register Reg, uint16_t Value) {
     if (Value == 0 && IsUpper(Reg))
       return Fixed(AVMCostKind::ClrUpper);
@@ -669,7 +675,7 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
                               : AVMCostKind::Ldi16Lower);
   };
   auto MoveLatency = [&](Register Dest, Register Src) {
-    if (Dest == Src)
+    if (Dest.isValid() && Dest == Src)
       return 0U;
     return Fixed(IsUpper(Dest) && IsUpper(Src) ? AVMCostKind::MovUpper
                                                : AVMCostKind::MovFull);
@@ -694,10 +700,9 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return ImmediateLatency(MI.getOperand(0).getReg(),
                             static_cast<uint16_t>(MI.getOperand(1).getImm()));
   case AVM::LDI32_PSEUDO: {
-    const AVMRegisterInfo &TRI = getRegisterInfo();
     Register Dest = MI.getOperand(0).getReg();
-    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
-    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    Register Lo = GetPhysicalSubReg(Dest, AVM::sub_lo16);
+    Register Hi = GetPhysicalSubReg(Dest, AVM::sub_hi16);
     return ImmediateLatency(Lo,
                             static_cast<uint16_t>(MI.getOperand(1).getImm())) +
            ImmediateLatency(Hi,
@@ -708,32 +713,29 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   case AVM::PROG_CANON_PSEUDO:
     return Fixed(AVMCostKind::ZExt8);
   case AVM::ZEXT16_32_PSEUDO: {
-    const AVMRegisterInfo &TRI = getRegisterInfo();
     Register Dest = MI.getOperand(0).getReg();
     Register Src = MI.getOperand(1).getReg();
-    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
-    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    Register Lo = GetPhysicalSubReg(Dest, AVM::sub_lo16);
+    Register Hi = GetPhysicalSubReg(Dest, AVM::sub_hi16);
     return MoveLatency(Lo, Src) + ImmediateLatency(Hi, 0);
   }
   case AVM::SEXT16_32_PSEUDO: {
-    const AVMRegisterInfo &TRI = getRegisterInfo();
     Register Dest = MI.getOperand(0).getReg();
     Register Src = MI.getOperand(1).getReg();
-    Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
-    Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+    Register Lo = GetPhysicalSubReg(Dest, AVM::sub_lo16);
+    Register Hi = GetPhysicalSubReg(Dest, AVM::sub_hi16);
     return MoveLatency(Lo, Src) + MoveLatency(Hi, Src) +
            AVM::getShiftCycles(AVMCostKind::Asr16I, 15);
   }
   case AVM::SHL32_16_PSEUDO:
   case AVM::SRL32_16_PSEUDO:
   case AVM::SRA32_16_PSEUDO: {
-    const AVMRegisterInfo &TRI = getRegisterInfo();
     Register Dest = MI.getOperand(0).getReg();
     Register Src = MI.getOperand(1).getReg();
-    Register DestLo = TRI.getSubReg(Dest, AVM::sub_lo16);
-    Register DestHi = TRI.getSubReg(Dest, AVM::sub_hi16);
-    Register SrcLo = TRI.getSubReg(Src, AVM::sub_lo16);
-    Register SrcHi = TRI.getSubReg(Src, AVM::sub_hi16);
+    Register DestLo = GetPhysicalSubReg(Dest, AVM::sub_lo16);
+    Register DestHi = GetPhysicalSubReg(Dest, AVM::sub_hi16);
+    Register SrcLo = GetPhysicalSubReg(Src, AVM::sub_lo16);
+    Register SrcHi = GetPhysicalSubReg(Src, AVM::sub_hi16);
     if (MI.getOpcode() == AVM::SHL32_16_PSEUDO)
       return MoveLatency(DestHi, SrcLo) + ImmediateLatency(DestLo, 0);
     if (MI.getOpcode() == AVM::SRL32_16_PSEUDO)
