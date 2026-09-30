@@ -43,14 +43,11 @@ set(core_files
   varargs.h
   )
 
+set_property(GLOBAL PROPERTY AVM_SDK_CLANG_CORE_HEADERS "${core_files}")
+
 set(arm_common_files
   # Headers shared by Arm and AArch64
   arm_acle.h
-  )
-
-set(avm_files
-  avm/pgmspace.h
-  avm/text.h
   )
 
 set(arm_only_files
@@ -456,7 +453,7 @@ endfunction(clang_generate_header)
 foreach( f ${files} ${cuda_wrapper_files} ${cuda_wrapper_bits_files}
            ${cuda_wrapper_utility_files} ${ppc_wrapper_files} ${openmp_wrapper_files}
            ${zos_wrapper_files} ${hlsl_files} ${llvm_libc_wrapper_files}
-           ${llvm_offload_wrapper_files} ${avm_files})
+           ${llvm_offload_wrapper_files})
   copy_header_to_output_dir(${CMAKE_CURRENT_SOURCE_DIR} ${f})
 endforeach( f )
 
@@ -538,7 +535,6 @@ add_dependencies("clang-resource-headers"
                  "arm-common-resource-headers"
                  "arm-resource-headers"
                  "aarch64-resource-headers"
-                  "avm-resource-headers"
                  "cuda-resource-headers"
                  "hexagon-resource-headers"
                  "hip-resource-headers"
@@ -566,7 +562,6 @@ add_header_target("arm-common-resource-headers" "${arm_common_files};${arm_commo
 # Architecture/platform specific targets
 add_header_target("arm-resource-headers" "${arm_only_files};${arm_only_generated_files}")
 add_header_target("aarch64-resource-headers" "${aarch64_only_files};${aarch64_only_generated_files}")
-add_header_target("avm-resource-headers" "${avm_files}")
 add_header_target("cuda-resource-headers" "${cuda_files};${cuda_wrapper_files};${cuda_wrapper_bits_files};${cuda_wrapper_utility_files}")
 add_header_target("hexagon-resource-headers" "${hexagon_files}")
 add_header_target("hip-resource-headers" "${hip_files}")
@@ -592,6 +587,7 @@ add_header_target("windows-resource-headers" ${windows_only_files})
 add_header_target("utility-resource-headers" ${utility_files})
 
 get_clang_resource_dir(header_install_dir SUBDIR include)
+set_property(GLOBAL PROPERTY AVM_SDK_CLANG_HEADER_DIR "${header_install_dir}")
 target_include_directories(clang-resource-headers INTERFACE
   $<BUILD_INTERFACE:${output_dir}>
   $<INSTALL_INTERFACE:${header_install_dir}>)
@@ -602,11 +598,6 @@ set_property(GLOBAL APPEND PROPERTY CLANG_EXPORTS clang-resource-headers)
 install(
   FILES ${files} ${generated_files}
   DESTINATION ${header_install_dir}
-  COMPONENT clang-resource-headers)
-
-install(
-  FILES ${avm_files}
-  DESTINATION ${header_install_dir}/avm
   COMPONENT clang-resource-headers)
 
 install(

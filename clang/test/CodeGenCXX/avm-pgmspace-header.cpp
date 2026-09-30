@@ -1,15 +1,15 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -x c++ -std=c++20 \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -I%S/../../../../../runtime/include -x c++ -std=c++20 \
 // RUN:   -ffreestanding -O2 -S -emit-llvm %s -o - | FileCheck %s
-// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -x c++ -std=c++20 \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -I%S/../../../../../runtime/include -x c++ -std=c++20 \
 // RUN:   -fexperimental-new-constant-interpreter -ffreestanding -O2 \
 // RUN:   -S -emit-llvm %s -o - | FileCheck %s
 
 #include <avm/pgmspace.h>
 
-constexpr avm_flash_string_t message = F("Hello");
-constinit avm_flash_string_t second = F("Hello");
+constexpr const char AVM_PROGMEM *message = F("Hello");
+constinit const char AVM_PROGMEM *second = F("Hello");
 
-void consume(avm_flash_string_t);
+void consume(const char AVM_PROGMEM *);
 void consume(const char *);
 
 void use_message() { consume(F("Hello")); }
