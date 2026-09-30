@@ -1,6 +1,7 @@
 //===-- AVMISelLowering.cpp - AVM DAG lowering --------------------------===//
 
 #include "AVMISelLowering.h"
+#include "AVMCostModel.h"
 #include "AVMMachineFunctionInfo.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -17,6 +18,42 @@
 #include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
+
+bool AVMTargetLowering::decomposeMulByConstant(LLVMContext &, EVT VT,
+                                               SDValue C) const {
+  if (VT != MVT::i16)
+    return false;
+  const auto *Constant = dyn_cast<ConstantSDNode>(C);
+  if (!Constant)
+    return false;
+
+  // The generic DAG combiner can turn 2^N + 1 into a shift and an add. Count
+  // the extra copy needed to retain the original operand, as well as the
+  // immediate materialization that a MUL16 would require. A small margin
+  // accounts for the extra live value introduced by the decomposition.
+  uint64_t Multiplier = Constant->getZExtValue();
+  if (Multiplier < 3 || Multiplier == 5 || Multiplier > INT16_MAX ||
+      !isPowerOf2_64(Multiplier - 1))
+    return false;
+  unsigned Shift = Log2_64(Multiplier - 1);
+  if (Shift >= 16)
+    return false;
+
+  using AVM::AVMCostKind;
+  unsigned MultiplyCycles =
+      AVM::getFixedCycles(Multiplier <= UINT8_MAX
+                              ? AVMCostKind::Ldi8Upper
+                              : AVMCostKind::Ldi16Upper) +
+      AVM::getFixedCycles(AVMCostKind::Mul16);
+  unsigned ShiftCycles =
+      Shift <= 3
+          ? Shift * AVM::getFixedCycles(AVMCostKind::AddUpper)
+          : AVM::getShiftCycles(AVMCostKind::Lsl16I, Shift);
+  unsigned DecomposedCycles = AVM::getFixedCycles(AVMCostKind::MovUpper) +
+                              ShiftCycles +
+                              AVM::getFixedCycles(AVMCostKind::AddUpper);
+  return DecomposedCycles + 10 <= MultiplyCycles;
+}
 
 namespace {
 constexpr MCPhysReg AVMArgUnits[] = {AVM::R4, AVM::R5, AVM::R6, AVM::R7};
@@ -1171,6 +1208,29 @@ SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
   if (N->getValueType(0) != MVT::i16)
     return SDValue();
+
+  if (N->getOpcode() == ISD::MUL) {
+    SDValue Value = N->getOperand(0);
+    const auto *Constant = dyn_cast<ConstantSDNode>(N->getOperand(1));
+    if (!Constant) {
+      Constant = dyn_cast<ConstantSDNode>(Value);
+      Value = N->getOperand(1);
+    }
+    if (Constant && Constant->getZExtValue() == 5) {
+      // MULU8W/MULS8W can beat the shift-and-add sequence for a byte value.
+      // The generic constant-multiply hook has no access to this operand.
+      KnownBits Known = DCI.DAG.computeKnownBits(Value);
+      bool UnsignedByte =
+          (Known.Zero & APInt(16, 0xff00)) == APInt(16, 0xff00);
+      bool SignedByte = DCI.DAG.ComputeNumSignBits(Value) >= 9;
+      if (!UnsignedByte && !SignedByte) {
+        SDValue Shift = DCI.DAG.getNode(
+            ISD::SHL, SDLoc(N), MVT::i16, Value,
+            DCI.DAG.getConstant(2, SDLoc(N), MVT::i16));
+        return DCI.DAG.getNode(ISD::ADD, SDLoc(N), MVT::i16, Shift, Value);
+      }
+    }
+  }
 
   SDValue Product = SDValue(N, 0);
   SDValue Dividend;

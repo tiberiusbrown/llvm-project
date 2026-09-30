@@ -27,6 +27,7 @@ add_llvm_target(AVMCodeGen
   AVMISelDAGToDAG.cpp
   AVMISelLowering.cpp
   AVMInstrInfo.cpp
+  AVMLatePeephole.cpp
   AVMMachineFunctionInfo.cpp
   AVMMCInstLower.cpp
   AVMProgramMemoryWidening.cpp

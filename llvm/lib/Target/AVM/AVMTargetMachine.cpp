@@ -33,6 +33,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
+  initializeAVMLatePeepholePass(PR);
   initializeAVMProgramMemoryWideningPass(PR);
   initializeAVMSystemServiceRegionsPass(PR);
   initializeAVMExpandSystemServicesPass(PR);
@@ -124,6 +125,8 @@ public:
     addPass(createAVMBranchPolarityPass());
     addPass(createAVMExpandSystemServicesPass());
     addPass(createAVMExpandPseudoPass());
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(createAVMLatePeepholePass());
     addPass(&DeadMachineInstructionElimID);
     addPass(createAVMFinalControlFlowPass());
   }

@@ -92,6 +92,9 @@ public:
     return VT == MVT::i16;
   }
 
+  bool decomposeMulByConstant(LLVMContext &Context, EVT VT,
+                              SDValue C) const override;
+
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
 private:

@@ -1,0 +1,150 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @reuse_signed_compare() { ret void }
+  define void @changed_compare_operand() { ret void }
+  define void @remove_spill_roundtrip() { ret void }
+  define void @keep_live_spill() { ret void }
+  define void @select_by_bit_one() { ret void }
+  define void @keep_live_cc() { ret void }
+  define void @remove_redundant_zext() { ret void }
+  define void @keep_needed_zext() { ret void }
+...
+---
+name: reuse_signed_compare
+body: |
+  bb.0:
+    liveins: $r4, $r5
+    ; CHECK-LABEL: name: reuse_signed_compare
+    ; CHECK: CMP $r5, $r4, implicit-def $cc
+    ; CHECK: $r7 = CMOV_SLT $r7, $r4, implicit $cc
+    ; CHECK-NOT: CMP $r4, $r5
+    ; CHECK: $r5 = CMOV_SGE $r5, $r4, implicit $cc
+    CMP $r5, $r4, implicit-def $cc
+    $r7 = MOV $r5
+    $r7 = CMOV_SLT $r7, $r4, implicit $cc
+    CMP $r4, $r5, implicit-def $cc
+    $r5 = CMOV_SLT $r5, $r4, implicit $cc
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: changed_compare_operand
+body: |
+  bb.0:
+    liveins: $r4, $r5
+    ; CHECK-LABEL: name: changed_compare_operand
+    ; CHECK: CMP $r5, $r4, implicit-def $cc
+    ; CHECK: $r5 = ADD $r5, $r4
+    ; CHECK: CMP $r4, $r5, implicit-def $cc
+    ; CHECK: $r5 = CMOV_SLT $r5, $r4, implicit $cc
+    CMP $r5, $r4, implicit-def $cc
+    $r5 = ADD $r5, $r4
+    CMP $r4, $r5, implicit-def $cc
+    $r5 = CMOV_SLT $r5, $r4, implicit $cc
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: remove_spill_roundtrip
+stack:
+  - { id: 0, type: spill-slot, offset: 6, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r2, $sp
+    ; CHECK-LABEL: name: remove_spill_roundtrip
+    ; CHECK: $r6 = LDI8 7
+    ; CHECK-NEXT: $r6 = AND_RR $r6, $r2
+    ; CHECK-NEXT: STSP16_COMPACT 6, $r6, implicit $sp
+    $r6 = LDI8 7
+    STSP16_COMPACT 6, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r6 = LDSP16_COMPACT 6, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r6 = AND_RR $r6, $r2
+    STSP16_COMPACT 6, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_live_spill
+stack:
+  - { id: 0, type: spill-slot, offset: 6, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r2, $sp
+    ; CHECK-LABEL: name: keep_live_spill
+    ; CHECK: STSP16_COMPACT 6, $r6, implicit $sp
+    ; CHECK-NEXT: $r6 = LDSP16_COMPACT 6, implicit $sp
+    ; CHECK: $r4 = LDSP16_COMPACT 6, implicit $sp
+    ; CHECK: STSP16_COMPACT 6, $r6, implicit $sp
+    $r6 = LDI8 7
+    STSP16_COMPACT 6, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r6 = LDSP16_COMPACT 6, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r4 = LDSP16_COMPACT 6, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r6 = AND_RR $r6, $r2
+    STSP16_COMPACT 6, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: select_by_bit_one
+body: |
+  bb.0:
+    liveins: $r6, $r7
+    ; CHECK-LABEL: name: select_by_bit_one
+    ; CHECK: $r4 = LDI8 2
+    ; CHECK-NEXT: $r4 = AND $r4, $r6
+    ; CHECK-NEXT: TST8 $r4, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_NE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r7
+    $r4 = MOV $r6
+    $r4 = LSL16I $r4, 14
+    $r4 = ASR16I $r4, 15
+    $r4 = AND $r4, $r6
+    $r4 = XOR $r4, $r7
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_live_cc
+body: |
+  bb.0:
+    liveins: $r5, $r6, $r7
+    ; CHECK-LABEL: name: keep_live_cc
+    ; CHECK: $r4 = MOV $r6
+    ; CHECK-NEXT: $r4 = LSL16I $r4, 14
+    ; CHECK-NEXT: $r4 = ASR16I $r4, 15
+    ; CHECK-NEXT: $r4 = AND $r4, $r6
+    ; CHECK-NEXT: $r7 = CMOV_EQ $r7, $r5, implicit $cc
+    CMP $r5, $r6, implicit-def $cc
+    $r4 = MOV $r6
+    $r4 = LSL16I $r4, 14
+    $r4 = ASR16I $r4, 15
+    $r4 = AND $r4, $r6
+    $r7 = CMOV_EQ $r7, $r5, implicit $cc
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: remove_redundant_zext
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: remove_redundant_zext
+    ; CHECK: $r4 = LDI8 5
+    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK-NOT: ZEXT8
+    $r4 = LDI8 5
+    $r4 = ZEXT8 $r4
+    $r5 = MOV $r4
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_needed_zext
+body: |
+  bb.0:
+    liveins: $r5
+    ; CHECK-LABEL: name: keep_needed_zext
+    ; CHECK: $r4 = LDI8 5
+    ; CHECK-NEXT: $r4 = ADD $r4, $r5
+    ; CHECK-NEXT: $r4 = ZEXT8 $r4
+    $r4 = LDI8 5
+    $r4 = ADD $r4, $r5
+    $r4 = ZEXT8 $r4
+    RET implicit-def dead $sp, implicit $sp
+...
