@@ -674,10 +674,15 @@ CharUnits VCallAndVBaseOffsetBuilder::getCurrentOffsetOffset() const {
 
   // Under the relative ABI, the offset widths are 32-bit ints instead of
   // pointer widths.
+  bool UseAVMLayout =
+      Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
+      !VTables.isRelativeLayout();
   CharUnits OffsetWidth = Context.toCharUnitsFromBits(
       VTables.isRelativeLayout()
           ? 32
-          : Context.getTargetInfo().getPointerWidth(LangAS::Default));
+          : UseAVMLayout
+                ? 24
+                : Context.getTargetInfo().getPointerWidth(LangAS::Default));
   CharUnits OffsetOffset = OffsetWidth * OffsetIndex;
 
   return OffsetOffset;

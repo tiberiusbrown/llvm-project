@@ -487,7 +487,10 @@ llvm::Value *CodeGenFunction::GetVTTParameter(GlobalDecl GD,
   if (CGM.getCXXABI().NeedsVTTParameter(CurGD)) {
     // A VTT parameter was passed to the constructor, use it.
     llvm::Value *VTT = LoadCXXVTT();
-    return Builder.CreateConstInBoundsGEP1_64(VoidPtrTy, VTT, SubVTTIndex);
+    llvm::Type *VTTEntryTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                                 ? llvm::PointerType::get(CGM.getLLVMContext(), 1)
+                                 : VoidPtrTy;
+    return Builder.CreateConstInBoundsGEP1_64(VTTEntryTy, VTT, SubVTTIndex);
   } else {
     // We're the complete constructor, so get the VTT by name.
     llvm::GlobalValue *VTT = CGM.getVTables().GetAddrOfVTT(RD);
@@ -2753,7 +2756,9 @@ void CodeGenFunction::InitializeVTablePointer(const VPtr &Vptr) {
 
   // Finally, store the address point. Use the same LLVM types as the field to
   // support optimization.
-  unsigned GlobalsAS = CGM.getDataLayout().getDefaultGlobalsAddressSpace();
+  unsigned GlobalsAS = CGM.getTriple().getArch() == llvm::Triple::avm
+                           ? 1
+                           : CGM.getDataLayout().getDefaultGlobalsAddressSpace();
   llvm::Type *PtrTy = llvm::PointerType::get(CGM.getLLVMContext(), GlobalsAS);
   // vtable field is derived from `this` pointer, therefore they should be in
   // the same addr space. Note that this might not be LLVM address space 0.
@@ -2857,6 +2862,8 @@ llvm::Value *CodeGenFunction::GetVTablePtr(Address This,
                                            llvm::Type *VTableTy,
                                            const CXXRecordDecl *RD,
                                            VTableAuthMode AuthMode) {
+  if (CGM.getTriple().getArch() == llvm::Triple::avm)
+    VTableTy = llvm::PointerType::get(CGM.getLLVMContext(), 1);
   Address VTablePtrSrc = This.withElementType(VTableTy);
   llvm::Instruction *VTable = Builder.CreateLoad(VTablePtrSrc, "vtable");
   TBAAAccessInfo TBAAInfo = CGM.getTBAAVTablePtrAccessInfo(VTableTy);

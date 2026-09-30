@@ -42,8 +42,11 @@ CodeGenVTables::EmitVTTDefinition(llvm::GlobalVariable *VTT,
                                   llvm::GlobalVariable::LinkageTypes Linkage,
                                   const CXXRecordDecl *RD) {
   VTTBuilder Builder(CGM.getContext(), RD, /*GenerateDefinition=*/true);
+  llvm::Type *VTTEntryTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                               ? llvm::PointerType::get(CGM.getLLVMContext(), 1)
+                               : CGM.GlobalsInt8PtrTy;
   llvm::ArrayType *ArrayType = llvm::ArrayType::get(
-      CGM.GlobalsInt8PtrTy, Builder.getVTTComponents().size());
+      VTTEntryTy, Builder.getVTTComponents().size());
 
   SmallVector<llvm::GlobalVariable *, 8> VTables;
   SmallVector<VTableAddressPointsMapTy, 8> VTableAddressPoints;
@@ -129,12 +132,16 @@ llvm::GlobalVariable *CodeGenVTables::GetAddrOfVTT(const CXXRecordDecl *RD) {
 
   VTTBuilder Builder(CGM.getContext(), RD, /*GenerateDefinition=*/false);
 
+  llvm::Type *VTTEntryTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                               ? llvm::PointerType::get(CGM.getLLVMContext(), 1)
+                               : CGM.GlobalsInt8PtrTy;
   llvm::ArrayType *ArrayType = llvm::ArrayType::get(
-      CGM.GlobalsInt8PtrTy, Builder.getVTTComponents().size());
-  llvm::Align Align = CGM.getDataLayout().getABITypeAlign(CGM.GlobalsInt8PtrTy);
+      VTTEntryTy, Builder.getVTTComponents().size());
+  llvm::Align Align = CGM.getDataLayout().getABITypeAlign(VTTEntryTy);
 
   llvm::GlobalVariable *GV = CGM.CreateOrReplaceCXXRuntimeVariable(
-      Name, ArrayType, llvm::GlobalValue::ExternalLinkage, Align);
+      Name, ArrayType, llvm::GlobalValue::ExternalLinkage, Align,
+      CGM.getTriple().getArch() == llvm::Triple::avm ? 1 : 0);
   GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
   CGM.setGVProperties(GV, RD);
   return GV;

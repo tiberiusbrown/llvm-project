@@ -1052,7 +1052,9 @@ void ItaniumRecordLayoutBuilder::LayoutNonVirtualBases(
   } else if (RD->isDynamicClass()) {
     assert(DataSize == 0 && "Vtable pointer must be at offset zero!");
     CharUnits PtrWidth = Context.toCharUnitsFromBits(
-        Context.getTargetInfo().getPointerWidth(LangAS::Default));
+        Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm
+            ? 24
+            : Context.getTargetInfo().getPointerWidth(LangAS::Default));
     CharUnits PtrAlign = Context.toCharUnitsFromBits(
         Context.getTargetInfo().getPointerAlign(LangAS::Default));
     EnsureVTablePointerAlignment(PtrAlign);

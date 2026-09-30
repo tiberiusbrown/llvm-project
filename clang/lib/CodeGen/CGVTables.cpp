@@ -727,6 +727,9 @@ bool CodeGenVTables::useRelativeLayout() const {
 llvm::Type *CodeGenModule::getVTableComponentType() const {
   if (UseRelativeLayout(*this))
     return Int32Ty;
+  // AVM vtables are packed arrays of 24-bit program-space values.
+  if (getTriple().getArch() == llvm::Triple::avm)
+    return llvm::PointerType::get(getModule().getContext(), 1);
   return GlobalsInt8PtrTy;
 }
 
@@ -748,6 +751,14 @@ static void AddRelativeLayoutOffset(const CodeGenModule &CGM,
   builder.add(llvm::ConstantInt::getSigned(CGM.Int32Ty, offset.getQuantity()));
 }
 
+static void AddAVMLayoutOffset(const CodeGenModule &CGM,
+                               ConstantArrayBuilder &builder,
+                               CharUnits offset) {
+  builder.add(llvm::ConstantExpr::getIntToPtr(
+      llvm::ConstantInt::getSigned(CGM.Int32Ty, offset.getQuantity()),
+      llvm::PointerType::get(CGM.getModule().getContext(), 1)));
+}
+
 void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
                                         const VTableLayout &layout,
                                         unsigned componentIndex,
@@ -757,8 +768,11 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
                                         bool vtableHasLocalLinkage) {
   auto &component = layout.vtable_components()[componentIndex];
 
-  auto addOffsetConstant =
-      useRelativeLayout() ? AddRelativeLayoutOffset : AddPointerLayoutOffset;
+  bool UseAVMLayout = CGM.getTriple().getArch() == llvm::Triple::avm &&
+                      !useRelativeLayout();
+  auto addOffsetConstant = useRelativeLayout() ? AddRelativeLayoutOffset
+                           : UseAVMLayout      ? AddAVMLayoutOffset
+                                               : AddPointerLayoutOffset;
 
   switch (component.getKind()) {
   case VTableComponent::CK_VCallOffset:
@@ -775,7 +789,13 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
       return addRelativeComponent(builder, rtti, vtableAddressPoint,
                                   vtableHasLocalLinkage,
                                   /*isCompleteDtor=*/false);
-    else
+    else if (UseAVMLayout) {
+      auto *ProgramPtrTy = llvm::PointerType::get(CGM.getLLVMContext(), 1);
+      if (rtti->isNullValue())
+        return builder.add(llvm::ConstantPointerNull::get(ProgramPtrTy));
+      return builder.add(
+          llvm::ConstantExpr::getAddrSpaceCast(rtti, ProgramPtrTy));
+    } else
       return builder.add(rtti);
 
   case VTableComponent::CK_FunctionPointer:
@@ -874,6 +894,8 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
           builder, fnPtr, vtableAddressPoint, vtableHasLocalLinkage,
           component.getKind() == VTableComponent::CK_CompleteDtorPointer);
     } else {
+      if (UseAVMLayout)
+        return builder.add(fnPtr);
       // TODO: this icky and only exists due to functions being in the generic
       //       address space, rather than the global one, even though they are
       //       globals;  fixing said issue might be intrusive, and will be done
@@ -894,6 +916,9 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
   case VTableComponent::CK_UnusedFunctionPointer:
     if (useRelativeLayout())
       return builder.add(llvm::ConstantExpr::getNullValue(CGM.Int32Ty));
+    else if (UseAVMLayout)
+      return builder.addNullPointer(
+          llvm::PointerType::get(CGM.getLLVMContext(), 1));
     else
       return builder.addNullPointer(CGM.GlobalsInt8PtrTy);
   }
@@ -978,7 +1003,9 @@ llvm::GlobalVariable *CodeGenVTables::GenerateConstructionVTable(
 
   // Create the variable that will hold the construction vtable.
   llvm::GlobalVariable *VTable =
-      CGM.CreateOrReplaceCXXRuntimeVariable(Name, VTType, Linkage, Align);
+      CGM.CreateOrReplaceCXXRuntimeVariable(
+          Name, VTType, Linkage, Align,
+          CGM.getTriple().getArch() == llvm::Triple::avm ? 1 : 0);
 
   // V-tables are always unnamed_addr.
   VTable->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);

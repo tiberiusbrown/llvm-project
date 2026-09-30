@@ -44,6 +44,21 @@ class AVMAsmPrinter final : public AsmPrinter {
         OutStreamer->emitIntValue(0, 3);
         return;
       }
+      if (const auto *CE = dyn_cast<ConstantExpr>(C)) {
+        if (CE->getOpcode() == Instruction::AddrSpaceCast &&
+            CE->getOperand(0)->getType()->getPointerAddressSpace() == 0) {
+          // An RTTI data pointer occupies the low two bytes of the slot.
+          OutStreamer->emitValue(lowerConstant(CE->getOperand(0)), 2);
+          OutStreamer->emitIntValue(0, 1);
+          return;
+        }
+        if (CE->getOpcode() == Instruction::IntToPtr)
+          if (const auto *CI = dyn_cast<ConstantInt>(CE->getOperand(0))) {
+            // Offset components use the low 24 bits in two's-complement form.
+            OutStreamer->emitIntValue(CI->getZExtValue() & 0xffffff, 3);
+            return;
+          }
+      }
       const MCExpr *Expr = MCSpecifierExpr::create(
           lowerConstant(C), AVM::VK_AVM_PROG24, OutContext);
       MCInst ProgPtr;

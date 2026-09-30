@@ -5648,13 +5648,13 @@ CodeGenModule::GetAddrOfGlobal(GlobalDecl GD, ForDefinition_t IsForDefinition) {
 
 llvm::GlobalVariable *CodeGenModule::CreateOrReplaceCXXRuntimeVariable(
     StringRef Name, llvm::Type *Ty, llvm::GlobalValue::LinkageTypes Linkage,
-    llvm::Align Alignment) {
+    llvm::Align Alignment, unsigned AddressSpace) {
   llvm::GlobalVariable *GV = getModule().getNamedGlobal(Name);
   llvm::GlobalVariable *OldGV = nullptr;
 
   if (GV) {
     // Check if the variable has the right type.
-    if (GV->getValueType() == Ty)
+    if (GV->getValueType() == Ty && GV->getAddressSpace() == AddressSpace)
       return GV;
 
     // Because C++ name mangling, the only way we can end up with an already
@@ -5664,15 +5664,20 @@ llvm::GlobalVariable *CodeGenModule::CreateOrReplaceCXXRuntimeVariable(
   }
 
   // Create a new variable.
-  GV = new llvm::GlobalVariable(getModule(), Ty, /*isConstant=*/true,
-                                Linkage, nullptr, Name);
+  GV = new llvm::GlobalVariable(getModule(), Ty, /*isConstant=*/true, Linkage,
+                                nullptr, Name, nullptr,
+                                llvm::GlobalVariable::NotThreadLocal,
+                                AddressSpace);
 
   if (OldGV) {
     // Replace occurrences of the old variable if needed.
     GV->takeName(OldGV);
 
     if (!OldGV->use_empty()) {
-      OldGV->replaceAllUsesWith(GV);
+      llvm::Constant *Replacement = GV;
+      if (GV->getAddressSpace() != OldGV->getAddressSpace())
+        Replacement = llvm::ConstantExpr::getAddrSpaceCast(GV, OldGV->getType());
+      OldGV->replaceAllUsesWith(Replacement);
     }
 
     OldGV->eraseFromParent();
