@@ -190,9 +190,27 @@ void LinkerScript::createAVMDefaultLayout() {
 
   OutputSection *saved = add(".saved", {".saved", ".saved.*"},
                              [] { return ExprValue(0x100); });
+  // Each live function-local static destructor contributes one packed RAM
+  // table slot. Place the slots together at the start of .data and expose
+  // their exact bounds without creating a second data-space output section.
   OutputSection *data = add(
-      ".data", {".data", ".data.*"},
+      ".data", {".data.avm_local_dtor_slot.*"},
       [saved] { return ExprValue(0x100 + saved->size); });
+  auto slotBound = [&](StringRef name) {
+    auto *cmd = make<SymbolAssignment>(
+        name, [this] { return ExprValue(getDot()); },
+        ctx.scriptSymOrderCounter++, "<AVM default layout>");
+    cmd->provide = true;
+    cmd->hidden = true;
+    return cmd;
+  };
+  data->commands.insert(data->commands.begin(),
+                        slotBound("__avm_local_dtor_slots_start"));
+  data->commands.push_back(slotBound("__avm_local_dtor_slots_end"));
+  auto *ordinaryData = make<InputSectionDescription>("*");
+  for (StringRef pattern : {StringRef(".data"), StringRef(".data.*")})
+    ordinaryData->sectionPatterns.push_back({{}, StringMatcher(pattern)});
+  data->commands.push_back(ordinaryData);
   OutputSection *text = add(".text", {".text", ".text.*"}, {});
   text->addrExpr = [saved, data, text] {
     return ExprValue(alignToPowerOf2(

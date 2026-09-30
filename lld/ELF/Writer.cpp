@@ -2854,8 +2854,7 @@ template <class ELFT> void Writer<ELFT>::checkSections() {
 }
 
 template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
-  if (ctx.arg.emachine != EM_AVM || ctx.arg.relocatable ||
-      !ctx.arg.sectionStartMap.empty())
+  if (ctx.arg.emachine != EM_AVM || ctx.arg.relocatable)
     return;
 
   auto find = [&](StringRef name) -> OutputSection * {
@@ -2872,6 +2871,18 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
     return (sec.flags & (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE)) ==
            SHF_AVM_PROGSPACE;
   };
+
+  // References to the bounds retain empty output arrays. They have no input
+  // section from which to inherit the AVM section type and flags.
+  for (StringRef name : {StringRef(".init_array"), StringRef(".fini_array")})
+    if (OutputSection *sec = find(name); sec && sec->size == 0) {
+      sec->type = name == ".init_array" ? SHT_INIT_ARRAY : SHT_FINI_ARRAY;
+      sec->flags = SHF_ALLOC | SHF_AVM_PROGSPACE;
+      sec->entsize = 3;
+    }
+
+  if (!ctx.arg.sectionStartMap.empty())
+    return;
 
   OutputSection *saved = find(".saved");
   OutputSection *data = find(".data");

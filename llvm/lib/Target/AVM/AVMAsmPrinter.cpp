@@ -82,6 +82,12 @@ public:
   AVMAsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer)
       : AsmPrinter(TM, std::move(Streamer), ID) {}
 
+  void emitXXStructor(const DataLayout &DL, const Constant *CV) override {
+    // Function pointers in init/fini arrays use the same packed program
+    // address and R_AVM_PROG24 relocation as other AS1 initializers.
+    emitAVMConstant(DL, CV);
+  }
+
   StringRef getPassName() const override { return "AVM Assembly Printer"; }
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,

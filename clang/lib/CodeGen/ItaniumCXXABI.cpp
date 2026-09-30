@@ -3087,6 +3087,59 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
   if (D.isNoDestroy(CGM.getContext()))
     return;
 
+  // Nonlocal AVM objects have compile-time-known destructors and need no RAM
+  // registry. A function-local static is conditional, so reserve one packed
+  // table slot and register it only after its constructor runs.
+  if (CGM.getTarget().getTriple().getArch() == llvm::Triple::avm) {
+    if (D.isStaticLocal()) {
+      llvm::Constant *Stub = CGF.createAtExitStub(D, dtor, addr);
+      llvm::PointerType *DataPtrTy =
+          llvm::PointerType::get(CGM.getLLVMContext(), 0);
+      llvm::StringRef StubName = cast<llvm::Function>(Stub)->getName();
+      llvm::ArrayType *SlotTy = llvm::ArrayType::get(CGM.Int8Ty, 5);
+      auto *Slot = new llvm::GlobalVariable(
+          CGM.getModule(), SlotTy, false, llvm::GlobalValue::InternalLinkage,
+          llvm::ConstantAggregateZero::get(SlotTy),
+          (StubName + ".avm_dtor_slot").str());
+      Slot->setAlignment(llvm::Align(1));
+      Slot->setSection(
+          (llvm::Twine(".data.avm_local_dtor_slot.") + StubName).str());
+
+      llvm::FunctionType *RegisterTy =
+          llvm::FunctionType::get(CGM.VoidTy,
+                                  {Stub->getType(), DataPtrTy}, false);
+      llvm::FunctionCallee Register = CGM.CreateRuntimeFunction(
+          RegisterTy, "__avm_register_local_dtor");
+      // Passing the slot address also keeps its input section when --gc-sections
+      // discards an unused function containing another local static.
+      CGF.EmitNounwindRuntimeCall(Register, {Stub, Slot});
+      return;
+    }
+    llvm::Function *Stub =
+        cast<llvm::Function>(CGF.createAtExitStub(D, dtor, addr));
+    unsigned Priority = 65535;
+    if (const auto *IPA = D.getAttr<InitPriorityAttr>())
+      Priority = IPA->getPriority();
+    CGM.AddGlobalDtor(Stub, Priority);
+
+    // The weak hook costs no RAM in programs without local static destructors.
+    // When present, it counts completed nonlocal constructions so the local
+    // table entries can be drained at the matching point during teardown.
+    llvm::FunctionType *HookTy = llvm::FunctionType::get(CGM.VoidTy, false);
+    llvm::FunctionCallee Hook = CGM.CreateRuntimeFunction(
+        HookTy, "__avm_note_global_ctor");
+    cast<llvm::Function>(Hook.getCallee())
+        ->setLinkage(llvm::GlobalValue::ExternalWeakLinkage);
+    llvm::BasicBlock *RunHook = CGF.createBasicBlock("avm.note.global.ctor");
+    llvm::BasicBlock *Continue = CGF.createBasicBlock("avm.global.ctor.end");
+    CGF.Builder.CreateCondBr(CGF.Builder.CreateIsNotNull(Hook.getCallee()),
+                             RunHook, Continue);
+    CGF.EmitBlock(RunHook);
+    CGF.EmitNounwindRuntimeCall(Hook);
+    CGF.EmitBlock(Continue);
+    return;
+  }
+
   // HLSL doesn't support atexit.
   if (CGM.getLangOpts().HLSL)
     return CGM.AddCXXDtorEntry(dtor, addr);

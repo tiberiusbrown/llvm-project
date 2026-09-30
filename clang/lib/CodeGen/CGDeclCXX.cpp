@@ -256,6 +256,25 @@ llvm::Constant *CodeGenFunction::createAtExitStub(const VarDecl &VD,
   // Emit an artificial location for this function.
   auto AL = ApplyDebugLocation::CreateArtificial(CGF);
 
+  // A local static constructed during a nonlocal constructor must outlive that
+  // nonlocal object. The optional AVM registry flushes only locals constructed
+  // after this object before calling its destructor.
+  if (CGM.getTarget().getTriple().getArch() == llvm::Triple::avm &&
+      !VD.isStaticLocal()) {
+    llvm::FunctionType *HookTy = llvm::FunctionType::get(CGM.VoidTy, false);
+    llvm::FunctionCallee Hook = CGM.CreateRuntimeFunction(
+        HookTy, "__avm_before_global_dtor");
+    cast<llvm::Function>(Hook.getCallee())
+        ->setLinkage(llvm::GlobalValue::ExternalWeakLinkage);
+    llvm::BasicBlock *RunHook = CGF.createBasicBlock("avm.run.local.dtors");
+    llvm::BasicBlock *CallDtor = CGF.createBasicBlock("avm.call.global.dtor");
+    CGF.Builder.CreateCondBr(CGF.Builder.CreateIsNotNull(Hook.getCallee()),
+                             RunHook, CallDtor);
+    CGF.EmitBlock(RunHook);
+    CGF.EmitNounwindRuntimeCall(Hook);
+    CGF.EmitBlock(CallDtor);
+  }
+
   llvm::CallInst *call = CGF.Builder.CreateCall(dtor, addr);
 
   // Make sure the call and the callee agree on calling convention.

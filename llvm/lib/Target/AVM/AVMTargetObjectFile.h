@@ -10,6 +10,11 @@ class AVMTargetObjectFile final : public TargetLoweringObjectFileELF {
 public:
   unsigned getTextSectionAlignment() const override { return 1; }
 
+  MCSection *getStaticCtorSection(unsigned Priority,
+                                  const MCSymbol *KeySym) const override;
+  MCSection *getStaticDtorSection(unsigned Priority,
+                                  const MCSymbol *KeySym) const override;
+
   MCSection *getExplicitSectionGlobal(const GlobalObject *GO, SectionKind Kind,
                                       const TargetMachine &TM) const override;
   MCSection *SelectSectionForGlobal(const GlobalObject *GO, SectionKind Kind,

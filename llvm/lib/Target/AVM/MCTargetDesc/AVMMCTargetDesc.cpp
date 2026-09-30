@@ -41,6 +41,7 @@ public:
   AVMMCAsmInfo(const Triple &, const MCTargetOptions &) {
     CommentString = ";";
     SeparatorString = "\n";
+    WeakRefDirective = "\t.weak\t";
     CodePointerSize = 3;
     CalleeSaveStackSlotSize = 2;
     MaxInstLength = 6;

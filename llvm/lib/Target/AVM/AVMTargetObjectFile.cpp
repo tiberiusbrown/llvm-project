@@ -9,6 +9,26 @@
 
 using namespace llvm;
 
+static MCSection *prepareStructorSection(MCSection *Section) {
+  auto *ELFSection = static_cast<MCSectionELF *>(Section);
+  ELFSection->setFlags((ELFSection->getFlags() & ~ELF::SHF_WRITE) |
+                       ELF::SHF_AVM_PROGSPACE);
+  ELFSection->setEntrySize(3);
+  return Section;
+}
+
+MCSection *AVMTargetObjectFile::getStaticCtorSection(
+    unsigned Priority, const MCSymbol *KeySym) const {
+  return prepareStructorSection(
+      TargetLoweringObjectFileELF::getStaticCtorSection(Priority, KeySym));
+}
+
+MCSection *AVMTargetObjectFile::getStaticDtorSection(
+    unsigned Priority, const MCSymbol *KeySym) const {
+  return prepareStructorSection(
+      TargetLoweringObjectFileELF::getStaticDtorSection(Priority, KeySym));
+}
+
 SectionKind AVMTargetObjectFile::getAVMSectionKind(const GlobalObject *GO,
                                                    SectionKind Kind) const {
   if (isa<Function>(GO))
