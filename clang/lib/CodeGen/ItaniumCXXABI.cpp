@@ -610,11 +610,17 @@ llvm::Type *
 ItaniumCXXABI::ConvertMemberPointerType(const MemberPointerType *MPT) {
   if (MPT->isMemberDataPointer())
     return CGM.PtrDiffTy;
-  return llvm::StructType::get(CGM.PtrDiffTy, CGM.PtrDiffTy);
+  // AVM function pointers have 24 address bits, but ptrdiff_t has only 16.
+  // Use a 24-bit field so a non-virtual member retains its full address.
+  llvm::Type *PtrTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                          ? llvm::Type::getIntNTy(CGM.getLLVMContext(), 24)
+                          : CGM.PtrDiffTy;
+  return llvm::StructType::get(PtrTy, CGM.PtrDiffTy);
 }
 
 /// In the Itanium and ARM ABIs, method pointers have the form:
 ///   struct { ptrdiff_t ptr; ptrdiff_t adj; } memptr;
+/// AVM uses a 24-bit ptr field and a 16-bit adj field.
 ///
 /// In the Itanium ABI:
 ///  - method pointers are virtual if (memptr.ptr & 1) is nonzero
@@ -644,6 +650,8 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
   auto *RD = MPT->getMostRecentCXXRecordDecl();
 
   llvm::Constant *ptrdiff_1 = llvm::ConstantInt::get(CGM.PtrDiffTy, 1);
+  llvm::Constant *ptr_1 = llvm::ConstantInt::get(
+      cast<llvm::StructType>(MemFnPtr->getType())->getElementType(0), 1);
 
   llvm::BasicBlock *FnVirtual = CGF.createBasicBlock("memptr.virtual");
   llvm::BasicBlock *FnNonVirtual = CGF.createBasicBlock("memptr.nonvirtual");
@@ -672,7 +680,7 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
   if (UseARMMethodPtrABI)
     IsVirtual = Builder.CreateAnd(RawAdj, ptrdiff_1);
   else
-    IsVirtual = Builder.CreateAnd(FnAsInt, ptrdiff_1);
+    IsVirtual = Builder.CreateAnd(FnAsInt, ptr_1);
   IsVirtual = Builder.CreateIsNotNull(IsVirtual, "memptr.isvirtual");
   Builder.CreateCondBr(IsVirtual, FnVirtual, FnNonVirtual);
 
@@ -694,10 +702,10 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
   // we only pay attention to the low 32 bits of the offset.
   llvm::Value *VTableOffset = FnAsInt;
   if (!UseARMMethodPtrABI)
-    VTableOffset = Builder.CreateSub(VTableOffset, ptrdiff_1);
+    VTableOffset = Builder.CreateSub(VTableOffset, ptr_1);
   if (Use32BitVTableOffsetABI) {
     VTableOffset = Builder.CreateTrunc(VTableOffset, CGF.Int32Ty);
-    VTableOffset = Builder.CreateZExt(VTableOffset, CGM.PtrDiffTy);
+    VTableOffset = Builder.CreateZExt(VTableOffset, FnAsInt->getType());
   }
 
   // Check the address of the function pointer if CFI on member function
@@ -1145,8 +1153,11 @@ ItaniumCXXABI::EmitNullMemberPointer(const MemberPointerType *MPT) {
   if (MPT->isMemberDataPointer())
     return llvm::ConstantInt::get(CGM.PtrDiffTy, -1ULL, /*isSigned=*/true);
 
-  llvm::Constant *Zero = llvm::ConstantInt::get(CGM.PtrDiffTy, 0);
-  llvm::Constant *Values[2] = { Zero, Zero };
+  llvm::Type *PtrTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                          ? llvm::Type::getIntNTy(CGM.getLLVMContext(), 24)
+                          : CGM.PtrDiffTy;
+  llvm::Constant *Values[2] = { llvm::ConstantInt::get(PtrTy, 0),
+                                llvm::ConstantInt::get(CGM.PtrDiffTy, 0) };
   return llvm::ConstantStruct::getAnon(Values);
 }
 
@@ -1172,6 +1183,9 @@ llvm::Constant *ItaniumCXXABI::BuildMemberPointer(const CXXMethodDecl *MD,
 
   // Get the function pointer (or index if this is a virtual function).
   llvm::Constant *MemPtr[2];
+  llvm::Type *PtrTy = CGM.getTriple().getArch() == llvm::Triple::avm
+                          ? llvm::Type::getIntNTy(CGM.getLLVMContext(), 24)
+                          : CGM.PtrDiffTy;
   if (MD->isVirtual()) {
     uint64_t Index = CGM.getItaniumVTableContext().getMethodVTableIndex(MD);
     uint64_t VTableOffset;
@@ -1213,9 +1227,9 @@ llvm::Constant *ItaniumCXXABI::BuildMemberPointer(const CXXMethodDecl *MD,
           CGM.getCodeGenOpts().PointerAuth.CXXMemberFunctionPointers;
       if (Schema)
         MemPtr[0] = llvm::ConstantExpr::getPtrToInt(
-            getSignedVirtualMemberFunctionPointer(MD), CGM.PtrDiffTy);
+            getSignedVirtualMemberFunctionPointer(MD), PtrTy);
       else
-        MemPtr[0] = llvm::ConstantInt::get(CGM.PtrDiffTy, VTableOffset);
+        MemPtr[0] = llvm::ConstantInt::get(PtrTy, VTableOffset);
       // Don't set the LSB of adj to 1 if pointer authentication for member
       // function pointers is enabled.
       MemPtr[1] = llvm::ConstantInt::get(
@@ -1225,7 +1239,7 @@ llvm::Constant *ItaniumCXXABI::BuildMemberPointer(const CXXMethodDecl *MD,
       //   For a virtual function, [the pointer field] is 1 plus the
       //   virtual table offset (in bytes) of the function,
       //   represented as a ptrdiff_t.
-      MemPtr[0] = llvm::ConstantInt::get(CGM.PtrDiffTy, VTableOffset + 1);
+      MemPtr[0] = llvm::ConstantInt::get(PtrTy, VTableOffset + 1);
       MemPtr[1] = llvm::ConstantInt::get(CGM.PtrDiffTy,
                                          ThisAdjustment.getQuantity());
     }
@@ -1243,7 +1257,7 @@ llvm::Constant *ItaniumCXXABI::BuildMemberPointer(const CXXMethodDecl *MD,
     }
     llvm::Constant *addr = CGM.getMemberFunctionPointer(MD, Ty);
 
-    MemPtr[0] = llvm::ConstantExpr::getPtrToInt(addr, CGM.PtrDiffTy);
+    MemPtr[0] = llvm::ConstantExpr::getPtrToInt(addr, PtrTy);
     MemPtr[1] = llvm::ConstantInt::get(CGM.PtrDiffTy,
                                        (UseARMMethodPtrABI ? 2 : 1) *
                                        ThisAdjustment.getQuantity());

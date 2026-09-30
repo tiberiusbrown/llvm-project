@@ -228,8 +228,13 @@ public:
     MPI.Width = Target.getTypeWidth(PtrDiff);
     MPI.Align = Target.getTypeAlign(PtrDiff);
     MPI.HasPadding = false;
-    if (MPT->isMemberFunctionPointer())
-      MPI.Width *= 2;
+    if (MPT->isMemberFunctionPointer()) {
+      // AVM stores the 24-bit program address in a 24-bit field, while the
+      // this-adjustment remains a 16-bit ptrdiff_t.
+      MPI.Width += Target.getTriple().getArch() == llvm::Triple::avm
+                       ? Target.getFunctionPointerWidth()
+                       : MPI.Width;
+    }
     return MPI;
   }
 

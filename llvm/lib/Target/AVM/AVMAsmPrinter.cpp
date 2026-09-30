@@ -36,8 +36,26 @@ class AVMAsmPrinter final : public AsmPrinter {
     return false;
   }
 
+  static bool constantContainsProgramPointer(const Constant *C) {
+    if (typeContainsProgramPointer(C->getType()))
+      return true;
+    for (const Use &Operand : C->operands())
+      if (constantContainsProgramPointer(cast<Constant>(Operand)))
+        return true;
+    return false;
+  }
+
   void emitAVMConstant(const DataLayout &DL, const Constant *C) {
     Type *Ty = C->getType();
+    if (const auto *CE = dyn_cast<ConstantExpr>(C);
+        CE && CE->getOpcode() == Instruction::PtrToInt &&
+        Ty->isIntegerTy(24) &&
+        CE->getOperand(0)->getType()->isPointerTy() &&
+        CE->getOperand(0)->getType()->getPointerAddressSpace() == 1) {
+      // Member-function pointers store a program address in an i24 field.
+      emitAVMConstant(DL, cast<Constant>(CE->getOperand(0)));
+      return;
+    }
     if (const auto *PtrTy = dyn_cast<PointerType>(Ty);
         PtrTy && PtrTy->getAddressSpace() == 1) {
       if (isa<ConstantPointerNull, UndefValue>(C)) {
@@ -134,7 +152,7 @@ public:
 
   void emitGlobalVariable(const GlobalVariable *GV) override {
     if (!GV->hasInitializer() ||
-        !typeContainsProgramPointer(GV->getValueType())) {
+        !constantContainsProgramPointer(GV->getInitializer())) {
       AsmPrinter::emitGlobalVariable(GV);
       return;
     }
