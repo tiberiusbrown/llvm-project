@@ -46,6 +46,26 @@ define i16 @frame_pointer(i16 %x) #0 {
 
 declare void @take(ptr)
 
+define i16 @dynamic_frame(i16 %size, i16 %x) {
+; CHECK-LABEL: dynamic_frame:
+; CHECK:       push16 r3
+; CHECK:       getsp r3
+; CHECK:       getsp [[OLD:r[0-7]]]
+; CHECK:       sub [[OLD]], {{r[0-7]}}
+; CHECK:       setsp [[OLD]]
+; CHECK:       call take
+; CHECK:       setsp r3
+; CHECK:       pop16 r3
+; CHECK:       ret
+  %fixed = alloca i16, align 1
+  store volatile i16 %x, ptr %fixed, align 1
+  %a = alloca i8, i16 %size, align 1
+  store volatile i8 42, ptr %a, align 1
+  call void @take(ptr %a)
+  %v = load volatile i16, ptr %fixed, align 1
+  ret i16 %v
+}
+
 define void @frame_address() {
 ; CHECK-LABEL: frame_address:
 ; CHECK:       adjsp -8

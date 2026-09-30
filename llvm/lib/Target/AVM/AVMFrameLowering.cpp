@@ -48,8 +48,6 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
   assert(&MF.front() == &MBB && "AVM shrink wrapping is not implemented");
   MachineFrameInfo &MFI = MF.getFrameInfo();
-  if (MFI.hasVarSizedObjects())
-    report_fatal_error("dynamic AVM stack allocation is unsupported");
   uint64_t StackSize = MFI.getStackSize();
   if (StackSize > AVMFixedStackLimit) {
     MF.getFunction().getContext().diagnose(DiagnosticInfoResourceLimit(

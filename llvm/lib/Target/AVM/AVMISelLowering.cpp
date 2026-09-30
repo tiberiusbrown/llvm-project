@@ -593,9 +593,14 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::IS_FPCLASS, MVT::f32, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i16, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i32, Custom);
-  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Custom);
+  // The generic expansion reads SP, subtracts the runtime size, and writes SP
+  // back. AVM's GETSP/SETSP copies provide exactly these operations.
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF,
+                          ISD::CTTZ, ISD::CTTZ_ZERO_UNDEF})
+    setOperationAction(Opcode, MVT::i16, Expand);
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
@@ -1375,8 +1380,6 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerMUL_LOHI(Op, DAG);
   case ISD::ATOMIC_FENCE:
     return Op.getOperand(0);
-  case ISD::DYNAMIC_STACKALLOC:
-    report_fatal_error("dynamic AVM stack allocation is unsupported");
   case ISD::ADDRSPACECAST:
     report_fatal_error(
         "AVM does not support casts between address spaces 0 and 1");
