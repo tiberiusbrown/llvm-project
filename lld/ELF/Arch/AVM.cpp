@@ -273,6 +273,17 @@ static void initAVMRelaxation(Ctx &ctx) {
 
 static bool validateAVMRelaxation(Ctx &ctx, InputSection &sec) {
   RelaxAux &aux = *sec.relaxAux;
+  // The relocation scan omits references to undefined symbols after reporting
+  // them. A missing R_AVM_FAR24 in this case does not mean the input pair is
+  // malformed, and the section cannot be relaxed without its target anyway.
+  if (llvm::any_of(ctx.undefErrs, [&](const UndefinedDiag &undef) {
+        return !undef.isWarning && llvm::any_of(undef.locs, [&](const auto &loc) {
+                 return loc.sec == &sec;
+               });
+      })) {
+    aux.relaxInvalid = true;
+    return false;
+  }
   MutableArrayRef<Relocation> relocs = sec.relocs();
   ArrayRef<uint8_t> content = sec.content();
   SmallVector<std::pair<uint64_t, uint64_t>, 0> ranges;
@@ -334,7 +345,7 @@ static bool validateAVMRelaxation(Ctx &ctx, InputSection &sec) {
     aux.relocPairs[i] = farIndex;
   }
   llvm::sort(ranges);
-  for (size_t i = 1; i != ranges.size(); ++i)
+  for (size_t i = 1; i < ranges.size(); ++i)
     if (ranges[i].first < ranges[i - 1].second) {
       Err(ctx) << sec.getLocation(ranges[i].first)
                << ": overlapping AVM relaxation sequences";

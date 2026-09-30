@@ -20,6 +20,7 @@
 # TRUNCATED: truncated AVM relaxation sequence
 # MARKER-ARGS: R_AVM_RELAX must use symbol zero and addend zero
 # MISSING-PAIR: R_AVM_RELAX is not paired with exactly one R_AVM_FAR24
+# MISSING-PAIR-NOT: Stack dump:
 # WRONG-FIELD: R_AVM_FAR24 is at the wrong AVM relaxation field
 # WRONG-FIELD: R_AVM_RELAX is not paired with exactly one R_AVM_FAR24
 # DUPLICATE-PAIR: R_AVM_RELAX is not paired with exactly one R_AVM_FAR24
