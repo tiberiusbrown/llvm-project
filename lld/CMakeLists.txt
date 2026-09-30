@@ -170,6 +170,7 @@ endif()
 
 option(LLD_BUILD_TOOLS
   "Build the lld tools. If OFF, just generate build targets." ON)
+option(LLD_BUILD_ELF_ONLY "Build only the ELF linker driver." OFF)
 
 option(LLD_DEFAULT_LD_LLD_IS_MINGW
     "Use MinGW as the default backend for ld.lld. If OFF, ELF will be used." OFF)
@@ -200,11 +201,13 @@ if (LLVM_INCLUDE_TESTS)
 endif()
 
 add_subdirectory(docs)
-add_subdirectory(COFF)
 add_subdirectory(ELF)
-add_subdirectory(MachO)
-add_subdirectory(MinGW)
-add_subdirectory(wasm)
+if(NOT LLD_BUILD_ELF_ONLY)
+  add_subdirectory(COFF)
+  add_subdirectory(MachO)
+  add_subdirectory(MinGW)
+  add_subdirectory(wasm)
+endif()
 
 add_custom_target(lld-headers)
 set_target_properties(lld-headers PROPERTIES FOLDER "Misc")

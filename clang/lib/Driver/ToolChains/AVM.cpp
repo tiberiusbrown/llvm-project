@@ -120,7 +120,7 @@ void tools::avm::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   C.addCommand(std::make_unique<Command>(
       JA, *this, ResponseFileSupport::AtFileCurCP(),
-      Args.MakeArgString(TC.GetProgramPath("lld")), CmdArgs, Inputs, Output));
+      Args.MakeArgString(TC.GetProgramPath("avm-ld")), CmdArgs, Inputs, Output));
 
   if (Args.hasArg(options::OPT_avm_no_image))
     return;
@@ -137,6 +137,6 @@ void tools::avm::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   ImageArgs.push_back(Args.MakeArgString(Image));
   C.addCommand(std::make_unique<Command>(
       JA, *this, ResponseFileSupport::AtFileCurCP(),
-      Args.MakeArgString(TC.GetProgramPath("llvm-avm-image")), ImageArgs,
+      Args.MakeArgString(TC.GetProgramPath("avm-image")), ImageArgs,
       Inputs, Output));
 }

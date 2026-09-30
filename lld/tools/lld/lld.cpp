@@ -66,11 +66,13 @@ static unsigned inTestVerbosity() {
   return v;
 }
 
-LLD_HAS_DRIVER(coff)
 LLD_HAS_DRIVER(elf)
+#ifndef LLD_BUILD_ELF_ONLY
+LLD_HAS_DRIVER(coff)
 LLD_HAS_DRIVER(mingw)
 LLD_HAS_DRIVER(macho)
 LLD_HAS_DRIVER(wasm)
+#endif
 
 int lld_main(int argc, char **argv, const llvm::ToolContext &) {
   sys::Process::UseANSIEscapeCodes(true);
@@ -82,12 +84,17 @@ int lld_main(int argc, char **argv, const llvm::ToolContext &) {
   }
 
   ArrayRef<const char *> args(argv, argv + argc);
+#ifdef LLD_BUILD_ELF_ONLY
+  const DriverDef drivers[] = {{Gnu, &elf::link}};
+#else
+  const DriverDef drivers[] = LLD_ALL_DRIVERS;
+#endif
 
   // Not running in lit tests, just take the shortest codepath with global
   // exception handling and no memory cleanup on exit.
   if (!inTestVerbosity()) {
     int r =
-        lld::unsafeLldMain(args, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS,
+        lld::unsafeLldMain(args, llvm::outs(), llvm::errs(), drivers,
                            /*exitEarly=*/true);
     return r;
   }
@@ -100,7 +107,7 @@ int lld_main(int argc, char **argv, const llvm::ToolContext &) {
     inTestOutputDisabled = (i != 1);
 
     // Execute one iteration.
-    auto r = lldMain(args, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS);
+    auto r = lldMain(args, llvm::outs(), llvm::errs(), drivers);
     if (!r.canRunAgain)
       exitLld(r.retCode); // Exit now, can't re-execute again.
 
