@@ -283,6 +283,18 @@ a Fortran input.}]>;
 
 def Link_Group : OptionGroup<"<T/e/s/t/u group>">, DocName<"Linker options">,
                  DocBrief<[{Flags that are passed on to the linker}]>;
+def avm_startup_EQ : Joined<["--"], "avm-startup=">,
+  Visibility<[ClangOption]>, Group<Link_Group>,
+  HelpText<"Use an AVM startup object, or 'none'">;
+def avm_entry_EQ : Joined<["--"], "avm-entry=">,
+  Visibility<[ClangOption]>, Group<Link_Group>,
+  HelpText<"Set the AVM entry symbol">;
+def avm_image_EQ : Joined<["--"], "avm-image=">,
+  Visibility<[ClangOption]>, Group<Link_Group>,
+  HelpText<"Write the AVM development image to this path">;
+def avm_no_image : Flag<["--"], "avm-no-image">,
+  Visibility<[ClangOption]>, Group<Link_Group>,
+  HelpText<"Do not package an AVM development image">;
 def T_Group : OptionGroup<"<T group>">, Group<Link_Group>, DocFlatten;
 def u_Group : OptionGroup<"<u group>">, Group<Link_Group>, DocFlatten;
 

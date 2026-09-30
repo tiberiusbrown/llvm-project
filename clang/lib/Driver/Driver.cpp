@@ -10,6 +10,7 @@
 #include "ToolChains/AIX.h"
 #include "ToolChains/AMDGPU.h"
 #include "ToolChains/AMDGPUOpenMP.h"
+#include "ToolChains/AVM.h"
 #include "ToolChains/AVR.h"
 #include "ToolChains/Arch/RISCV.h"
 #include "ToolChains/BareMetal.h"
@@ -1607,6 +1608,22 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
 
   if (const Arg *A = Args.getLastArg(options::OPT_target))
     TargetTriple = A->getValue();
+  if (Name == "avm-clang" || Name == "avm-clang.exe") {
+    if (TargetTriple != "avm-unknown-arduboyfx")
+      Diag(diag::err_drv_invalid_value) << "--target" << TargetTriple;
+  }
+  if (llvm::Triple(TargetTriple).getArch() == llvm::Triple::avm) {
+    if (Args.hasArg(options::OPT_avm_image_EQ) &&
+        Args.hasArg(options::OPT_avm_no_image))
+      Diag(diag::err_drv_argument_not_allowed_with)
+          << "--avm-image" << "--avm-no-image";
+    if (Args.hasArg(options::OPT_c, options::OPT_S, options::OPT_E,
+                    options::OPT_fsyntax_only, options::OPT_M, options::OPT_MM) &&
+        Args.hasArg(options::OPT_avm_startup_EQ, options::OPT_avm_entry_EQ,
+                    options::OPT_avm_image_EQ, options::OPT_avm_no_image))
+      Diag(diag::err_drv_argument_not_allowed_with)
+          << "AVM link options" << "compile-only action";
+  }
   if (const Arg *A = Args.getLastArg(options::OPT_ccc_install_dir))
     Dir = Dir = A->getValue();
   for (const Arg *A : Args.filtered(options::OPT_B)) {
@@ -6135,6 +6152,8 @@ InputInfoList Driver::BuildJobsForActionNoCache(
 
 const char *Driver::getDefaultImageName() const {
   llvm::Triple Target(llvm::Triple::normalize(TargetTriple));
+  if (Target.getArch() == llvm::Triple::avm)
+    return "a.elf";
   return Target.isOSWindows() ? "a.exe" : "a.out";
 }
 
@@ -6965,6 +6984,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       // Of these targets, Hexagon is the only one that might have
       // an OS of Linux, in which case it got handled above already.
       switch (Target.getArch()) {
+      case llvm::Triple::avm:
+        TC = std::make_unique<toolchains::AVM>(*this, Target, Args);
+        break;
       case llvm::Triple::tce:
         TC = std::make_unique<toolchains::TCEToolChain>(*this, Target, Args);
         break;

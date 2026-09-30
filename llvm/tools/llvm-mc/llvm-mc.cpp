@@ -36,6 +36,7 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TimeProfiler.h"
@@ -391,6 +392,13 @@ int main(int argc, char **argv) {
 
   cl::HideUnrelatedOptions({&MCCategory, &getColorCategory()});
   cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
+
+  // The SDK installs a target-prefixed copy of llvm-mc. Keep an explicit
+  // -triple option authoritative, as with the unprefixed tool.
+  StringRef ProgramName = sys::path::filename(argv[0]);
+  ProgramName.consume_back_insensitive(".exe");
+  if (ProgramName == "avm-mc" && TripleName.empty())
+    TripleName = "avm-unknown-arduboyfx";
 
   if (TimeTrace)
     timeTraceProfilerInitialize(TimeTraceGranularity, argv[0]);

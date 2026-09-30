@@ -73,8 +73,9 @@ static ToolChain::RTTIMode CalculateRTTIMode(const ArgList &Args,
       return ToolChain::RM_Disabled;
   }
 
-  // -frtti is default, except for the PS4/PS5 and DriverKit.
-  bool NoRTTI = Triple.isPS() || Triple.isDriverKit();
+  // AVM's C++ runtime has no RTTI support.
+  bool NoRTTI = Triple.isPS() || Triple.isDriverKit() ||
+                Triple.getArch() == llvm::Triple::avm;
   return NoRTTI ? ToolChain::RM_Disabled : ToolChain::RM_Enabled;
 }
 
@@ -503,6 +504,8 @@ static const DriverSuffix *parseDriverSuffix(StringRef ProgName, size_t &Pos) {
 ParsedClangName
 ToolChain::getTargetAndModeFromProgramName(StringRef PN) {
   std::string ProgName = normalizeProgramName(PN);
+  if (ProgName == "avm-clang" || ProgName == "avm-clang.exe")
+    return ParsedClangName("avm-unknown-arduboyfx", "clang", nullptr, true);
   size_t SuffixPos;
   const DriverSuffix *DS = parseDriverSuffix(ProgName, SuffixPos);
   if (!DS)
