@@ -583,8 +583,14 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     return 2 * get(AVM::BSWAP16).getSize() + 3 * get(AVM::XOR_RR).getSize();
   case AVM::CMP32_PSEUDO:
     return get(AVM::CMP32).getSize();
-  case AVM::LOAD24_PSEUDO:
-    return get(AVM::GPLD16_POST).getSize() + get(AVM::DPLD8U).getSize();
+  case AVM::LOAD24_PSEUDO: {
+    Register Dest = MI.getOperand(0).getReg();
+    if (!IsUpper(MI.getOperand(1)) || !Dest.isPhysical())
+      return get(AVM::GPLD16_POST).getSize() + get(AVM::DPLD8U).getSize();
+    Register Hi = getRegisterInfo().getSubReg(Dest, AVM::sub_hi16);
+    return get(AVM::F7LD16_POST).getSize() +
+           get(IsUpperReg(Hi) ? AVM::LD8U : AVM::F5LD8U).getSize();
+  }
   case AVM::STORE24_PSEUDO:
     return get(AVM::GPST16_POST).getSize() + get(AVM::DPST8).getSize();
   case AVM::PLOAD8U_PSEUDO:
@@ -751,9 +757,16 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return 2 * Fixed(AVMCostKind::BSwap16) + 3 * Fixed(AVMCostKind::XorUpper);
   case AVM::CMP32_PSEUDO:
     return Fixed(AVMCostKind::Cmp32);
-  case AVM::LOAD24_PSEUDO:
-    return Fixed(AVMCostKind::Ld16PostIncGeneral) +
-           Fixed(AVMCostKind::Ld8UDisplaced);
+  case AVM::LOAD24_PSEUDO: {
+    Register Dest = MI.getOperand(0).getReg();
+    if (!IsUpper(MI.getOperand(1).getReg()) || !Dest.isPhysical())
+      return Fixed(AVMCostKind::Ld16PostIncGeneral) +
+             Fixed(AVMCostKind::Ld8UDisplaced);
+    Register Hi = getRegisterInfo().getSubReg(Dest, AVM::sub_hi16);
+    return Fixed(AVMCostKind::Ld16PostIncDense) +
+           Fixed(IsUpper(Hi) ? AVMCostKind::Ld8UUpper
+                             : AVMCostKind::Ld8UDense);
+  }
   case AVM::STORE24_PSEUDO:
     return Fixed(AVMCostKind::St16PostIncGeneral) +
            Fixed(AVMCostKind::St8Displaced);

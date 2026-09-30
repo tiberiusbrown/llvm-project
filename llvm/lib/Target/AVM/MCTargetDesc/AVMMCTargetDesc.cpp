@@ -8,6 +8,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -16,6 +17,77 @@
 #include "llvm/Support/Compiler.h"
 
 using namespace llvm;
+
+void llvm::AVM_MC::canonicalizeMemoryInstruction(MCInst &Inst) {
+  // Both parsed assembly and lowered machine instructions pass through here.
+  // An explicit zero displacement need not pay for the displaced encoding.
+  auto IsUpper = [](unsigned Reg) {
+    return Reg == AVM::R4 || Reg == AVM::R5 || Reg == AVM::R6 ||
+           Reg == AVM::R7;
+  };
+  auto IsLow = [](unsigned Reg) {
+    return Reg == AVM::R0 || Reg == AVM::R1 || Reg == AVM::R2 ||
+           Reg == AVM::R3;
+  };
+
+  unsigned Opcode = Inst.getOpcode();
+  bool IsLoad = Opcode == AVM::DPLD8U || Opcode == AVM::DPLD16;
+  bool IsStore = Opcode == AVM::DPST8 || Opcode == AVM::DPST16;
+  if (IsLoad || IsStore) {
+    unsigned AddrIndex = IsLoad ? 1 : 0;
+    unsigned DispIndex = IsLoad ? 2 : 1;
+    unsigned DataIndex = IsLoad ? 0 : 2;
+    if (Inst.getNumOperands() != 3 || !Inst.getOperand(AddrIndex).isReg() ||
+        !Inst.getOperand(DataIndex).isReg() ||
+        !Inst.getOperand(DispIndex).isImm() ||
+        Inst.getOperand(DispIndex).getImm() != 0 ||
+        !IsUpper(Inst.getOperand(AddrIndex).getReg()))
+      return;
+
+    unsigned DataReg = Inst.getOperand(DataIndex).getReg();
+    if (!IsUpper(DataReg) && !IsLow(DataReg))
+      return;
+    switch (Opcode) {
+    case AVM::DPLD8U:
+      Inst.setOpcode(IsUpper(DataReg) ? AVM::LD8U : AVM::F5LD8U);
+      break;
+    case AVM::DPLD16:
+      Inst.setOpcode(IsUpper(DataReg) ? AVM::LD16 : AVM::F5LD16);
+      break;
+    case AVM::DPST8:
+      Inst.setOpcode(IsUpper(DataReg) ? AVM::ST8 : AVM::F3ST8);
+      break;
+    case AVM::DPST16:
+      Inst.setOpcode(IsUpper(DataReg) ? AVM::ST16 : AVM::F5ST16);
+      break;
+    }
+    Inst.erase(Inst.begin() + DispIndex);
+    return;
+  }
+
+  bool IsPostLoad = Opcode == AVM::GPLD8U_POST ||
+                    Opcode == AVM::GPLD16_POST;
+  bool IsPostStore = Opcode == AVM::GPST8_POST ||
+                     Opcode == AVM::GPST16_POST;
+  if ((IsPostLoad || IsPostStore) && Inst.getNumOperands() == 2 &&
+      Inst.getOperand(IsPostLoad ? 1 : 0).isReg() &&
+      IsUpper(Inst.getOperand(IsPostLoad ? 1 : 0).getReg())) {
+    switch (Opcode) {
+    case AVM::GPLD8U_POST:
+      Inst.setOpcode(AVM::F7LD8U_POST);
+      break;
+    case AVM::GPLD16_POST:
+      Inst.setOpcode(AVM::F7LD16_POST);
+      break;
+    case AVM::GPST8_POST:
+      Inst.setOpcode(AVM::F6ST8_POST);
+      break;
+    case AVM::GPST16_POST:
+      Inst.setOpcode(AVM::F7ST16_POST);
+      break;
+    }
+  }
+}
 
 #define GET_INSTRINFO_MC_DESC
 #define GET_INSTRINFO_MC_HELPERS

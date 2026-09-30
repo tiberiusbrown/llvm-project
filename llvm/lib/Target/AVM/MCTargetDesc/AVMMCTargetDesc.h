@@ -9,6 +9,7 @@ class MCAsmBackend;
 class MCContext;
 class MCCodeEmitter;
 class MCInstrInfo;
+class MCInst;
 class MCObjectTargetWriter;
 class MCRegisterInfo;
 class MCSubtargetInfo;
@@ -21,6 +22,10 @@ MCAsmBackend *createAVMAsmBackend(const Target &, const MCSubtargetInfo &,
 MCCodeEmitter *createAVMMCCodeEmitter(const MCInstrInfo &, MCContext &);
 std::unique_ptr<MCObjectTargetWriter>
 createAVMELFObjectWriter(uint8_t OSABI);
+
+namespace AVM_MC {
+void canonicalizeMemoryInstruction(MCInst &Inst);
+}
 } // namespace llvm
 
 #define GET_REGINFO_ENUM

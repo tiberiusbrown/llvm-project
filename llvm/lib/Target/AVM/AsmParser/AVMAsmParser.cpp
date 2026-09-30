@@ -1588,6 +1588,7 @@ public:
                                MCStreamer &Out, uint64_t &, bool) override {
     if (!Pending)
       return error(Loc, "internal AVM parser error: no pending instruction");
+    AVM_MC::canonicalizeMemoryInstruction(*Pending);
     Out.emitInstruction(*Pending, getSTI());
     Pending.reset();
     return false;

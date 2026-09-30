@@ -171,6 +171,7 @@ public:
     AVMMCInstLower Lowering(OutContext, *this);
     MCInst OutMI;
     Lowering.lower(MI, OutMI);
+    AVM_MC::canonicalizeMemoryInstruction(OutMI);
     EmitToStreamer(*OutStreamer, OutMI);
   }
 

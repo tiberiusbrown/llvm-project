@@ -655,13 +655,23 @@ public:
           Register AddrIn = MI.getOperand(2).getReg();
           Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
           Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::GPLD16_POST), Lo)
+          unsigned WordOpcode =
+              IsUpper(Addr) ? AVM::F7LD16_POST : AVM::GPLD16_POST;
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(WordOpcode), Lo)
               .addDef(Addr)
-              .addReg(AddrIn);
-          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::DPLD8U), Hi)
-              .addReg(Addr)
-              .addImm(0)
+              .addReg(AddrIn)
               .cloneMemRefs(MI);
+          if (IsUpper(Addr)) {
+            unsigned ByteOpcode = IsUpper(Hi) ? AVM::LD8U : AVM::F5LD8U;
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(ByteOpcode), Hi)
+                .addReg(Addr)
+                .cloneMemRefs(MI);
+          } else {
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::DPLD8U), Hi)
+                .addReg(Addr)
+                .addImm(0)
+                .cloneMemRefs(MI);
+          }
           MI.eraseFromParent();
           Changed = true;
           continue;

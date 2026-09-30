@@ -31,6 +31,10 @@ body: |
     ; CHECK-NEXT: $r0 = DPLD16 $r0, 0
     ; CHECK-NEXT: early-clobber $r6, $r0 = GPLD16_POST $r0
     ; CHECK-NEXT: $r7 = DPLD8U $r0, 0
+    ; CHECK-NEXT: early-clobber $r6, $r4 = F7LD16_POST $r4
+    ; CHECK-NEXT: $r7 = LD8U $r4
+    ; CHECK-NEXT: early-clobber $r0, $r4 = F7LD16_POST $r4
+    ; CHECK-NEXT: $r1 = F5LD8U $r4
     ; CHECK-NEXT: $r0 = GPST16_POST $r0, $r6
     ; CHECK-NEXT: DPST8 $r0, 0, $r7
     ; CHECK-NEXT: early-clobber $r5, $r4 = F7LD8U_POST $r4
@@ -85,6 +89,8 @@ body: |
     STORE16_DISP_PSEUDO $r0, -5, $r5
     $r0 = LOAD16_DISP_PSEUDO $r0, 0
     $r6r7, $r0 = LOAD24_PSEUDO $r0
+    $r6r7, $r4 = LOAD24_PSEUDO $r4
+    $r0r1, $r4 = LOAD24_PSEUDO $r4
     $r0 = STORE24_PSEUDO $r0, $r6r7
     $r5, $r4 = LOAD8U_POST_PSEUDO $r4
     $r5, $r0 = LOAD8U_POST_PSEUDO $r0

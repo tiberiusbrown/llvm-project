@@ -32,8 +32,8 @@ define i16 @frame_pointer(i16 %x) #0 {
 ; CHECK:       push16 r3
 ; CHECK-NEXT:  adjsp -4
 ; CHECK-NEXT:  getsp r3
-; CHECK:       st16 [{{r[0-7]}}+0], r4
-; CHECK:       ld16 r4, [r4+0]
+; CHECK:       st16 [{{r[0-7]}}], r4
+; CHECK:       ld16 r4, [r4]
 ; CHECK:       setsp r3
 ; CHECK-NEXT:  adjsp 4
 ; CHECK-NEXT:  pop16 r3
@@ -66,7 +66,7 @@ define i16 @fp_incoming(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e,
 ; CHECK-NEXT:  adjsp -2
 ; CHECK-NEXT:  getsp r3
 ; CHECK:       addi.s8 r4, 9
-; CHECK-NEXT:  ld16 r4, [r4+0]
+; CHECK-NEXT:  ld16 r4, [r4]
 ; CHECK:       setsp r3
 ; CHECK-NEXT:  adjsp 2
 ; CHECK-NEXT:  pop16 r3
@@ -75,10 +75,10 @@ define i16 @fp_incoming(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e,
 
 define ptr addrspace(1) @frame_pointer24(ptr addrspace(1) %x) #0 {
 ; CHECK-LABEL: frame_pointer24:
-; CHECK:       st16 [{{r[0-7]}}+0], {{r[0-7]}}
+; CHECK:       st16 [{{r[0-7]}}], {{r[0-7]}}
 ; CHECK-NEXT:  st8 [{{r[0-7]}}+2], {{r[0-7]}}
 ; CHECK:       ld8u {{r[0-7]}}, [{{r[0-7]}}+2]
-; CHECK-NEXT:  ld16 {{r[0-7]}}, [{{r[0-7]}}+0]
+; CHECK-NEXT:  ld16 {{r[0-7]}}, [{{r[0-7]}}]
   %slot = alloca ptr addrspace(1), align 1
   store volatile ptr addrspace(1) %x, ptr %slot, align 1
   %value = load volatile ptr addrspace(1), ptr %slot, align 1

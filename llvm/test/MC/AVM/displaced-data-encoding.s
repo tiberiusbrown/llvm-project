@@ -9,7 +9,7 @@ st8 [r5+0], r3
 st16 [r2-1], r4
 st16 [r0+223], r7
 
-# Ordinary lower pointers and explicit zero displacement both select ED.
+# Zero displacement selects a shorter form when the address is an upper register.
 ld8u r4, [r5]
 ld8u r0, [r5]
 ld8u r0, [r1]
@@ -26,11 +26,11 @@ st8 [c0+1], r0
 st8 [c0 + 1], r0
 
 # CHECK: encoding: [0xed,0x00,0x00]
-# CHECK: encoding: [0xed,0x6a,0x20]
+# CHECK: encoding: [0xf5,0x37]
 # CHECK: encoding: [0xed,0x94,0x1f]
 # CHECK: encoding: [0xed,0xfe,0xff]
 # CHECK: encoding: [0xee,0x0e,0x00]
-# CHECK: encoding: [0xee,0x6a,0x20]
+# CHECK: encoding: [0xf3,0x07]
 # CHECK: encoding: [0xee,0x94,0x1f]
 # CHECK: encoding: [0xee,0xf0,0xff]
 # CHECK: encoding: [0x41]
@@ -42,6 +42,6 @@ st8 [c0 + 1], r0
 # CHECK: encoding: [0xed,0xdc,0x1f]
 # CHECK: encoding: [0xee,0x88,0x27]
 # CHECK: encoding: [0xee,0xfe,0x00]
-# CHECK: encoding: [0xed,0x8a,0x20]
+# CHECK: encoding: [0x41]
 # CHECK: encoding: [0xee,0x08,0x21]
 # CHECK: encoding: [0xee,0x08,0x21]
