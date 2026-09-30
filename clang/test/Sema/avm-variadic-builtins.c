@@ -19,5 +19,5 @@ void valid(char *dst, uint16_t size, const char *ram_format,
 void invalid(char *dst, uint16_t size, const char *format,
              struct aggregate value, _Complex float complex_value) {
   __avm_snprintf(dst, size, format, value); // expected-error {{argument 4 to AVM variadic formatting builtin has unsupported type 'struct aggregate'}}
-  __avm_draw_textf(0, 8, format, complex_value); // expected-error {{argument 4 to AVM variadic formatting builtin has unsupported type '_Complex .*'}}
+  __avm_draw_textf(0, 8, format, complex_value); // expected-error {{argument 4 to AVM variadic formatting builtin has unsupported type '_Complex float'}}
 }

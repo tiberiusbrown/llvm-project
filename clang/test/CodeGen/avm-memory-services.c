@@ -70,13 +70,13 @@ void *(*avm_memmove_address)(void *, const void *, unsigned int) =
 // IR: @memmove_address = {{.*}}global ptr addrspace(1) @memmove
 // IR: @avm_memmove_address = {{.*}}global ptr addrspace(1) @__avm_memmove
 // IR-LABEL: define{{.*}} ptr @ordinary_fill
-// IR: call{{.*}} void @llvm.memset.p0.i16
+// IR: call{{.*}} ptr @memset
 // IR-LABEL: define{{.*}} ptr @builtin_fill
 // IR: call{{.*}} void @llvm.memset.p0.i16
 // IR-LABEL: define{{.*}} ptr @target_fill
 // IR: call{{.*}} ptr @llvm.avm.memset
 // IR-LABEL: define{{.*}} ptr @ordinary_move
-// IR: call{{.*}} void @llvm.memmove.p0.p0.i16
+// IR: call{{.*}} ptr @memmove
 // IR-LABEL: define{{.*}} ptr @builtin_move
 // IR: call{{.*}} void @llvm.memmove.p0.p0.i16
 // IR-LABEL: define{{.*}} ptr @target_move
@@ -85,32 +85,28 @@ void *(*avm_memmove_address)(void *, const void *, unsigned int) =
 // IR: call{{.*}} ptr @llvm.avm.memcpy
 
 // ASM-LABEL: ordinary_fill:
-// ASM:       sys memset
-// ASM-NEXT:  pop16 r4
-// ASM-NEXT:  ret
+// ASM:       jmp memset
 // ASM-LABEL: builtin_fill:
 // ASM:       sys memset
-// ASM-NEXT:  pop16 r4
+// ASM-NEXT:  mov r4, r7
 // ASM-NEXT:  ret
 // ASM-LABEL: target_fill:
 // ASM:       sys memset
-// ASM-NEXT:  pop16 r4
+// ASM-NEXT:  mov r4, r7
 // ASM-NEXT:  ret
 // ASM-LABEL: ordinary_move:
-// ASM:       sys memmove
-// ASM-NEXT:  pop16 r4
-// ASM-NEXT:  ret
+// ASM:       jmp memmove
 // ASM-LABEL: builtin_move:
 // ASM:       sys memmove
-// ASM-NEXT:  pop16 r4
+// ASM-NEXT:  mov r4, r7
 // ASM-NEXT:  ret
 // ASM-LABEL: target_move:
 // ASM:       sys memmove
-// ASM-NEXT:  pop16 r4
+// ASM-NEXT:  mov r4, r7
 // ASM-NEXT:  ret
 // ASM-LABEL: target_copy:
 // ASM:       sys memcpy
-// ASM-NEXT:  pop16 r4
+// ASM-NEXT:  mov r4, r7
 // ASM-NEXT:  ret
 // ASM-LABEL: small_fill:
 // ASM-NOT:   sys memset

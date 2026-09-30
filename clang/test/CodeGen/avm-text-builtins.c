@@ -33,17 +33,17 @@ uint32_t textfv_program(int x, int y, progmem_char_ptr format,
 // IR: @__avm_text_state = external global [7 x i8], align 1
 // IR: @__avm_framebuffer = external global [1024 x i8], align 1
 // IR-LABEL: define{{.*}} void @set_font
-// IR: call void @llvm.avm.set.text.font(ptr addrspace(1) {{.*}}, ptr @__avm_text_state)
+// IR: call addrspace(1) void @llvm.avm.set.text.font(ptr addrspace(1) {{.*}}, ptr @__avm_text_state)
 // IR-LABEL: define{{.*}} void @set_mode
-// IR: call void @llvm.avm.set.text.mode(i8 {{.*}}, ptr @__avm_text_state)
+// IR: call addrspace(1) void @llvm.avm.set.text.mode(i8 {{.*}}, ptr @__avm_text_state)
 // IR-LABEL: define{{.*}} i32 @text_ram
-// IR: call i32 @llvm.avm.draw.text(i16 {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
+// IR: call addrspace(1) i32 @llvm.avm.draw.text(i16 {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
 // IR-LABEL: define{{.*}} i32 @text_program
-// IR: call i32 @llvm.avm.draw.text.p(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
+// IR: call addrspace(1) i32 @llvm.avm.draw.text.p(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
 // IR-LABEL: define{{.*}} i32 @textfv_ram
-// IR: call i32 @llvm.avm.draw.textfv(i16 {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
+// IR: call addrspace(1) i32 @llvm.avm.draw.textfv(i16 {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
 // IR-LABEL: define{{.*}} i32 @textfv_program
-// IR: call i32 @llvm.avm.draw.textfv.p(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
+// IR: call addrspace(1) i32 @llvm.avm.draw.textfv.p(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}}, ptr @__avm_text_state, ptr @__avm_framebuffer)
 
 // ASM-LABEL: set_font:
 // ASM: sys set_text_font

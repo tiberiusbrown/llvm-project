@@ -37,7 +37,7 @@ define i32 @draw_ram(i16 %x, i16 %y) {
 ; ASM-LABEL: draw_ram:
 ; ASM:       sys draw_text
 ; MIR-LABEL: name: draw_ram
-; MIR:       [[CURSOR:%[0-9]+]]:q2only = SYS_DRAW_TEXT_PSEUDO
+; MIR:       [[CURSOR:%[0-9]+]]:gpr32 = SYS_DRAW_TEXT_PSEUDO
 ; MIR-SAME:  :: (load unknown-size from @ram_text, align 1), (load (s56) from @__avm_text_state, align 1), (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1), (load unknown-size, align 1, addrspace 1)
   %cursor = call i32 @llvm.avm.draw.text(
       i16 %x, i16 %y, ptr @ram_text, ptr @__avm_text_state,
@@ -50,7 +50,7 @@ define i32 @draw_program(i16 %x, i16 %y) {
 ; ASM:       sys draw_text_p
 ; MIR-LABEL: name: draw_program
 ; MIR-NOT:   PROG_CANON_PSEUDO
-; MIR:       [[CURSOR:%[0-9]+]]:q2only = SYS_DRAW_TEXT_P_PSEUDO
+; MIR:       [[CURSOR:%[0-9]+]]:gpr32 = SYS_DRAW_TEXT_P_PSEUDO
   %cursor = call i32 @llvm.avm.draw.text.p(
       i16 %x, i16 %y, ptr addrspace(1) @program_text,
       ptr @__avm_text_state, ptr @__avm_framebuffer)
@@ -61,7 +61,7 @@ define i32 @drawfv_ram(i16 %x, i16 %y, ptr %ap) {
 ; ASM-LABEL: drawfv_ram:
 ; ASM:       sys draw_textfv
 ; MIR-LABEL: name: drawfv_ram
-; MIR:       [[CURSOR:%[0-9]+]]:q2only = SYS_DRAW_TEXTFV_PSEUDO
+; MIR:       [[CURSOR:%[0-9]+]]:gpr32 = SYS_DRAW_TEXTFV_PSEUDO
   %cursor = call i32 @llvm.avm.draw.textfv(
       i16 %x, i16 %y, ptr @ram_format, ptr %ap,
       ptr @__avm_text_state, ptr @__avm_framebuffer)
@@ -73,7 +73,7 @@ define i32 @drawfv_program(i16 %x, i16 %y, ptr %ap) {
 ; ASM:       sys draw_textfv_p
 ; MIR-LABEL: name: drawfv_program
 ; MIR-NOT:   PROG_CANON_PSEUDO
-; MIR:       [[CURSOR:%[0-9]+]]:q2only = SYS_DRAW_TEXTFV_P_PSEUDO
+; MIR:       [[CURSOR:%[0-9]+]]:gpr32 = SYS_DRAW_TEXTFV_P_PSEUDO
   %cursor = call i32 @llvm.avm.draw.textfv.p(
       i16 %x, i16 %y, ptr addrspace(1) @program_format, ptr %ap,
       ptr @__avm_text_state, ptr @__avm_framebuffer)

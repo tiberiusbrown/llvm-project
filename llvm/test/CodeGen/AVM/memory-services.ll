@@ -40,11 +40,11 @@ define ptr @target_memmove(ptr %dst, ptr %src, i16 %size) {
 }
 
 ; MIR-LABEL: name: target_memcpy
-; MIR:       [[MEMCPY:%[0-9]+]]:gpr16 = SYS_MEMCPY_PSEUDO
+; MIR:       [[MEMCPY:%[0-9]+]]:r4only = SYS_MEMCPY_PSEUDO
 ; MIR-LABEL: name: target_memset
-; MIR:       [[MEMSET:%[0-9]+]]:gpr16 = SYS_MEMSET_PSEUDO
+; MIR:       [[MEMSET:%[0-9]+]]:r4only = SYS_MEMSET_PSEUDO
 ; MIR-LABEL: name: target_memmove
-; MIR:       [[MEMMOVE:%[0-9]+]]:gpr16 = SYS_MEMMOVE_PSEUDO
+; MIR:       [[MEMMOVE:%[0-9]+]]:r4only = SYS_MEMMOVE_PSEUDO
 
 define i16 @memmove_inputs_remain_live(ptr %dst, ptr %src, i16 %size) {
 ; O0-LABEL: memmove_inputs_remain_live:

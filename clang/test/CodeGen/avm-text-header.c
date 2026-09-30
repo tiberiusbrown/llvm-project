@@ -1,6 +1,6 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 -S -emit-llvm \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -ffreestanding -O2 -S -emit-llvm \
 // RUN:   %s -o - | FileCheck %s --check-prefix=IR
-// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 -S \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -ffreestanding -O2 -S \
 // RUN:   %s -o - | FileCheck %s --check-prefix=ASM
 
 #include <avm/text.h>
@@ -30,15 +30,15 @@ avm_text_cursor_t header_vdraw_program(int16_t x, int16_t y,
 
 // Four-byte aggregates are coerced to i32 by the AVM C ABI.
 // IR-LABEL: define{{.*}} i32 @header_draw_ram
-// IR: call void @llvm.avm.set.text.font
-// IR: call void @llvm.avm.set.text.mode
-// IR: call i32 @llvm.avm.draw.text
+// IR: call addrspace(1) void @llvm.avm.set.text.font
+// IR: call addrspace(1) void @llvm.avm.set.text.mode
+// IR: call addrspace(1) i32 @llvm.avm.draw.text
 // IR-LABEL: define{{.*}} i32 @header_draw_program
-// IR: call i32 @llvm.avm.draw.text.p
+// IR: call addrspace(1) i32 @llvm.avm.draw.text.p
 // IR-LABEL: define{{.*}} i32 @header_vdraw
-// IR: call i32 @llvm.avm.draw.textfv
+// IR: call addrspace(1) i32 @llvm.avm.draw.textfv
 // IR-LABEL: define{{.*}} i32 @header_vdraw_program
-// IR: call i32 @llvm.avm.draw.textfv.p
+// IR: call addrspace(1) i32 @llvm.avm.draw.textfv.p
 
 // ASM-LABEL: header_draw_ram:
 // ASM: sys set_text_font

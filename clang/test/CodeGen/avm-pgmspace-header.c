@@ -1,6 +1,6 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 -S -emit-llvm \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -ffreestanding -O2 -S -emit-llvm \
 // RUN:   %s -o - | FileCheck %s --check-prefix=IR
-// RUN: %clang --target=avm-unknown-arduboyfx -ffreestanding -O2 -S \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -ffreestanding -O2 -S \
 // RUN:   %s -o - | FileCheck %s --check-prefix=ASM
 
 #include <avm/pgmspace.h>

@@ -17,26 +17,24 @@ static const unsigned char AS1 sprite[] = {
 // SHAPE-LABEL: sprite_rows:
 // SHAPE-NOT:   stsp
 // SHAPE-NOT:   ldsp
-// SHAPE:       ldm16 [[OFFY:r[0-7]]], [offy]
-// SHAPE:       ldm16 [[OFFX:r[0-7]]], [offx]
-// SHAPE:       ldi16 r6, %lo16(sprite)
-// SHAPE-NEXT:  ldi8 r7, %hi8(sprite)
-// SHAPE:       [[ROW:LBB[0-9]+_[0-9]+]]:
-// SHAPE-NOT:   ldm16
-// SHAPE:       mov r5,
-// SHAPE-NOT:   mov r5,
-// SHAPE:       mov r4, [[OFFX]]
+// SHAPE:       ldm16 r5, [offy]
+// SHAPE-NEXT:  ldm16 r4, [offx]
+// SHAPE-NEXT:  ldi16 r2, %lo16(sprite)
+// SHAPE-NEXT:  ldi8 r3, %hi8(sprite)
+// SHAPE-NEXT:  xor r6, r6
 // SHAPE-NEXT:  sys draw_sprite_overwrite
 // SHAPE-COUNT-15: addi.s8 r4, 8
 // SHAPE-NEXT:  sys draw_sprite_overwrite
-// SHAPE-NOT:   mov r4,
-// SHAPE-NOT:   sys draw_sprite_overwrite
-// SHAPE:       brne [[ROW]]
+// SHAPE-NEXT:  addi.s8 r4, -120
+// SHAPE-NEXT:  addi.s8 r5, 8
+// SHAPE-NEXT:  sys draw_sprite_overwrite
+// SHAPE-NOT:   stsp
+// SHAPE-NOT:   ldsp
 // SHAPE:       ret
 //
 // COUNT-LABEL: sprite_rows:
 // COUNT-COUNT-2: ldm16
-// COUNT-COUNT-16: sys draw_sprite_overwrite
+// COUNT-COUNT-128: sys draw_sprite_overwrite
 // COUNT: ret
 void sprite_rows(void) {
   for (short y = 0; y != 64; y += 8)

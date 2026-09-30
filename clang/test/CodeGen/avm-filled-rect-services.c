@@ -13,16 +13,16 @@ void filled_rect_services(int x, int y, unsigned char width,
 //
 // CHECK-LABEL: define{{.*}} void @filled_rect_services
 // CHECK: call{{.*}} void @llvm.avm.draw.filled.rect.white(
-// CHECK-SAME: i16 {{.*}},
-// CHECK-SAME: i16 {{.*}},
-// CHECK-SAME: i8 {{.*}},
-// CHECK-SAME: i8 {{.*}},
+// CHECK-SAME: i16 {{[^,]*}},
+// CHECK-SAME: i16 {{[^,]*}},
+// CHECK-SAME: i8 {{[^,]*}},
+// CHECK-SAME: i8 {{[^,]*}},
 // CHECK-SAME: ptr @__avm_framebuffer)
 // CHECK: call{{.*}} void @llvm.avm.draw.filled.rect.black(
-// CHECK-SAME: i16 {{.*}},
-// CHECK-SAME: i16 {{.*}},
-// CHECK-SAME: i8 {{.*}},
-// CHECK-SAME: i8 {{.*}},
+// CHECK-SAME: i16 {{[^,]*}},
+// CHECK-SAME: i16 {{[^,]*}},
+// CHECK-SAME: i8 {{[^,]*}},
+// CHECK-SAME: i8 {{[^,]*}},
 // CHECK-SAME: ptr @__avm_framebuffer)
 // CHECK: declare void @llvm.avm.draw.filled.rect.white(i16, i16, i8, i8, ptr
 // CHECK: declare void @llvm.avm.draw.filled.rect.black(i16, i16, i8, i8, ptr

@@ -27,9 +27,10 @@ body: |
     ; CHECK: [[R4:%[0-9]+]]:r4only = COPY [[VALUE]]
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[R4]]
     ; CHECK-NEXT: [[Y:%[0-9]+]]:r5only = COPY %1
-    ; CHECK-NEXT: [[SPRITE:%[0-9]+]]:q3only = COPY %2
-    ; CHECK-NEXT: [[FRAME:%[0-9]+]]:r0only = COPY %3
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[R4]], [[Y]], [[SPRITE]], [[FRAME]]    %0:gpr16 = IMPLICIT_DEF
+    ; CHECK-NEXT: [[SPRITE:%[0-9]+]]:q1only = COPY %2
+    ; CHECK-NEXT: [[FRAME:%[0-9]+]]:r6only = COPY %3
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO [[R4]], [[Y]], [[SPRITE]], [[FRAME]]
+    %0:gpr16 = IMPLICIT_DEF
     %1:gpr16 = IMPLICIT_DEF
     %2:progptrgpr32 = IMPLICIT_DEF
     %3:gpr16 = IMPLICIT_DEF
@@ -37,19 +38,17 @@ body: |
     SYS_DRAW_SPRITE_OVERWRITE_PSEUDO %0, %1, %2, %3
 
     ; A tied q2 result feeding another q2 service remains in fixed carriers.
-    ; CHECK: [[FLOAT:%[0-9]+]]:gpr32 = IMPLICIT_DEF
-    ; CHECK-NEXT: [[Q2IN:%[0-9]+]]:q2only = COPY [[FLOAT]]
-    ; CHECK-NEXT: [[Q2RESULT:%[0-9]+]]:q2only = SYS_SINF_PSEUDO [[Q2IN]]
+    ; CHECK: [[FLOAT:%[0-9]+]]:q2only = IMPLICIT_DEF
+    ; CHECK-NEXT: [[Q2RESULT:%[0-9]+]]:q2only = SYS_SINF_PSEUDO [[FLOAT]]
     ; CHECK-NEXT: [[Q2COSIN:%[0-9]+]]:q2only = COPY [[Q2RESULT]]
     ; CHECK-NEXT: {{%[0-9]+}}:q2only = SYS_COSF_PSEUDO [[Q2COSIN]]
     %4:gpr32 = IMPLICIT_DEF
     %5:gpr32 = SYS_SINF_PSEUDO %4
     %6:gpr32 = SYS_COSF_PSEUDO %5
 
-    ; A single non-loop service use gets a short local carrier.
-    ; CHECK: [[SINGLE:%[0-9]+]]:gpr16 = IMPLICIT_DEF
-    ; CHECK-NEXT: [[SINGLE_R4:%[0-9]+]]:r4only = COPY [[SINGLE]]
-    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[SINGLE_R4]]
+    ; A single non-loop service use constrains its definition directly.
+    ; CHECK: [[SINGLE:%[0-9]+]]:r4only = IMPLICIT_DEF
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[SINGLE]]
     %7:gpr16 = IMPLICIT_DEF
     SYS_DEBUG_PUTC_PSEUDO %7
     RET_PSEUDO implicit-def dead $sp, implicit $sp
@@ -68,7 +67,7 @@ body: |
     ; preheader.
     ; CHECK-LABEL: name: loop_invariant
     ; CHECK:      bb.0:
-    ; CHECK:      [[LOOP_PTR:%[0-9]+]]:q3only = COPY %0
+    ; CHECK:      [[LOOP_PTR:%[0-9]+]]:q1only = COPY %0
     ; CHECK:      bb.1:
     ; CHECK:      SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, [[LOOP_PTR]], {{%[0-9]+}}
     JMP_PSEUDO %bb.1
@@ -176,8 +175,7 @@ body: |
     ; CHECK-LABEL: name: dead_tied_result
     ; CHECK:      [[LHS:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: [[RHS:%[0-9]+]]:r5only = COPY %1
-    ; CHECK-NEXT: [[SIZE:%[0-9]+]]:r6only = COPY %2
-    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MEMCMP_PSEUDO [[LHS]], [[RHS]], [[SIZE]]
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_MEMCMP_PSEUDO [[LHS]], [[RHS]], %2
     ; CHECK-NEXT: RET_PSEUDO
     %0:gpr16 = IMPLICIT_DEF
     %1:gpr16 = IMPLICIT_DEF
@@ -190,13 +188,12 @@ name: local_output
 tracksRegLiveness: true
 body: |
   bb.0:
-    ; An untied result is produced in its fixed ABI register, copied to a
-    ; general value, and then given a new local input carrier at its next SYS.
+    ; An untied result is produced in its fixed ABI register. Its copy serves
+    ; directly as the next service input.
     ; CHECK-LABEL: name: local_output
     ; CHECK:      [[FIXED_RESULT:%[0-9]+]]:r4only = SYS_MILLIS_PSEUDO
-    ; CHECK-NEXT: [[GENERAL:%[0-9]+]]:gpr16 = nomerge COPY [[FIXED_RESULT]]
-    ; CHECK-NEXT: [[ARG:%[0-9]+]]:r4only = COPY [[GENERAL]]
-    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[ARG]]
+    ; CHECK-NEXT: [[GENERAL:%[0-9]+]]:r4only = nomerge COPY [[FIXED_RESULT]]
+    ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[GENERAL]]
     %0:gpr16 = SYS_MILLIS_PSEUDO
     SYS_DEBUG_PUTC_PSEUDO %0
     RET_PSEUDO implicit-def dead $sp, implicit $sp

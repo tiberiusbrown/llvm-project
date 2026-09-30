@@ -17,11 +17,11 @@ name: identity
 tracksRegLiveness: true
 body: |
   bb.0:
-    liveins: $r0, $r4, $r5, $r6r7
+    liveins: $r2r3, $r4, $r5, $r6
     ; CHECK-LABEL: name: identity
     ; CHECK-NOT: MOV
-    ; CHECK: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
-    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r2r3, $r6
+    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r2r3, $r6
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
 ---
@@ -29,13 +29,13 @@ name: scalar_swap
 tracksRegLiveness: true
 body: |
   bb.0:
-    liveins: $r0, $r4, $r5, $r6r7
+    liveins: $r2r3, $r4, $r5, $r6
     ; CHECK-LABEL: name: scalar_swap
-    ; CHECK: $r1 = MOV_RR $r4
+    ; CHECK: $r0 = MOV_RR $r4
     ; CHECK-NEXT: $r4 = MOV $r5
-    ; CHECK-NEXT: $r5 = MOV_RR $r1
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r4, $r5, $r6r7, $r0
-    SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r5, $r4, $r6r7, $r0
+    ; CHECK-NEXT: $r5 = MOV_RR $r0
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r4, $r5, $r2r3, $r6
+    SYS_DRAW_SPRITE_PLUS_MASK_PSEUDO $r5, $r4, $r2r3, $r6
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
 ---
@@ -45,11 +45,11 @@ body: |
   bb.0:
     liveins: $r0, $r4r5, $r6
     ; CHECK-LABEL: name: scalar_q3_overlap
-    ; CHECK: $r7 = MOV $r5
-    ; CHECK-NEXT: $r1 = MOV_RR $r4
+    ; CHECK: $r2 = MOV_RR $r4
     ; CHECK-NEXT: $r4 = MOV $r6
-    ; CHECK-NEXT: $r6 = MOV_RR $r1
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK-NEXT: $r3 = MOV_RR $r5
+    ; CHECK-NEXT: $r6 = MOV_RR $r0
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO $r4, $r5, $r2r3, $r6
     SYS_DRAW_SPRITE_SELF_MASKED_PSEUDO $r6, $r5, $r4r5, $r0
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
@@ -59,15 +59,15 @@ tracksRegLiveness: true
 body: |
   bb.0:
     liveins: $r0r1, $r4, $r5, $r6
-    ; r4 <- r5 <- r6 <- r0 <- r4 is one parallel-copy cycle.
+    ; r4 <- r5 <- r6 <- r4 is one parallel-copy cycle; r0 holds the saved r4.
     ; CHECK-LABEL: name: complete_cycle
-    ; CHECK: $r7 = MOV_RR $r1
-    ; CHECK-NEXT: $r1 = MOV_RR $r4
+    ; CHECK: $r2 = MOV_RR $r0
+    ; CHECK-NEXT: $r3 = MOV_RR $r1
+    ; CHECK-NEXT: $r0 = MOV_RR $r4
     ; CHECK: $r4 = MOV $r5
     ; CHECK: $r5 = MOV $r6
     ; CHECK: $r6 = MOV_RR $r0
-    ; CHECK: $r0 = MOV_RR $r1
-    ; CHECK: SYS_DRAW_SPRITE_ERASE_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK: SYS_DRAW_SPRITE_ERASE_PSEUDO $r4, $r5, $r2r3, $r6
     SYS_DRAW_SPRITE_ERASE_PSEUDO $r5, $r6, $r0r1, $r4
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
@@ -77,12 +77,15 @@ tracksRegLiveness: true
 body: |
   bb.0:
     liveins: $r0, $r1, $r2, $r3, $r4, $r5, $r6r7
-    ; With every non-ABI scalar live, the swap uses one temporary stack slot.
+    ; With every non-ABI scalar live, preserve both live-through q1 registers.
     ; CHECK-LABEL: name: stack_cycle
-    ; CHECK: PUSH16 $r4
-    ; CHECK-NEXT: $r4 = MOV $r5
-    ; CHECK-NEXT: $r5 = POP16
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK: PUSH16 $r2
+    ; CHECK-NEXT: PUSH16 $r3
+    ; CHECK-NEXT: $r2 = MOV_RR $r6
+    ; CHECK-NEXT: $r3 = MOV_RR $r7
+    ; CHECK: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r2r3, $r6
+    ; CHECK-NEXT: $r3 = POP16
+    ; CHECK-NEXT: $r2 = POP16
     SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r5, $r4, $r6r7, $r0
     KILL $r1, $r2, $r3
     RET_PSEUDO implicit-def dead $sp, implicit $sp
@@ -97,7 +100,10 @@ body: |
     ; CHECK-LABEL: name: reloaded_input
     ; CHECK: $r1 = LDSP16 0
     ; CHECK-NEXT: $r4 = MOV_RR $r1
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK-NEXT: $r2 = MOV_RR $r6
+    ; CHECK-NEXT: $r3 = MOV_RR $r7
+    ; CHECK-NEXT: $r6 = MOV_RR $r0
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r2r3, $r6
     $r1 = LDSP16 0, implicit $sp
     SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r1, $r5, $r6r7, $r0
     RET_PSEUDO implicit-def dead $sp, implicit $sp

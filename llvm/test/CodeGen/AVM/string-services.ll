@@ -19,8 +19,8 @@ define i16 @test_memcmp_p(ptr %lhs, ptr addrspace(1) %rhs, i16 %n) {
 ; ASM-LABEL: test_memcmp_p:
 ; ASM: sys memcmp_p
 ; MIR-LABEL: name: test_memcmp_p
-; MIR: :gpr32 = PROG_CANON_PSEUDO
-; MIR: :gpr16 = SYS_MEMCMP_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :r4only = SYS_MEMCMP_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
 ; MIR-SAME: :: (load unknown-size, align 1), (load unknown-size, align 1, addrspace 1)
   %r = call i16 @llvm.avm.memcmp.p(ptr %lhs, ptr addrspace(1) %rhs, i16 %n)
   ret i16 %r
@@ -30,8 +30,8 @@ define i16 @test_strcmp_p(ptr %lhs, ptr addrspace(1) %rhs) {
 ; ASM-LABEL: test_strcmp_p:
 ; ASM: sys strcmp_p
 ; MIR-LABEL: name: test_strcmp_p
-; MIR: :gpr32 = PROG_CANON_PSEUDO
-; MIR: :gpr16 = SYS_STRCMP_P_PSEUDO
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :r4only = SYS_STRCMP_P_PSEUDO
   %r = call i16 @llvm.avm.strcmp.p(ptr %lhs, ptr addrspace(1) %rhs)
   ret i16 %r
 }
@@ -40,8 +40,8 @@ define i16 @test_strlen_p(ptr addrspace(1) %src) {
 ; ASM-LABEL: test_strlen_p:
 ; ASM: sys strlen_p
 ; MIR-LABEL: name: test_strlen_p
-; MIR: :gpr32 = PROG_CANON_PSEUDO
-; MIR: :gpr16 = SYS_STRLEN_P_PSEUDO
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :r4only = SYS_STRLEN_P_PSEUDO
 ; MIR-SAME: :: (load unknown-size, align 1, addrspace 1)
   %r = call i16 @llvm.avm.strlen.p(ptr addrspace(1) %src)
   ret i16 %r
@@ -51,8 +51,8 @@ define ptr @test_strncpy_p(ptr %dst, ptr addrspace(1) %src, i16 %n) {
 ; ASM-LABEL: test_strncpy_p:
 ; ASM: sys strncpy_p
 ; MIR-LABEL: name: test_strncpy_p
-; MIR: :gpr32 = PROG_CANON_PSEUDO
-; MIR: :gpr16 = SYS_STRNCPY_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :r4only = SYS_STRNCPY_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
 ; MIR-SAME: :: (store unknown-size, align 1), (load unknown-size, align 1, addrspace 1)
   %r = call ptr @llvm.avm.strncpy.p(ptr %dst, ptr addrspace(1) %src, i16 %n)
   ret ptr %r
@@ -62,8 +62,8 @@ define ptr @test_strncat_p(ptr %dst, ptr addrspace(1) %src, i16 %n) {
 ; ASM-LABEL: test_strncat_p:
 ; ASM: sys strncat_p
 ; MIR-LABEL: name: test_strncat_p
-; MIR: :gpr32 = PROG_CANON_PSEUDO
-; MIR: :gpr16 = SYS_STRNCAT_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :r4only = SYS_STRNCAT_P_PSEUDO {{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}, {{(killed )?}}{{%[0-9]+}}
 ; MIR-SAME: :: (load unknown-size, align 1), (store unknown-size, align 1), (load unknown-size, align 1, addrspace 1)
   %r = call ptr @llvm.avm.strncat.p(ptr %dst, ptr addrspace(1) %src, i16 %n)
   ret ptr %r
@@ -73,7 +73,7 @@ define i16 @test_memcmp(ptr %lhs, ptr %rhs, i16 %n) {
 ; ASM-LABEL: test_memcmp:
 ; ASM: sys memcmp
 ; MIR-LABEL: name: test_memcmp
-; MIR: :gpr16 = SYS_MEMCMP_PSEUDO
+; MIR: :r4only = SYS_MEMCMP_PSEUDO
 ; MIR-SAME: :: (load unknown-size, align 1), (load unknown-size, align 1)
   %r = call i16 @llvm.avm.memcmp(ptr %lhs, ptr %rhs, i16 %n)
   ret i16 %r
@@ -83,7 +83,7 @@ define i16 @test_strcmp(ptr %lhs, ptr %rhs) {
 ; ASM-LABEL: test_strcmp:
 ; ASM: sys strcmp
 ; MIR-LABEL: name: test_strcmp
-; MIR: :gpr16 = SYS_STRCMP_PSEUDO
+; MIR: :r4only = SYS_STRCMP_PSEUDO
   %r = call i16 @llvm.avm.strcmp(ptr %lhs, ptr %rhs)
   ret i16 %r
 }
@@ -92,7 +92,7 @@ define i16 @test_strlen(ptr %src) {
 ; ASM-LABEL: test_strlen:
 ; ASM: sys strlen
 ; MIR-LABEL: name: test_strlen
-; MIR: :gpr16 = SYS_STRLEN_PSEUDO
+; MIR: :r4only = SYS_STRLEN_PSEUDO
 ; MIR-SAME: :: (load unknown-size, align 1)
   %r = call i16 @llvm.avm.strlen(ptr %src)
   ret i16 %r
@@ -102,7 +102,7 @@ define ptr @test_strncpy(ptr %dst, ptr %src, i16 %n) {
 ; ASM-LABEL: test_strncpy:
 ; ASM: sys strncpy
 ; MIR-LABEL: name: test_strncpy
-; MIR: :gpr16 = SYS_STRNCPY_PSEUDO
+; MIR: :r4only = SYS_STRNCPY_PSEUDO
 ; MIR-SAME: :: (store unknown-size, align 1), (load unknown-size, align 1)
   %r = call ptr @llvm.avm.strncpy(ptr %dst, ptr %src, i16 %n)
   ret ptr %r
@@ -112,7 +112,7 @@ define ptr @test_strncat(ptr %dst, ptr %src, i16 %n) {
 ; ASM-LABEL: test_strncat:
 ; ASM: sys strncat
 ; MIR-LABEL: name: test_strncat
-; MIR: :gpr16 = SYS_STRNCAT_PSEUDO
+; MIR: :r4only = SYS_STRNCAT_PSEUDO
 ; MIR-SAME: :: (load unknown-size, align 1), (store unknown-size, align 1), (load unknown-size, align 1)
   %r = call ptr @llvm.avm.strncat(ptr %dst, ptr %src, i16 %n)
   ret ptr %r
@@ -136,8 +136,8 @@ define ptr @constant_strncpy(ptr %dst, ptr %src) {
 
 define i16 @inttoptr_program_services(ptr %dst, ptr %lhs, i32 %bits, i16 %n) {
 ; MIR-LABEL: name: inttoptr_program_services
-; MIR: PROG_CANON_PSEUDO
-; MIR: :q3only = nomerge COPY
+; MIR-NOT: PROG_CANON_PSEUDO
+; MIR: :q3only = COPY
 ; MIR: SYS_MEMCMP_P_PSEUDO
 ; MIR: SYS_STRCMP_P_PSEUDO
 ; MIR: SYS_STRLEN_P_PSEUDO

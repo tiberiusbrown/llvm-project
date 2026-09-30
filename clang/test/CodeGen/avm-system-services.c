@@ -46,7 +46,7 @@ void *move_service(void *dst, const void *src, unsigned short size) {
 
 void display_and_sprite_services(int x, int y, const void AS1 *sprite,
                                  unsigned int frame) {
-  __avm_display();
+  __avm_display(0);
   __avm_draw_sprite_overwrite(x, y, sprite, frame);
   __avm_draw_sprite_plus_mask(x, y, sprite, frame);
   __avm_draw_sprite_self_masked(x, y, sprite, frame);
@@ -84,7 +84,7 @@ float pressure(float x, float y) {
 // CHECK-LABEL: define{{.*}} ptr @move_service
 // CHECK: call{{.*}} ptr @llvm.avm.memmove
 // CHECK-LABEL: define{{.*}} void @display_and_sprite_services
-// CHECK: call{{.*}} void @llvm.avm.display()
+// CHECK: call{{.*}} void @llvm.avm.display(i16 0)
 // CHECK: call{{.*}} void @llvm.avm.draw.sprite.overwrite(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
 // CHECK: call{{.*}} void @llvm.avm.draw.sprite.plus.mask(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)
 // CHECK: call{{.*}} void @llvm.avm.draw.sprite.self.masked(i16 {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}}, ptr @__avm_framebuffer)

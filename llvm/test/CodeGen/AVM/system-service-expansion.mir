@@ -43,7 +43,10 @@ body: |
     ; CHECK-LABEL: name: different_services
     ; CHECK:      $r4 = COPY16_PSEUDO $r1
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO $r4
-    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r6r7, $r0
+    ; CHECK-NEXT: $r2 = COPY16_PSEUDO $r6
+    ; CHECK-NEXT: $r3 = COPY16_PSEUDO $r7
+    ; CHECK-NEXT: $r6 = COPY16_PSEUDO $r0
+    ; CHECK-NEXT: SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r4, $r5, $r2r3, $r6
     SYS_DEBUG_PUTC_PSEUDO $r1
     SYS_DRAW_SPRITE_OVERWRITE_PSEUDO $r1, $r5, $r6r7, $r0
     RET_PSEUDO implicit-def dead $sp, implicit $sp

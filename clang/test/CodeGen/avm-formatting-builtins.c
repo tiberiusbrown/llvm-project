@@ -28,21 +28,14 @@ int avm_vsnprintf_P(char *dst, size_t size, progmem_char_ptr format,
   return __avm_vsnprintf_P(dst, size, format, ap);
 }
 
-int public_vsnprintf_P(char *dst, size_t size, progmem_char_ptr format,
-                       __builtin_va_list ap) {
-  return vsnprintf_P(dst, size, format, ap);
-}
-
 // IR-LABEL: define{{.*}} i16 @builtin_vsnprintf
-// IR: call i16 @llvm.avm.vsnprintf(ptr {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}})
+// IR: call addrspace(1) i16 @llvm.avm.vsnprintf(ptr {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}})
 // IR-LABEL: define{{.*}} i16 @avm_vsnprintf
-// IR: call i16 @llvm.avm.vsnprintf(ptr {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}})
+// IR: call addrspace(1) i16 @llvm.avm.vsnprintf(ptr {{.*}}, i16 {{.*}}, ptr {{.*}}, ptr {{.*}})
 // IR-LABEL: define{{.*}} i16 @builtin_vsnprintf_p
-// IR: call i16 @llvm.avm.vsnprintf.p(ptr {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}})
+// IR: call addrspace(1) i16 @llvm.avm.vsnprintf.p(ptr {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}})
 // IR-LABEL: define{{.*}} i16 @avm_vsnprintf_P
-// IR: call i16 @llvm.avm.vsnprintf.p(ptr {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}})
-// IR-LABEL: define{{.*}} i16 @public_vsnprintf_P
-// IR: call i16 @llvm.avm.vsnprintf.p(ptr {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}})
+// IR: call addrspace(1) i16 @llvm.avm.vsnprintf.p(ptr {{.*}}, i16 {{.*}}, ptr addrspace(1) {{.*}}, ptr {{.*}})
 
 // IR-NOT: call{{.*}} @__avm_vsnprintf
 // IR-NOT: call{{.*}} @__avm_vsnprintf_P
@@ -56,9 +49,6 @@ int public_vsnprintf_P(char *dst, size_t size, progmem_char_ptr format,
 // ASM: sys vsnprintf_p
 // ASM-LABEL: avm_vsnprintf_P:
 // ASM: sys vsnprintf_p
-// ASM-LABEL: public_vsnprintf_P:
-// ASM: sys vsnprintf_p
-
 // The standard RAM-space vsnprintf symbol remains a runtime veneer.  Its
 // implementation calls __avm_vsnprintf so address-taking and indirect calls
 // retain ordinary C function semantics.

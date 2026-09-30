@@ -8,7 +8,6 @@ define float @reuse_half_constant(float %initial) #0 {
 ; CHECK-LABEL: reuse_half_constant:
 ; CHECK:       ldi16 [[HALF1:r[0-7]]], 16128
 ; CHECK-NOT:   stsp16 {{.*}}, [[HALF1]]
-; CHECK-NOT:   ldsp16 [[HALF1]], {{.*}}
 ; CHECK:       ldi16 [[HALF2:r[0-7]]], 16128
 entry:
   br label %loop

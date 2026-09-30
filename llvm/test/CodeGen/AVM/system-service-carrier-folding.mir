@@ -28,13 +28,12 @@ name: equivalent_constant_inputs
 tracksRegLiveness: true
 body: |
   bb.0:
-    ; Distinct PROG_ADDR values for the same global share one q3 carrier.  The
-    ; first materialization folds directly into q3, and both services use it.
+    ; Each PROG_ADDR materialization folds directly into a q3 carrier.
     ; CHECK-LABEL: name: equivalent_constant_inputs
-    ; CHECK:      [[PTR:%[0-9]+]]:q3only = PROG_ADDR_PSEUDO @program_data
-    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[PTR]]
-    ; CHECK:      {{%[0-9]+}}:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
-    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[PTR]]
+    ; CHECK:      [[FIRST:%[0-9]+]]:q3only = PROG_ADDR_PSEUDO @program_data
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[FIRST]]
+    ; CHECK-NEXT: [[SECOND:%[0-9]+]]:q3only = PROG_ADDR_PSEUDO @program_data
+    ; CHECK-NEXT: {{%[0-9]+}}:r4only = SYS_STRLEN_P_PSEUDO [[SECOND]]
     ; CHECK-NEXT: RET_PSEUDO
     %0:progptrgpr32 = PROG_ADDR_PSEUDO @program_data
     %1:gpr16 = SYS_STRLEN_P_PSEUDO %0

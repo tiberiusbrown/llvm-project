@@ -1,6 +1,6 @@
-// RUN: %clang --target=avm-unknown-arduboyfx -x c++ -std=c++20 \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -x c++ -std=c++20 \
 // RUN:   -ffreestanding -O2 -S -emit-llvm %s -o - | FileCheck %s
-// RUN: %clang --target=avm-unknown-arduboyfx -x c++ -std=c++20 \
+// RUN: %clang --target=avm-unknown-arduboyfx -nostdlibinc -x c++ -std=c++20 \
 // RUN:   -fexperimental-new-constant-interpreter -ffreestanding -O2 \
 // RUN:   -S -emit-llvm %s -o - | FileCheck %s
 
