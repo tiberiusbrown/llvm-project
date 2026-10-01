@@ -9,8 +9,6 @@ add_lldb_library(lldbPluginProcessAVM PLUGIN
   LINK_COMPONENTS
     Support
   )
-target_include_directories(lldbPluginProcessAVM PRIVATE
-  "${CMAKE_SOURCE_DIR}/debug")
 if(MSVC)
   target_compile_options(lldbPluginProcessAVM PRIVATE /EHsc)
 else()

@@ -9,4 +9,6 @@ foreach(target AArch64 ARM ARC Hexagon LoongArch Mips MSP430 PowerPC RISCV Syste
     add_subdirectory(${target})
   endif()
 endforeach()
-add_subdirectory(AVM)
+if(AVM IN_LIST LLVM_TARGETS_TO_BUILD)
+  add_subdirectory(AVM)
+endif()
