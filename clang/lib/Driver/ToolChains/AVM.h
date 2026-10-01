@@ -20,6 +20,7 @@ public:
   bool isPIEDefault(const llvm::opt::ArgList &) const override { return false; }
   bool isPICDefaultForced() const override { return false; }
   bool SupportsProfiling() const override { return false; }
+  unsigned GetDefaultDwarfVersion() const override { return 4; }
   UnwindTableLevel getDefaultUnwindTableLevel(
       const llvm::opt::ArgList &) const override {
     return UnwindTableLevel::None;
