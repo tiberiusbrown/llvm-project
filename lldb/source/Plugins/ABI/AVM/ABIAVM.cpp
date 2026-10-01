@@ -26,6 +26,9 @@ public:
   }
   llvm::StringRef GetPluginName() override { return "avm"; }
 
+  // This stack backs LLDB's host-side IR interpreter, not the AVM guest.
+  uint64_t GetStackFrameSize() override { return 16 * 1024; }
+
   size_t GetRedZoneSize() const override { return 0; }
   bool PrepareTrivialCall(Thread &, addr_t, addr_t, addr_t,
                           llvm::ArrayRef<addr_t>) const override {

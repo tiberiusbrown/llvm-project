@@ -66,13 +66,14 @@ public:
   void WriteScalarToMemory(lldb::addr_t process_address, Scalar &scalar,
                            size_t size, Status &error);
   void WritePointerToMemory(lldb::addr_t process_address, lldb::addr_t pointer,
-                            Status &error);
+                            Status &error, size_t pointer_size = 0);
   void ReadMemory(uint8_t *bytes, lldb::addr_t process_address, size_t size,
                   Status &error);
   void ReadScalarFromMemory(Scalar &scalar, lldb::addr_t process_address,
                             size_t size, Status &error);
   void ReadPointerFromMemory(lldb::addr_t *address,
-                             lldb::addr_t process_address, Status &error);
+                             lldb::addr_t process_address, Status &error,
+                             size_t pointer_size = 0);
   bool GetAllocSize(lldb::addr_t address, size_t &size);
   void GetMemoryData(DataExtractor &extractor, lldb::addr_t process_address,
                      size_t size, Status &error);

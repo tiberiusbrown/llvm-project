@@ -39,6 +39,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <map>
 
@@ -68,6 +69,17 @@ static std::string PrintType(const Type *type, bool truncate = false) {
   if (truncate)
     s.resize(s.length() - 1);
   return s;
+}
+
+static lldb::addr_t ProgramAddressForAVM(lldb::addr_t address,
+                                         const Value *pointer,
+                                         const Module &module) {
+  // Keep AS1 program dereferences distinct from 16-bit host scratch and
+  // AS0 guest RAM; this tag exists only inside the debugger.
+  if (llvm::Triple(module.getTargetTriple()).getArch() == llvm::Triple::avm &&
+      pointer->getType()->getPointerAddressSpace() == 1)
+    return 0x02000000 + address;
+  return address;
 }
 
 static bool CanIgnoreCall(const CallInst *call) {
@@ -344,7 +356,9 @@ public:
 
     lldb_private::Status write_error;
 
-    m_execution_unit.WritePointerToMemory(data_address, address, write_error);
+    m_execution_unit.WritePointerToMemory(
+        data_address, address, write_error,
+        m_target_data.getPointerSize(value->getType()->getPointerAddressSpace()));
 
     if (!write_error.Success()) {
       lldb_private::Status free_error;
@@ -461,6 +475,8 @@ public:
 
 static const char *unsupported_opcode_error =
     "Interpreter doesn't handle one of the expression's opcodes";
+static const char *unsupported_call_error =
+    "Interpreter cannot execute function calls without target-side execution";
 static const char *unsupported_operand_error =
     "Interpreter doesn't handle one of the expression's operands";
 static const char *interpreter_internal_error =
@@ -564,8 +580,7 @@ bool IRInterpreter::CanInterpret(llvm::Module &module, llvm::Function &function,
         if (!CanIgnoreCall(call_inst) && !support_function_calls) {
           LLDB_LOGF(log, "Unsupported instruction: %s",
                     PrintValue(&ii).c_str());
-          error =
-              lldb_private::Status::FromErrorString(unsupported_opcode_error);
+          error = lldb_private::Status::FromErrorString(unsupported_call_error);
           return false;
         }
       } break;
@@ -920,7 +935,9 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
 
       lldb_private::Status write_error;
 
-      execution_unit.WritePointerToMemory(P, R, write_error);
+      execution_unit.WritePointerToMemory(
+          P, R, write_error,
+          data_layout.getPointerSize(Tptr->getPointerAddressSpace()));
 
       if (!write_error.Success()) {
         LLDB_LOGF(log, "Couldn't write the result pointer for an AllocaInst");
@@ -1284,7 +1301,9 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
 
       lldb::addr_t R;
       lldb_private::Status read_error;
-      execution_unit.ReadPointerFromMemory(&R, P, read_error);
+      execution_unit.ReadPointerFromMemory(
+          &R, P, read_error, data_layout.getPointerSize(
+                                 pointer_operand->getType()->getPointerAddressSpace()));
 
       if (!read_error.Success()) {
         LLDB_LOGF(log, "Couldn't read the address to be loaded for a LoadInst");
@@ -1297,7 +1316,9 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
       lldb_private::DataBufferHeap buffer(target_size, 0);
 
       read_error.Clear();
-      execution_unit.ReadMemory(buffer.GetBytes(), R, buffer.GetByteSize(),
+      execution_unit.ReadMemory(buffer.GetBytes(),
+                                ProgramAddressForAVM(R, pointer_operand, module),
+                                buffer.GetByteSize(),
                                 read_error);
       if (!read_error.Success()) {
         LLDB_LOGF(log, "Couldn't read from a region on behalf of a LoadInst");
@@ -1353,7 +1374,9 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
 
       lldb::addr_t R;
       lldb_private::Status read_error;
-      execution_unit.ReadPointerFromMemory(&R, P, read_error);
+      execution_unit.ReadPointerFromMemory(
+          &R, P, read_error, data_layout.getPointerSize(
+                                 pointer_operand->getType()->getPointerAddressSpace()));
 
       if (!read_error.Success()) {
         LLDB_LOGF(log, "Couldn't read the address to be loaded for a LoadInst");
@@ -1375,7 +1398,8 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
       }
 
       lldb_private::Status write_error;
-      execution_unit.WriteMemory(R, buffer.GetBytes(), buffer.GetByteSize(),
+      execution_unit.WriteMemory(ProgramAddressForAVM(R, pointer_operand, module),
+                                 buffer.GetBytes(), buffer.GetByteSize(),
                                  write_error);
       if (!write_error.Success()) {
         LLDB_LOGF(log, "Couldn't write to a region on behalf of a StoreInst");

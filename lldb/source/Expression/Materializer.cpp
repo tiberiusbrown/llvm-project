@@ -491,7 +491,18 @@ public:
       }
 
       lldb::offset_t offset = 0;
-      lldb::addr_t reference_addr = valobj_extractor.GetAddress(&offset);
+      // A target may store references in fewer bytes than LLDB uses for its
+      // canonical address (for example AVM's 16-bit data references versus
+      // 32-bit tagged debugger addresses). Read the stored pointer width.
+      size_t reference_size = valobj_extractor.GetByteSize();
+      if (!reference_size || reference_size > sizeof(lldb::addr_t)) {
+        err = Status::FromErrorStringWithFormat(
+            "invalid stored pointer size for reference variable %s",
+            GetName().AsCString());
+        return;
+      }
+      lldb::addr_t reference_addr =
+          valobj_extractor.GetMaxU64(&offset, reference_size);
 
       Status write_error;
       map.WritePointerToMemory(load_addr, reference_addr, write_error);

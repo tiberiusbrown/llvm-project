@@ -2877,19 +2877,6 @@ ExpressionResults Target::EvaluateExpression(
     return execution_results;
   }
 
-  // AVM has no guest expression memory or call ABI. The generic LLDB
-  // interpreter can otherwise report a fabricated value for even a constant
-  // expression on this target, so fail explicitly until that ABI exists.
-  if (GetArchitecture().GetMachine() == llvm::Triple::avm) {
-    result_valobj_sp = ValueObjectConstResult::Create(
-        exe_scope ? exe_scope : this,
-        Status::FromErrorString(
-            "AVM expression execution is unsupported; use frame variable, "
-            "target variable, memory read, or register read"));
-    m_stats.GetExpressionStats().NotifyFailure();
-    return execution_results;
-  }
-
   // We shouldn't run stop hooks in expressions.
   bool old_suppress_value = m_suppress_stop_hooks;
   m_suppress_stop_hooks = true;

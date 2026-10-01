@@ -95,7 +95,11 @@ private:
 class ProcessAVM final : public Process {
 public:
   ProcessAVM(TargetSP target, ListenerSP listener)
-      : Process(std::move(target), std::move(listener)) {}
+      : Process(std::move(target), std::move(listener)) {
+    // LLDB may interpret expression IR on the host, but cannot execute
+    // generated code or function calls in the AVM guest.
+    SetCanRunCode(false);
+  }
   ~ProcessAVM() override {
     m_emulator.interrupt();
     if (m_worker.joinable())
@@ -238,7 +242,7 @@ public:
       m_thread->ClearStackFrames();
   }
   size_t ProgramSize() const { return m_emulator.program_size(); }
-  bool HasUnsupportedBreakpointConditions() {
+  bool HasBreakpointConditions() {
     for (auto const &breakpoint : GetTarget().GetBreakpointList().Breakpoints())
       if (breakpoint->IsEnabled())
         for (size_t i = 0; i < breakpoint->GetNumLocations(); ++i)
@@ -250,9 +254,9 @@ public:
     return false;
   }
   avm_debug::Stop RunFor(uint64_t cycles) {
-    if (HasUnsupportedBreakpointConditions())
+    if (HasBreakpointConditions())
       throw std::invalid_argument(
-          "AVM breakpoint conditions require unsupported expression execution");
+          "AVM run-for cannot evaluate breakpoint conditions; use continue");
     // AVM commands execute synchronously while LLDB's command interpreter is
     // stopped. Publishing a transient running event here races the next
     // command with LLDB's private-state event thread.
@@ -806,9 +810,6 @@ bool ThreadAVM::CalculateStopInfo() {
 Status ProcessAVM::DoLaunch(Module *module, ProcessLaunchInfo &) {
   if (!module)
     return Status::FromErrorString("AVM launch requires an executable ELF");
-  if (HasUnsupportedBreakpointConditions())
-    return Status::FromErrorString(
-        "AVM breakpoint conditions require unsupported expression execution");
   try {
     auto guard = LockEmulator();
     RemoveTemporaryImage();
@@ -864,9 +865,6 @@ Status ProcessAVM::DoLaunch(Module *module, ProcessLaunchInfo &) {
 Status ProcessAVM::DoResume(RunDirection direction) {
   if (direction != RunDirection::eRunForward)
     return Status::FromErrorString("AVM reverse execution is unsupported");
-  if (HasUnsupportedBreakpointConditions())
-    return Status::FromErrorString(
-        "AVM breakpoint conditions require unsupported expression execution");
   std::unique_lock<std::recursive_mutex> guard;
   try {
     guard = LockEmulator();

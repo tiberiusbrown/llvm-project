@@ -17,8 +17,20 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Status.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace lldb_private;
+
+static lldb::addr_t ExpressionDataAddress(Process &process,
+                                          lldb::addr_t address) {
+  // Host-only allocations are handled before this fallback. Remaining raw
+  // AVM data pointers need LLDB's tagged RAM address to avoid reading code
+  // at the same numeric address.
+  if (process.GetTarget().GetArchitecture().GetMachine() == llvm::Triple::avm &&
+      address <= 0xffff)
+    return process.FixDataAddress(address);
+  return address;
+}
 
 IRMemoryMap::IRMemoryMap(lldb::TargetSP target_sp) : m_target_wp(target_sp) {
   if (target_sp)
@@ -90,6 +102,24 @@ lldb::addr_t IRMemoryMap::FindSpace(size_t size) {
     lldb::addr_t addr = back->first;
     size_t alloc_size = back->second.m_size;
     ret = llvm::alignTo(addr + alloc_size, 4096);
+  }
+
+  // AVM expression IR uses 16-bit data pointers even though LLDB uses wider
+  // tagged addresses to distinguish guest data and program memory. Keep the
+  // interpreter's host-only allocations in a virtual 16-bit range above guest
+  // RAM. No bytes from this range are allocated in the emulated process.
+  if (target_sp->GetArchitecture().GetMachine() == llvm::Triple::avm) {
+    if (m_allocations.empty()) {
+      ret = target_sp->GetExprAllocAddress();
+      if (!ret)
+        ret = 0x1000;
+    } else {
+      uint64_t align = target_sp->GetExprAllocAlign();
+      ret = llvm::alignTo(ret, align ? align : 16);
+    }
+    return ret >= 0x1000 && ret <= 0x10000 && size <= 0x10000 - ret
+               ? ret
+               : LLDB_INVALID_ADDRESS;
   }
 
   uint64_t end_of_memory;
@@ -551,7 +581,8 @@ void IRMemoryMap::WriteMemory(lldb::addr_t process_address,
     lldb::ProcessSP process_sp = m_process_wp.lock();
 
     if (process_sp) {
-      process_sp->WriteMemory(process_address, bytes, size, error);
+      process_sp->WriteMemory(ExpressionDataAddress(*process_sp, process_address),
+                              bytes, size, error);
       return;
     }
 
@@ -637,7 +668,8 @@ void IRMemoryMap::WriteScalarToMemory(lldb::addr_t process_address,
 }
 
 void IRMemoryMap::WritePointerToMemory(lldb::addr_t process_address,
-                                       lldb::addr_t pointer, Status &error) {
+                                       lldb::addr_t pointer, Status &error,
+                                       size_t pointer_size) {
   error.Clear();
 
   /// Only ask the Process to fix `pointer` if the address belongs to the
@@ -651,7 +683,8 @@ void IRMemoryMap::WritePointerToMemory(lldb::addr_t process_address,
 
   Scalar scalar(pointer);
 
-  WriteScalarToMemory(process_address, scalar, GetAddressByteSize(), error);
+  WriteScalarToMemory(process_address, scalar,
+                      pointer_size ? pointer_size : GetAddressByteSize(), error);
 }
 
 void IRMemoryMap::ReadMemory(uint8_t *bytes, lldb::addr_t process_address,
@@ -664,7 +697,8 @@ void IRMemoryMap::ReadMemory(uint8_t *bytes, lldb::addr_t process_address,
     lldb::ProcessSP process_sp = m_process_wp.lock();
 
     if (process_sp) {
-      process_sp->ReadMemory(process_address, bytes, size, error);
+      process_sp->ReadMemory(ExpressionDataAddress(*process_sp, process_address),
+                             bytes, size, error);
       return;
     }
 
@@ -774,6 +808,9 @@ void IRMemoryMap::ReadScalarFromMemory(Scalar &scalar,
     case 2:
       scalar = extractor.GetU16(&offset);
       break;
+    case 3:
+      scalar = extractor.GetMaxU64(&offset, 3);
+      break;
     case 4:
       scalar = extractor.GetU32(&offset);
       break;
@@ -788,11 +825,12 @@ void IRMemoryMap::ReadScalarFromMemory(Scalar &scalar,
 
 void IRMemoryMap::ReadPointerFromMemory(lldb::addr_t *address,
                                         lldb::addr_t process_address,
-                                        Status &error) {
+                                        Status &error, size_t pointer_size) {
   error.Clear();
 
   Scalar pointer_scalar;
-  ReadScalarFromMemory(pointer_scalar, process_address, GetAddressByteSize(),
+  ReadScalarFromMemory(pointer_scalar, process_address,
+                       pointer_size ? pointer_size : GetAddressByteSize(),
                        error);
 
   if (!error.Success())
