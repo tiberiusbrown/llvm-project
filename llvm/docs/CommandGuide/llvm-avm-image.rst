@@ -7,6 +7,8 @@ Synopsis
 
 ``llvm-avm-image input.elf -o output.bin``
 
+``llvm-avm-image input.elf -o output.arduboy [--title TITLE ...]``
+
 Description
 -----------
 
@@ -27,6 +29,13 @@ that are valid in the architectural 24-bit program space but cannot fit this
 container are diagnosed. Invalid ELF or AVM layouts produce a nonzero exit
 status and no committed output file.
 
+When the output name ends in ``.arduboy``, the tool writes a ZIP archive with
+``info.json``, the SDK's bundled ``interp.hex``, the flat image as
+``fxdata.bin``, and, when the ELF has saved bytes, a 4 KiB erased
+``fxsave.bin``. The interpreter is found at
+``bin/avm/interp.hex`` relative to the tool. Use ``--interpreter`` to select a
+different HEX file. The ``--development`` option applies only to raw images.
+
 Unlike ``llvm-objcopy -O binary``, this tool understands AVM data and program
 address spaces and creates the AVM runtime header, padding, CRC, and tail.
 
@@ -35,6 +44,16 @@ Options
 
 ``-o <file>``, ``--output <file>``
   Write the packaged image to *file*.
+
+``--interpreter <file>``
+  Override the bundled interpreter HEX for ``.arduboy`` output.
+
+``--title <text>``, ``--description <text>``, ``--author <text>``,
+``--genre <text>``, ``--game-version <text>``
+  Set ``info.json`` metadata for ``.arduboy`` output. The title defaults to
+  the ELF filename without its extension; author defaults to ``Unknown`` and
+  game version defaults to ``1.0``. Description and genre are omitted unless
+  supplied.
 
 ``--help``
   Display available options.

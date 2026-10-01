@@ -5,10 +5,15 @@
 # RUN: llvm-avm-image --output %t/image-again.bin %t/input.elf
 # RUN: cmp %t/image.bin %t/image-again.bin
 # RUN: %python %S/Inputs/check-image.py %t/image.bin 1 3
+# RUN: llvm-avm-image %t/input.elf -o %t/game.arduboy --interpreter %t/interp.hex --title 'A "title"' --description 'Line one' --author Tester --genre Demo --game-version 2.0
+# RUN: %python %S/Inputs/check-arduboy.py %t/game.arduboy %t/image.bin %t/interp.hex
+# RUN: not llvm-avm-image %t/input.elf -o %t/missing.arduboy --interpreter %t/absent.hex 2>&1 | FileCheck %s --check-prefix=MISSING-HEX
 # RUN: llvm-mc -triple=avm -filetype=obj %t/minimal.s -o %t/minimal.o
 # RUN: ld.lld %t/minimal.o -o %t/minimal.elf
 # RUN: llvm-avm-image %t/minimal.elf -o %t/minimal.bin
 # RUN: %python %S/Inputs/check-image.py %t/minimal.bin 0 0
+# RUN: llvm-avm-image %t/minimal.elf -o %t/minimal.arduboy --interpreter %t/interp.hex
+# RUN: %python %S/Inputs/check-arduboy.py %t/minimal.arduboy %t/minimal.bin %t/interp.hex no-save
 # RUN: not llvm-avm-image %t/input.o -o %t/object.bin 2>&1 | FileCheck %s --check-prefix=REL
 # RUN: llvm-mc -triple=avm -filetype=obj %t/high.s -o %t/high.o
 # RUN: ld.lld -T %t/exact.ld %t/high.o -o %t/exact.elf
@@ -19,6 +24,10 @@
 
 # REL: must be a linked AVM ET_EXEC
 # TOO-LARGE: cannot be represented by a Version 1 flat image
+# MISSING-HEX: absent.hex
+
+#--- interp.hex
+:00000001FF
 
 #--- input.s
 .text

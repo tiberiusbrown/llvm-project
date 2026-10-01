@@ -9,8 +9,11 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileOutputBuffer.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/WithColor.h"
 #include <algorithm>
 
@@ -27,7 +30,25 @@ static cl::alias OutputLong("output", cl::desc("Alias for -o"),
                             cl::aliasopt(Output));
 static cl::opt<bool> Development(
     "development",
-    cl::desc("Append a 4 KiB erased save area to the output image"));
+    cl::desc("Append a 4 KiB erased save area to a raw image"));
+static cl::opt<std::string> Interpreter(
+    "interpreter", cl::value_desc("interp.hex"),
+    cl::desc("Interpreter HEX to include in .arduboy output"));
+static cl::opt<std::string> Title(
+    "title", cl::value_desc("text"),
+    cl::desc("Title for .arduboy metadata (defaults to the ELF filename)"));
+static cl::opt<std::string> Author(
+    "author", cl::init("Unknown"), cl::value_desc("text"),
+    cl::desc("Author for .arduboy metadata"));
+static cl::opt<std::string> Description(
+    "description", cl::value_desc("text"),
+    cl::desc("Description for .arduboy metadata"));
+static cl::opt<std::string> Genre(
+    "genre", cl::value_desc("text"),
+    cl::desc("Genre for .arduboy metadata"));
+static cl::opt<std::string> Version(
+    "game-version", cl::init("1.0"), cl::value_desc("text"),
+    cl::desc("Version for .arduboy metadata"));
 
 namespace {
 constexpr uint32_t HeaderSize = 0x100;
@@ -40,6 +61,94 @@ constexpr uint32_t MaxFlashSize = 0x1000000;
 constexpr uint32_t DevelopmentSaveSize = 0x1000;
 constexpr uint32_t AVMProgSpace = 0x10000000;
 constexpr uint32_t AVMDataSpace = 0x20000000;
+
+static void append16(SmallVectorImpl<uint8_t> &Out, uint16_t Value) {
+  Out.push_back(Value);
+  Out.push_back(Value >> 8);
+}
+
+static void append32(SmallVectorImpl<uint8_t> &Out, uint32_t Value) {
+  append16(Out, Value);
+  append16(Out, Value >> 16);
+}
+
+static std::string jsonString(StringRef Value) {
+  std::string Result = "\"";
+  constexpr char Hex[] = "0123456789abcdef";
+  for (unsigned char C : Value) {
+    if (C == '"' || C == '\\') {
+      Result.push_back('\\');
+      Result.push_back(C);
+    } else if (C < 0x20) {
+      Result += "\\u00";
+      Result.push_back(Hex[C >> 4]);
+      Result.push_back(Hex[C & 15]);
+    } else {
+      Result.push_back(C);
+    }
+  }
+  return Result + '"';
+}
+
+struct ZipEntry {
+  StringRef Name;
+  ArrayRef<uint8_t> Data;
+};
+
+// .arduboy is a ZIP archive. Stored entries avoid a compression dependency
+// and let tools extract the flash image byte for byte.
+static SmallVector<uint8_t, 0> makeZip(ArrayRef<ZipEntry> Entries) {
+  SmallVector<uint8_t, 0> Out;
+  SmallVector<uint32_t, 4> Offsets;
+  for (const ZipEntry &Entry : Entries) {
+    Offsets.push_back(Out.size());
+    append32(Out, 0x04034b50);
+    append16(Out, 20); // Version needed.
+    append16(Out, 0);  // Flags.
+    append16(Out, 0);  // Stored.
+    append16(Out, 0);  // DOS time.
+    append16(Out, 0);  // DOS date.
+    append32(Out, crc32(Entry.Data));
+    append32(Out, Entry.Data.size());
+    append32(Out, Entry.Data.size());
+    append16(Out, Entry.Name.size());
+    append16(Out, 0); // Extra length.
+    llvm::append_range(Out, Entry.Name.bytes());
+    llvm::append_range(Out, Entry.Data);
+  }
+  uint32_t CentralOffset = Out.size();
+  for (size_t I = 0; I < Entries.size(); ++I) {
+    const ZipEntry &Entry = Entries[I];
+    append32(Out, 0x02014b50);
+    append16(Out, 20); // Version made by.
+    append16(Out, 20); // Version needed.
+    append16(Out, 0);  // Flags.
+    append16(Out, 0);  // Stored.
+    append16(Out, 0);  // DOS time.
+    append16(Out, 0);  // DOS date.
+    append32(Out, crc32(Entry.Data));
+    append32(Out, Entry.Data.size());
+    append32(Out, Entry.Data.size());
+    append16(Out, Entry.Name.size());
+    append16(Out, 0); // Extra length.
+    append16(Out, 0); // Comment length.
+    append16(Out, 0); // Disk number.
+    append16(Out, 0); // Internal attributes.
+    append32(Out, 0); // External attributes.
+    append32(Out, Offsets[I]);
+    llvm::append_range(Out, Entry.Name.bytes());
+  }
+  uint32_t CentralSize = Out.size() - CentralOffset;
+  append32(Out, 0x06054b50);
+  append16(Out, 0); // Current disk.
+  append16(Out, 0); // Central directory disk.
+  append16(Out, Entries.size());
+  append16(Out, Entries.size());
+  append32(Out, CentralSize);
+  append32(Out, CentralOffset);
+  append16(Out, 0); // Comment length.
+  return Out;
+}
 
 struct PayloadSection {
   StringRef Name;
@@ -109,7 +218,7 @@ static Expected<ArrayRef<uint8_t>> contents(const ELFFile<ELF32LE> &ELF,
   return *Bytes;
 }
 
-static Error packageELF(StringRef InputName) {
+static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   Expected<OwningBinary<ObjectFile>> Binary = ObjectFile::createObjectFile(Input);
   if (!Binary)
     return createFileError(InputName, Binary.takeError());
@@ -255,8 +364,10 @@ static Error packageELF(StringRef InputName) {
   Expected<uint32_t> FileSize = finalFileSize(PayloadEnd);
   if (!FileSize)
     return FileSize.takeError();
-  if (Development && *FileSize > MaxFlashSize - DevelopmentSaveSize)
-    return bad("AVM development image leaves no room for a 4 KiB save area");
+  bool Arduboy = StringRef(Output).ends_with_insensitive(".arduboy");
+  if (((Arduboy && SaveSize) || (!Arduboy && Development)) &&
+      *FileSize > MaxFlashSize - DevelopmentSaveSize)
+    return bad("AVM image leaves no room for a 4 KiB save area");
   SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
   Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
@@ -275,10 +386,55 @@ static Error packageELF(StringRef InputName) {
   write16le(Image.data() + Tail + 6, 0);
   write32le(Image.data() + 0xfc, crc32(ArrayRef<uint8_t>(Image).take_front(0xfc)));
 
-  // Keep the AVM tail and its page count tied to the executable image. The
-  // optional save sector is raw erased flash outside the flat image.
-  if (Development)
-    Image.resize(Image.size() + DevelopmentSaveSize, 0xff);
+  if (Arduboy) {
+    StringRef InterpreterPath = Interpreter.empty() ? DefaultInterpreter
+                                                    : StringRef(Interpreter);
+    ErrorOr<std::unique_ptr<MemoryBuffer>> Hex = MemoryBuffer::getFile(InterpreterPath);
+    if (!Hex)
+      return createFileError(InterpreterPath, Hex.getError());
+    StringRef HexBytes = (*Hex)->getBuffer();
+    if (HexBytes.empty())
+      return bad("interpreter HEX is empty");
+    std::string GameTitle = Title.empty() ? sys::path::stem(InputName).str()
+                                          : Title;
+    if (GameTitle.empty() || Author.empty() || Version.empty())
+      return bad(".arduboy title, author, and game version must not be empty");
+    std::string Info = "{\"schemaVersion\":3,\"title\":" +
+                       jsonString(GameTitle) + ",\"author\":" +
+                       jsonString(Author) + ",\"version\":" +
+                       jsonString(Version);
+    if (!Description.empty())
+      Info += ",\"description\":" + jsonString(Description);
+    if (!Genre.empty())
+      Info += ",\"genre\":" + jsonString(Genre);
+    Info += ",\"binaries\":[{\"filename\":\"interp.hex\",\"flashdata\":"
+            "\"fxdata.bin\"";
+    if (SaveSize)
+      Info += ",\"flashsave\":\"fxsave.bin\"";
+    Info += ",\"device\":\"ArduboyFX\"}]}\n";
+    SmallVector<uint8_t, DevelopmentSaveSize> Save(DevelopmentSaveSize, 0xff);
+    SmallVector<ZipEntry, 4> Entries = {
+        {"info.json", ArrayRef<uint8_t>(
+                          reinterpret_cast<const uint8_t *>(Info.data()),
+                          Info.size())},
+        {"interp.hex", ArrayRef<uint8_t>(
+                           reinterpret_cast<const uint8_t *>(HexBytes.data()),
+                           HexBytes.size())},
+        {"fxdata.bin", Image},
+    };
+    if (SaveSize)
+      Entries.push_back({"fxsave.bin", Save});
+    Image = makeZip(Entries);
+  } else {
+    if (!Interpreter.empty() || !Title.empty() || !Description.empty() ||
+        !Genre.empty() || Author.getNumOccurrences() ||
+        Version.getNumOccurrences())
+      return bad(".arduboy metadata options require a .arduboy output file");
+    // Keep the AVM tail and its page count tied to the executable image. The
+    // optional save sector is raw erased flash outside the flat image.
+    if (Development)
+      Image.resize(Image.size() + DevelopmentSaveSize, 0xff);
+  }
 
   Expected<std::unique_ptr<FileOutputBuffer>> Buffer =
       FileOutputBuffer::create(Output, Image.size());
@@ -292,7 +448,11 @@ static Error packageELF(StringRef InputName) {
 int main(int argc, char **argv) {
   InitLLVM X(argc, argv);
   cl::ParseCommandLineOptions(argc, argv, "AVM ET_EXEC flat-image packer\n");
-  if (Error E = packageELF(Input)) {
+  SmallString<256> DefaultInterpreter(
+      sys::fs::getMainExecutable(argv[0], nullptr));
+  sys::path::remove_filename(DefaultInterpreter);
+  sys::path::append(DefaultInterpreter, "avm", "interp.hex");
+  if (Error E = packageELF(Input, DefaultInterpreter)) {
     WithColor::error(errs(), "llvm-avm-image") << Input << ": "
                                                  << toString(std::move(E))
                                                  << '\n';
