@@ -1,6 +1,8 @@
 //===-- ProcessAVM.cpp - Embedded AVM interpreter process ----------------===//
 
 #include "AvmEmulator.h"
+#include "AvmHost.h"
+#include "AvmProfile.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Debugger.h"
@@ -19,6 +21,7 @@
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/StopInfo.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Target/PathMappingList.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadList.h"
 #include "lldb/Target/Unwind.h"
@@ -280,6 +283,36 @@ public:
   void SetRealtime(bool enabled) { m_emulator.set_realtime(enabled); }
   bool Realtime() const { return m_emulator.realtime(); }
   uint64_t EntryCycle() const { return m_emulator.entry_cycle(); }
+  void ProfileStart(bool native) {
+    m_emulator.profile_start(native);
+    m_profile.reset();
+  }
+  avm_debug::ProfileSnapshot ProfileStatus() const {
+    return m_emulator.profile_snapshot();
+  }
+  avm_debug::ProfileSnapshot ProfileStop() {
+    avm_debug::Stop stopped = LastStop();
+    auto snapshot = m_emulator.profile_stop(stopped, true);
+    auto pixels = m_emulator.visible_pixels();
+    std::string bytes(reinterpret_cast<char const*>(pixels.data()), pixels.size());
+    m_profile = avm_debug::make_profile(
+        snapshot, m_emulator.profile_identity(), 0, m_replay_hash,
+        avm_debug::hash_bytes(bytes));
+    return snapshot;
+  }
+  avm_debug::ProfileDocument SavedProfile() const {
+    if (!m_profile)
+      throw std::runtime_error("no stopped AVM profile to save or report");
+    return *m_profile;
+  }
+  fs::path const& ElfPath() const { return m_elf; }
+  fs::path InterpreterElfPath() const {
+    return avm_debug::runtime_paths("avm-lldb").interpreter_elf;
+  }
+  fs::path InterpreterHexPath() const {
+    return avm_debug::runtime_paths("avm-lldb").firmware;
+  }
+  void SetReplayHash(std::string value) { m_replay_hash = std::move(value); }
   avm_debug::ReplayIdentity const &ReplayIdentity() const {
     return m_emulator.replay_identity();
   }
@@ -323,6 +356,9 @@ private:
   std::shared_ptr<ThreadAVM> m_thread;
   std::thread m_worker;
   fs::path m_image;
+  fs::path m_elf;
+  std::optional<avm_debug::ProfileDocument> m_profile;
+  std::string m_replay_hash = avm_debug::hash_bytes("");
   std::recursive_mutex m_emulator_mutex;
   mutable std::mutex m_stop_mutex;
   avm_debug::Stop m_stop;
@@ -342,16 +378,7 @@ static uint8_t buttonMask(llvm::StringRef name) {
 }
 
 static uint64_t durationCycles(llvm::StringRef text) {
-  uint64_t scale = 1;
-  if (text.consume_back("ms")) scale = 16000;
-  else if (text.consume_back("cycles")) scale = 1;
-  else if (text.consume_back("s")) scale = 16000000;
-  if (text.empty()) throw std::invalid_argument("empty AVM duration");
-  uint64_t amount = 0;
-  if (text.getAsInteger(10, amount) ||
-      amount > UINT64_MAX / scale)
-    throw std::invalid_argument("AVM duration must be an integer number of cycles, milliseconds, or seconds");
-  return amount * scale;
+  return avm_debug::duration_cycles(text.str());
 }
 
 static uint64_t unsignedArgument(llvm::StringRef text, const char *name) {
@@ -395,6 +422,8 @@ static void emitStopJSON(Stream &out, avm_debug::Stop const &stopped,
   }
   if (stopped.fault_cycle)
     out.Printf(",\"fault_cycle\":%" PRIu64, *stopped.fault_cycle);
+  if (!stopped.detail.empty())
+    out.Printf(",\"detail\":\"%s\"", stopped.detail.c_str());
   out.PutCString("}\n");
 }
 
@@ -406,7 +435,8 @@ public:
             "avm time | stop | run-for <duration> | realtime on|off|status | "
             "watch read|write|readwrite <data-address> [size] | "
             "button press|release|set|status ... | replay load|run|status|abort|export ... | "
-            "display save|capture <file.pgm> [--mode visible|logical|controller]") {}
+            "display save|capture <file.pgm> [--mode visible|logical|controller] | "
+            "profile start|stop|status|save|report ...") {}
 
 protected:
   void DoExecute(llvm::StringRef command, CommandReturnObject &result) override {
@@ -424,9 +454,99 @@ protected:
       return value ? llvm::StringRef(value) : llvm::StringRef();
     };
     try {
-      auto guard = avm.LockEmulator();
       llvm::StringRef action = arg(0);
       auto &out = result.GetOutputStream();
+      if (action == "profile") {
+        llvm::StringRef verb = arg(1);
+        if (verb == "start") {
+          if (!arg(2).empty() && arg(2) != "--native")
+            throw std::invalid_argument("usage: avm profile start [--native]");
+          auto guard = avm.LockEmulator();
+          avm.ProfileStart(arg(2) == "--native");
+          auto state = avm.ProfileStatus();
+          out.Printf("{\"running\":true,\"start_cycle\":%" PRIu64
+                     ",\"start_pc\":%u,\"native\":%s}\n",
+                     state.start_cycle, state.start_pc,
+                     state.native ? "true" : "false");
+        } else if (verb == "stop") {
+          auto guard = avm.LockEmulator();
+          auto state = avm.ProfileStop();
+          out.Printf("{\"running\":false,\"complete\":%s,"
+                     "\"start_cycle\":%" PRIu64 ",\"end_cycle\":%" PRIu64
+                     ",\"completed_cycles\":%" PRIu64
+                     ",\"partial_cycles\":%" PRIu64 "}\n",
+                     state.complete ? "true" : "false", state.start_cycle,
+                     state.end_cycle, state.completed_cycles,
+                     state.partial_cycles);
+        } else if (verb == "status") {
+          auto guard = avm.LockEmulator();
+          auto state = avm.ProfileStatus();
+          out.Printf("{\"running\":%s,\"complete\":%s,"
+                     "\"start_cycle\":%" PRIu64 ",\"end_cycle\":%" PRIu64
+                     ",\"completed_cycles\":%" PRIu64
+                     ",\"partial_cycles\":%" PRIu64 "}\n",
+                     state.running ? "true" : "false",
+                     state.complete ? "true" : "false", state.start_cycle,
+                     state.end_cycle, state.completed_cycles,
+                     state.partial_cycles);
+        } else if (verb == "save" || verb == "report") {
+          if (verb == "save" && arg(2).empty())
+            throw std::invalid_argument("usage: avm profile save <file.avmp>");
+          size_t top = 20;
+          if (verb == "report" && !arg(2).empty()) {
+            if (arg(2) != "--top" || arg(3).empty())
+              throw std::invalid_argument("usage: avm profile report [--top N]");
+            uint64_t count = unsignedArgument(arg(3), "profile top count");
+            if (!count || count > 100000)
+              throw std::invalid_argument("invalid profile top count");
+            top = size_t(count);
+          }
+          avm_debug::ProfileDocument profile;
+          fs::path elf, interpreter_elf, interpreter_hex;
+          {
+            auto guard = avm.LockEmulator();
+            profile = avm.SavedProfile();
+            elf = avm.ElfPath();
+            interpreter_elf = avm.InterpreterElfPath();
+            interpreter_hex = avm.InterpreterHexPath();
+          }
+          avm_debug::SourceMaps maps;
+          auto &path_map = GetTarget().GetSourcePathMap();
+          for (uint32_t i = 0; i < path_map.GetSize(); ++i) {
+            ConstString old_path, new_path;
+            if (path_map.GetPathsAtIndex(i, old_path, new_path))
+              maps.emplace_back(old_path.GetCString(), new_path.GetCString());
+          }
+          avm_debug::symbolize_profile(profile, elf, maps);
+          if (profile.window.native)
+            avm_debug::symbolize_native(profile, interpreter_elf,
+                                         interpreter_hex);
+          if (verb == "save") {
+            fs::path path(arg(2).str());
+            avm_debug::write_profile(path, profile);
+            llvm::json::Object saved;
+            saved["saved"] = true;
+            saved["path"] = fs::absolute(path).generic_string();
+            saved["cycles"] = std::to_string(
+                profile.window.end_cycle - profile.window.start_cycle);
+            out.PutCString(llvm::formatv("{0}\n",
+                llvm::json::Value(std::move(saved))).str().c_str());
+          } else {
+            std::ostringstream rendered;
+            avm_debug::print_profile(rendered, profile, top);
+            llvm::json::Object report;
+            report["report"] = rendered.str();
+            report["top"] = int64_t(top);
+            out.PutCString(llvm::formatv("{0}\n",
+                llvm::json::Value(std::move(report))).str().c_str());
+          }
+        } else {
+          throw std::invalid_argument("usage: avm profile start|stop|status|save|report");
+        }
+        result.SetStatus(eReturnStatusSuccessFinishResult);
+        return;
+      }
+      auto guard = avm.LockEmulator();
       if (action == "time") {
         auto state = avm.Snapshot();
         out.Printf("{\"cycles\":%" PRIu64 ",\"seconds_since_reset\":%.9f,"
@@ -503,66 +623,21 @@ protected:
         llvm::StringRef verb = arg(1);
         if (verb == "load") {
           if (arg(2).empty()) throw std::invalid_argument("replay file required");
-          std::ifstream input(arg(2).str(), std::ios::binary);
-          if (!input) throw std::runtime_error("cannot open replay file");
-          std::string json{std::istreambuf_iterator<char>(input), {}};
-          auto parsed = llvm::json::parse(json);
-          if (!parsed)
-            throw std::invalid_argument("invalid replay JSON: " +
-                                        llvm::toString(parsed.takeError()));
-          auto *root = parsed->getAsObject();
-          if (!root || root->getInteger("version") != 1)
-            throw std::invalid_argument("unsupported replay schema version");
-          if (auto *identity = root->getObject("identity")) {
-            auto const &actual = avm.ReplayIdentity();
-            auto require_hash = [&](llvm::StringRef key,
-                                    llvm::StringRef expected) {
-              if (identity->getString(key) != expected)
-                throw std::invalid_argument("replay identity mismatch: " +
-                                            key.str());
-            };
-            require_hash("elf_sha256", actual.elf_sha256);
-            require_hash("image_sha256", actual.image_sha256);
-            require_hash("interpreter_sha256", actual.interpreter_sha256);
-            require_hash("eeprom_sha256", actual.eeprom_sha256);
-            require_hash("fxsave_sha256", actual.fxsave_sha256);
-            if (identity->getInteger("adc_seed") != actual.adc_seed ||
-                identity->getBoolean("adc_nondeterminism") !=
-                    actual.adc_nondeterminism ||
-                identity->getInteger("usb_bus_state") != actual.usb_bus_state)
-              throw std::invalid_argument("replay peripheral identity mismatch");
-          }
-          auto *entries = root->getArray("events");
-          if (!entries) throw std::invalid_argument("replay events must be an array");
           uint64_t start = avm.Snapshot().cycles;
-          uint64_t previous = 0;
-          std::vector<avm_debug::TimedButtons> events;
-          for (auto const &entry : *entries) {
-            auto *item = entry.getAsObject();
-            if (!item) throw std::invalid_argument("replay event must be an object");
-            auto when = item->getInteger("cycle");
-            auto *buttons = item->getArray("pressed");
-            if (!when || *when < 0 || !buttons ||
-                uint64_t(*when) < previous ||
-                uint64_t(*when) > UINT64_MAX - start)
-              throw std::invalid_argument("invalid replay cycle or pressed array");
-            uint8_t mask = 0;
-            for (auto const &button : *buttons) {
-              auto name = button.getAsString();
-              if (!name) throw std::invalid_argument("replay button must be a name");
-              mask |= buttonMask(*name);
-            }
-            previous = uint64_t(*when);
-            events.push_back({start + previous, mask});
-          }
-          avm.ScheduleButtons(std::move(events));
-          avm.SetReplayFinalCycle(start + previous);
+          auto schedule = avm_debug::read_replay(arg(2).str(),
+                                                 avm.ReplayIdentity(), start);
+          uint64_t final_cycle = schedule.events.empty()
+              ? start : schedule.events.back().cycle;
+          avm.ScheduleButtons(std::move(schedule.events));
+          avm.SetReplayHash(std::move(schedule.event_hash));
+          avm.SetReplayFinalCycle(final_cycle);
           avm.SetReplayPaused(false);
           out.Printf("{\"loaded\":true,\"start_cycle\":%" PRIu64 ","
                      "\"end_cycle\":%" PRIu64 ",\"pending_events\":%zu}\n",
                      start, avm.ReplayFinalCycle(), avm.PendingEvents());
         } else if (verb == "abort") {
           avm.ClearEvents();
+          avm.SetReplayHash(avm_debug::hash_bytes(""));
           avm.SetReplayFinalCycle(0);
           avm.SetReplayPaused(false);
           out.PutCString("{\"aborted\":true}\n");
@@ -816,38 +891,14 @@ Status ProcessAVM::DoLaunch(Module *module, ProcessLaunchInfo &) {
     m_replay_final_cycle = 0;
     m_replay_paused = false;
     fs::path elf(module->GetFileSpec().GetPath());
-    fs::path bin_dir = fs::path(llvm::sys::fs::getMainExecutable(
-                                   "avm-lldb", nullptr)).parent_path();
-    auto overridePath = [](const char *name, fs::path fallback) {
-      const char *value = std::getenv(name);
-      return value && *value ? fs::path(value) : fallback;
-    };
-    fs::path firmware = overridePath("AVM_LLDB_INTERP",
-                                     bin_dir / "avm" / "interp.hex");
-    fs::path boundary = overridePath("AVM_LLDB_BOUNDARY",
-                                     bin_dir / "avm" / "interp-boundary.json");
-    fs::path packer = overridePath("AVM_LLDB_IMAGE_TOOL",
-#ifdef _WIN32
-                                    bin_dir / "avm-image.exe");
-#else
-                                    bin_dir / "avm-image");
-#endif
-    m_image = fs::temp_directory_path() /
-        ("avm-lldb-" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) +
-         ".bin");
-    std::string tool_arg = packer.string();
-    std::string image_arg = m_image.string();
-    std::string elf_arg = elf.string();
-    std::vector<llvm::StringRef> args =
-        {tool_arg, "--development", "-o", image_arg, elf_arg};
-    std::string execution_error;
-    int result = llvm::sys::ExecuteAndWait(tool_arg, args, std::nullopt,
-                                            {}, 0, 0, &execution_error);
-    if (result != 0)
-      return Status::FromErrorStringWithFormat(
-          "AVM image packer failed (%d): %s", result, execution_error.c_str());
-    avm_debug::Stop stopped = m_emulator.load(elf, m_image, firmware, boundary);
+    auto paths = avm_debug::runtime_paths("avm-lldb");
+    m_image = avm_debug::temporary_image_path("avm-lldb");
+    avm_debug::package_image(paths.image_tool, elf, m_image);
+    avm_debug::Stop stopped = m_emulator.load(elf, m_image,
+                                               paths.firmware, paths.boundary);
+    m_elf = elf;
+    m_profile.reset();
+    m_replay_hash = avm_debug::hash_bytes("");
     if (!module->GetObjectFile()->SetLoadAddress(GetTarget(), 0, true))
       return Status::FromErrorString("cannot map AVM ELF sections into LLDB");
     {

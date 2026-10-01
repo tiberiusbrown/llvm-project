@@ -3,6 +3,7 @@ add_lldb_library(lldbPluginProcessAVM PLUGIN
 
   LINK_LIBS
     avm_debug_emulator
+    avm_profile
     lldbCore
     lldbTarget
     lldbUtility
