@@ -33,6 +33,7 @@ enum {
   FK_NONE = 4000, ///< A no-op fixup.
   FK_Data_1,      ///< A one-byte fixup.
   FK_Data_2,      ///< A two-byte fixup.
+  FK_Data_3,      ///< A three-byte fixup.
   FK_Data_4,      ///< A four-byte fixup.
   FK_Data_8,      ///< A eight-byte fixup.
   FK_Data_leb128, ///< A leb128 fixup.
@@ -114,6 +115,8 @@ public:
       return FK_Data_1;
     case 2:
       return FK_Data_2;
+    case 3:
+      return FK_Data_3;
     case 4:
       return FK_Data_4;
     case 8:

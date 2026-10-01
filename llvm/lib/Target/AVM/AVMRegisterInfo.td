@@ -15,27 +15,27 @@ class AVMReg<bits<16> Enc, string Name, list<Register> SubRegs = []>
 // encodings for common scalar operations, so bias frequently used values
 // toward R4-R7 without making R0-R3 unavailable.
 let CostPerUse = [1] in {
-def R0 : AVMReg<0, "r0">;
-def R1 : AVMReg<1, "r1">;
-def R2 : AVMReg<2, "r2">;
-def R3 : AVMReg<3, "r3">;
+def R0 : AVMReg<0, "r0">, DwarfRegNum<[0]>;
+def R1 : AVMReg<1, "r1">, DwarfRegNum<[1]>;
+def R2 : AVMReg<2, "r2">, DwarfRegNum<[2]>;
+def R3 : AVMReg<3, "r3">, DwarfRegNum<[3]>;
 }
-def R4 : AVMReg<4, "r4">;
-def R5 : AVMReg<5, "r5">;
-def R6 : AVMReg<6, "r6">;
-def R7 : AVMReg<7, "r7">;
+def R4 : AVMReg<4, "r4">, DwarfRegNum<[4]>;
+def R5 : AVMReg<5, "r5">, DwarfRegNum<[5]>;
+def R6 : AVMReg<6, "r6">, DwarfRegNum<[6]>;
+def R7 : AVMReg<7, "r7">, DwarfRegNum<[7]>;
 
 // Canonical aligned pairs.
 let SubRegIndices = [sub_lo16, sub_hi16], CoveredBySubRegs = 1 in {
-  def R0R1 : AVMReg<0, "r0:r1", [R0, R1]>;
-  def R2R3 : AVMReg<2, "r2:r3", [R2, R3]>;
-  def R4R5 : AVMReg<4, "r4:r5", [R4, R5]>;
-  def R6R7 : AVMReg<6, "r6:r7", [R6, R7]>;
+  def R0R1 : AVMReg<0, "r0:r1", [R0, R1]>, DwarfRegNum<[11]>;
+  def R2R3 : AVMReg<2, "r2:r3", [R2, R3]>, DwarfRegNum<[12]>;
+  def R4R5 : AVMReg<4, "r4:r5", [R4, R5]>, DwarfRegNum<[13]>;
+  def R6R7 : AVMReg<6, "r6:r7", [R6, R7]>, DwarfRegNum<[14]>;
 }
 
-def SP : AVMReg<8, "sp">;
-def PC : AVMReg<9, "pc">;
-def CC : AVMReg<10, "cc">;
+def SP : AVMReg<8, "sp">, DwarfRegNum<[8]>;
+def PC : AVMReg<9, "pc">, DwarfRegNum<[9]>;
+def CC : AVMReg<10, "cc">, DwarfRegNum<[10]>;
 
 // Allocation order favors the compact upper-register encodings.  GPR8 names
 // the low byte of the same physical registers; it does not create byte

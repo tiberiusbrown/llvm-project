@@ -7,9 +7,11 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -23,12 +25,27 @@ AVMFrameLowering::AVMFrameLowering()
 namespace {
 constexpr uint64_t AVMFixedStackLimit = 256;
 
+void emitCFI(MachineBasicBlock &MBB, MachineBasicBlock::iterator At,
+             const DebugLoc &DL, const AVMInstrInfo &TII,
+             const MCCFIInstruction &Instruction, MachineInstr::MIFlag Flag) {
+  unsigned Index = MBB.getParent()->addFrameInst(Instruction);
+  BuildMI(MBB, At, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
+      .addCFIIndex(Index)
+      .setMIFlag(Flag);
+}
+
 void emitSPAdjustment(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
                       const DebugLoc &DL, const AVMInstrInfo &TII,
-                      int64_t Amount, MachineInstr::MIFlag Flag) {
+                      int64_t Amount, MachineInstr::MIFlag Flag,
+                      int64_t *CFAOffset = nullptr) {
   while (Amount) {
     int64_t Chunk = std::clamp<int64_t>(Amount, -128, 127);
     BuildMI(MBB, MI, DL, TII.get(AVM::ADJSP)).addImm(Chunk).setMIFlag(Flag);
+    if (CFAOffset) {
+      *CFAOffset -= Chunk;
+      emitCFI(MBB, MI, DL, TII,
+              MCCFIInstruction::cfiDefCfaOffset(nullptr, *CFAOffset), Flag);
+    }
     Amount -= Chunk;
   }
 }
@@ -55,11 +72,23 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
       AVMFixedStackLimit, DS_Error));
   }
   const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
 
   MachineBasicBlock::iterator MI = MBB.begin();
+  int64_t CFAOffset = 3;
   while (MI != MBB.end() && MI->getOpcode() == AVM::PUSH16 &&
-         MI->getFlag(MachineInstr::FrameSetup))
+         MI->getFlag(MachineInstr::FrameSetup)) {
+    Register Saved = MI->getOperand(0).getReg();
     ++MI;
+    CFAOffset += 2;
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::cfiDefCfaOffset(nullptr, CFAOffset),
+            MachineInstr::FrameSetup);
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::createOffset(
+                nullptr, MRI->getDwarfRegNum(Saved, true), -CFAOffset),
+            MachineInstr::FrameSetup);
+  }
   DebugLoc DL = MI == MBB.end() ? DebugLoc() : MI->getDebugLoc();
 
   uint64_t CalleeSavedSize = getCalleeSavedSize(MFI);
@@ -67,11 +96,15 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
          "invalid AVM callee-save frame size");
   uint64_t FixedSize = MFI.getStackSize() - CalleeSavedSize;
   emitSPAdjustment(MBB, MI, DL, TII, -static_cast<int64_t>(FixedSize),
-                   MachineInstr::FrameSetup);
+                   MachineInstr::FrameSetup, &CFAOffset);
 
   if (hasFP(MF)) {
     BuildMI(MBB, MI, DL, TII.get(AVM::GETSP), AVM::R3)
         .setMIFlag(MachineInstr::FrameSetup);
+    emitCFI(MBB, MI, DL, TII,
+            MCCFIInstruction::createDefCfaRegister(
+                nullptr, MRI->getDwarfRegNum(AVM::R3, true)),
+            MachineInstr::FrameSetup);
     for (MachineBasicBlock &Block : llvm::drop_begin(MF))
       Block.addLiveIn(AVM::R3);
   }
@@ -81,6 +114,7 @@ void AVMFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
   MachineBasicBlock::iterator MI = MBB.getFirstTerminator();
   while (MI != MBB.begin()) {
     MachineBasicBlock::iterator Prev = std::prev(MI);
@@ -90,6 +124,7 @@ void AVMFrameLowering::emitEpilogue(MachineFunction &MF,
     MI = Prev;
   }
   DebugLoc DL = MI == MBB.end() ? DebugLoc() : MI->getDebugLoc();
+  auto FirstPop = MI;
 
   if (hasFP(MF))
     BuildMI(MBB, MI, DL, TII.get(AVM::SETSP))
@@ -99,9 +134,31 @@ void AVMFrameLowering::emitEpilogue(MachineFunction &MF,
   uint64_t CalleeSavedSize = getCalleeSavedSize(MFI);
   assert(MFI.getStackSize() >= CalleeSavedSize &&
          "invalid AVM callee-save frame size");
+  int64_t CFAOffset = 3 + static_cast<int64_t>(MFI.getStackSize());
   emitSPAdjustment(MBB, MI, DL, TII,
                    static_cast<int64_t>(MFI.getStackSize() - CalleeSavedSize),
-                   MachineInstr::FrameDestroy);
+                   MachineInstr::FrameDestroy, hasFP(MF) ? nullptr : &CFAOffset);
+  if (hasFP(MF)) {
+    CFAOffset = 3 + static_cast<int64_t>(CalleeSavedSize);
+    emitCFI(MBB, MI, DL, TII,
+            MCCFIInstruction::cfiDefCfa(
+                nullptr, MRI->getDwarfRegNum(AVM::SP, true), CFAOffset),
+            MachineInstr::FrameDestroy);
+  }
+  for (auto Pop = FirstPop;
+       Pop != MBB.end() && Pop->getOpcode() == AVM::POP16 &&
+       Pop->getFlag(MachineInstr::FrameDestroy);) {
+    Register Restored = Pop->getOperand(0).getReg();
+    ++Pop;
+    CFAOffset -= 2;
+    emitCFI(MBB, Pop, DL, TII,
+            MCCFIInstruction::cfiDefCfaOffset(nullptr, CFAOffset),
+            MachineInstr::FrameDestroy);
+    emitCFI(MBB, Pop, DL, TII,
+            MCCFIInstruction::createRestore(
+                nullptr, MRI->getDwarfRegNum(Restored, true)),
+            MachineInstr::FrameDestroy);
+  }
 }
 
 bool AVMFrameLowering::spillCalleeSavedRegisters(
@@ -154,8 +211,12 @@ MachineBasicBlock::iterator AVMFrameLowering::eliminateCallFramePseudoInstr(
     assert(MI->getOpcode() == TII.getCallFrameDestroyOpcode() &&
            "invalid AVM call-frame pseudo");
   }
+  int64_t CFAOffset = 3 + static_cast<int64_t>(MF.getFrameInfo().getStackSize());
+  if (Amount > 0)
+    CFAOffset += Amount;
   emitSPAdjustment(MBB, MI, MI->getDebugLoc(), TII, Amount,
-                   MachineInstr::NoFlags);
+                   MachineInstr::NoFlags,
+                   hasFP(MF) ? nullptr : &CFAOffset);
   return MBB.erase(MI);
 }
 

@@ -5044,6 +5044,11 @@ void CGDebugInfo::CreateLexicalBlock(SourceLocation Loc) {
 
 void CGDebugInfo::AppendAddressSpaceXDeref(
     unsigned AddressSpace, SmallVectorImpl<uint64_t> &Expr) const {
+  // AVM uses DW_AT_address_class on pointer types. Its DWARF locations hold
+  // raw 16/24-bit addresses; DW_OP_xderef would read an object here and is
+  // not a representation of the address class for an LLDB consumer.
+  if (CGM.getTarget().getTriple().getArch() == llvm::Triple::avm)
+    return;
   std::optional<unsigned> DWARFAddressSpace =
       CGM.getTarget().getDWARFAddressSpace(AddressSpace);
   if (!DWARFAddressSpace)

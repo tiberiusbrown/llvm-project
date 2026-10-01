@@ -152,6 +152,9 @@ void DWARFDebugAddrTable::dump(raw_ostream &OS, DIDumpOptions DumpOpts) const {
     case 2:
       AddrFmt = "0x%4.4" PRIx64 "\n";
       break;
+    case 3:
+      AddrFmt = "0x%6.6" PRIx64 "\n";
+      break;
     case 4:
       AddrFmt = "0x%8.8" PRIx64 "\n";
       break;

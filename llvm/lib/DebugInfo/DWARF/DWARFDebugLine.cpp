@@ -393,7 +393,8 @@ Error DWARFDebugLine::Prologue::parse(
     const uint8_t PrologueAddrSize = getAddressSize();
     if (Cursor) {
       if (DataAddrSize == 0) {
-        if (PrologueAddrSize != 4 && PrologueAddrSize != 8) {
+        if (PrologueAddrSize != 3 && PrologueAddrSize != 4 &&
+            PrologueAddrSize != 8) {
           RecoverableErrorHandler(createStringError(
               errc::not_supported,
               "parsing line table prologue at offset 0x%8.8" PRIx64
@@ -948,6 +949,7 @@ Error DWARFDebugLine::LineTable::parse(
           // address size. If the size is unsupported, give up trying to read
           // the address and continue to the next opcode.
           if (OpcodeAddressSize != 1 && OpcodeAddressSize != 2 &&
+              OpcodeAddressSize != 3 &&
               OpcodeAddressSize != 4 && OpcodeAddressSize != 8) {
             RecoverableErrorHandler(createStringError(
                 errc::invalid_argument,

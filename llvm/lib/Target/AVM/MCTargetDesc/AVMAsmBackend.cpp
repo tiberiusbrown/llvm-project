@@ -31,6 +31,11 @@ public:
         return ELF::R_AVM_PROG_LO16;
       if (!Target.getSpecifier()) return ELF::R_AVM_DATA16;
     }
+    if (Fixup.getKind() == FK_Data_3)
+      return ELF::R_AVM_DEBUG24;
+    if (Fixup.getKind() == FK_Data_4 ||
+        Fixup.getKind() == FK_SecRel_4)
+      return ELF::R_AVM_32;
     switch (Fixup.getKind()) {
     case AVM::fixup_avm_pcrel8:
       return ELF::R_AVM_PCREL8;
@@ -94,7 +99,9 @@ public:
                        Fixup.getKind() == AVM::fixup_avm_prog24 ||
                        Fixup.getKind() == AVM::fixup_avm_prog_lo16 ||
                        Fixup.getKind() == AVM::fixup_avm_prog_hi8 ||
-                       Fixup.getKind() == FK_Data_1 || Fixup.getKind() == FK_Data_2))
+                       Fixup.getKind() == FK_Data_1 || Fixup.getKind() == FK_Data_2 ||
+                       Fixup.getKind() == FK_Data_3 || Fixup.getKind() == FK_Data_4 ||
+                       Fixup.getKind() == FK_SecRel_4) && !Target.isAbsolute())
       IsResolved = false;
     if (IsResolved && Fixup.getKind() == AVM::fixup_avm_relax)
       IsResolved = false;
@@ -149,6 +156,20 @@ public:
       if (!isUInt<24>(Value)) Error("AVM program address is out of 24-bit range");
       Data[0] = static_cast<uint8_t>(Value >> 16); return;
     case AVM::fixup_avm_relax:
+      return;
+    case FK_Data_4:
+    case FK_SecRel_4:
+      Data[0] = static_cast<uint8_t>(Value);
+      Data[1] = static_cast<uint8_t>(Value >> 8);
+      Data[2] = static_cast<uint8_t>(Value >> 16);
+      Data[3] = static_cast<uint8_t>(Value >> 24);
+      return;
+    case FK_Data_3:
+      if (!isUInt<24>(Value))
+        Error("AVM DWARF address is out of 24-bit range");
+      Data[0] = static_cast<uint8_t>(Value);
+      Data[1] = static_cast<uint8_t>(Value >> 8);
+      Data[2] = static_cast<uint8_t>(Value >> 16);
       return;
     default:
       llvm_unreachable("unknown AVM fixup");

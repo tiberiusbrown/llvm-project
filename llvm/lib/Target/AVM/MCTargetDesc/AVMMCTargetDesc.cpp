@@ -4,6 +4,7 @@
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
@@ -115,10 +116,13 @@ public:
     SeparatorString = "\n";
     WeakRefDirective = "\t.weak\t";
     CodePointerSize = 3;
-    CalleeSaveStackSlotSize = 2;
+    // CFI offsets must describe the packed three-byte return address as well
+    // as two-byte saved registers, so the data-alignment factor is one byte.
+    CalleeSaveStackSlotSize = 1;
     MaxInstLength = 6;
     MinInstAlignment = 1;
-    SupportsDebugInformation = false;
+    SupportsDebugInformation = true;
+    UsesCFIWithoutEH = true;
   }
 
   void printSpecifierExpr(raw_ostream &OS,
@@ -158,9 +162,16 @@ public:
   }
 };
 
-static MCAsmInfo *createAVMMCAsmInfo(const MCRegisterInfo &, const Triple &TT,
+static MCAsmInfo *createAVMMCAsmInfo(const MCRegisterInfo &MRI, const Triple &TT,
                                      const MCTargetOptions &Options) {
-  return new AVMMCAsmInfo(TT, Options);
+  auto *MAI = new AVMMCAsmInfo(TT, Options);
+  // CALL pushes a packed three-byte return address.  CFA denotes the caller's
+  // SP before that push; it is therefore SP+3 at callee entry.
+  MAI->addInitialFrameState(MCCFIInstruction::cfiDefCfa(
+      nullptr, MRI.getDwarfRegNum(AVM::SP, true), 3));
+  MAI->addInitialFrameState(MCCFIInstruction::createOffset(
+      nullptr, MRI.getDwarfRegNum(AVM::PC, true), -3));
+  return MAI;
 }
 
 static MCInstrInfo *createAVMMCInstrInfo() {
@@ -171,7 +182,7 @@ static MCInstrInfo *createAVMMCInstrInfo() {
 
 static MCRegisterInfo *createAVMMCRegisterInfo(const Triple &) {
   auto *Info = new MCRegisterInfo();
-  InitAVMMCRegisterInfo(Info, 0);
+  InitAVMMCRegisterInfo(Info, AVM::PC);
   return Info;
 }
 

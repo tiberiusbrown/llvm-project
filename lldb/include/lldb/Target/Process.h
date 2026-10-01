@@ -1619,7 +1619,7 @@ public:
   ///     vm_addr, \a buf, and \a size updated appropriately. Zero is
   ///     returned in the case of an error.
   size_t ReadMemoryFromInferior(lldb::addr_t vm_addr, void *buf, size_t size,
-                                Status &error);
+                                Status &error, bool fix_address = true);
 
   // Callback definition for read Memory in chunks
   //

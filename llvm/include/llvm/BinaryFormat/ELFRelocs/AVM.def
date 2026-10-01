@@ -12,3 +12,8 @@ ELF_RELOC(R_AVM_PCREL8,     5)
 ELF_RELOC(R_AVM_PCREL16,    6)
 ELF_RELOC(R_AVM_FAR24,      7)
 ELF_RELOC(R_AVM_RELAX,      8)
+// DWARF32 section offsets and lengths are four bytes, independently of the
+// three-byte AVM address size.
+ELF_RELOC(R_AVM_32,         9)
+// Unqualified 24-bit DWARF address, which may refer to either address space.
+ELF_RELOC(R_AVM_DEBUG24,    10)

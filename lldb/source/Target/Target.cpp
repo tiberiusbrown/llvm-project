@@ -58,6 +58,7 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadSpec.h"
 #include "lldb/Target/UnixSignals.h"
+#include "lldb/ValueObject/ValueObjectConstResult.h"
 #include "lldb/Utility/Event.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/LLDBAssert.h"
@@ -2011,8 +2012,14 @@ size_t Target::ReadMemory(const Address &addr, void *dst, size_t dst_len,
   Address fixed_addr = addr;
   if (ProcessIsValid())
     if (const ABISP &abi = m_process_sp->GetABI())
-      fixed_addr.SetLoadAddress(abi->FixAnyAddress(addr.GetLoadAddress(this)),
-                                this);
+      // AVM ELF sections already have distinct load addresses for program
+      // and data space. Do not reinterpret a section-backed code/rodata
+      // address as an untyped data pointer when reading target memory.
+      if (GetArchitecture().GetMachine() != llvm::Triple::avm ||
+          !addr.IsSectionOffset() ||
+          addr.GetLoadAddress(this) >= 0x01000000)
+        fixed_addr.SetLoadAddress(abi->FixAnyAddress(addr.GetLoadAddress(this)),
+                                  this);
 
   // if we end up reading this from process memory, we will fill this with the
   // actual load address
@@ -2088,7 +2095,15 @@ size_t Target::ReadMemory(const Address &addr, void *dst, size_t dst_len,
         error = Status::FromErrorStringWithFormat(
             "0x%" PRIx64 " can't be resolved", resolved_addr.GetFileAddress());
     } else {
-      bytes_read = m_process_sp->ReadMemory(load_addr, dst, dst_len, error);
+      // Process::ReadMemory treats untyped low AVM addresses as data
+      // pointers. A resolved ELF code or rodata section has already selected
+      // program space, so read that precise load address from the emulator.
+      if (GetArchitecture().GetMachine() == llvm::Triple::avm &&
+          resolved_addr.IsSectionOffset() && load_addr < 0x01000000)
+        bytes_read = m_process_sp->ReadMemoryFromInferior(load_addr, dst,
+                                                           dst_len, error, false);
+      else
+        bytes_read = m_process_sp->ReadMemory(load_addr, dst, dst_len, error);
       if (bytes_read != dst_len) {
         if (error.Success()) {
           if (bytes_read == 0)
@@ -2858,6 +2873,19 @@ ExpressionResults Target::EvaluateExpression(
   ExpressionResults execution_results = eExpressionSetupError;
 
   if (expr.empty()) {
+    m_stats.GetExpressionStats().NotifyFailure();
+    return execution_results;
+  }
+
+  // AVM has no guest expression memory or call ABI. The generic LLDB
+  // interpreter can otherwise report a fabricated value for even a constant
+  // expression on this target, so fail explicitly until that ABI exists.
+  if (GetArchitecture().GetMachine() == llvm::Triple::avm) {
+    result_valobj_sp = ValueObjectConstResult::Create(
+        exe_scope ? exe_scope : this,
+        Status::FromErrorString(
+            "AVM expression execution is unsupported; use frame variable, "
+            "target variable, memory read, or register read"));
     m_stats.GetExpressionStats().NotifyFailure();
     return execution_results;
   }

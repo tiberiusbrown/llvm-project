@@ -12,10 +12,12 @@
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
+#include "lldb/Target/Target.h"
 #include "lldb/Utility/Flags.h"
 #include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-forward.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <functional>
 #include <memory>
@@ -140,6 +142,25 @@ bool ValueObjectChild::UpdateValue() {
           // TODO: does this make sense?
           m_value.SetValueType(Value::ValueType::Scalar);
           break;
+        }
+
+        // Keep the three-byte value shown for an AVM program pointer, but
+        // route its dereferenced child through a distinct load-address bank.
+        // This distinguishes program 0x0100 from data 0x0100 when the child
+        // is fetched from the live process.
+        if (m_is_deref_of_parent &&
+            m_value.GetValueType() == Value::ValueType::LoadAddress &&
+            parent_type.IsPointerType()) {
+          if (lldb::TargetSP target = GetTargetSP();
+              target && target->GetArchitecture().GetMachine() ==
+                            llvm::Triple::avm) {
+            if (auto pointer_size = llvm::expectedToOptional(parent->GetByteSize());
+                pointer_size && *pointer_size == 3) {
+              lldb::addr_t raw = m_value.GetScalar().ULongLong(0);
+              if (raw && raw <= 0xffffff)
+                m_value.GetScalar() = 0x02000000 + raw;
+            }
+          }
         }
       }
       switch (m_value.GetValueType()) {

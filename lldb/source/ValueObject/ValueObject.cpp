@@ -51,6 +51,7 @@
 #include "lldb/lldb-private-types.h"
 
 #include "llvm/Support/Compiler.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -1640,6 +1641,17 @@ ValueObject::AddrAndType ValueObject::GetPointerValue() {
   case Value::ValueType::LoadAddress:
   case Value::ValueType::FileAddress: {
     lldb::offset_t data_offset = 0;
+    // AVM uses ELF32 section offsets, but its actual pointer objects are
+    // two-byte data pointers or three-byte program pointers. Decode the
+    // stored value using the type's width, not the ELF container's width.
+    if (TargetSP target = GetTargetSP();
+        target && target->GetArchitecture().GetMachine() == llvm::Triple::avm &&
+        GetCompilerType().IsPointerOrReferenceType()) {
+      if (auto byte_size = llvm::expectedToOptional(GetByteSize());
+          byte_size && *byte_size > 0 && *byte_size <= 8)
+        return {m_data.GetMaxU64(&data_offset, *byte_size),
+                GetAddressTypeOfChildren()};
+    }
     return {m_data.GetAddress(&data_offset), GetAddressTypeOfChildren()};
   }
   }

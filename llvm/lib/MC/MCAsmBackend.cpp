@@ -92,6 +92,7 @@ MCFixupKindInfo MCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       {"FK_NONE", 0, 0, 0},
       {"FK_Data_1", 0, 8, 0},
       {"FK_Data_2", 0, 16, 0},
+      {"FK_Data_3", 0, 24, 0},
       {"FK_Data_4", 0, 32, 0},
       {"FK_Data_8", 0, 64, 0},
       {"FK_Data_leb128", 0, 0, 0},

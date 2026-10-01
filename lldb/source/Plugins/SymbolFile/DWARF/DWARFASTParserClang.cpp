@@ -45,11 +45,13 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/DebugInfo/DWARF/DWARFAddressRange.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 #include "llvm/Demangle/Demangle.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <map>
 #include <memory>
@@ -862,6 +864,28 @@ DWARFASTParserClang::ParseTypeModifier(const SymbolContext &sc,
                       encoding_data_type == Type::eEncodingIsTypedefUID)) {
     if (tag == DW_TAG_pointer_type) {
       DWARFDIE target_die = die.GetReferencedDIE(DW_AT_type);
+
+      // AVM's DW_AT_address_class 1 denotes a 24-bit program pointer.
+      // Reconstruct the Clang address-space qualifier so the debugger uses
+      // the three-byte pointer layout instead of its two-byte data layout.
+      if (dwarf->GetObjectFile()->GetArchitecture().GetMachine() ==
+              llvm::Triple::avm &&
+          die.GetAttributeValueAsUnsigned(DW_AT_address_class, 0) == 1 &&
+          target_die) {
+        if (TypeSP pointee = ParseTypeFromDWARF(sc, target_die, nullptr)) {
+          clang::QualType pointee_qual = TypeSystemClang::GetQualType(
+              pointee->GetForwardCompilerType().GetOpaqueQualType());
+          if (!pointee_qual.isNull()) {
+            clang::ASTContext &ast = m_ast.getASTContext();
+            clang_type = m_ast.GetType(ast.getPointerType(
+                ast.getAddrSpaceQualType(
+                    pointee_qual, clang::getLangASFromTargetAS(1))));
+            encoding_data_type = Type::eEncodingIsUID;
+            attrs.type.Clear();
+            resolve_state = Type::ResolveState::Full;
+          }
+        }
+      }
 
       if (target_die.GetAttributeValueAsUnsigned(DW_AT_APPLE_block, 0)) {
         // Blocks have a __FuncPtr inside them which is a pointer to a

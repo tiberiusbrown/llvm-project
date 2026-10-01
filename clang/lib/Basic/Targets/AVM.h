@@ -70,6 +70,13 @@ public:
 
   uint64_t getFunctionPointerAlign() const override { return 8; }
 
+  std::optional<unsigned>
+  getDWARFAddressSpace(unsigned AddressSpace) const override {
+    if (AddressSpace == 1)
+      return 1;
+    return std::nullopt;
+  }
+
   uint64_t getPointerWidthV(LangAS AS) const override {
     return getTargetAddressSpace(AS) == 1 ? 24 : 16;
   }

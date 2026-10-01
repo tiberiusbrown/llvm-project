@@ -116,6 +116,13 @@ public:
   // Do finalize relaxation after collecting relaxation infos.
   virtual void finalizeRelax(int passes) const {}
 
+  // Some targets shrink input sections and must translate section-symbol
+  // relocation addends emitted before relaxation (notably in DWARF).
+  virtual int64_t adjustRelocAddend(const Symbol &, int64_t addend) const {
+    return addend;
+  }
+  virtual void adjustDebugFrameRange(const Symbol &, int64_t, uint8_t *) const {}
+
   virtual void applyJumpInstrMod(uint8_t *loc, JumpModType type,
                                  JumpModType val) const {}
   virtual void applyBranchToBranchOpt() const {}

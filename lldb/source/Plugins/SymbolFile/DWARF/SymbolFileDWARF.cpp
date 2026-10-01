@@ -3480,8 +3480,9 @@ static DWARFExpressionList GetExprListFromAtLocation(DWARFFormValue form_value,
 
     uint64_t block_offset = form_value.BlockData() - data.GetDataStart();
     uint64_t block_length = form_value.Unsigned();
-    return DWARFExpressionList(
-        module, DataExtractor(data, block_offset, block_length), die.GetCU());
+    DataExtractor expression(data, block_offset, block_length);
+    expression.SetAddressByteSize(die.GetCU()->GetAddressByteSize());
+    return DWARFExpressionList(module, expression, die.GetCU());
   }
 
   DWARFExpressionList location_list(module, DWARFExpression(), die.GetCU());
@@ -3511,9 +3512,9 @@ GetExprListFromAtConstValue(DWARFFormValue form_value, ModuleSP module,
     uint64_t block_offset =
         form_value.BlockData() - debug_info_data.GetDataStart();
     uint64_t block_length = form_value.Unsigned();
-    return DWARFExpressionList(
-        module, DataExtractor(debug_info_data, block_offset, block_length),
-        die.GetCU());
+    DataExtractor expression(debug_info_data, block_offset, block_length);
+    expression.SetAddressByteSize(die.GetCU()->GetAddressByteSize());
+    return DWARFExpressionList(module, expression, die.GetCU());
   }
   if (const char *str = form_value.AsCString())
     return DWARFExpressionList(module,

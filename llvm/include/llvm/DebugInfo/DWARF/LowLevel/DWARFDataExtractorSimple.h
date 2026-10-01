@@ -118,6 +118,7 @@ public:
     case dwarf::DW_EH_PE_absptr:
       switch (getAddressSize()) {
       case 2:
+      case 3:
       case 4:
       case 8:
         Result = getUnsigned(Offset, getAddressSize());

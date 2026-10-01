@@ -22,6 +22,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/TargetParser/Triple.h"
 using namespace llvm;
 
 MCObjectStreamer::MCObjectStreamer(MCContext &Context,
@@ -533,6 +534,15 @@ void MCObjectStreamer::emitDwarfAdvanceLineAddr(int64_t LineDelta,
                                                 const MCSymbol *Label,
                                                 unsigned PointerSize) {
   if (!LastLabel) {
+    emitDwarfSetLineAddr(*this, Assembler->getDWARFLinetableParams(), LineDelta,
+                         Label, PointerSize);
+    return;
+  }
+
+  // AVM link relaxation can shorten instructions after MC has encoded line
+  // deltas. Relocate every row address independently so the final line table
+  // follows the relaxed code, including the end_sequence address.
+  if (getContext().getTargetTriple().getArch() == Triple::avm) {
     emitDwarfSetLineAddr(*this, Assembler->getDWARFLinetableParams(), LineDelta,
                          Label, PointerSize);
     return;

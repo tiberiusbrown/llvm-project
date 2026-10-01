@@ -380,6 +380,16 @@ static uint64_t resolveAVR(uint64_t Type, uint64_t Offset, uint64_t S,
   }
 }
 
+static bool supportsAVM(uint64_t Type) {
+  return Type == ELF::R_AVM_32 || Type == ELF::R_AVM_DEBUG24;
+}
+
+static uint64_t resolveAVM(uint64_t Type, uint64_t, uint64_t S,
+                           uint64_t, int64_t Addend) {
+  uint64_t Value = S + Addend;
+  return Type == ELF::R_AVM_DEBUG24 ? Value & 0xffffff : Value & 0xffffffff;
+}
+
 static bool supportsLanai(uint64_t Type) {
   return Type == ELF::R_LANAI_32;
 }
@@ -836,6 +846,8 @@ getRelocationResolver(const ObjectFile &Obj) {
       return {supportsARM, resolveARM};
     case Triple::avr:
       return {supportsAVR, resolveAVR};
+    case Triple::avm:
+      return {supportsAVM, resolveAVM};
     case Triple::lanai:
       return {supportsLanai, resolveLanai};
     case Triple::loongarch32:

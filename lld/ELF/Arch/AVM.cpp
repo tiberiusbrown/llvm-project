@@ -12,6 +12,7 @@
 #include "Symbols.h"
 #include "Target.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Endian.h"
 
 using namespace llvm;
@@ -23,6 +24,8 @@ using namespace lld::elf;
 
 namespace {
 class AVM final : public TargetInfo {
+  mutable DenseMap<const InputSection *, SmallVector<std::pair<uint64_t, uint64_t>, 8>>
+      relaxedOffsets;
 public:
   explicit AVM(Ctx &Ctx) : TargetInfo(Ctx) {
     defaultMaxPageSize = 0x100;
@@ -61,7 +64,10 @@ public:
       return 2;
     case R_AVM_PROG24:
     case R_AVM_FAR24:
+    case R_AVM_DEBUG24:
       return 3;
+    case R_AVM_32:
+      return 4;
     default:
       return 0;
     }
@@ -69,6 +75,41 @@ public:
 
   bool relaxOnce(int pass) const override;
   void finalizeRelax(int passes) const override;
+  int64_t adjustRelocAddend(const Symbol &sym,
+                           int64_t addend) const override {
+    const auto *d = dyn_cast<Defined>(&sym);
+    if (!d || !d->isSection() || addend < 0)
+      return addend;
+    const auto *sec = dyn_cast_or_null<InputSection>(d->section);
+    auto it = relaxedOffsets.find(sec);
+    if (it == relaxedOffsets.end())
+      return addend;
+    uint64_t removed = 0;
+    for (auto [oldEnd, totalRemoved] : it->second) {
+      if (oldEnd > static_cast<uint64_t>(addend))
+        break;
+      removed = totalRemoved;
+    }
+    return addend - removed;
+  }
+  void adjustDebugFrameRange(const Symbol &sym, int64_t originalBegin,
+                             uint8_t *range) const override {
+    if (originalBegin < 0)
+      return;
+    uint32_t originalLength = uint32_t(range[0]) |
+                              uint32_t(range[1]) << 8 |
+                              uint32_t(range[2]) << 16;
+    int64_t finalBegin = adjustRelocAddend(sym, originalBegin);
+    int64_t finalEnd = adjustRelocAddend(sym, originalBegin + originalLength);
+    if (finalEnd < finalBegin || finalEnd - finalBegin > 0xffffff) {
+      Err(ctx) << "invalid AVM .debug_frame range after relaxation";
+      return;
+    }
+    uint32_t finalLength = static_cast<uint32_t>(finalEnd - finalBegin);
+    range[0] = finalLength;
+    range[1] = finalLength >> 8;
+    range[2] = finalLength >> 16;
+  }
 
   void checkAddressSpace(RelType type, const Symbol &sym) const {
     const Defined *defined = dyn_cast<Defined>(&sym);
@@ -102,6 +143,9 @@ public:
     case R_AVM_FAR24:
       checkAddressSpace(Type, S);
       return R_ABS;
+    case R_AVM_32:
+    case R_AVM_DEBUG24:
+      return R_ABS;
     case R_AVM_PCREL8:
     case R_AVM_PCREL16:
       return R_PC;
@@ -122,6 +166,7 @@ public:
       write16le(Loc, Val);
       return;
     case R_AVM_PROG24:
+    case R_AVM_DEBUG24:
       checkUInt(ctx, Loc, Val, 24, Rel);
       Loc[0] = Val;
       Loc[1] = Val >> 8;
@@ -140,6 +185,10 @@ public:
       Loc[0] = Val;
       Loc[1] = Val >> 8;
       Loc[2] = Val >> 16;
+      return;
+    case R_AVM_32:
+      checkUInt(ctx, Loc, Val, 32, Rel);
+      write32le(Loc, Val);
       return;
     case R_AVM_PCREL8:
       // R_PC is based on the relocated operand at P + 1. AVM defines P as
@@ -500,6 +549,16 @@ void AVM::finalizeRelax(int) const {
       ArrayRef<uint8_t> old = sec->content();
       if (relocs.empty())
         continue;
+      auto &offsets = relaxedOffsets[sec];
+      uint64_t removed = 0;
+      for (auto [i, marker] : llvm::enumerate(relocs)) {
+        if (!aux.relocStates[i])
+          continue;
+        uint64_t originalSize = 0;
+        getRelaxKind(old, marker.offset, originalSize);
+        removed += originalSize - aux.relocStates[i];
+        offsets.push_back({marker.offset + originalSize, removed});
+      }
       uint64_t total = aux.relocDeltas[relocs.size() - 1];
       uint8_t *out = ctx.bAlloc.Allocate<uint8_t>(old.size() - total);
       uint8_t *p = out;

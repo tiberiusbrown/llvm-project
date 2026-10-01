@@ -16,6 +16,7 @@
 #include "SyntheticSections.h"
 #include "Target.h"
 #include "lld/Common/DWARF.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Compression.h"
 #include "llvm/Support/Endian.h"
@@ -1064,6 +1065,18 @@ void InputSection::relocateNonAlloc(Ctx &ctx, uint8_t *buf,
   const auto emachine = ctx.arg.emachine;
   const bool isDebug = isDebugSection(*this);
   const bool isDebugLine = isDebug && name == ".debug_line";
+  SmallVector<uint64_t, 8> avmFdePcOffsets;
+  if (emachine == EM_AVM && name == ".debug_frame") {
+    ArrayRef<uint8_t> bytes = content();
+    for (uint64_t pos = 0; pos + 8 <= bytes.size();) {
+      uint32_t length = read32le(bytes.data() + pos);
+      if (length < 4 || length > bytes.size() - pos - 4)
+        break;
+      if (read32le(bytes.data() + pos + 4) != UINT32_MAX)
+        avmFdePcOffsets.push_back(pos + 8);
+      pos += 4 + length;
+    }
+  }
   std::optional<uint64_t> tombstone;
   if (isDebug) {
     if (name == ".debug_loc" || name == ".debug_ranges")
@@ -1089,7 +1102,9 @@ void InputSection::relocateNonAlloc(Ctx &ctx, uint8_t *buf,
     if (!RelTy::HasAddend)
       addend += target.getImplicitAddend(bufLoc, type);
 
+    int64_t originalAddend = addend;
     Symbol &sym = f->getRelocTargetSym(rel);
+    addend = target.adjustRelocAddend(sym, addend);
     RelExpr expr = target.getRelExpr(type, sym, bufLoc);
     if (expr == R_NONE)
       continue;
@@ -1171,6 +1186,9 @@ void InputSection::relocateNonAlloc(Ctx &ctx, uint8_t *buf,
         expr == RE_RISCV_ADD || expr == RE_ARM_SBREL) {
       target.relocateNoSym(bufLoc, type,
                            SignExtend64<bits>(sym.getVA(ctx, addend)));
+      if (type == R_AVM_DEBUG24 &&
+          llvm::is_contained(avmFdePcOffsets, offset))
+        target.adjustDebugFrameRange(sym, originalAddend, bufLoc + 3);
       continue;
     }
 

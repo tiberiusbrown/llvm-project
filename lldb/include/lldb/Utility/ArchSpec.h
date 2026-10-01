@@ -234,6 +234,8 @@ public:
 
     eCore_avr,
 
+    eCore_avm,
+
     eCore_wasm32,
 
     kNumCores,

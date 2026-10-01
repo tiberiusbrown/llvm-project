@@ -600,6 +600,11 @@ size_t ObjectFileELF::GetModuleSpecifications(
     elf::ELFHeader header;
     lldb::offset_t header_offset = data_offset;
     if (header.Parse(data, &header_offset)) {
+      if (header.e_machine == llvm::ELF::EM_AVM &&
+          (header.e_ident[EI_CLASS] != ELFCLASS32 ||
+           header.e_ident[EI_DATA] != ELFDATA2LSB ||
+           header.e_flags != llvm::ELF::EF_AVM_ABI_V1))
+        return specs.GetSize();
       if (data_sp) {
         ModuleSpec spec(file);
         // In Android API level 23 and above, bionic dynamic linker is able to
@@ -788,6 +793,10 @@ bool ObjectFileELF::SetLoadAddress(Target &target, lldb::addr_t value,
           // address already specified
           if (section_sp->GetType() != eSectionTypeAbsoluteAddress)
             load_addr += value;
+
+          if (m_arch_spec.GetMachine() == llvm::Triple::avm &&
+              section_sp->Test(llvm::ELF::SHF_AVM_DATASPACE))
+            load_addr += 0x01000000;
 
           // On 32-bit systems the load address have to fit into 4 bytes. The
           // rest of the bytes are the overflow from the addition.
@@ -3674,6 +3683,12 @@ void ObjectFileELF::DumpELFDynamic(lldb_private::Stream *s) {
 
 ArchSpec ObjectFileELF::GetArchitecture() {
   if (!ParseHeader())
+    return ArchSpec();
+
+  if (m_header.e_machine == llvm::ELF::EM_AVM &&
+      (m_header.e_ident[EI_CLASS] != ELFCLASS32 ||
+       m_header.e_ident[EI_DATA] != ELFDATA2LSB ||
+       m_header.e_flags != llvm::ELF::EF_AVM_ABI_V1))
     return ArchSpec();
 
   if (m_section_headers.empty()) {

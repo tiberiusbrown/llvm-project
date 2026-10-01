@@ -493,7 +493,10 @@ void DwarfCompileUnit::attachLowHighPC(DIE &D, const MCSymbol *Begin,
   assert(End->isDefined() && "Invalid end label");
 
   addLabelAddress(D, dwarf::DW_AT_low_pc, Begin);
-  if (DD->getDwarfVersion() >= 4 &&
+  // AVM linker relaxation changes instruction sizes after the assembler has
+  // computed label differences. Preserve the end symbol as a relocation.
+  if (Asm->TM.getTargetTriple().getArch() != Triple::avm &&
+      DD->getDwarfVersion() >= 4 &&
       (!isDwoUnit() || !llvm::isRangeRelaxable(Begin, End))) {
     addLabelDelta(D, dwarf::DW_AT_high_pc, End, Begin);
     return;

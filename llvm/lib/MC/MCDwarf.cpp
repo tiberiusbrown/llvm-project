@@ -32,6 +32,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include <cassert>
 #include <cstdint>
 #include <optional>
@@ -902,7 +903,7 @@ static void EmitGenDwarfAranges(MCStreamer *MCOS,
   // pairs who's values are PointerSize'ed.
   const MCAsmInfo *asmInfo = context.getAsmInfo();
   int AddrSize = asmInfo->getCodePointerSize();
-  int Pad = 2 * AddrSize - (Length & (2 * AddrSize - 1));
+  int Pad = 2 * AddrSize - (Length % (2 * AddrSize));
   if (Pad == 2 * AddrSize)
     Pad = 0;
   Length += Pad;
@@ -1559,7 +1560,18 @@ void FrameEmitterImpl::emitCFIInstructions(ArrayRef<MCCFIInstruction> Instrs,
     if (BaseLabel && Label) {
       MCSymbol *ThisSym = Label;
       if (ThisSym != BaseLabel) {
-        Streamer.emitDwarfAdvanceFrameAddr(BaseLabel, ThisSym, Instr.getLoc());
+        // AVM linker relaxation changes instruction addresses after assembly.
+        // An encoded advance has no relocation for the linker to update, but
+        // a set_loc operand does. This is used only in non-allocated CFI.
+        if (!IsEH && Streamer.getContext().getTargetTriple().getArch() ==
+                         Triple::avm) {
+          Streamer.emitInt8(dwarf::DW_CFA_set_loc);
+          Streamer.emitSymbolValue(
+              ThisSym, Streamer.getContext().getAsmInfo()->getCodePointerSize());
+        } else {
+          Streamer.emitDwarfAdvanceFrameAddr(BaseLabel, ThisSym,
+                                             Instr.getLoc());
+        }
         BaseLabel = ThisSym;
       }
     }
@@ -1769,7 +1781,8 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(const MCDwarfFrameInfo &Frame) {
   InitialCFAOffset = CFAOffset;
 
   // Padding
-  Streamer.emitValueToAlignment(Align(IsEH ? 4 : MAI->getCodePointerSize()));
+  // CIE/FDE padding is a section layout concern, not the width of an address.
+  Streamer.emitValueToAlignment(Align(IsEH ? 4 : PowerOf2Ceil(MAI->getCodePointerSize())));
 
   Streamer.emitLabel(sectionEnd);
   return *sectionStart;
@@ -1847,7 +1860,7 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
   // since a null CIE is interpreted as the end. Old systems overaligned
   // .eh_frame, so we do too and account for it in the last FDE.
   unsigned Alignment = LastInSection ? asmInfo->getCodePointerSize() : PCSize;
-  Streamer.emitValueToAlignment(Align(Alignment));
+  Streamer.emitValueToAlignment(Align(PowerOf2Ceil(Alignment)));
 
   Streamer.emitLabel(fdeEnd);
 }
@@ -1920,7 +1933,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
       if (Frame.CompactUnwindEncoding == 0) continue;
       if (!SectionEmitted) {
         Streamer.switchSection(MOFI->getCompactUnwindSection());
-        Streamer.emitValueToAlignment(Align(AsmInfo->getCodePointerSize()));
+        Streamer.emitValueToAlignment(Align(PowerOf2Ceil(AsmInfo->getCodePointerSize())));
         SectionEmitted = true;
       }
       NeedsEHFrameSection |=

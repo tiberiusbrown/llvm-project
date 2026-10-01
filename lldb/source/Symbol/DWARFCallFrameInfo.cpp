@@ -544,6 +544,10 @@ void DWARFCallFrameInfo::GetFDEIndex() {
 
     const CIE *cie = GetCIE(cie_offset);
     if (cie) {
+      // DWARF v4 .debug_frame describes the width of FDE addresses in its
+      // CIE. Use it while indexing, before the FDE is parsed for unwinding.
+      if (m_type == DWARF && cie->address_size)
+        m_cfi_data.SetAddressByteSize(cie->address_size);
       const lldb::addr_t pc_rel_addr = m_section_sp->GetFileAddress();
       const lldb::addr_t text_addr = LLDB_INVALID_ADDRESS;
       const lldb::addr_t data_addr = LLDB_INVALID_ADDRESS;
@@ -605,6 +609,11 @@ DWARFCallFrameInfo::ParseFDE(dw_offset_t dwarf_offset,
 
   const CIE *cie = GetCIE(cie_offset);
   assert(cie != nullptr);
+  // A DWARF v4 .debug_frame CIE carries its own address size. In particular,
+  // AVM's 24-bit FDE PCs and DW_CFA_set_loc operands must consume three bytes
+  // even though the containing ELF is ELF32.
+  if (m_type == DWARF && cie->address_size)
+    m_cfi_data.SetAddressByteSize(cie->address_size);
 
   const dw_offset_t end_offset = current_entry + length + (is_64bit ? 12 : 4);
 
@@ -617,7 +626,7 @@ DWARFCallFrameInfo::ParseFDE(dw_offset_t dwarf_offset,
   lldb::addr_t range_len = GetGNUEHPointer(
       m_cfi_data, &offset, cie->ptr_encoding & DW_EH_PE_MASK_ENCODING,
       pc_rel_addr, text_addr, data_addr);
-  AddressRange range(range_base, m_objfile.GetAddressByteSize(),
+  AddressRange range(range_base, m_cfi_data.GetAddressByteSize(),
                      m_objfile.GetSectionList());
   range.SetByteSize(range_len);
 
