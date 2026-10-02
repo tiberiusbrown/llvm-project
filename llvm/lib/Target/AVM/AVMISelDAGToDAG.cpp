@@ -617,6 +617,49 @@ private:
     return SDValue(CurDAG->getMachineNode(Opcode, DL, MVT::i32, Value), 0);
   }
 
+  bool selectSignExtend1(SDNode *Node) {
+    if (Node->getOpcode() != ISD::SIGN_EXTEND_INREG ||
+        (Node->getValueType(0) != MVT::i16 &&
+         Node->getValueType(0) != MVT::i32) ||
+        cast<VTSDNode>(Node->getOperand(1))->getVT() != MVT::i1)
+      return false;
+
+    SDLoc DL(Node);
+    SDValue Value = Node->getOperand(0);
+    KnownBits Known = CurDAG->computeKnownBits(Value);
+    // Only the low half is used, even for an i32 source. NEG16 is valid only
+    // when bits 1..15 of that half are known zero.
+    APInt HighBits = APInt::getBitsSet(Known.getBitWidth(), 1, 16);
+    bool IsZeroExtended = (Known.Zero & HighBits) == HighBits;
+    if (Node->getValueType(0) == MVT::i32) {
+      SDValue SubReg = CurDAG->getTargetConstant(AVM::sub_lo16, DL, MVT::i32);
+      Value = SDValue(CurDAG->getMachineNode(TargetOpcode::EXTRACT_SUBREG, DL,
+                                            MVT::i16, Value, SubReg), 0);
+    }
+
+    SDValue Extended;
+    if (IsZeroExtended) {
+      Extended = SDValue(CurDAG->getMachineNode(AVM::NEG16, DL, MVT::i16,
+                                                Value), 0);
+    } else {
+      SDValue One = SDValue(CurDAG->getMachineNode(
+                               AVM::LDI8_PSEUDO, DL, MVT::i16,
+                               CurDAG->getTargetConstant(1, DL, MVT::i16)),
+                           0);
+      SDValue Masked = SDValue(CurDAG->getMachineNode(
+                                   AVM::AND16_PSEUDO, DL, MVT::i16, Value,
+                                   One), 0);
+      Extended = SDValue(CurDAG->getMachineNode(AVM::NEG16, DL, MVT::i16,
+                                                Masked), 0);
+    }
+
+    if (Node->getValueType(0) == MVT::i32)
+      CurDAG->SelectNodeTo(Node, AVM::SEXT16_32_PSEUDO, MVT::i32, Extended);
+    else
+      ReplaceNode(Node, Extended.getNode());
+    return true;
+  }
+
   bool selectExtendOrTruncate32(SDNode *Node) {
     if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
         Node->getValueType(0) == MVT::i32 &&
@@ -1452,6 +1495,8 @@ private:
     case ISD::SIGN_EXTEND:
     case ISD::SIGN_EXTEND_INREG:
     case ISD::TRUNCATE:
+      if (selectSignExtend1(Node))
+        return;
       if (selectExtendOrTruncate32(Node))
         return;
       break;
