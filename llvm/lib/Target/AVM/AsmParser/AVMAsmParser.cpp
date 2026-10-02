@@ -1246,12 +1246,15 @@ public:
   }
 
   ParseStatus parseDirective(AsmToken Directive) override {
-    if (Directive.getString().equals_insensitive(".word")) {
+    if (Directive.getString().equals_insensitive(".word") ||
+        Directive.getString().equals_insensitive(".3byte")) {
       auto ParseOne = [&]() -> bool {
         const MCExpr *Expr = nullptr;
         SMLoc Loc = Parser.getTok().getLoc();
         if (Parser.parseExpression(Expr)) return true;
-        Parser.getStreamer().emitValue(Expr, 2, Loc);
+        Parser.getStreamer().emitValue(
+            Expr, Directive.getString().equals_insensitive(".word") ? 2 : 3,
+            Loc);
         return false;
       };
       if (Parser.parseMany(ParseOne)) return ParseStatus::Failure;

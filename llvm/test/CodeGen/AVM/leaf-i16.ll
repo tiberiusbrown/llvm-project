@@ -10,6 +10,7 @@
 
 define void @empty() {
 ; ASM-LABEL: empty:
+; ASM-NEXT: .Lfunc_begin0:
 ; ASM-NEXT:  ; %bb.0:
 ; ASM-NEXT:  ret
   ret void
@@ -17,6 +18,7 @@ define void @empty() {
 
 define i16 @add(i16 %a, i16 %b) {
 ; ASM-LABEL: add:
+; ASM-NEXT: .Lfunc_begin1:
 ; ASM-NEXT:  ; %bb.0:
 ; ASM-NEXT:  add r4, r5
 ; ASM-NEXT:  ret

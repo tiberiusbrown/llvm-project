@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Driver.h"
+#include "AVMStack.h"
 #include "Config.h"
 #include "ICF.h"
 #include "InputFiles.h"
@@ -1440,6 +1441,7 @@ static void readConfigs(Ctx &ctx, opt::InputArgList &args) {
   ctx.arg.fortranCommon =
       args.hasFlag(OPT_fortran_common, OPT_no_fortran_common, false);
   ctx.arg.gcSections = args.hasFlag(OPT_gc_sections, OPT_no_gc_sections, false);
+  ctx.arg.avmPrintStackUsage = args.hasArg(OPT_avm_print_stack_usage);
   ctx.arg.gnuUnique = args.hasFlag(OPT_gnu_unique, OPT_no_gnu_unique, true);
   ctx.arg.gdbIndex = args.hasFlag(OPT_gdb_index, OPT_no_gdb_index, false);
   ctx.arg.icf = getICF(args);
@@ -3450,6 +3452,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   // Garbage collection and removal of shared symbols from unused shared objects.
   markLive<ELFT>(ctx);
+  analyzeAVMStack(ctx);
 
   // Make copies of any input sections that need to be copied into each
   // partition.

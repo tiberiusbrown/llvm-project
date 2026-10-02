@@ -12,7 +12,7 @@ loop:
   %next = add i16 %value, -1
   %done = icmp eq i16 %next, 0
   br i1 %done, label %exit, label %loop
-; CHECK:       brne{{(8|16)?}} LBB0_1
+; CHECK:       brne{{(8|16)?}} .LBB0_1
 ; CHECK-NOT:   jmp{{8|16}}
 
 exit:

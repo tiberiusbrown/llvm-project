@@ -1129,9 +1129,15 @@ class AVMCallPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
 }
 
 def CALL_DIRECT_PSEUDO
-    : AVMCallPseudo<(ins AVMImm24:$target, variable_ops)>;
+    : AVMCallPseudo<(ins AVMImm24:$target, i16imm:$stackbytes, variable_ops)>;
 def CALL_INDIRECT_PSEUDO
-    : AVMCallPseudo<(ins GPR32:$target, variable_ops)>;
+    : AVMCallPseudo<(ins GPR32:$target, i16imm:$stackbytes, variable_ops)>;
+
+// Zero-size, post-RA metadata. It must survive dead-instruction elimination.
+def STACKCALL : AVMCodeGenPseudo<(outs), (ins i16imm:$stackbytes)> {
+  let hasSideEffects = 1;
+  let Size = 0;
+}
 
 def FRAMEADDR_PSEUDO
     : AVMPureCodeGenPseudo<(outs PTR16:$dst),

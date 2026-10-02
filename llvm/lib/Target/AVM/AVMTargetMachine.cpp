@@ -48,6 +48,8 @@ AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
     : CodeGenTargetMachineImpl(T, TT.computeDataLayout(), TT, CPU, FS, Options,
                                Reloc::Static, CodeModel::Large, OL),
       TLOF(std::make_unique<AVMTargetObjectFile>()) {
+  // Safety metadata is part of the AVM ABI, including LTO code generation.
+  this->Options.EmitStackSizeSection = true;
   initAsmInfo();
 }
 

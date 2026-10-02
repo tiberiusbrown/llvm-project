@@ -1566,6 +1566,8 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   analyzeAVMArguments(CLI.Outs, CCInfo, CLI.IsVarArg);
 
   unsigned NumBytes = CCInfo.getStackSize();
+  if (NumBytes > UINT16_MAX)
+    report_fatal_error("AVM outgoing stack arguments exceed the 16-bit ABI limit");
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
   SmallVector<std::pair<MCPhysReg, SDValue>, 4> RegsToPass;
   SmallVector<SDValue, 4> StoreChains;
@@ -1628,7 +1630,10 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
       Callee = DAG.getZExtOrTrunc(Callee, DL, MVT::i32);
   }
 
-  SmallVector<SDValue, 10> Ops = {Chain, Callee};
+  // Keep the exact callsite size on the machine call through register
+  // allocation, frame lowering and machine block duplication.
+  SmallVector<SDValue, 10> Ops = {
+      Chain, Callee, DAG.getTargetConstant(NumBytes, DL, MVT::i16)};
   for (const auto &[Reg, Value] : RegsToPass)
     Ops.push_back(DAG.getRegister(Reg, Value.getValueType()));
   const TargetRegisterInfo *TRI =

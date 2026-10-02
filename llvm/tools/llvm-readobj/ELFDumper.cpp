@@ -7086,7 +7086,7 @@ void ELFDumper<ELFT>::printStackSize(const Relocation<ELFT> &R,
   }
 
   uint64_t Offset = R.Offset;
-  if (!Data.isValidOffsetForDataOfSize(Offset, sizeof(Elf_Addr) + 1)) {
+  if (!Data.isValidOffsetForDataOfSize(Offset, Data.getAddressSize() + 1)) {
     reportUniqueWarning("found invalid relocation offset (0x" +
                         Twine::utohexstr(Offset) + ") into " +
                         describe(StackSizeSec) +
@@ -7111,12 +7111,15 @@ void ELFDumper<ELFT>::printNonRelocatableStackSizes(
     PrintHeader();
     ArrayRef<uint8_t> Contents =
         unwrapOrError(this->FileName, Obj.getSectionContents(Sec));
-    DataExtractor Data(Contents, Obj.isLE(), sizeof(Elf_Addr));
+    // AVM's generic AsmPrinter records its three-byte program pointer.
+    unsigned AddressSize = Obj.getHeader().e_machine == ELF::EM_AVM
+                               ? 3 : sizeof(Elf_Addr);
+    DataExtractor Data(Contents, Obj.isLE(), AddressSize);
     uint64_t Offset = 0;
     while (Offset < Contents.size()) {
       // The function address is followed by a ULEB representing the stack
       // size. Check for an extra byte before we try to process the entry.
-      if (!Data.isValidOffsetForDataOfSize(Offset, sizeof(Elf_Addr) + 1)) {
+      if (!Data.isValidOffsetForDataOfSize(Offset, Data.getAddressSize() + 1)) {
         reportUniqueWarning(
             describe(Sec) +
             " ended while trying to extract a stack size entry");
@@ -7188,7 +7191,9 @@ void ELFDumper<ELFT>::printRelocatableStackSizes(
     std::tie(IsSupportedFn, Resolver) = getRelocationResolver(this->ObjF);
     ArrayRef<uint8_t> Contents =
         unwrapOrError(this->FileName, Obj.getSectionContents(*StackSizesELFSec));
-    DataExtractor Data(Contents, Obj.isLE(), sizeof(Elf_Addr));
+    unsigned AddressSize = Obj.getHeader().e_machine == ELF::EM_AVM
+                               ? 3 : sizeof(Elf_Addr);
+    DataExtractor Data(Contents, Obj.isLE(), AddressSize);
 
     forEachRelocationDo(
         *RelocSec, [&](const Relocation<ELFT> &R, unsigned Ndx,

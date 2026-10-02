@@ -143,7 +143,7 @@ body: |
     ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     SYS_DEBUG_PUTC_PSEUDO %0
-    CALL_DIRECT_PSEUDO @callee, csr_avm_call, implicit-def $sp, implicit-def dead $cc, implicit $sp
+    CALL_DIRECT_PSEUDO @callee, 0, csr_avm_call, implicit-def $sp, implicit-def dead $cc, implicit $sp
     SYS_DEBUG_PUTC_PSEUDO %0
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...

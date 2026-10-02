@@ -362,6 +362,7 @@ struct Config {
   llvm::StringRef printGcSections;
   bool printIcfSections;
   bool printMemoryUsage;
+  bool avmPrintStackUsage;
   std::optional<uint64_t> randomizeSectionPadding;
   bool rejectMismatch;
   bool relax;

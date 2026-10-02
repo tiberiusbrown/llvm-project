@@ -1346,6 +1346,15 @@ void MCAsmStreamer::emitValueImpl(const MCExpr *Value, unsigned Size,
   default: break;
   case 1: Directive = MAI->getData8bitsDirective();  break;
   case 2: Directive = MAI->getData16bitsDirective(); break;
+  case 3:
+    // AVM uses three-byte code addresses in generic ELF metadata. Unlike
+    // .progptr, this directive preserves the raw ELF address (R_AVM_DEBUG24).
+    if (getContext().getTargetTriple().getArch() == Triple::avm) {
+      int64_t Absolute;
+      if (!Value->evaluateAsAbsolute(Absolute))
+        Directive = "\t.3byte\t";
+    }
+    break;
   case 4: Directive = MAI->getData32bitsDirective(); break;
   case 8: Directive = MAI->getData64bitsDirective(); break;
   }

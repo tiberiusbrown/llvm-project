@@ -4,6 +4,7 @@
 #include "AVM.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
+#include "llvm/BinaryFormat/AVM.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -23,7 +24,6 @@ AVMFrameLowering::AVMFrameLowering()
     : TargetFrameLowering(StackGrowsDown, Align(1), 0, Align(1)) {}
 
 namespace {
-constexpr uint64_t AVMFixedStackLimit = 256;
 
 void emitCFI(MachineBasicBlock &MBB, MachineBasicBlock::iterator At,
              const DebugLoc &DL, const AVMInstrInfo &TII,
@@ -66,10 +66,12 @@ void AVMFrameLowering::emitPrologue(MachineFunction &MF,
   assert(&MF.front() == &MBB && "AVM shrink wrapping is not implemented");
   MachineFrameInfo &MFI = MF.getFrameInfo();
   uint64_t StackSize = MFI.getStackSize();
-  if (StackSize > AVMFixedStackLimit) {
+  // This local check does not include callers, call arguments or return
+  // records. LLD checks concrete whole-program paths after code generation.
+  if (StackSize > AVM::StackLimit) {
     MF.getFunction().getContext().diagnose(DiagnosticInfoResourceLimit(
       MF.getFunction(), "AVM stack frame size", StackSize,
-      AVMFixedStackLimit, DS_Error));
+      AVM::StackLimit, DS_Error));
   }
   const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
   const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
@@ -224,7 +226,7 @@ void AVMFrameLowering::processFunctionBeforeFrameFinalized(
     MachineFunction &MF, RegScavenger *RS) const {
   assert(RS && "AVM requires register scavenging");
   MachineFrameInfo &MFI = MF.getFrameInfo();
-  if (hasFP(MF) || MFI.estimateStackSize(MF) > 255)
+  if (hasFP(MF) || MFI.estimateStackSize(MF) > AVM::StackLimit - 1)
     RS->addScavengingFrameIndex(MFI.CreateSpillStackObject(2, Align(1)));
 }
 

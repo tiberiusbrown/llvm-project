@@ -4,6 +4,7 @@
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCAsmInfoELF.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCELFStreamer.h"
@@ -109,7 +110,7 @@ public:
   }
 };
 
-class AVMMCAsmInfo final : public MCAsmInfo {
+class AVMMCAsmInfo final : public MCAsmInfoELF {
 public:
   AVMMCAsmInfo(const Triple &, const MCTargetOptions &) {
     CommentString = ";";

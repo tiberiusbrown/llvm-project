@@ -226,6 +226,8 @@ def end_lib: F<"end-lib">,
 
 defm entry: Eq<"entry", "Name of entry point symbol">,
   MetaVarName<"<entry>">;
+def avm_print_stack_usage: FF<"avm-print-stack-usage">,
+    HelpText<"Print the maximum provable AVM VM stack path and bound completeness">;
 
 defm error_limit:
   EEq<"error-limit", "Maximum number of errors to emit before stopping (0 = no limit)">;

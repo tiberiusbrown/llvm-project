@@ -561,6 +561,9 @@ public:
           NewOpcode = AVM::RET;
           break;
         case AVM::CALL_DIRECT_PSEUDO:
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
+              .addImm(MI.getOperand(1).getImm());
+          MI.removeOperand(1);
           NewOpcode = AVM::RELAX_CALL;
           for (unsigned I = 1; I != MI.getNumOperands(); ++I)
             if (MachineOperand &MO = MI.getOperand(I);
@@ -568,6 +571,9 @@ public:
               MO.setImplicit();
           break;
         case AVM::CALL_INDIRECT_PSEUDO:
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
+              .addImm(MI.getOperand(1).getImm());
+          MI.removeOperand(1);
           NewOpcode = AVM::CALLP;
           for (unsigned I = 1; I != MI.getNumOperands(); ++I)
             if (MachineOperand &MO = MI.getOperand(I);
