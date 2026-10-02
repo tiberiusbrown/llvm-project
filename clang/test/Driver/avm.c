@@ -5,6 +5,7 @@
 // RUN: not %clang --target=avm -mtune=unknown-avm-tune -c %s -o %t.o 2>&1 | FileCheck %s --check-prefix=INVALID
 // RUN: %clang -### --target=avm -g -c %s 2>&1 | FileCheck %s --check-prefix=DEBUG
 // RUN: %clang -### --target=avm -g -gdwarf-5 -c %s 2>&1 | FileCheck %s --check-prefix=DWARF5
+// RUN: %clang -### --target=avm -flto=full -c %s 2>&1 | FileCheck %s --check-prefix=FULL-LTO
 
 // DEFAULT: "-target-cpu" "avm1"
 // DEFAULT: "-tune-cpu" "avm-interpreter-32u4-v1"
@@ -17,3 +18,4 @@
 // INVALID: error: unknown target CPU 'unknown-avm-tune'
 // DEBUG: "-debug-info-kind=constructor" "-dwarf-version=4"
 // DWARF5: "-debug-info-kind=constructor" "-dwarf-version=5"
+// FULL-LTO: "-emit-llvm-bc" "-flto=full"
