@@ -679,6 +679,8 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::BR_CC";
   if (Opcode == AVMISD::CALL)
     return "AVMISD::CALL";
+  if (Opcode == AVMISD::TAIL_CALL)
+    return "AVMISD::TAIL_CALL";
   if (Opcode == AVMISD::CMOV)
     return "AVMISD::CMOV";
   if (Opcode == AVMISD::CMP)
@@ -1540,11 +1542,79 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   const SDLoc &DL = CLI.DL;
   if (CLI.CallConv != CallingConv::C)
     report_fatal_error("unsupported AVM calling convention");
-  CLI.IsTailCall = false;
 
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo &MFI = MF.getFrameInfo();
+  const Function &Caller = MF.getFunction();
   SDValue Chain = CLI.Chain;
+  SmallVector<CCValAssign, 8> ArgLocs;
+  CCState CCInfo(CLI.CallConv, CLI.IsVarArg, MF, ArgLocs, *DAG.getContext());
+  analyzeAVMArguments(CLI.Outs, CCInfo, CLI.IsVarArg);
+  unsigned NumBytes = CCInfo.getStackSize();
+  if (NumBytes > UINT16_MAX)
+    report_fatal_error(
+        "AVM outgoing stack arguments exceed the 16-bit ABI limit");
+
+  // SelectionDAGBuilder has already checked tail position and return
+  // attributes. Restrict sibling calls to the scalar C ABI and compare its
+  // actual return locations, including legalized narrow/pointer results.
+  CLI.IsTailCall &= Caller.getCallingConv() == CallingConv::C &&
+                    !CLI.IsVarArg && !Caller.isVarArg() && NumBytes == 0 &&
+                    !Caller.hasStructRetAttr() && CLI.RetTy &&
+                    Caller.getReturnType() == CLI.RetTy &&
+                    (CLI.RetTy->isVoidTy() || CLI.RetTy->isSingleValueType());
+  for (const auto &Out : CLI.Outs)
+    if (Out.Flags.isByVal() || Out.Flags.isSRet() || Out.Flags.isInAlloca() ||
+        Out.Flags.isPreallocated())
+      CLI.IsTailCall = false;
+  for (const auto &VA : ArgLocs)
+    if (!VA.isRegLoc() || VA.getLocInfo() == CCValAssign::Indirect)
+      CLI.IsTailCall = false;
+
+  if (CLI.IsTailCall) {
+    SmallVector<ISD::OutputArg, 4> CallerOuts;
+    GetReturnInfo(Caller.getCallingConv(), Caller.getReturnType(),
+                  Caller.getAttributes(), CallerOuts, *this,
+                  DAG.getDataLayout());
+    SmallVector<CCValAssign, 4> CallerLocs, CalleeLocs;
+    CCState CallerInfo(CallingConv::C, false, MF, CallerLocs,
+                       *DAG.getContext());
+    CCState CalleeInfo(CallingConv::C, false, MF, CalleeLocs,
+                       *DAG.getContext());
+    CLI.IsTailCall = analyzeAVMReturns(CallerOuts, CallerInfo) &&
+                     analyzeAVMReturns(CLI.Ins, CalleeInfo) &&
+                     CallerLocs.size() == CalleeLocs.size();
+    if (CLI.IsTailCall)
+      for (unsigned I = 0; I != CallerLocs.size(); ++I) {
+        const auto &A = CallerLocs[I];
+        const auto &B = CalleeLocs[I];
+        if (A.getLocReg() != B.getLocReg() || A.getLocVT() != B.getLocVT() ||
+            A.getValVT() != B.getValVT() || A.getLocInfo() != B.getLocInfo())
+          CLI.IsTailCall = false;
+      }
+  }
+
+  MCPhysReg TailTargetReg = 0;
+  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+  bool IsDirect = isa<GlobalAddressSDNode>(CLI.Callee) ||
+                  isa<ExternalSymbolSDNode>(CLI.Callee);
+  if (CLI.IsTailCall && !IsDirect) {
+    // A fixed physical copy, glued to the argument copies and transfer,
+    // guarantees the target survives both allocation and callee-save pops.
+    for (MCPhysReg Pair : AVMArgPairs)
+      if (llvm::none_of(ArgLocs, [&](const CCValAssign &VA) {
+            return TRI->regsOverlap(Pair, VA.getLocReg());
+          })) {
+        TailTargetReg = Pair;
+        break;
+      }
+    if (!TailTargetReg)
+      CLI.IsTailCall = false;
+  }
+  if (!CLI.IsTailCall && CLI.CB && CLI.CB->isMustTailCall())
+    report_fatal_error("failed to perform AVM tail call elimination on a "
+                       "call site marked musttail");
+
   SmallVector<SDValue, 8> OutVals(CLI.OutVals.begin(), CLI.OutVals.end());
   for (unsigned I = 0; I != CLI.Outs.size(); ++I) {
     const ISD::ArgFlagsTy &Flags = CLI.Outs[I].Flags;
@@ -1560,15 +1630,8 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     OutVals[I] = Copy;
   }
 
-  SmallVector<CCValAssign, 8> ArgLocs;
-  CCState CCInfo(CLI.CallConv, CLI.IsVarArg, DAG.getMachineFunction(), ArgLocs,
-                 *DAG.getContext());
-  analyzeAVMArguments(CLI.Outs, CCInfo, CLI.IsVarArg);
-
-  unsigned NumBytes = CCInfo.getStackSize();
-  if (NumBytes > UINT16_MAX)
-    report_fatal_error("AVM outgoing stack arguments exceed the 16-bit ABI limit");
-  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
+  if (!CLI.IsTailCall)
+    Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
   SmallVector<std::pair<MCPhysReg, SDValue>, 4> RegsToPass;
   SmallVector<SDValue, 4> StoreChains;
 
@@ -1628,6 +1691,11 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   else {
     if (Callee.getValueType() != MVT::i32)
       Callee = DAG.getZExtOrTrunc(Callee, DL, MVT::i32);
+    if (TailTargetReg) {
+      Chain = DAG.getCopyToReg(Chain, DL, TailTargetReg, Callee, Glue);
+      Glue = Chain.getValue(1);
+      Callee = DAG.getRegister(TailTargetReg, MVT::i32);
+    }
   }
 
   // Keep the exact callsite size on the machine call through register
@@ -1636,8 +1704,6 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
       Chain, Callee, DAG.getTargetConstant(NumBytes, DL, MVT::i16)};
   for (const auto &[Reg, Value] : RegsToPass)
     Ops.push_back(DAG.getRegister(Reg, Value.getValueType()));
-  const TargetRegisterInfo *TRI =
-      DAG.getMachineFunction().getSubtarget().getRegisterInfo();
   const uint32_t *Mask =
       TRI->getCallPreservedMask(DAG.getMachineFunction(), CLI.CallConv);
   assert(Mask && "missing AVM call-preserved mask");
@@ -1645,8 +1711,12 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   if (Glue)
     Ops.push_back(Glue);
 
-  Chain =
-      DAG.getNode(AVMISD::CALL, DL, DAG.getVTList(MVT::Other, MVT::Glue), Ops);
+  Chain = DAG.getNode(CLI.IsTailCall ? AVMISD::TAIL_CALL : AVMISD::CALL, DL,
+                      DAG.getVTList(MVT::Other, MVT::Glue), Ops);
+  if (CLI.IsTailCall) {
+    MFI.setHasTailCall();
+    return Chain;
+  }
   Glue = Chain.getValue(1);
   Chain = DAG.getCALLSEQ_END(Chain, NumBytes, 0, Glue, DL);
   Glue = Chain.getValue(1);

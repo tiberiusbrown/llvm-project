@@ -561,20 +561,26 @@ public:
           NewOpcode = AVM::RET;
           break;
         case AVM::CALL_DIRECT_PSEUDO:
+        case AVM::TAILCALL_DIRECT_PSEUDO:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
               .addImm(MI.getOperand(1).getImm());
           MI.removeOperand(1);
-          NewOpcode = AVM::RELAX_CALL;
+          NewOpcode = MI.getOpcode() == AVM::TAILCALL_DIRECT_PSEUDO
+                          ? AVM::RELAX_JMP
+                          : AVM::RELAX_CALL;
           for (unsigned I = 1; I != MI.getNumOperands(); ++I)
             if (MachineOperand &MO = MI.getOperand(I);
                 MO.isReg() && !MO.isImplicit())
               MO.setImplicit();
           break;
         case AVM::CALL_INDIRECT_PSEUDO:
+        case AVM::TAILCALL_INDIRECT_PSEUDO:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
               .addImm(MI.getOperand(1).getImm());
           MI.removeOperand(1);
-          NewOpcode = AVM::CALLP;
+          NewOpcode = MI.getOpcode() == AVM::TAILCALL_INDIRECT_PSEUDO
+                          ? AVM::JMPP
+                          : AVM::CALLP;
           for (unsigned I = 1; I != MI.getNumOperands(); ++I)
             if (MachineOperand &MO = MI.getOperand(I);
                 MO.isReg() && !MO.isImplicit())

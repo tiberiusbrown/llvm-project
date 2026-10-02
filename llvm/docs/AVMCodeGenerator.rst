@@ -17,6 +17,22 @@ overload to the existing _P ABI symbol. Direct header-dispatched calls
 lower to the corresponding AVM intrinsic and system service. Address-taking
 and parenthesized calls name the addressable runtime function.
 
+Sibling tail calls
+------------------
+
+AVM lowers eligible C-convention tail calls with zero outgoing stack argument
+bytes as sibling transfers. The ordinary epilogue releases the local frame
+and restores R0-R3 before a relaxable direct jump or an indirect ``JMPP``.
+Arguments in R4-R7 and the existing three-byte return address survive this
+transfer; no new return address is pushed. ``STACKCALL 0`` records the tail
+edge for the linker's whole-program stack analysis.
+
+Indirect targets are copied into an unused R4:R5 or R6:R7 pair before the
+epilogue. Calls without a complete free upper pair use ordinary call lowering.
+Stack arguments, byval, varargs, sret, and incompatible return ABIs also use
+ordinary calls. Unsupported ``musttail`` calls are diagnosed. The late
+frameless call/return fold remains available independently of this lowering.
+
 Optional schedule validation
 ----------------------------
 

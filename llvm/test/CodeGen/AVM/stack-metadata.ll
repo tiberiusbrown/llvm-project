@@ -2,7 +2,7 @@
 ; RUN: FileCheck %s --check-prefix=ASM < %t.s
 ; RUN: llvm-mc -triple=avm -filetype=obj %t.s -o %t.o
 ; RUN: llvm-readobj --stack-sizes --relocations %t.o | FileCheck %s --check-prefix=OBJ
-; RUN: llc -mtriple=avm -O0 -filetype=obj %s -o %t.direct.o
+; RUN: llc -mtriple=avm -O0 -verify-machineinstrs -filetype=obj %s -o %t.direct.o
 ; RUN: llvm-readobj --stack-sizes --relocations %t.direct.o | FileCheck %s --check-prefix=OBJ
 
 ; Automatic metadata, without -stack-size-section. Frame includes a 40-byte
@@ -28,9 +28,20 @@
 ; ASM: .byte 3
 ; ASM: .byte 8
 ; ASM-LABEL: framed_indirect:
+; ASM: adjsp 1
+; ASM-NEXT: jmpp q2
+; ASM-NOT: ret
 ; ASM: .short 0
-; ASM: .byte 1
+; ASM: .byte 3
 ; ASM-LABEL: tail_forward:
+; ASM: .3byte leaf
+; ASM: .short 0
+; ASM: .byte 2
+; ASM-LABEL: framed_direct:
+; ASM: adjsp 8
+; ASM-NEXT: jmp leaf
+; ASM-NOT: ret
+; ASM: .section .avm.stackcalls,"o",
 ; ASM: .3byte leaf
 ; ASM: .short 0
 ; ASM: .byte 2
@@ -68,11 +79,18 @@ define void @indirect(ptr addrspace(1) %f) {
 define void @framed_indirect(ptr addrspace(1) %f) {
   %a = alloca i8, align 1
   store volatile i8 1, ptr %a
-  call addrspace(1) void %f()
+  tail call addrspace(1) void %f()
   ret void
 }
 
 define void @tail_forward() {
   call void @leaf()
+  ret void
+}
+
+define void @framed_direct() {
+  %a = alloca [8 x i8], align 1
+  store volatile i8 1, ptr %a
+  tail call void @leaf()
   ret void
 }

@@ -14,6 +14,7 @@ enum NodeType : unsigned {
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
   BR_CC,
   CALL,
+  TAIL_CALL,
   CMOV,
   CMP,
   CMPI,

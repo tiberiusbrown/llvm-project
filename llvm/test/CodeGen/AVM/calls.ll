@@ -68,7 +68,7 @@ define i16 @call5(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e) {
 ; CHECK-NEXT:  adjsp 2
 ; CHECK-NEXT:  pop16 r0
 ; CHECK-NEXT:  ret
-  %r = call i16 @f5(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e)
+  %r = tail call i16 @f5(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e)
   ret i16 %r
 }
 
@@ -86,7 +86,7 @@ define i16 @call6(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e, i16 %f) {
 ; CHECK-NEXT:  pop16 r0
 ; CHECK-NEXT:  pop16 r1
 ; CHECK-NEXT:  ret
-  %r = call i16 @f6(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e, i16 %f)
+  %r = tail call i16 @f6(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e, i16 %f)
   ret i16 %r
 }
 
@@ -100,7 +100,7 @@ define i16 @pair_alignment(i16 %a, i32 %b, i16 %c) {
 ; CHECK-NEXT:  call mixed
 ; CHECK-NEXT:  adjsp 2
 ; CHECK-NEXT:  ret
-  %r = call i16 @mixed(i16 %a, i32 %b, i16 %c)
+  %r = tail call i16 @mixed(i16 %a, i32 %b, i16 %c)
   ret i16 %r
 }
 
@@ -116,7 +116,7 @@ define i16 @packed_narrow(i16 %a, i16 %b, i16 %c, i16 %d,
 ; CHECK-NEXT:  stsp8 [sp+0], r0
 ; CHECK-NEXT:  call narrow
 ; CHECK-NEXT:  adjsp 2
-  %r = call i16 @narrow(i16 %a, i16 %b, i16 %c, i16 %d,
+  %r = tail call i16 @narrow(i16 %a, i16 %b, i16 %c, i16 %d,
                         i8 signext %e, i8 zeroext %f)
   ret i16 %r
 }
@@ -144,7 +144,7 @@ define void @stacked_program_pointer(ptr addrspace(1) %a,
 ; CHECK-NEXT:  zext8 r7
 ; CHECK-NEXT:  call take3
 ; CHECK-NEXT:  adjsp 3
-  call void @take3(ptr addrspace(1) %a, ptr addrspace(1) %b,
+  tail call void @take3(ptr addrspace(1) %a, ptr addrspace(1) %b,
                    ptr addrspace(1) %c)
   ret void
 }
@@ -196,6 +196,6 @@ define void @four_unit_closes_registers(i16 %a, i64 %b, i16 %c) {
 ; CHECK-DAG:   stsp16 [sp+8]
 ; CHECK:       call close64
 ; CHECK-NEXT:  adjsp 10
-  call void @close64(i16 %a, i64 %b, i16 %c)
+  tail call void @close64(i16 %a, i64 %b, i16 %c)
   ret void
 }

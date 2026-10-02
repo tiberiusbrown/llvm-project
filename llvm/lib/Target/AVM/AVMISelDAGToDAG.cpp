@@ -1196,6 +1196,9 @@ private:
                     Callee.getOpcode() == ISD::TargetExternalSymbol;
     unsigned Opcode =
         IsDirect ? AVM::CALL_DIRECT_PSEUDO : AVM::CALL_INDIRECT_PSEUDO;
+    if (Node->getOpcode() == AVMISD::TAIL_CALL)
+      Opcode = IsDirect ? AVM::TAILCALL_DIRECT_PSEUDO
+                        : AVM::TAILCALL_INDIRECT_PSEUDO;
     if (!IsDirect)
       Callee = stripProgramPointerNormalization(Callee);
 
@@ -1409,6 +1412,7 @@ private:
       selectAVMBranchCC(Node);
       return;
     case AVMISD::CALL:
+    case AVMISD::TAIL_CALL:
       selectCall(Node);
       return;
     case AVMISD::FCMP:
