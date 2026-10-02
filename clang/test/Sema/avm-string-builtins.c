@@ -8,9 +8,9 @@ void accepted(char *dst, const char *data, progmem_void_ptr pvoid,
               progmem_char_ptr pchar, uint16_t n) {
   int a = __builtin_avm_memcmp_p(data, pvoid, n);
   int b = __avm_strcmp_P(data, pchar);
-  uint16_t c = strlen_P(pchar);
+  uint16_t c = __avm_strlen_P(pchar);
   char *d = __builtin_avm_strncpy_p(dst, pchar, n);
-  char *e = strncat_P(dst, pchar, n);
+  char *e = __avm_strncat_P(dst, pchar, n);
   int f = __avm_memcmp(data, data, n);
   int g = __avm_strcmp(data, data);
   uint16_t h = __avm_strlen(data);
@@ -37,7 +37,7 @@ void rejected(char *data, progmem_char_ptr program, uint16_t n) {
   __avm_strcmp_P(data, data); // expected-error {{changes address space of pointer}}
   __builtin_avm_strlen_p(data); // expected-error {{changes address space of pointer}}
   __avm_strncpy_P(data, data, n); // expected-error {{changes address space of pointer}}
-  strncat_P(data, data, n); // expected-error {{changes address space of pointer}}
+  __avm_strncat_P(data, data, n); // expected-error {{changes address space of pointer}}
 
   __avm_memcmp(data, program, n); // expected-error {{changes address space of pointer}}
   __avm_strcmp(data, program); // expected-error {{changes address space of pointer}}
@@ -49,5 +49,5 @@ void rejected(char *data, progmem_char_ptr program, uint16_t n) {
   __avm_strcmp(data); // expected-error {{too few arguments}}
   __builtin_avm_strlen_p(program, program); // expected-error {{too many arguments}}
   __avm_strncpy(data, data); // expected-error {{too few arguments}}
-  strncat_P(data, program, n, n); // expected-error {{too many arguments}}
+  __avm_strncat_P(data, program, n, n); // expected-error {{too many arguments}}
 }

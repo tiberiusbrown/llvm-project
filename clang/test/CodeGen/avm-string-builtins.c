@@ -15,9 +15,6 @@ int builtin_memcmp_p(const void *lhs, progmem_void_ptr rhs, uint16_t n) {
 int avm_memcmp_P(const void *lhs, progmem_void_ptr rhs, uint16_t n) {
   return __avm_memcmp_P(lhs, rhs, n);
 }
-int public_memcmp_P(const void *lhs, progmem_void_ptr rhs, uint16_t n) {
-  return memcmp_P(lhs, rhs, n);
-}
 
 int builtin_strcmp_p(const char *lhs, progmem_char_ptr rhs) {
   return __builtin_avm_strcmp_p(lhs, rhs);
@@ -25,15 +22,11 @@ int builtin_strcmp_p(const char *lhs, progmem_char_ptr rhs) {
 int avm_strcmp_P(const char *lhs, progmem_char_ptr rhs) {
   return __avm_strcmp_P(lhs, rhs);
 }
-int public_strcmp_P(const char *lhs, progmem_char_ptr rhs) {
-  return strcmp_P(lhs, rhs);
-}
 
 uint16_t builtin_strlen_p(progmem_char_ptr src) {
   return __builtin_avm_strlen_p(src);
 }
 uint16_t avm_strlen_P(progmem_char_ptr src) { return __avm_strlen_P(src); }
-uint16_t public_strlen_P(progmem_char_ptr src) { return strlen_P(src); }
 
 char *builtin_strncpy_p(char *dst, progmem_char_ptr src, uint16_t n) {
   return __builtin_avm_strncpy_p(dst, src, n);
@@ -41,18 +34,12 @@ char *builtin_strncpy_p(char *dst, progmem_char_ptr src, uint16_t n) {
 char *avm_strncpy_P(char *dst, progmem_char_ptr src, uint16_t n) {
   return __avm_strncpy_P(dst, src, n);
 }
-char *public_strncpy_P(char *dst, progmem_char_ptr src, uint16_t n) {
-  return strncpy_P(dst, src, n);
-}
 
 char *builtin_strncat_p(char *dst, progmem_char_ptr src, uint16_t n) {
   return __builtin_avm_strncat_p(dst, src, n);
 }
 char *avm_strncat_P(char *dst, progmem_char_ptr src, uint16_t n) {
   return __avm_strncat_P(dst, src, n);
-}
-char *public_strncat_P(char *dst, progmem_char_ptr src, uint16_t n) {
-  return strncat_P(dst, src, n);
 }
 
 int ram_memcmp(const void *lhs, const void *rhs, uint16_t n) {
@@ -69,11 +56,11 @@ char *ram_strncat(char *dst, const char *src, uint16_t n) {
   return __avm_strncat(dst, src, n);
 }
 
-// CHECK-COUNT-3: call{{.*}} i16 @llvm.avm.memcmp.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
-// CHECK-COUNT-3: call{{.*}} i16 @llvm.avm.strcmp.p(ptr {{.*}}, ptr addrspace(1) {{.*}})
-// CHECK-COUNT-3: call{{.*}} i16 @llvm.avm.strlen.p(ptr addrspace(1) {{.*}})
-// CHECK-COUNT-3: call{{.*}} ptr @llvm.avm.strncpy.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
-// CHECK-COUNT-3: call{{.*}} ptr @llvm.avm.strncat.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
+// CHECK-COUNT-2: call{{.*}} i16 @llvm.avm.memcmp.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
+// CHECK-COUNT-2: call{{.*}} i16 @llvm.avm.strcmp.p(ptr {{.*}}, ptr addrspace(1) {{.*}})
+// CHECK-COUNT-2: call{{.*}} i16 @llvm.avm.strlen.p(ptr addrspace(1) {{.*}})
+// CHECK-COUNT-2: call{{.*}} ptr @llvm.avm.strncpy.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
+// CHECK-COUNT-2: call{{.*}} ptr @llvm.avm.strncat.p(ptr {{.*}}, ptr addrspace(1) {{.*}}, i16 {{.*}})
 // CHECK: call{{.*}} i16 @llvm.avm.memcmp(ptr {{.*}}, ptr {{.*}}, i16 {{.*}})
 // CHECK: call{{.*}} i16 @llvm.avm.strcmp(ptr {{.*}}, ptr {{.*}})
 // CHECK: call{{.*}} i16 @llvm.avm.strlen(ptr {{.*}})

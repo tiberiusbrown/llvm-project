@@ -230,8 +230,7 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       return EmitAVMVariadicFormattingBuiltin(*CGF, BuiltinID, E);
 
     case AVM::BI__builtin_avm_memcpy_p:
-    case AVM::BI__avm_memcpy_P:
-    case AVM::BImemcpy_P: {
+    case AVM::BI__avm_memcpy_P: {
       CallArgList Args;
       const FunctionDecl *Callee = E->getDirectCallee();
       const auto *FPT = Callee->getType()->castAs<FunctionProtoType>();
@@ -284,19 +283,14 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_memmove:
     case AVM::BI__builtin_avm_memcmp_p:
     case AVM::BI__avm_memcmp_P:
-    case AVM::BImemcmp_P:
     case AVM::BI__builtin_avm_strcmp_p:
     case AVM::BI__avm_strcmp_P:
-    case AVM::BIstrcmp_P:
     case AVM::BI__builtin_avm_strlen_p:
     case AVM::BI__avm_strlen_P:
-    case AVM::BIstrlen_P:
     case AVM::BI__builtin_avm_strncpy_p:
     case AVM::BI__avm_strncpy_P:
-    case AVM::BIstrncpy_P:
     case AVM::BI__builtin_avm_strncat_p:
     case AVM::BI__avm_strncat_P:
-    case AVM::BIstrncat_P:
     case AVM::BI__avm_memcmp:
     case AVM::BI__avm_strcmp:
     case AVM::BI__avm_strlen:
@@ -426,27 +420,22 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__builtin_avm_memcmp_p:
       case AVM::BI__avm_memcmp_P:
-      case AVM::BImemcmp_P:
         ID = Intrinsic::avm_memcmp_p;
         break;
       case AVM::BI__builtin_avm_strcmp_p:
       case AVM::BI__avm_strcmp_P:
-      case AVM::BIstrcmp_P:
         ID = Intrinsic::avm_strcmp_p;
         break;
       case AVM::BI__builtin_avm_strlen_p:
       case AVM::BI__avm_strlen_P:
-      case AVM::BIstrlen_P:
         ID = Intrinsic::avm_strlen_p;
         break;
       case AVM::BI__builtin_avm_strncpy_p:
       case AVM::BI__avm_strncpy_P:
-      case AVM::BIstrncpy_P:
         ID = Intrinsic::avm_strncpy_p;
         break;
       case AVM::BI__builtin_avm_strncat_p:
       case AVM::BI__avm_strncat_P:
-      case AVM::BIstrncat_P:
         ID = Intrinsic::avm_strncat_p;
         break;
       case AVM::BI__avm_memcmp:
