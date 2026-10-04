@@ -9,6 +9,7 @@
 namespace llvm {
 class AVMTargetMachine;
 class FunctionPass;
+class ModulePass;
 class PassRegistry;
 
 namespace AVMCC {
@@ -16,6 +17,7 @@ enum CondCode : unsigned { EQ, NE, ULT, UGE, SLT, SGE };
 }
 
 FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
+ModulePass *createAVMStackTargetsPass();
 FunctionPass *createAVMTailDuplicationPass(
     CodeGenOptLevel OptLevel = CodeGenOptLevel::Default);
 FunctionPass *createAVMBranchPolarityPass();

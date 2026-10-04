@@ -3178,6 +3178,8 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
                                   {Stub->getType(), DataPtrTy}, false);
       llvm::FunctionCallee Register = CGM.CreateRuntimeFunction(
           RegisterTy, "__avm_register_local_dtor");
+      cast<llvm::Function>(Register.getCallee())
+          ->addFnAttr(llvm::Attribute::NoInline);
       // Passing the slot address also keeps its input section when --gc-sections
       // discards an unused function containing another local static.
       CGF.EmitNounwindRuntimeCall(Register, {Stub, Slot});

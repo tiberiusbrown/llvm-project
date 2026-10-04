@@ -1,6 +1,7 @@
 //===-- AVMAsmPrinter.cpp - AVM assembly and object emission --------------===//
 
 #include "AVM.h"
+#include "AVMInlineAsmStack.h"
 #include "AVMMCInstLower.h"
 #include "AVMMachineFunctionInfo.h"
 #include "AVMTargetMachine.h"
@@ -13,6 +14,7 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -26,6 +28,8 @@
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 
 using namespace llvm;
 
@@ -36,6 +40,8 @@ class AVMAsmPrinter final : public AsmPrinter {
   unsigned OutgoingBytes = 0;
   unsigned TargetSet = 0;
   bool PendingStackCall = false;
+  bool HasOpaqueInlineAsm = false;
+  mutable unsigned InlineAsmBuffer = 0;
   struct StackCall {
     MCInst Call;
     unsigned Bytes;
@@ -44,7 +50,7 @@ class AVMAsmPrinter final : public AsmPrinter {
   };
   SmallVector<StackCall, 0> StackCalls;
 
-  MCSection *getStackCallsSection() {
+  MCSection *getStackCallsSection(StringRef Name = ".avm.stackcalls") {
     const auto &Text = cast<MCSectionELF>(*MF->getSection());
     unsigned Flags = ELF::SHF_LINK_ORDER;
     StringRef Group;
@@ -53,7 +59,7 @@ class AVMAsmPrinter final : public AsmPrinter {
       Flags |= ELF::SHF_GROUP;
     }
     return OutContext.getELFSection(
-        ".avm.stackcalls", ELF::SHT_PROGBITS, Flags, 0, Group, true,
+        Name, ELF::SHT_PROGBITS, Flags, 0, Group, true,
         Text.getUniqueID(), cast<MCSymbolELF>(Text.getBeginSymbol()));
   }
 
@@ -62,11 +68,12 @@ class AVMAsmPrinter final : public AsmPrinter {
     // !callees is a complete, proven set, not profiling information. Emit one
     // alternative edge per target, using the existing packed 24-bit format.
     // The linker takes the maximum across these edges, including recursion.
+    const auto *Info = MF->getInfo<AVMMachineFunctionInfo>();
+    unsigned Flags = Info->getStackFlags(Targets);
+    const MDNode *Callees = Info->getStackTargets(Targets);
     if ((Call.getOpcode() == AVM::CALLP || Call.getOpcode() == AVM::JMPP) &&
-        Targets) {
-      for (const MDOperand &Op : MF->getInfo<AVMMachineFunctionInfo>()
-                                     ->getStackTargets(Targets)
-                                     ->operands()) {
+        Callees && !Flags) {
+      for (const MDOperand &Op : Callees->operands()) {
         const auto *Target =
             cast<Function>(cast<ValueAsMetadata>(Op)->getValue());
         MCInst Direct;
@@ -83,14 +90,14 @@ class AVMAsmPrinter final : public AsmPrinter {
     bool Indirect = Call.getOpcode() == AVM::CALLP ||
                     Call.getOpcode() == AVM::JMPP;
     if (Indirect)
-      OutStreamer->emitIntValue(0, 3);
+      OutStreamer->emitIntValue(Info->getStackGap(Targets), 3);
     else if (Call.getOperand(0).isExpr())
       OutStreamer->emitValue(Call.getOperand(0).getExpr(), 3);
     else
       OutStreamer->emitIntValue(Call.getOperand(0).getImm(), 3);
     OutStreamer->emitIntValue(Bytes, 2);
     OutStreamer->emitIntValue((Indirect ? AVM::StackCallIndirect : 0) |
-                                 (Tail ? AVM::StackCallTail : 0), 1);
+                                 (Tail ? AVM::StackCallTail : 0) | Flags, 1);
     OutStreamer->popSection();
   }
 
@@ -188,6 +195,7 @@ public:
     TargetSet = 0;
     PendingStackCall = false;
     StackCalls.clear();
+    HasOpaqueInlineAsm = false;
   }
 
   void emitFunctionBodyEnd() override {
@@ -195,6 +203,29 @@ public:
       emitStackCall(C.Call, C.Bytes, C.Tail, C.Targets);
     const MachineFrameInfo &Frame = MF->getFrameInfo();
     OutStreamer->pushSection();
+    // One group per registration: header (2), candidates (0), or unknown (1).
+    // Link-order metadata follows the registering code through GC and -r.
+    if (const MDNode *Registrations =
+            MF->getFunction().getMetadata("avm.stack.registrations")) {
+      OutStreamer->switchSection(getStackCallsSection(".avm.stackdtors"));
+      auto record = [&](const Function *Target, unsigned Kind) {
+        OutStreamer->emitSymbolValue(getFunctionBegin(), 3);
+        if (Target)
+          OutStreamer->emitSymbolValue(getSymbol(Target), 3);
+        else
+          OutStreamer->emitIntValue(0, 3);
+        OutStreamer->emitIntValue(Kind, 1);
+      };
+      for (const MDOperand &Op : Registrations->operands()) {
+        record(nullptr, 2);
+        const auto *Set = cast<MDNode>(Op);
+        for (const MDOperand &Target : Set->operands()) {
+          const auto *V = dyn_cast<ValueAsMetadata>(Target);
+          const auto *F = V ? dyn_cast<Function>(V->getValue()) : nullptr;
+          record(F, F ? 0 : 1);
+        }
+      }
+    }
     if (Frame.hasVarSizedObjects()) {
       // Generic .stack_sizes intentionally skips dynamic allocations. The
       // finalized fixed part is nevertheless a valid provable lower bound.
@@ -208,7 +239,7 @@ public:
     OutStreamer->emitIntValue(0, 3);
     OutStreamer->emitIntValue(0, 2);
     unsigned Flags = AVM::StackCallFunction;
-    if (Frame.hasVarSizedObjects() || MF->hasInlineAsm())
+    if (Frame.hasVarSizedObjects() || HasOpaqueInlineAsm)
       Flags |= AVM::StackCallIncomplete;
     OutStreamer->emitIntValue(Flags, 1);
     OutStreamer->popSection();
@@ -221,6 +252,26 @@ public:
   }
 
   StringRef getPassName() const override { return "AVM Assembly Printer"; }
+
+  void emitInlineAsmStart() const override {
+    // The generic printer has already substituted operands and added this
+    // buffer before invoking the hook. Save its ID before includes add buffers.
+    const SourceMgr *Sources = MMI->getContext().getInlineSourceManager();
+    InlineAsmBuffer = Sources ? Sources->getNumBuffers() : 0;
+  }
+
+  void emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
+                        const MCSubtargetInfo *EndInfo,
+                        const MachineInstr *MI) override {
+    if (!MI)
+      return; // Module assembly has no enclosing function to certify.
+    const SourceMgr *Sources = MMI->getContext().getInlineSourceManager();
+    if (!EndInfo || !Sources || !InlineAsmBuffer ||
+        !isAVMInlineAsmStackSafe(
+            Sources->getMemoryBuffer(InlineAsmBuffer)->getBuffer(), TM,
+            StartInfo, OutContext))
+      HasOpaqueInlineAsm = true;
+  }
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        const char *ExtraCode, raw_ostream &OS) override {

@@ -49,8 +49,8 @@ flash_ptr embedded_null(void) {
 
 // LINK: Relocations [
 // LINK-NEXT: ]
-// LINK: Name: .L.avm.flashstr.0
-// LINK: Value: 0x210
+// Private temporary symbols may be discarded; packed addresses and bytes are
+// verified below, independently of whether their names survive the final link.
 // LINK: Name: file_scope
 // LINK: Value: 0x100
 // LINK: Name: flash_table

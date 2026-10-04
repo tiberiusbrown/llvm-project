@@ -1445,7 +1445,7 @@ static void readConfigs(Ctx &ctx, opt::InputArgList &args) {
   ctx.arg.avmPrintStackGaps = args.hasArg(OPT_avm_print_stack_gaps);
   int64_t stackGapLimit = args::getInteger(args, OPT_avm_stack_gap_limit, 10);
   if (stackGapLimit < 0)
-    Err(ctx) << "--avm-stack-gap-limit: expected a nonnegative integer";
+    error("--avm-stack-gap-limit: expected a nonnegative integer");
   ctx.arg.avmStackGapLimit = std::max<int64_t>(stackGapLimit, 0);
   ctx.arg.gnuUnique = args.hasFlag(OPT_gnu_unique, OPT_no_gnu_unique, true);
   ctx.arg.gdbIndex = args.hasFlag(OPT_gdb_index, OPT_no_gdb_index, false);

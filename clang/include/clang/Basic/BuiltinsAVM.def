@@ -9,6 +9,9 @@
 // The format of this database matches clang/Basic/Builtins.def.
 
 BUILTIN(__builtin_avm_flash_string, "cC*1cC*0", "nctE")
+// Runtime contracts: 0 = init array, 1 = fini array, 2 = local dtor registry,
+// 3 = guarded weak hook. Custom checking preserves the function pointer type.
+BUILTIN(__builtin_avm_stack_dispatch, "v.", "nt")
 BUILTIN(__builtin_avm_memcpy_p, "v*v*vC*1Ui", "n")
 BUILTIN(__avm_memcpy_P, "v*v*vC*1Ui", "nA")
 

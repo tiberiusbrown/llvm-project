@@ -27,12 +27,14 @@ add_llvm_target(AVMCodeGen
   AVMISelDAGToDAG.cpp
   AVMISelLowering.cpp
   AVMInstrInfo.cpp
+  AVMInlineAsmStack.cpp
   AVMLatePeephole.cpp
   AVMMachineFunctionInfo.cpp
   AVMMCInstLower.cpp
   AVMProgramMemoryWidening.cpp
   AVMRegisterInfo.cpp
   AVMSelectionDAGInfo.cpp
+  AVMStackTargets.cpp
   AVMSystemServiceInfo.cpp
   AVMSystemServiceRegions.cpp
   AVMSubtarget.cpp
@@ -55,6 +57,7 @@ add_llvm_target(AVMCodeGen
   InstCombine
   IPO
   MC
+  MCParser
   SelectionDAG
   Support
   Target

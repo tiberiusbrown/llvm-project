@@ -17,6 +17,8 @@ def err_avm_flash_string_literal : Error<
   "argument to '__builtin_avm_flash_string' must be an ordinary narrow string literal">;
 def err_avm_read_only_address_space : Error<
   "address space 1 is read-only">;
+def err_avm_stack_dispatch : Error<
+  "AVM stack dispatch requires a pointer to a void(void) function and a constant kind from 0 to 3">;
 def err_avm_variadic_builtin_arg : Error<
   "argument %0 to AVM variadic formatting builtin has unsupported type %1">;
 // C++11 compatibility with C++98.

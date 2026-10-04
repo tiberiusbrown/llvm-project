@@ -27,6 +27,8 @@ typedef uint16_t (*function_pointer)(uint16_t);
 
 // CHECK-LABEL: indirect:
 // CHECK:       mov32 q0, q2
-// CHECK:       callp q0
-// CHECK:       ret
+// CHECK:       mov32 q3, q0
+// CHECK:       jmpp q3
+// CHECK-NOT:   {{^[ \t]*ret}}
+// CHECK:       .Lfunc_end
 uint16_t indirect(function_pointer fn, uint16_t value) { return fn(value); }

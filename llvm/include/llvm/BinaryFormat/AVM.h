@@ -27,6 +27,16 @@ inline constexpr unsigned StackCallIncomplete = 4;
 // Even leaf functions need this to distinguish legacy .stack_sizes-only
 // objects from a complete callsite list. May be combined with Incomplete.
 inline constexpr unsigned StackCallFunction = 8;
+// Runtime dispatch contracts. Init/fini and registry dispatches are indirect.
+// GuardedWeak certifies that an undefined weak callee is skipped at runtime.
+inline constexpr unsigned StackCallInitArray = 16;
+inline constexpr unsigned StackCallFiniArray = 32;
+inline constexpr unsigned StackCallLocalDtors = 64;
+inline constexpr unsigned StackCallGuardedWeak = 128;
+// Indirect callee field diagnostic codes (no relocation).
+inline constexpr unsigned StackGapPointerFlow = 1;
+inline constexpr unsigned StackGapTargetLimit = 2;
+inline constexpr unsigned StackGapIterationLimit = 3;
 } // namespace llvm::AVM
 
 #endif

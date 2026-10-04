@@ -18,6 +18,26 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   switch (BuiltinID) {
   default:
     return false;
+  case AVM::BI__builtin_avm_stack_dispatch: {
+    if (checkArgCount(TheCall, 2))
+      return true;
+    Expr *Arg = TheCall->getArg(0);
+    auto Converted = DefaultFunctionArrayLvalueConversion(Arg);
+    if (Converted.isInvalid())
+      return true;
+    Arg = Converted.get();
+    TheCall->setArg(0, Arg);
+    const auto *PT = Arg->getType()->getAs<PointerType>();
+    const auto *FT = PT ? PT->getPointeeType()->getAs<FunctionProtoType>() : nullptr;
+    Expr::EvalResult Kind;
+    if (!FT || !FT->getReturnType()->isVoidType() || FT->getNumParams() ||
+        FT->isVariadic() || !TheCall->getArg(1)->EvaluateAsInt(Kind, Context) ||
+        Kind.Val.getInt().isNegative() || Kind.Val.getInt().ugt(3)) {
+      Diag(TheCall->getExprLoc(), diag::err_avm_stack_dispatch);
+      return true;
+    }
+    return false;
+  }
   case AVM::BI__builtin_avm_flash_string: {
     if (checkArgCount(TheCall, 1))
       return true;

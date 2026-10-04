@@ -212,6 +212,28 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
   switch (Arch) {
   case llvm::Triple::avm:
     switch (BuiltinID) {
+    case AVM::BI__builtin_avm_stack_dispatch: {
+      Value *Fn = CGF->EmitScalarExpr(E->getArg(0));
+      Expr::EvalResult Result;
+      E->getArg(1)->EvaluateAsInt(Result, CGF->getContext());
+      unsigned Kind = Result.Val.getInt().getZExtValue();
+      llvm::BasicBlock *Continue = nullptr;
+      if (Kind == 3) {
+        auto *Run = CGF->createBasicBlock("avm.weak.hook");
+        Continue = CGF->createBasicBlock("avm.weak.end");
+        CGF->Builder.CreateCondBr(CGF->Builder.CreateIsNotNull(Fn), Run, Continue);
+        CGF->EmitBlock(Run);
+      }
+      auto *Call = CGF->Builder.CreateCall(
+          llvm::FunctionType::get(CGF->VoidTy, false), Fn);
+      Call->setDoesNotThrow();
+      Call->setMetadata("avm.stack.dispatch", llvm::MDNode::get(
+          CGF->getLLVMContext(), llvm::ConstantAsMetadata::get(
+              llvm::ConstantInt::get(CGF->Int32Ty, 16u << Kind))));
+      if (Continue)
+        CGF->EmitBlock(Continue);
+      return Call;
+    }
     case AVM::BI__builtin_avm_flash_string: {
       const auto *Literal =
           cast<clang::StringLiteral>(E->getArg(0)->IgnoreParenImpCasts());

@@ -6,6 +6,7 @@
 #include "AVMStack.h"
 #include "InputFiles.h"
 #include "InputSection.h"
+#include "LinkerScript.h"
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -31,6 +32,7 @@ struct Edge {
   bool tail;
   bool cut = false;
   bool indirect = false;
+  unsigned reason = 0;
 };
 struct Node {
   Address address;
@@ -54,6 +56,80 @@ class Analysis {
   DenseMap<Address, StringRef> names;
   SmallVector<Node, 0> nodes;
   SmallVector<std::pair<unsigned, uint64_t>, 0> roots;
+  struct Targets {
+    SmallVector<Address, 0> values;
+    bool complete = true;
+  } initTargets, finiTargets, localTargets;
+  DenseMap<Address, unsigned> registrations;
+
+  template <class RelTy>
+  void readWeak(InputSectionBase &sec, DenseSet<uint64_t> &result,
+                Relocs<RelTy> rels) {
+    for (const auto &r : rels) {
+      if constexpr (std::is_same_v<RelTy, ELF32LE::Rel>) {
+        auto bytes = sec.content();
+        if (r.r_offset > bytes.size() || bytes.size() - r.r_offset < 3 ||
+            bytes[r.r_offset] || bytes[r.r_offset + 1] || bytes[r.r_offset + 2])
+          continue;
+      }
+      Symbol &sym = sec.getFile<ELF32LE>()->getRelocTargetSym(r);
+      // An unextracted archive definition remains LazyKind, but a weak
+      // reference to it still resolves to null in the final executable.
+      if (r.getType(false) == R_AVM_DEBUG24 && sym.isWeak() &&
+          (sym.isUndefined() || sym.isLazy()) && getAddend<ELF32LE>(r) == 0)
+        result.insert(r.r_offset);
+    }
+  }
+
+  void readTable(InputSectionBase &sec, Targets &targets) {
+    auto reloc = addresses(sec);
+    auto bytes = sec.content();
+    if (bytes.size() % 3)
+      targets.complete = false;
+    for (uint64_t pos = 0; pos + 3 <= bytes.size(); pos += 3) {
+      Address a = reloc.lookup(pos);
+      if (a.first)
+        targets.values.push_back(a);
+      else
+        targets.complete = false; // Raw or unresolved entries are not proof.
+    }
+  }
+
+  void readRegistrations(InputSectionBase &sec) {
+    auto reloc = addresses(sec);
+    auto bytes = sec.content();
+    if (bytes.size() % 7) {
+      Err(ctx) << &sec << ": truncated .avm.stackdtors record";
+      localTargets.complete = false;
+      return;
+    }
+    Address group;
+    for (uint64_t pos = 0; pos < bytes.size(); pos += 7) {
+      if (!reloc.count(pos)) {
+        Err(ctx) << &sec << ": missing AVM destructor registration caller";
+        continue;
+      }
+      Address from = reloc.lookup(pos);
+      if (!from.first)
+        continue;
+      unsigned kind = bytes[pos + 6];
+      if (kind == 2) {
+        group = from;
+        ++registrations[from];
+      } else if (from != group) {
+        Err(ctx) << &sec << ": AVM destructor candidate without registration header";
+      } else if (kind == 0) {
+        Address to = reloc.lookup(pos + 3);
+        if (to.first)
+          localTargets.values.push_back(to);
+        else
+          localTargets.complete = false;
+      } else if (kind == 1)
+        localTargets.complete = false;
+      else
+        Err(ctx) << &sec << ": unknown AVM destructor registration kind";
+    }
+  }
 
   Address address(Symbol &s, int64_t addend = 0) {
     auto *d = dyn_cast<Defined>(&s);
@@ -135,6 +211,9 @@ class Analysis {
 
   void readCalls(InputSectionBase &sec) {
     auto reloc = addresses(sec);
+    DenseSet<uint64_t> weak;
+    using ELFT = ELF32LE;
+    invokeOnRelocs(sec, readWeak, sec, weak);
     auto bytes = sec.content();
     if (bytes.size() % AVM::StackCallRecordSize) {
       Err(ctx) << &sec << ": truncated .avm.stackcalls record";
@@ -143,8 +222,14 @@ class Analysis {
     for (uint64_t pos = 0; pos < bytes.size();
          pos += AVM::StackCallRecordSize) {
       unsigned flags = bytes[pos + 8];
-      if ((flags & ~(AVM::StackCallIndirect | AVM::StackCallTail |
-                     AVM::StackCallIncomplete | AVM::StackCallFunction)) ||
+      unsigned contract = flags & (AVM::StackCallInitArray | AVM::StackCallFiniArray |
+                                   AVM::StackCallLocalDtors | AVM::StackCallGuardedWeak);
+      if ((contract && (contract & (contract - 1))) ||
+          (contract && (flags & (AVM::StackCallIncomplete | AVM::StackCallFunction))) ||
+          (contract && contract != AVM::StackCallGuardedWeak &&
+           !(flags & AVM::StackCallIndirect)) ||
+          (contract == AVM::StackCallGuardedWeak &&
+           !(flags & AVM::StackCallIndirect) && !reloc.count(pos + 3)) ||
           ((flags & (AVM::StackCallIncomplete | AVM::StackCallFunction)) &&
            (flags & (AVM::StackCallIndirect | AVM::StackCallTail)))) {
         Err(ctx) << &sec << ": unknown AVM stack call flags";
@@ -172,13 +257,29 @@ class Analysis {
         continue;
       }
       Address callee = reloc.lookup(pos + 3);
+      if (contract == AVM::StackCallGuardedWeak && weak.contains(pos + 3))
+        continue;
+      uint64_t args = support::endian::read16le(bytes.data() + pos + 6);
+      bool tail = flags & AVM::StackCallTail;
+      if (contract && contract != AVM::StackCallGuardedWeak) {
+        Targets &targets = contract == AVM::StackCallInitArray ? initTargets
+                           : contract == AVM::StackCallFiniArray ? finiTargets
+                                                               : localTargets;
+        for (Address a : targets.values) {
+          unsigned to = node(a);
+          nodes[from].edges.push_back({to, args, tail});
+        }
+        if (!targets.complete)
+          nodes[from].edges.push_back({None, args, tail, false, true,
+                                      AVM::StackGapPointerFlow});
+        continue;
+      }
       unsigned to = callee.first && !(flags & AVM::StackCallIndirect)
                         ? node(callee)
                         : None;
       nodes[from].edges.push_back(
-          {to, support::endian::read16le(bytes.data() + pos + 6),
-           bool(flags & AVM::StackCallTail), false,
-           bool(flags & AVM::StackCallIndirect)});
+          {to, args, tail, false, bool(flags & AVM::StackCallIndirect),
+           flags & AVM::StackCallIndirect ? unsigned(bytes[pos + 3]) : 0});
     }
   }
 
@@ -409,11 +510,17 @@ class Analysis {
                    "opaque inline assembly)");
       for (unsigned i = 0; i < n.edges.size(); ++i) {
         const Edge &e = n.edges[i];
-        if (e.target == None)
-          report(id,
-                 e.indirect ? "unresolved indirect call target"
-                            : "unavailable direct call target",
-                 i);
+        if (e.target == None) {
+          StringRef reason = !e.indirect ? "unavailable direct call target"
+                             : e.reason == AVM::StackGapTargetLimit
+                                 ? "unresolved indirect call target (pointer target limit exceeded)"
+                             : e.reason == AVM::StackGapIterationLimit
+                                 ? "unresolved indirect call target (pointer analysis iteration limit exceeded)"
+                             : e.reason == AVM::StackGapPointerFlow
+                                 ? "unresolved indirect call target (unsupported or unknown pointer flow)"
+                                 : "unresolved indirect call target";
+          report(id, reason, i);
+        }
         else if (e.cut)
           report(id, "recursive call continuation", i);
       }
@@ -439,9 +546,54 @@ public:
     for (InputSectionBase *sec : ctx.inputSections)
       if (sec->isLive() && sec->name == ".stack_sizes")
         readFrames(*sec);
+
+    // At this stage output layout is not assigned. The default AVM layout
+    // places exactly these live input arrays between the standard bounds.
+    // Explicit scripts/overridden bounds require a later layout-aware proof.
+    auto standardBounds = [&](StringRef Start, StringRef End) {
+      Symbol *A = ctx.symtab->find(Start), *B = ctx.symtab->find(End);
+      return !ctx.script->hasSectionsCommand &&
+             (!A || A->isUndefined()) && (!B || B->isUndefined());
+    };
+    initTargets.complete = standardBounds("__init_array_start", "__init_array_end");
+    finiTargets.complete = standardBounds("__fini_array_start", "__fini_array_end");
+    for (InputSectionBase *sec : ctx.inputSections) {
+      if (!sec->isLive())
+        continue;
+      if (sec->name == ".init_array" || sec->name.starts_with(".init_array."))
+        readTable(*sec, initTargets);
+      if (sec->name == ".fini_array" || sec->name.starts_with(".fini_array."))
+        readTable(*sec, finiTargets);
+      if (sec->name == ".avm.stackdtors")
+        readRegistrations(*sec);
+    }
+    if (!standardBounds("__init_array_start", "__init_array_end"))
+      initTargets.values.clear();
+    if (!standardBounds("__fini_array_start", "__fini_array_end"))
+      finiTargets.values.clear();
+    // A legacy/unannotated registration call keeps registry dispatch unknown.
+    // Read ordinary edges first, then expand registry contracts on a second
+    // pass so candidates and registration coverage are final before use.
     for (InputSectionBase *sec : ctx.inputSections)
       if (sec->isLive() && sec->name == ".avm.stackcalls")
         readCalls(*sec);
+    for (const Node &n : nodes) {
+      unsigned count = 0;
+      for (const Edge &e : n.edges)
+        if (e.target != None && nodes[e.target].name == "__avm_register_local_dtor")
+          ++count;
+      if (count > registrations.lookup(n.address))
+        localTargets.complete = false;
+    }
+    if (!localTargets.complete) {
+      // Registry expansion on the first pass must see registration coverage.
+      // Re-read the edges, retaining the already indexed nodes and markers.
+      for (Node &n : nodes)
+        n.edges.clear();
+      for (InputSectionBase *sec : ctx.inputSections)
+        if (sec->isLive() && sec->name == ".avm.stackcalls")
+          readCalls(*sec);
+    }
 
     // The loader jumps to the ELF entry with no return record. Address-taken
     // callbacks in live data (including init/fini arrays) are additional
@@ -513,7 +665,8 @@ public:
 
     // Preserve records in relocatable links, but consume them in final links.
     for (InputSectionBase *sec : ctx.inputSections)
-      if (sec->name == ".stack_sizes" || sec->name == ".avm.stackcalls") {
+      if (sec->name == ".stack_sizes" || sec->name == ".avm.stackcalls" ||
+          sec->name == ".avm.stackdtors") {
         sec->markDead();
         for (InputSection *dep : sec->dependentSections)
           dep->markDead();

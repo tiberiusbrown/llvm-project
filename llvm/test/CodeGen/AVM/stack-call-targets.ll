@@ -36,7 +36,7 @@ define void @propagated(i1 %which) addrspace(1) {
 ; CHECK-LABEL: unknown:
 ; CHECK: jmpp
 ; CHECK: .section .avm.stackcalls
-; CHECK: .short 0
+; CHECK: .short 1
 ; CHECK-NEXT: .byte 0
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .byte 3
