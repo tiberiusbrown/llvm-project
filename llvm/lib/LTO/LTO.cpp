@@ -1341,6 +1341,22 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
       // If validation is enabled, upgrade visibility only when all vtables
       // have typeinfos.
       (!Conf.ValidateAllVtablesHaveTypeInfos || Conf.AllVtablesHaveTypeInfos);
+  // AVM's automatic closed-world mode also needs a complete IR description
+  // of its vtables. A TU compiled without WPD metadata must not make a public
+  // type-test assumption unsatisfiable merely because its class is missing
+  // from the type map.
+  if (RegularLTO.CombinedModule->getTargetTriple().getArch() == Triple::avm) {
+    bool Incomplete = Conf.HasUnanalyzedVTables;
+    for (const GlobalVariable &GV : RegularLTO.CombinedModule->globals())
+      if (!GV.isDeclaration() && GV.getName().starts_with("_ZTV") &&
+          !GV.hasMetadata(LLVMContext::MD_type))
+        Incomplete = true;
+    if (Incomplete) {
+      WholeProgramVisibilityEnabledInLTO = false;
+      RegularLTO.CombinedModule->addModuleFlag(Module::Override,
+                                               "AVM Incomplete VTables", 1);
+    }
+  }
 
   // This returns true when the name is local or not defined. Locals are
   // expected to be handled separately.

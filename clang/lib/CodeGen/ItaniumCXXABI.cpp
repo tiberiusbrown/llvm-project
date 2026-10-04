@@ -777,6 +777,12 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
                                       ? llvm::Intrinsic::type_test
                                       : llvm::Intrinsic::public_type_test;
 
+        // WPD's type-test argument is AS0, even when AVM's vtable is AS1.
+        // This metadata-only cast is stripped by analysis and disappears with
+        // the assumption. CFI checks require the original address semantics.
+        if (CGM.getTriple().getArch() == llvm::Triple::avm &&
+            !ShouldEmitCFICheck)
+          VFPAddr = Builder.CreateAddrSpaceCast(VFPAddr, CGM.VoidPtrTy);
         CheckResult =
             Builder.CreateCall(CGM.getIntrinsic(IID), {VFPAddr, TypeId});
       }
@@ -828,6 +834,12 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
       }
 
       FnVirtual = Builder.GetInsertBlock();
+    } else if (ShouldEmitWPDInfo &&
+               CGM.getTriple().getArch() == llvm::Triple::avm) {
+      // Keep the proof live for virtual member-pointer calls too. Without
+      // assume the unused type test is deleted before the full-LTO analysis.
+      Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::assume),
+                         CheckResult);
     }
   } // End of sanitizer scope
 

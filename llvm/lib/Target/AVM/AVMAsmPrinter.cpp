@@ -2,6 +2,7 @@
 
 #include "AVM.h"
 #include "AVMMCInstLower.h"
+#include "AVMMachineFunctionInfo.h"
 #include "AVMTargetMachine.h"
 #include "MCTargetDesc/AVMInstPrinter.h"
 #include "MCTargetDesc/AVMMCExpr.h"
@@ -21,8 +22,8 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSectionELF.h"
-#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
 
@@ -33,11 +34,13 @@ using namespace llvm;
 namespace {
 class AVMAsmPrinter final : public AsmPrinter {
   unsigned OutgoingBytes = 0;
+  unsigned TargetSet = 0;
   bool PendingStackCall = false;
   struct StackCall {
     MCInst Call;
     unsigned Bytes;
     bool Tail;
+    unsigned Targets;
   };
   SmallVector<StackCall, 0> StackCalls;
 
@@ -54,7 +57,26 @@ class AVMAsmPrinter final : public AsmPrinter {
         Text.getUniqueID(), cast<MCSymbolELF>(Text.getBeginSymbol()));
   }
 
-  void emitStackCall(const MCInst &Call, unsigned Bytes, bool Tail) {
+  void emitStackCall(const MCInst &Call, unsigned Bytes, bool Tail,
+                     unsigned Targets) {
+    // !callees is a complete, proven set, not profiling information. Emit one
+    // alternative edge per target, using the existing packed 24-bit format.
+    // The linker takes the maximum across these edges, including recursion.
+    if ((Call.getOpcode() == AVM::CALLP || Call.getOpcode() == AVM::JMPP) &&
+        Targets) {
+      for (const MDOperand &Op : MF->getInfo<AVMMachineFunctionInfo>()
+                                     ->getStackTargets(Targets)
+                                     ->operands()) {
+        const auto *Target =
+            cast<Function>(cast<ValueAsMetadata>(Op)->getValue());
+        MCInst Direct;
+        Direct.setOpcode(AVM::RELAX_CALL);
+        Direct.addOperand(MCOperand::createExpr(
+            MCSymbolRefExpr::create(getSymbol(Target), OutContext)));
+        emitStackCall(Direct, Bytes, Tail, 0);
+      }
+      return;
+    }
     OutStreamer->pushSection();
     OutStreamer->switchSection(getStackCallsSection());
     OutStreamer->emitSymbolValue(getFunctionBegin(), 3);
@@ -163,13 +185,14 @@ public:
 
   void emitFunctionBodyStart() override {
     OutgoingBytes = 0;
+    TargetSet = 0;
     PendingStackCall = false;
     StackCalls.clear();
   }
 
   void emitFunctionBodyEnd() override {
     for (const StackCall &C : StackCalls)
-      emitStackCall(C.Call, C.Bytes, C.Tail);
+      emitStackCall(C.Call, C.Bytes, C.Tail, C.Targets);
     const MachineFrameInfo &Frame = MF->getFrameInfo();
     OutStreamer->pushSection();
     if (Frame.hasVarSizedObjects()) {
@@ -262,6 +285,7 @@ public:
   void emitInstruction(const MachineInstr *MI) override {
     if (MI->getOpcode() == AVM::STACKCALL) {
       OutgoingBytes = MI->getOperand(0).getImm();
+      TargetSet = MI->getOperand(1).getImm();
       PendingStackCall = true;
       return;
     }
@@ -277,8 +301,9 @@ public:
                 (MI->getOpcode() == AVM::RELAX_JMP ||
                  MI->getOpcode() == AVM::JMPP);
     if (MI->isCall() || Tail) {
-      StackCalls.push_back({OutMI, OutgoingBytes, Tail});
+      StackCalls.push_back({OutMI, OutgoingBytes, Tail, TargetSet});
       OutgoingBytes = 0;
+      TargetSet = 0;
       PendingStackCall = false;
     }
     EmitToStreamer(*OutStreamer, OutMI);

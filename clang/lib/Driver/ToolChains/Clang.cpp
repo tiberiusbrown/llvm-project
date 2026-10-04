@@ -7882,7 +7882,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // VFE requires whole-program-vtables, and enables it by default.
   bool WholeProgramVTables = Args.hasFlag(
       options::OPT_fwhole_program_vtables,
-      options::OPT_fno_whole_program_vtables, VirtualFunctionElimination);
+      options::OPT_fno_whole_program_vtables,
+      VirtualFunctionElimination ||
+          (getToolChain().getTriple().getArch() == llvm::Triple::avm &&
+           LTOMode == LTOK_Full));
   if (VirtualFunctionElimination && !WholeProgramVTables) {
     D.Diag(diag::err_drv_argument_not_allowed_with)
         << "-fno-whole-program-vtables"

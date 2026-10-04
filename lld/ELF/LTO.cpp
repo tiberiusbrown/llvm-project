@@ -128,7 +128,20 @@ static lto::Config createConfig(Ctx &ctx) {
   c.DebugPassManager = ctx.arg.ltoDebugPassManager;
   c.DwoDir = std::string(ctx.arg.dwoDir);
 
-  c.HasWholeProgramVisibility = ctx.arg.ltoWholeProgramVisibility;
+  // AVM executables have no dynamic linker or externally supplied classes.
+  // Native C++ objects can still hide classes from LLVM's IR analysis. Do not
+  // automatically assert vtable visibility when such definitions are present.
+  bool avmWholeProgram = ctx.arg.emachine == EM_AVM && !ctx.arg.relocatable;
+  if (avmWholeProgram)
+    for (ELFFileBase *f : ctx.objectFiles)
+      for (const auto &s : f->getELFSyms<ELF32LE>())
+        if (s.st_shndx != SHN_UNDEF &&
+            check(s.getName(f->getStringTable())).starts_with("_ZTV"))
+          avmWholeProgram = false;
+  c.HasWholeProgramVisibility =
+      ctx.arg.ltoWholeProgramVisibility || avmWholeProgram;
+  c.HasUnanalyzedVTables =
+      ctx.arg.emachine == EM_AVM && !ctx.arg.relocatable && !avmWholeProgram;
   c.ValidateAllVtablesHaveTypeInfos =
       ctx.arg.ltoValidateAllVtablesHaveTypeInfos;
   c.AllVtablesHaveTypeInfos = ctx.ltoAllVtablesHaveTypeInfos;

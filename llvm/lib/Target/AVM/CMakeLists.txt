@@ -53,6 +53,7 @@ add_llvm_target(AVMCodeGen
   CodeGenTypes
   Core
   InstCombine
+  IPO
   MC
   SelectionDAG
   Support

@@ -29,7 +29,7 @@ define i16 @framed_direct(i16 %x) {
 ; OBJ: R_AVM_FAR24 f1
 ; ISEL-LABEL: name: framed_direct
 ; ISEL-NOT: ADJCALLSTACK
-; ISEL: TAILCALL_DIRECT_PSEUDO @f1, 0, $r4, csr_avm_call
+; ISEL: TAILCALL_DIRECT_PSEUDO @f1, 0, 0, $r4, csr_avm_call
 ; ISEL-NOT: RET_PSEUDO
   %buf = alloca [8 x i8], align 1
   store volatile i8 1, ptr %buf
@@ -89,7 +89,7 @@ define i16 @framed_indirect(ptr addrspace(1) %fn, i16 %x) {
 ; OBJ-NOT: callp
 ; OBJ: jmpp q3
 ; ISEL-LABEL: name: framed_indirect
-; ISEL: TAILCALL_INDIRECT_PSEUDO $r6r7, 0, $r4, csr_avm_call
+; ISEL: TAILCALL_INDIRECT_PSEUDO $r6r7, 0, 0, $r4, csr_avm_call
   %buf = alloca [8 x i8], align 1
   store volatile i8 1, ptr %buf
   %r = tail call addrspace(1) i16 %fn(i16 %x)

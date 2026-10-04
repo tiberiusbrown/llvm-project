@@ -10,10 +10,13 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Transforms/IPO/CalledValuePropagation.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 
 using namespace llvm;
@@ -89,6 +92,19 @@ AVMTargetMachine::getSubtargetImpl(const Function &F) const {
 }
 
 namespace {
+class AVMStackTargets final : public ModulePass {
+public:
+  static char ID;
+  AVMStackTargets() : ModulePass(ID) {}
+  bool runOnModule(Module &M) override {
+    ModuleAnalysisManager AM;
+    CalledValuePropagationPass().run(M, AM);
+    return true;
+  }
+  StringRef getPassName() const override { return "AVM stack call targets"; }
+};
+char AVMStackTargets::ID = 0;
+
 class AVMPassConfig final : public TargetPassConfig {
 public:
   AVMPassConfig(AVMTargetMachine &TM, PassManagerBase &PM)
@@ -103,6 +119,7 @@ public:
     }
 
     addPass(createAtomicExpandLegacyPass());
+    addPass(new AVMStackTargets());
   }
 
   bool addInstSelector() override {

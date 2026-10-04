@@ -44,4 +44,4 @@ int explicit_snprintf(char *d, size_t n, const char AVM_PROGMEM *s, int x) {
 // ASM-COUNT-2: sys draw_text_p
 // ASM-COUNT-2: sys draw_textfv_p
 // ASM-COUNT-2: sys vsnprintf_p
-// ASM-NOT: call
+// ASM-NOT: {{^[ \t]*call}}

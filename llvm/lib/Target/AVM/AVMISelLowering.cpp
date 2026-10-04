@@ -1701,7 +1701,10 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   // Keep the exact callsite size on the machine call through register
   // allocation, frame lowering and machine block duplication.
   SmallVector<SDValue, 10> Ops = {
-      Chain, Callee, DAG.getTargetConstant(NumBytes, DL, MVT::i16)};
+      Chain, Callee, DAG.getTargetConstant(NumBytes, DL, MVT::i16),
+      DAG.getTargetConstant(
+          MF.getInfo<AVMMachineFunctionInfo>()->addStackTargets(CLI.CB), DL,
+          MVT::i32)};
   for (const auto &[Reg, Value] : RegsToPass)
     Ops.push_back(DAG.getRegister(Reg, Value.getValueType()));
   const uint32_t *Mask =

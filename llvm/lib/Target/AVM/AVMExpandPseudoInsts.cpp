@@ -563,7 +563,9 @@ public:
         case AVM::CALL_DIRECT_PSEUDO:
         case AVM::TAILCALL_DIRECT_PSEUDO:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
-              .addImm(MI.getOperand(1).getImm());
+              .addImm(MI.getOperand(1).getImm())
+              .addImm(MI.getOperand(2).getImm());
+          MI.removeOperand(2);
           MI.removeOperand(1);
           NewOpcode = MI.getOpcode() == AVM::TAILCALL_DIRECT_PSEUDO
                           ? AVM::RELAX_JMP
@@ -576,7 +578,9 @@ public:
         case AVM::CALL_INDIRECT_PSEUDO:
         case AVM::TAILCALL_INDIRECT_PSEUDO:
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::STACKCALL))
-              .addImm(MI.getOperand(1).getImm());
+              .addImm(MI.getOperand(1).getImm())
+              .addImm(MI.getOperand(2).getImm());
+          MI.removeOperand(2);
           MI.removeOperand(1);
           NewOpcode = MI.getOpcode() == AVM::TAILCALL_INDIRECT_PSEUDO
                           ? AVM::JMPP

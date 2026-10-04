@@ -1129,9 +1129,11 @@ class AVMCallPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
 }
 
 def CALL_DIRECT_PSEUDO
-    : AVMCallPseudo<(ins AVMImm24:$target, i16imm:$stackbytes, variable_ops)>;
+    : AVMCallPseudo<(ins AVMImm24:$target, i16imm:$stackbytes,
+                        i32imm:$stacktargets, variable_ops)>;
 def CALL_INDIRECT_PSEUDO
-    : AVMCallPseudo<(ins GPR32:$target, i16imm:$stackbytes, variable_ops)>;
+    : AVMCallPseudo<(ins GPR32:$target, i16imm:$stackbytes,
+                        i32imm:$stacktargets, variable_ops)>;
 
 // Keep these return-like through PEI so the ordinary epilogue precedes the
 // transfer. The indirect target is explicitly copied to a free upper pair.
@@ -1144,13 +1146,14 @@ class AVMTailCallPseudo<dag Ins> : AVMCodeGenPseudo<(outs), Ins> {
 }
 def TAILCALL_DIRECT_PSEUDO
     : AVMTailCallPseudo<(ins AVMImm24:$target, i16imm:$stackbytes,
-                            variable_ops)>;
+                            i32imm:$stacktargets, variable_ops)>;
 def TAILCALL_INDIRECT_PSEUDO
     : AVMTailCallPseudo<(ins UpperGPR32:$target, i16imm:$stackbytes,
-                            variable_ops)>;
+                            i32imm:$stacktargets, variable_ops)>;
 
 // Zero-size, post-RA metadata. It must survive dead-instruction elimination.
-def STACKCALL : AVMCodeGenPseudo<(outs), (ins i16imm:$stackbytes)> {
+def STACKCALL : AVMCodeGenPseudo<(outs), (ins i16imm:$stackbytes,
+                                           i32imm:$stacktargets)> {
   let hasSideEffects = 1;
   let Size = 0;
 }

@@ -9,6 +9,7 @@
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/AVM.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/Support/Endian.h"
@@ -29,6 +30,7 @@ struct Edge {
   uint64_t args;
   bool tail;
   bool cut = false;
+  bool indirect = false;
 };
 struct Node {
   Address address;
@@ -36,6 +38,7 @@ struct Node {
   uint64_t frame = 0;
   bool frameKnown = false;
   bool callsKnown = false;
+  bool incompleteMarker = false;
   bool complete = true;
   SmallVector<Edge, 0> edges;
   uint64_t peak = 0;
@@ -157,11 +160,14 @@ class Analysis {
       unsigned from = node(caller);
       if (flags & AVM::StackCallFunction) {
         nodes[from].callsKnown = true;
-        if (flags & AVM::StackCallIncomplete)
+        if (flags & AVM::StackCallIncomplete) {
+          nodes[from].incompleteMarker = true;
           nodes[from].complete = false;
+        }
         continue;
       }
       if (flags & AVM::StackCallIncomplete) {
+        nodes[from].incompleteMarker = true;
         nodes[from].complete = false;
         continue;
       }
@@ -171,7 +177,8 @@ class Analysis {
                         : None;
       nodes[from].edges.push_back(
           {to, support::endian::read16le(bytes.data() + pos + 6),
-           bool(flags & AVM::StackCallTail)});
+           bool(flags & AVM::StackCallTail), false,
+           bool(flags & AVM::StackCallIndirect)});
     }
   }
 
@@ -287,6 +294,134 @@ class Analysis {
     return result;
   }
 
+  // One shortest route per reachable function, rather than exponentially many
+  // caller paths. Iterative traversal also handles recursive graphs safely.
+  void printGaps() {
+    struct Route {
+      bool seen = false;
+      unsigned parent = None;
+      unsigned edge = None;
+      uint64_t entryCost = 0;
+    };
+    SmallVector<Route, 0> routes(nodes.size());
+    SmallVector<unsigned, 0> queue;
+    auto sortedRoots = roots;
+    // The ELF entry precedes callbacks. Sort callback roots for repeatable
+    // reports even when their relocation maps have a different iteration order.
+    auto rootLess = [&](auto a, auto b) {
+      if (a.second != b.second)
+        return a.second < b.second;
+      const Node &x = nodes[a.first], &y = nodes[b.first];
+      StringRef xn = x.name.empty() ? x.address.first->name : x.name;
+      StringRef yn = y.name.empty() ? y.address.first->name : y.name;
+      if (xn != yn)
+        return xn < yn;
+      if (x.address.first->name != y.address.first->name)
+        return x.address.first->name < y.address.first->name;
+      return x.address.second < y.address.second;
+    };
+    llvm::sort(sortedRoots, rootLess);
+    for (auto [id, cost] : sortedRoots) {
+      if (routes[id].seen)
+        continue;
+      routes[id].seen = true;
+      routes[id].entryCost = cost;
+      queue.push_back(id);
+    }
+    for (size_t i = 0; i < queue.size(); ++i) {
+      unsigned from = queue[i];
+      for (unsigned j = 0; j < nodes[from].edges.size(); ++j) {
+        unsigned to = nodes[from].edges[j].target;
+        if (to == None || routes[to].seen)
+          continue;
+        routes[to] = {true, from, j, 0};
+        queue.push_back(to);
+      }
+    }
+
+    uint64_t total = 0, shown = 0;
+    auto report = [&](unsigned id, StringRef reason, unsigned edge = None) {
+      ++total;
+      if (shown >= ctx.arg.avmStackGapLimit)
+        return;
+      ++shown;
+      std::string result;
+      raw_string_ostream os(result);
+      os << "AVM stack gap " << shown << ": " << functionName(nodes[id]) << ": "
+         << reason << "\nwitness path (known costs only):\n";
+      SmallVector<unsigned, 0> chain;
+      for (unsigned at = id; at != None; at = routes[at].parent)
+        chain.push_back(at);
+      uint64_t cost = routes[chain.back()].entryCost;
+      if (cost)
+        os << "  callback entry: return address " << cost << "\n";
+      auto printNode = [&](unsigned at) {
+        const Node &n = nodes[at];
+        os << "  " << functionName(nodes[at]) << ": frame " << n.frame;
+        if (!n.frameKnown)
+          os << " (unknown; lower bound)";
+        os << "\n";
+      };
+      auto printEdge = [&](unsigned from, const Edge &e) {
+        os << "    " << (e.tail ? "tail transfer" : "call")
+           << ": return address " << (e.tail ? 0 : AVM::ReturnAddressSize)
+           << ", outgoing arguments " << e.args;
+        if (e.tail) {
+          os << "; caller frame released";
+          cost -= nodes[from].frame;
+        }
+        os << "\n";
+        cost = add(cost, add(e.args, e.tail ? 0 : AVM::ReturnAddressSize));
+      };
+      unsigned previous = None;
+      for (unsigned at : llvm::reverse(chain)) {
+        if (previous != None)
+          printEdge(previous, nodes[previous].edges[routes[at].edge]);
+        printNode(at);
+        cost = add(cost, nodes[at].frame);
+        previous = at;
+      }
+      if (edge != None) {
+        const Edge &e = nodes[id].edges[edge];
+        printEdge(id, e);
+        if (e.target == None)
+          os << "  <unknown target>\n";
+        else {
+          printNode(e.target);
+          cost = add(cost, nodes[e.target].frame);
+          os << "    <recursive continuation unknown>\n";
+        }
+      }
+      os << "  known stack at gap: " << cost << " bytes (lower bound)\n";
+      Msg(ctx) << result;
+    };
+    for (unsigned id : queue) {
+      const Node &n = nodes[id];
+      if (!n.frameKnown || !n.callsKnown) {
+        StringRef reason = !n.frameKnown && !n.callsKnown
+                               ? "missing frame and call metadata"
+                           : !n.frameKnown ? "missing frame metadata"
+                                           : "missing call metadata";
+        report(id, reason);
+      }
+      if (n.incompleteMarker)
+        report(id, "compiler-marked incomplete (dynamic stack allocation or "
+                   "opaque inline assembly)");
+      for (unsigned i = 0; i < n.edges.size(); ++i) {
+        const Edge &e = n.edges[i];
+        if (e.target == None)
+          report(id,
+                 e.indirect ? "unresolved indirect call target"
+                            : "unavailable direct call target",
+                 i);
+        else if (e.cut)
+          report(id, "recursive call continuation", i);
+      }
+    }
+    Msg(ctx) << "AVM stack analysis gaps: " << total
+             << "; paths shown: " << shown << "; omitted: " << total - shown;
+  }
+
 public:
   explicit Analysis(Ctx &ctx) : ctx(ctx) {}
 
@@ -373,6 +508,8 @@ public:
                << " bytes; complete bound: " << (complete ? "yes" : "no")
                << (best == None ? "\n"
                                 : "\nmaximum stack path:\n" + path(best, cost));
+    if (ctx.arg.avmPrintStackGaps)
+      printGaps();
 
     // Preserve records in relocatable links, but consume them in final links.
     for (InputSectionBase *sec : ctx.inputSections)

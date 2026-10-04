@@ -2959,8 +2959,15 @@ void CodeGenFunction::EmitTypeMetadataCodeForVCall(const CXXRecordDecl *RD,
     llvm::Intrinsic::ID IID = CGM.HasHiddenLTOVisibility(RD)
                                   ? llvm::Intrinsic::type_test
                                   : llvm::Intrinsic::public_type_test;
+    // The standard type-test intrinsic takes AS0. This cast is solely for
+    // the WPD assumption: analysis strips it to recover the original AS1
+    // vtable, and WPD drops the assumption before code generation.
+    // The object vptr, vtable loads and stored function addresses remain i24.
+    llvm::Value *TypeTestPtr = VTable;
+    if (CGM.getTriple().getArch() == llvm::Triple::avm)
+      TypeTestPtr = Builder.CreateAddrSpaceCast(VTable, CGM.VoidPtrTy);
     llvm::Value *TypeTest =
-        Builder.CreateCall(CGM.getIntrinsic(IID), {VTable, TypeId});
+        Builder.CreateCall(CGM.getIntrinsic(IID), {TypeTestPtr, TypeId});
     Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::assume), TypeTest);
   }
 }

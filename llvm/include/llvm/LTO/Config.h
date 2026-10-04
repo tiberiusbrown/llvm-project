@@ -77,6 +77,9 @@ struct Config {
   /// Asserts whether we can assume whole program visibility during the LTO
   /// link.
   bool HasWholeProgramVisibility = false;
+  /// The linker found vtable definitions outside the analyzable IR. AVM uses
+  /// this to avoid deriving stack safety proofs from a partial class set.
+  bool HasUnanalyzedVTables = false;
 
   /// We're validating that all native vtables have corresponding type infos.
   bool ValidateAllVtablesHaveTypeInfos = false;

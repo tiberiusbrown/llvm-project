@@ -363,6 +363,8 @@ struct Config {
   bool printIcfSections;
   bool printMemoryUsage;
   bool avmPrintStackUsage;
+  bool avmPrintStackGaps;
+  uint64_t avmStackGapLimit;
   std::optional<uint64_t> randomizeSectionPadding;
   bool rejectMismatch;
   bool relax;

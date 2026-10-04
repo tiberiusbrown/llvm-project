@@ -228,6 +228,10 @@ defm entry: Eq<"entry", "Name of entry point symbol">,
   MetaVarName<"<entry>">;
 def avm_print_stack_usage: FF<"avm-print-stack-usage">,
     HelpText<"Print the maximum provable AVM VM stack path and bound completeness">;
+def avm_print_stack_gaps: FF<"avm-print-stack-gaps">,
+    HelpText<"Print reachable gaps in AVM VM stack analysis and witness paths">;
+defm avm_stack_gap_limit: Eq<"avm-stack-gap-limit",
+    "Maximum AVM stack gap paths to print (default: 10; 0: summary only)">;
 
 defm error_limit:
   EEq<"error-limit", "Maximum number of errors to emit before stopping (0 = no limit)">;

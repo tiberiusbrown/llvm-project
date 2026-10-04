@@ -2047,9 +2047,9 @@ void DevirtModule::rebuildGlobal(VTableBits &B) {
       {ConstantDataArray::get(M.getContext(), B.Before.Bytes),
        B.GV->getInitializer(),
        ConstantDataArray::get(M.getContext(), B.After.Bytes)});
-  auto *NewGV =
-      new GlobalVariable(M, NewInit->getType(), B.GV->isConstant(),
-                         GlobalVariable::PrivateLinkage, NewInit, "", B.GV);
+  auto *NewGV = new GlobalVariable(
+      M, NewInit->getType(), B.GV->isConstant(), GlobalVariable::PrivateLinkage,
+      NewInit, "", B.GV, B.GV->getThreadLocalMode(), B.GV->getAddressSpace());
   NewGV->setSection(B.GV->getSection());
   NewGV->setComdat(B.GV->getComdat());
   NewGV->setAlignment(B.GV->getAlign());
@@ -2061,7 +2061,8 @@ void DevirtModule::rebuildGlobal(VTableBits &B) {
   // Build an alias named after the original global, pointing at the second
   // element (the original initializer).
   auto *Alias = GlobalAlias::create(
-      B.GV->getInitializer()->getType(), 0, B.GV->getLinkage(), "",
+      B.GV->getInitializer()->getType(), B.GV->getAddressSpace(),
+      B.GV->getLinkage(), "",
       ConstantExpr::getInBoundsGetElementPtr(
           NewInit->getType(), NewGV,
           ArrayRef<Constant *>{ConstantInt::get(Int32Ty, 0),
@@ -2135,7 +2136,11 @@ void DevirtModule::scanTypeTestUsers(
 
     // The type test assumes will be treated by LTT as Unsat if the type id is
     // not used on a global (in which case it has no entry in the TypeIdMap).
-    if (!TypeIdMap.count(TypeId))
+    // AVM's AS0 casts exist only to feed WPD's standard type-test signature.
+    // Once the call slots have been collected, drop their assumptions before
+    // generic LowerTypeTests can rebuild AS1 vtables as AS0 byte arrays.
+    if (M.getTargetTriple().getArch() == Triple::avm ||
+        !TypeIdMap.count(TypeId))
       RemoveTypeTestAssumes();
 
     // For ThinLTO importing, we need to remove the type test assumes if this is
@@ -2372,6 +2377,36 @@ bool DevirtModule::mustBeUnreachableFunction(
 }
 
 bool DevirtModule::run() {
+  // A full AVM link is closed, but a TU compiled without vtable metadata can
+  // conceal additional derived implementations. Leave these calls unknown
+  // instead of proving a set from only the annotated subset of vtables.
+  if (M.getTargetTriple().getArch() == Triple::avm && !DevirtSpeculatively &&
+      !ImportSummary) {
+    bool Incomplete = M.getModuleFlag("AVM Incomplete VTables");
+    for (const GlobalVariable &GV : M.globals())
+      if (!GV.isDeclaration() && GV.getName().starts_with("_ZTV") &&
+          !GV.hasMetadata(LLVMContext::MD_type))
+        Incomplete = true;
+    if (Incomplete) {
+      // Remove WPD-only assumptions as well: otherwise an absent class in
+      // the partial type map can make LowerTypeTests turn a valid path into
+      // unreachable code. Runtime CFI uses, if any, are left intact.
+      for (Intrinsic::ID ID :
+           {Intrinsic::type_test, Intrinsic::public_type_test})
+        if (Function *Test = Intrinsic::getDeclarationIfExists(&M, ID))
+          for (Use &U : make_early_inc_range(Test->uses()))
+            if (auto *CI = dyn_cast<CallInst>(U.getUser())) {
+              for (Use &Use : make_early_inc_range(CI->uses()))
+                if (auto *Assume = dyn_cast<CallInst>(Use.getUser());
+                    Assume && Assume->getIntrinsicID() == Intrinsic::assume)
+                  Assume->eraseFromParent();
+              if (CI->use_empty())
+                CI->eraseFromParent();
+            }
+      return true;
+    }
+  }
+
   // If only some of the modules were split, we cannot correctly perform
   // this transformation. We already checked for the presense of type tests
   // with partially split modules during the thin link, and would have emitted
@@ -2514,6 +2549,36 @@ bool DevirtModule::run() {
                  .WPDRes[S.first.ByteOffset];
     if (tryFindVirtualCallTargets(TargetsForSlot, TypeMemberInfos,
                                   S.first.ByteOffset, ExportSummary)) {
+      // A surviving multi-target virtual call still has a useful complete
+      // target set. Preserve it for AVM's post-codegen stack analysis. Never
+      // treat a speculative set as a safety proof.
+      if (M.getTargetTriple().getArch() == Triple::avm &&
+          !DevirtSpeculatively) {
+        SmallVector<Function *, 8> Functions;
+        bool Complete = true;
+        for (const auto &Target : TargetsForSlot) {
+          GlobalValue *GV = Target.Fn;
+          if (auto *Alias = dyn_cast<GlobalAlias>(GV))
+            GV = Alias->getAliaseeObject();
+          auto *F = dyn_cast_or_null<Function>(GV);
+          if (!F) {
+            Complete = false;
+            break;
+          }
+          if (!is_contained(Functions, F))
+            Functions.push_back(F);
+        }
+        if (Complete && !Functions.empty()) {
+          MDNode *Callees = MDBuilder(M.getContext()).createCallees(Functions);
+          auto Annotate = [&](CallSiteInfo &Info) {
+            for (auto &Site : Info.CallSites)
+              Site.CB.setMetadata(LLVMContext::MD_callees, Callees);
+          };
+          Annotate(S.second.CSInfo);
+          for (auto &CS : S.second.ConstCSInfo)
+            Annotate(CS.second);
+        }
+      }
       bool SingleImplDevirt =
           trySingleImplDevirt(ExportSummary, TargetsForSlot, S.second, Res);
       // Out of speculative devirtualization mode, Try to apply virtual constant
