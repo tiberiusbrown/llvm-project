@@ -89,7 +89,7 @@ let SchedModel = AVMInterpreterModel in {
                                   CSET_ULT, CSET_UGE, CSET_SLT, CSET_SGE,
                                   F3ST8, F6ST8_POST, F5LD8U, MULU8W, MULS8W,
                                   MULSU8W, LDSP8U_COMPACT, LDSP16_COMPACT,
-                                  STSP16_COMPACT)>;
+                                  STSP16_COMPACT, MOV32_F2)>;
   def : InstRW<[AVMW39], (instrs CMP_RR, TST16, F5LD16, F5ST16,
                                   F7LD8U_POST, F7ST16_POST)>;
   def : InstRW<[AVMW40], (instrs F7LD16_POST)>;
@@ -104,7 +104,7 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW71], (instrs COLDLDI16)>;
   def : InstRW<[AVMW72], (instrs LDM8U, STM8, LDM16, STM16)>;
   def : InstRW<[AVMW73], (instrs GPST8_POST)>;
-  def : InstRW<[AVMW74], (instrs MOV32_F2, GPST16_POST)>;
+  def : InstRW<[AVMW74], (instrs GPST16_POST)>;
   def : InstRW<[AVMW76], (instrs GPLD8U_POST)>;
   def : InstRW<[AVMW77], (instrs GPLD16_POST)>;
   def : InstRW<[AVMW81], (instrs ST32)>;
@@ -147,7 +147,7 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW54], (instrs COLDADDIS8)>;
   def : InstRW<[AVMW55], (instrs COLDCMPIS8)>;
   def : InstRW<[AVMW35], (instrs ADJSP)>;
-  def : InstRW<[AVMW34], (instrs SYS)>;
+  def : InstRW<[AVMW35], (instrs SYS)>;
   def : InstRW<[AVMW17], (instrs COPY)>;
 
   // Outcome-dependent branches use their not-taken cost because they end a

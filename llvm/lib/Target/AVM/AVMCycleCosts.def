@@ -11,7 +11,7 @@
 // Provenance:
 //   Repository: tiberiusbrown/avm
 //   File:       bench/cycles_instruction.txt
-//   Blob:       671aed568529ee2f8c3bfa57c937e1d791ea9e5f
+//   Blob:       812f26fd14fe8d673269ba729addb03941b56fda
 //
 // The fixed and branch costs are copied verbatim from the benchmark. Range
 // entries use the predetermined representative Typical/Minimum/Maximum values
@@ -50,15 +50,15 @@
 #endif
 
 // Fixed-latency instruction forms.
-AVM_FIXED_COST(SysDebugBreak, 34)
-AVM_FIXED_COST(SysDebugPutc, 34)
-AVM_FIXED_COST(SysMillis, 36)
-AVM_FIXED_COST(SysMillis32, 40)
+AVM_FIXED_COST(SysDebugBreak, 35)
+AVM_FIXED_COST(SysDebugPutc, 35)
+AVM_FIXED_COST(SysMillis, 38)
+AVM_FIXED_COST(SysMillis32, 42)
 AVM_FIXED_COST(Nop, 17)
 AVM_FIXED_COST(ClrUpper, 17)
 AVM_FIXED_COST(MovUpper, 17)
 AVM_FIXED_COST(MovFull, 37)
-AVM_FIXED_COST(Mov32Full, 74)
+AVM_FIXED_COST(Mov32Full, 38)
 AVM_FIXED_COST(Ldi8Upper, 35)
 AVM_FIXED_COST(Ldi8Lower, 53)
 AVM_FIXED_COST(Ldi16Upper, 52)

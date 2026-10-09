@@ -852,6 +852,12 @@ class AVMAsmParser final : public MCTargetAsmParser {
     if (parseProgramPair(Destination) || Parser.parseComma() ||
         parseProgramPair(Source))
       return true;
+    // Lower-pair MOV32 forms have a dedicated F2 encoding and schedule class.
+    // Upper-only forms retain the two compact MOV expansion.
+    if (Opcode == AVM::MOV32 &&
+        (Destination == AVM::R0R1 || Destination == AVM::R2R3 ||
+         Source == AVM::R0R1 || Source == AVM::R2R3))
+      Opcode = AVM::MOV32_F2;
     MCInst Inst;
     Inst.setOpcode(Opcode);
     Inst.addOperand(MCOperand::createReg(Destination));
