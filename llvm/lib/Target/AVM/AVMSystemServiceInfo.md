@@ -207,6 +207,14 @@ random source, I/O operation, trap-like service, or anything whose number or
 timing of executions is observable. Such services generally need
 `IntrHasSideEffects`.
 
+For an I/O service that also reads RAM, model writable inaccessible memory at
+the IR level. `IntrHasSideEffects` alone does not prevent IR dead-call removal
+when the function's memory attributes say it only reads memory. For example,
+`int_avm_send_display_command` combines `IntrInaccessibleMemOrArgMemOnly` with
+`IntrWrite<[InaccessibleMem]>`: argument memory is read-only, while the
+controller has inaccessible read/write state. Retain `IntrHasSideEffects` and
+the pseudo's `hasSideEffects` for instruction selection and machine ordering.
+
 ### Memory-using services
 
 For a service that reads or writes through pointer arguments, express the
@@ -649,11 +657,13 @@ A display-like service can have no pointer argument:
 ```tablegen
 def int_avm_present_framebuffer :
     Intrinsic<[], [],
-              [IntrReadMem, IntrHasSideEffects, IntrWillReturn,
+              [IntrWrite<[InaccessibleMem]>, IntrHasSideEffects, IntrWillReturn,
                IntrNoCallback, IntrNoFree]>;
 ```
 
 Because there is no pointer argument, do not use `IntrArgMemOnly`. The
+intrinsic permits ordinary-memory reads and inaccessible-memory writes for
+observable I/O, so IR optimizers must retain the operation. These
 intrinsic-level attributes state only the broad memory behavior. The
 machine-level descriptor supplies the precise fixed-global identity.
 

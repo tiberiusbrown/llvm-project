@@ -770,6 +770,21 @@ def SYS_DISPLAY_PSEUDO
   let mayLoad = 1;
   let mayStore = 1;
 }
+
+def SYS_SEND_DISPLAY_COMMAND_PSEUDO
+    : AVMSystemServicePseudo<(outs), (ins GPR16:$cmd, GPR16:$size)> {
+  let mayLoad = 1;
+  let mayStore = 0;
+}
+}
+
+let mayLoad = 0, mayStore = 0 in {
+def SYS_GET_SYSTEM_WIDTH_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
+def SYS_GET_SYSTEM_HEIGHT_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
+def SYS_GET_SYSTEM_DISPLAY_TYPE_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result), (ins)>;
 }
 
 class AVMSpriteServicePseudo

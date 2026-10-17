@@ -61,3 +61,19 @@ sys draw_textfv
 sys draw_textfv_p
 # CHECK: sys draw_textfv_p{{.*}}encoding: [0xd7,0x36]
 # DIS: sys draw_textfv_p
+
+sys send_display_command
+# CHECK: sys send_display_command{{.*}}encoding: [0xd7,0x39]
+# DIS: sys send_display_command
+
+sys get_system_width
+# CHECK: sys get_system_width{{.*}}encoding: [0xd7,0x3a]
+# DIS: sys get_system_width
+
+sys get_system_height
+# CHECK: sys get_system_height{{.*}}encoding: [0xd7,0x3b]
+# DIS: sys get_system_height
+
+sys get_system_display_type
+# CHECK: sys get_system_display_type{{.*}}encoding: [0xd7,0x3c]
+# DIS: sys get_system_display_type

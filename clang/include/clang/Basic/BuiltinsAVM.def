@@ -73,6 +73,10 @@ BUILTIN(__avm_load, "b", "n")
 BUILTIN(__avm_save_exists, "b", "n")
 
 BUILTIN(__avm_display, "vb", "n")
+BUILTIN(__avm_send_display_command, "vUcC*z", "n")
+BUILTIN(__avm_get_system_width, "Ui", "nc")
+BUILTIN(__avm_get_system_height, "Ui", "nc")
+BUILTIN(__avm_get_system_display_type, "Uc", "nc")
 
 BUILTIN(__avm_draw_sprite_overwrite, "viivC*1Ui", "n")
 BUILTIN(__avm_draw_sprite_plus_mask, "viivC*1Ui", "n")

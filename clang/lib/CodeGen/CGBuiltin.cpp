@@ -277,6 +277,10 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
     case AVM::BI__avm_load:
     case AVM::BI__avm_save_exists:
     case AVM::BI__avm_display:
+    case AVM::BI__avm_send_display_command:
+    case AVM::BI__avm_get_system_width:
+    case AVM::BI__avm_get_system_height:
+    case AVM::BI__avm_get_system_display_type:
     case AVM::BI__avm_draw_sprite_overwrite:
     case AVM::BI__avm_draw_sprite_plus_mask:
     case AVM::BI__avm_draw_sprite_self_masked:
@@ -364,6 +368,18 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
         break;
       case AVM::BI__avm_display:
         ID = Intrinsic::avm_display;
+        break;
+      case AVM::BI__avm_send_display_command:
+        ID = Intrinsic::avm_send_display_command;
+        break;
+      case AVM::BI__avm_get_system_width:
+        ID = Intrinsic::avm_get_system_width;
+        break;
+      case AVM::BI__avm_get_system_height:
+        ID = Intrinsic::avm_get_system_height;
+        break;
+      case AVM::BI__avm_get_system_display_type:
+        ID = Intrinsic::avm_get_system_display_type;
         break;
       case AVM::BI__avm_draw_sprite_overwrite:
         ID = Intrinsic::avm_draw_sprite_overwrite;
@@ -633,6 +649,7 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
           CGF->Builder.CreateCall(CGF->CGM.getIntrinsic(ID), Args);
       switch (BuiltinID) {
       case AVM::BI__avm_buttons:
+      case AVM::BI__avm_get_system_display_type:
         return CGF->Builder.CreateTrunc(Result, CGF->Int8Ty);
       case AVM::BI__avm_load:
       case AVM::BI__avm_save_exists:

@@ -57,6 +57,25 @@ let TargetPrefix = "avm" in {
       [IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;
 
+  def int_avm_send_display_command :
+      Intrinsic<[], [llvm_ptr_ty, llvm_i16_ty],
+                // RAM is read-only, but controller I/O writes inaccessible
+                // state. IntrReadMem alone would permit IR dead-call removal
+                // even with IntrHasSideEffects (which also informs ISel).
+                [IntrInaccessibleMemOrArgMemOnly,
+                 IntrWrite<[InaccessibleMem]>, IntrHasSideEffects,
+                 IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<0>>, ReadOnly<ArgIndex<0>>]>;
+
+  // These describe immutable interpreter configuration, not evolving state.
+  def int_avm_get_system_width : Intrinsic<[llvm_i16_ty], [],
+      [IntrNoMem, IntrSpeculatable, IntrWillReturn, IntrNoCallback, IntrNoFree]>;
+  def int_avm_get_system_height : Intrinsic<[llvm_i16_ty], [],
+      [IntrNoMem, IntrSpeculatable, IntrWillReturn, IntrNoCallback, IntrNoFree]>;
+  // Use the complete architectural r4 container; Clang narrows this to i8.
+  def int_avm_get_system_display_type : Intrinsic<[llvm_i16_ty], [],
+      [IntrNoMem, IntrSpeculatable, IntrWillReturn, IntrNoCallback, IntrNoFree]>;
+
   class AVMSpriteIntrinsic
       : Intrinsic<[],
                   [llvm_i16_ty, llvm_i16_ty, llvm_avm_progptr_ty, llvm_i16_ty,

@@ -50,6 +50,14 @@ static constexpr AVMServiceOutputInfo Millis32Outputs[] = {
 static constexpr AVMServiceInputInfo DisplayInputs[] = {
     {0, VK::I16, AVM::R4, PP::None, true},
 };
+static constexpr AVMServiceInputInfo DisplayCommandInputs[] = {
+    {0, VK::I16, AVM::R4, PP::None, true},
+    {1, VK::I16, AVM::R5, PP::None, true},
+};
+static constexpr AVMServiceMemoryAccessInfo DisplayCommandMemory[] = {
+    {MB::LogicalArgument, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::LogicalArgument, 1, 0},
+};
 static constexpr AVMServiceMemoryAccessInfo DisplayMemory[] = {
     {MB::FixedGlobal, 0, "__avm_framebuffer", 0, MachineMemOperand::MOLoad,
      MS::Constant, 0, 1024},
@@ -480,6 +488,11 @@ SERVICE(SYS_SAVE_PSEUDO, {}, {}, PersistenceSaveMemory);
 SERVICE(SYS_LOAD_PSEUDO, {}, R4Output, PersistenceLoadMemory);
 SERVICE(SYS_SAVE_EXISTS_PSEUDO, {}, R4Output, {});
 SERVICE(SYS_DISPLAY_PSEUDO, DisplayInputs, {}, DisplayMemory);
+SERVICE(SYS_SEND_DISPLAY_COMMAND_PSEUDO, DisplayCommandInputs, {},
+        DisplayCommandMemory);
+SERVICE(SYS_GET_SYSTEM_WIDTH_PSEUDO, {}, MillisOutputs, {});
+SERVICE(SYS_GET_SYSTEM_HEIGHT_PSEUDO, {}, MillisOutputs, {});
+SERVICE(SYS_GET_SYSTEM_DISPLAY_TYPE_PSEUDO, {}, MillisOutputs, {});
 SERVICE(SYS_SINF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});
 SERVICE(SYS_COSF_PSEUDO, UnaryMathInputs, UnaryMathOutputs, {});
 SERVICE(SYS_ATAN2F_PSEUDO, BinaryMathInputs, BinaryMathOutputs, {});

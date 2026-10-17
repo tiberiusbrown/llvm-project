@@ -172,6 +172,20 @@ AVM_SYS_DEF(0x37, debug_printfv_p, AVM_SYS_PSEUDO,
             SYS_DEBUG_PRINTFV_P_PSEUDO, AVM_SYS_INTRINSIC,
             avm_debug_printfv_p, AVM_NO_COST, AVM_NO_COST)
 
+// 0x38 is the runtime's multiplexed audio service.
+AVM_SYS_DEF(0x39, send_display_command, AVM_SYS_PSEUDO,
+            SYS_SEND_DISPLAY_COMMAND_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_send_display_command, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x3a, get_system_width, AVM_SYS_PSEUDO,
+            SYS_GET_SYSTEM_WIDTH_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_get_system_width, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x3b, get_system_height, AVM_SYS_PSEUDO,
+            SYS_GET_SYSTEM_HEIGHT_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_get_system_height, AVM_NO_COST, AVM_NO_COST)
+AVM_SYS_DEF(0x3c, get_system_display_type, AVM_SYS_PSEUDO,
+            SYS_GET_SYSTEM_DISPLAY_TYPE_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_get_system_display_type, AVM_NO_COST, AVM_NO_COST)
+
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF
 #endif
