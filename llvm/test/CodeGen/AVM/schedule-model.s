@@ -3,11 +3,17 @@
 
 # The AVM interpreter executes on one serial resource. This sequence covers
 # compact, full, dense, displaced, program-memory, branch, divide, floating,
-# and system-service schedule classes. Its measured costs sum to 1029 cycles.
+# CSET, and system-service schedule classes. Its measured costs sum to 1275 cycles.
 
 add r4, r5
 add r0, r1
 mov32 q0, q1
+cset.eq r0
+cset.ne r1
+cset.ult r2
+cset.uge r3
+cset.slt r4
+cset.sge r5
 ld16 r4, [r5]
 ld16 r0, [r5]
 ld16 r4, [r0]
@@ -18,12 +24,18 @@ udiv16 r4, r5
 fadd q2, q3
 sys debug_putc
 
-# CHECK:      Instructions:      12
-# CHECK:      Block RThroughput: 1029.0
+# CHECK:      Instructions:      18
+# CHECK:      Block RThroughput: 1275.0
 # CHECK:      Instruction Info:
 # CHECK:      1      17    17.00                       add r4, r5
 # CHECK-NEXT: 1      38    38.00                       add r0, r1
 # CHECK-NEXT: 1      38    38.00                       mov32 q0, q1
+# CHECK-NEXT: 1      41    41.00                       cset.eq r0
+# CHECK-NEXT: 1      41    41.00                       cset.ne r1
+# CHECK-NEXT: 1      41    41.00                       cset.ult r2
+# CHECK-NEXT: 1      41    41.00                       cset.uge r3
+# CHECK-NEXT: 1      41    41.00                       cset.slt r4
+# CHECK-NEXT: 1      41    41.00                       cset.sge r5
 # CHECK-NEXT: 1      18    18.00   *                   ld16 r4, [r5]
 # CHECK-NEXT: 1      39    39.00   *                   ld16 r0, [r5]
 # CHECK-NEXT: 1      55    55.00   *                   ld16 r4, [r0+0]

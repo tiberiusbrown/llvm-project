@@ -27,6 +27,7 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW38 : AVMWrite<38>;
   def AVMW39 : AVMWrite<39>;
   def AVMW40 : AVMWrite<40>;
+  def AVMW41 : AVMWrite<41>;
   def AVMW42 : AVMWrite<42>;
   def AVMW45 : AVMWrite<45>;
   def AVMW46 : AVMWrite<46>;
@@ -85,14 +86,15 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW38], (instrs ADD_RR, SUB_RR, ADD32, SUB32, LSR32_1,
                                   ASR32_1, BOOL, INC16, DEC16, LSL16_1,
                                   LSR16_1, ASR16_1, NOT16, BSWAP16, MUL8,
-                                  SEXT8, NEG16, TST8, CSET_EQ, CSET_NE,
-                                  CSET_ULT, CSET_UGE, CSET_SLT, CSET_SGE,
+                                  SEXT8, NEG16, TST8,
                                   F3ST8, F6ST8_POST, F5LD8U, MULU8W, MULS8W,
                                   MULSU8W, LDSP8U_COMPACT, LDSP16_COMPACT,
                                   STSP16_COMPACT, MOV32_F2)>;
   def : InstRW<[AVMW39], (instrs CMP_RR, TST16, F5LD16, F5ST16,
                                   F7LD8U_POST, F7ST16_POST)>;
   def : InstRW<[AVMW40], (instrs F7LD16_POST)>;
+  def : InstRW<[AVMW41], (instrs CSET_EQ, CSET_NE, CSET_ULT, CSET_UGE,
+                                  CSET_SLT, CSET_SGE)>;
   def : InstRW<[AVMW46], (instrs MUL16, FNEG)>;
   def : InstRW<[AVMW52], (instrs AND_RR, LDI16)>;
   def : InstRW<[AVMW53], (instrs OR_RR, LDI8)>;
