@@ -137,12 +137,16 @@ private:
       return ByteExtension::Unsigned;
     }
     if (Value.getOpcode() == ISD::AssertZext &&
-        cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+        cast<VTSDNode>(Value.getOperand(1))->getVT().getSizeInBits() <= 8) {
       ByteValue = Value.getOperand(0);
       return ByteExtension::Unsigned;
     }
-    if (Value.getOpcode() == ISD::SIGN_EXTEND_INREG &&
-        cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
+    if ((Value.getOpcode() == ISD::SIGN_EXTEND_INREG &&
+         cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) ||
+        (Value.getOpcode() == ISD::AssertSext &&
+         cast<VTSDNode>(Value.getOperand(1))->getVT().getSizeInBits() <= 8)) {
+      // Exported byte values arrive through assertions on CopyFromReg, also
+      // when register allocation will later spill the word-sized carrier.
       ByteValue = Value.getOperand(0);
       return ByteExtension::Signed;
     }
@@ -154,7 +158,7 @@ private:
       }
     }
     if (const auto *Load = dyn_cast<LoadSDNode>(Value);
-        Load && Load->getMemoryVT() == MVT::i8) {
+        Load && Value.getResNo() == 0 && Load->getMemoryVT() == MVT::i8) {
       ByteValue = Value;
       return Load->getExtensionType() == ISD::SEXTLOAD
                  ? ByteExtension::Signed
@@ -166,6 +170,10 @@ private:
       if ((Known.Zero & HighMask) == HighMask) {
         ByteValue = Value;
         return ByteExtension::Unsigned;
+      }
+      if (CurDAG->ComputeNumSignBits(Value) >= 9) {
+        ByteValue = Value;
+        return ByteExtension::Signed;
       }
     }
     ByteValue = Value;
@@ -437,6 +445,32 @@ private:
     return true;
   }
 
+  SDValue getMultiplyByteOperand(SDValue Value, SDNode *Multiply) {
+    auto *Load = dyn_cast<LoadSDNode>(Value);
+    if (!Load || Value.getResNo() != 0 || Load->getMemoryVT() != MVT::i8 ||
+        Load->getExtensionType() != ISD::SEXTLOAD)
+      return Value;
+    for (const SDUse &Use : Load->uses())
+      if (Use.getResNo() == 0 && Use.getUser() != Multiply)
+        return Value;
+
+    // A widening byte multiply consumes only the low byte. Undo a folded
+    // sign extension when it has no other value users, preserving the memory
+    // operation (including volatile/indexed loads) and all its chain users.
+    // Shared loads retain their extension for users that need the full word.
+    SDLoc DL(Load);
+    SDValue Byte = CurDAG->getExtLoad(
+        ISD::ZEXTLOAD, DL, Value.getValueType(), Load->getChain(),
+        Load->getBasePtr(), MVT::i8, Load->getMemOperand());
+    if (!Load->isUnindexed())
+      Byte = CurDAG->getIndexedLoad(Byte, DL, Load->getBasePtr(),
+                                    Load->getOffset(), Load->getAddressingMode());
+    ReplaceUses(Load, Byte.getNode());
+    HandleSDNode SelectedByte(Byte);
+    Select(Byte.getNode());
+    return SelectedByte.getValue();
+  }
+
   bool selectMultiply(SDNode *Node) {
     if (Node->getOpcode() != ISD::MUL || Node->getValueType(0) != MVT::i16)
       return false;
@@ -490,6 +524,13 @@ private:
       Opcode = AVM::MULSU8W_PSEUDO;
       LHS = RightByte;
       RHS = LeftByte;
+    }
+
+    if (Opcode == AVM::MULU8W_PSEUDO || Opcode == AVM::MULS8W_PSEUDO ||
+        Opcode == AVM::MULSU8W_PSEUDO) {
+      bool SameByte = LHS == RHS;
+      LHS = getMultiplyByteOperand(LHS, Node);
+      RHS = SameByte ? LHS : getMultiplyByteOperand(RHS, Node);
     }
 
     SDValue Ops[] = {LHS, RHS};
