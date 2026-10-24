@@ -946,8 +946,15 @@ SDValue RegsForValue::getCopyFromRegs(SelectionDAG &DAG,
         continue;
       }
 
-      // FIXME: We capture more information than the dag can represent.  For
-      // now, just use the tightest assertzext/assertsext possible.
+      // Preserve known low zero bits as well as the high/sign bits below.
+      // In particular, an exported shifted value can have an entirely zero
+      // low word; its users should not have to reconstruct or combine it.
+      unsigned TrailingZeros =
+          std::min(LOI->Known.countMinTrailingZeros(), 63u);
+      if (TrailingZeros)
+        Parts[i] = DAG.getAssertAlign(dl, P, Align(uint64_t(1) << TrailingZeros));
+
+      // Use the tightest assertzext/assertsext for the high bits.
       bool isSExt;
       EVT FromVT(MVT::Other);
       if (NumZeroBits) {
@@ -963,7 +970,7 @@ SDValue RegsForValue::getCopyFromRegs(SelectionDAG &DAG,
       // Add an assertion node.
       assert(FromVT != MVT::Other);
       Parts[i] = DAG.getNode(isSExt ? ISD::AssertSext : ISD::AssertZext, dl,
-                             RegisterVT, P, DAG.getValueType(FromVT));
+                             RegisterVT, Parts[i], DAG.getValueType(FromVT));
     }
 
     Values[Value] = getCopyFromParts(DAG, dl, Parts.begin(), NumRegs,

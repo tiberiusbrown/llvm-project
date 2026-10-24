@@ -539,14 +539,23 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::SELECT_CC, MVT::f32, Custom);
   }
   for (unsigned Opcode :
-       {ISD::ADD, ISD::SUB, ISD::AND, ISD::OR, ISD::XOR, ISD::BSWAP})
+       {ISD::ADD, ISD::SUB, ISD::XOR, ISD::BSWAP})
     setOperationAction(Opcode, MVT::i32, Legal);
+  setOperationAction(ISD::AND, MVT::i32, Custom);
+  setOperationAction(ISD::OR, MVT::i32, Custom);
+  setOperationAction(ISD::BUILD_PAIR, MVT::i32, Legal);
+  // EXTRACT_ELEMENT defaults to expansion even when marked Legal. Keep native
+  // word projections for instruction selection, simplifying them as operands
+  // are legalized into pairs.
+  setOperationAction(ISD::EXTRACT_ELEMENT, MVT::i16, Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32, Legal);
   for (unsigned Opcode : {ISD::MUL, ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM})
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
-  setTargetDAGCombine({ISD::LOAD, ISD::MUL, ISD::SUB});
+  setTargetDAGCombine(
+      {ISD::LOAD, ISD::MUL, ISD::SUB, ISD::BUILD_PAIR, ISD::EXTRACT_ELEMENT,
+       ISD::TRUNCATE});
   for (MVT VT : {MVT::i16, MVT::i32}) {
     setOperationAction(ISD::ROTL, VT, Expand);
     setOperationAction(ISD::ROTR, VT, Expand);
@@ -1124,20 +1133,105 @@ SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
                       MachinePointerInfo(Source), Align(1));
 }
 
+// Keep word construction visible to legalization. Rebuilding a pair with wide
+// extensions and ORs hides zero halves and forces register-pair temporaries for
+// byte packing, masks, and constant shifts.
+static SDValue getI32Word(SDValue Value, unsigned Index, const SDLoc &DL,
+                         SelectionDAG &DAG) {
+  assert(Value.getValueType() == MVT::i32 && Index < 2 && "expected i32 word");
+  if (Value.getOpcode() == ISD::AssertZext ||
+      Value.getOpcode() == ISD::AssertSext) {
+    unsigned Bits = cast<VTSDNode>(Value.getOperand(1))->getVT().getSizeInBits();
+    if (Bits <= 16 * Index) {
+      if (Value.getOpcode() == ISD::AssertZext)
+        return DAG.getConstant(0, DL, MVT::i16);
+      return DAG.getNode(ISD::SRA, DL, MVT::i16,
+                         getI32Word(Value.getOperand(0), 0, DL, DAG),
+                         DAG.getConstant(15, DL, MVT::i16));
+    }
+    SDValue Word = getI32Word(Value.getOperand(0), Index, DL, DAG);
+    if (Bits >= 16 * (Index + 1))
+      return Word;
+    EVT NarrowVT = EVT::getIntegerVT(*DAG.getContext(), Bits - 16 * Index);
+    return DAG.getNode(Value.getOpcode(), DL, MVT::i16, Word,
+                       DAG.getValueType(NarrowVT));
+  }
+  if (Value.getOpcode() == ISD::BUILD_PAIR)
+    return Value.getOperand(Index);
+  if (Value.getOpcode() == AVMISD::BUILD_HI16)
+    return Index ? Value.getOperand(0) : DAG.getConstant(0, DL, MVT::i16);
+  if (ISD::isBitwiseLogicOp(Value.getOpcode()) && Value.hasOneUse())
+    return DAG.getNode(Value.getOpcode(), DL, MVT::i16,
+                       getI32Word(Value.getOperand(0), Index, DL, DAG),
+                       getI32Word(Value.getOperand(1), Index, DL, DAG));
+  if (const auto *C = dyn_cast<ConstantSDNode>(Value))
+    return DAG.getConstant((C->getZExtValue() >> (16 * Index)) & 0xffff, DL,
+                           MVT::i16);
+
+  if ((Value.getOpcode() == ISD::ZERO_EXTEND ||
+       Value.getOpcode() == ISD::SIGN_EXTEND ||
+       Value.getOpcode() == ISD::ANY_EXTEND) &&
+      Value.getOperand(0).getValueSizeInBits() <= 16) {
+    SDValue Low = DAG.getNode(Value.getOpcode(), DL, MVT::i16,
+                              Value.getOperand(0));
+    if (!Index)
+      return Low;
+    return Value.getOpcode() == ISD::SIGN_EXTEND
+               ? DAG.getNode(ISD::SRA, DL, MVT::i16, Low,
+                             DAG.getConstant(15, DL, MVT::i16))
+               : DAG.getConstant(0, DL, MVT::i16);
+  }
+
+  KnownBits Known = DAG.computeKnownBits(Value).extractBits(16, 16 * Index);
+  if (Known.isConstant())
+    return DAG.getConstant(Known.getConstant(), DL, MVT::i16);
+  return DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i16, Value,
+                     DAG.getConstant(Index, DL, MVT::i16));
+}
+
+static std::pair<SDValue, SDValue> getI32Words(SDValue Value, const SDLoc &DL,
+                                           SelectionDAG &DAG) {
+  return {getI32Word(Value, 0, DL, DAG), getI32Word(Value, 1, DL, DAG)};
+}
+
 SDValue AVMTargetLowering::BuildI32FromWords(SDValue Low, SDValue High,
                                              const SDLoc &DL,
                                              SelectionDAG &DAG) const {
   assert(Low.getValueType() == MVT::i16 && High.getValueType() == MVT::i16 &&
          "expected i16 words");
 
-  if (const auto *C = dyn_cast<ConstantSDNode>(Low); C && C->isZero())
+  if (isNullConstant(Low))
     return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, High);
-  if (const auto *C = dyn_cast<ConstantSDNode>(High); C && C->isZero())
+  if (isNullConstant(High))
     return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Low);
+  if (High.getOpcode() == ISD::SRA && High.getOperand(0) == Low)
+    if (const auto *Count = dyn_cast<ConstantSDNode>(High.getOperand(1));
+        Count && Count->getZExtValue() == 15)
+      return DAG.getNode(ISD::SIGN_EXTEND, DL, MVT::i32, Low);
+  return DAG.getNode(ISD::BUILD_PAIR, DL, MVT::i32, Low, High);
+}
 
-  SDValue WideLow = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Low);
-  SDValue WideHigh = DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, High);
-  return DAG.getNode(ISD::OR, DL, MVT::i32, WideLow, WideHigh);
+SDValue AVMTargetLowering::LowerI32Bitwise(SDValue Op,
+                                        SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  // A full-width bitwise operation is already two native operations tied to
+  // one pair. Splitting is useful when packing exposes an identity operation
+  // in at least one word; otherwise it needlessly separates the live ranges.
+  if (Op.getOpcode() == ISD::AND) {
+    KnownBits Known = DAG.computeKnownBits(Op);
+    if (!Known.Zero.getLoBits(16).isAllOnes() &&
+        !Known.Zero.getHiBits(16).isAllOnes())
+      return Op;
+  }
+  auto [LeftLow, LeftHigh] = getI32Words(Op.getOperand(0), DL, DAG);
+  auto [RightLow, RightHigh] = getI32Words(Op.getOperand(1), DL, DAG);
+  if (Op.getOpcode() == ISD::OR && !isNullConstant(LeftLow) &&
+      !isNullConstant(LeftHigh) && !isNullConstant(RightLow) &&
+      !isNullConstant(RightHigh))
+    return Op;
+  SDValue Low = DAG.getNode(Op.getOpcode(), DL, MVT::i16, LeftLow, RightLow);
+  SDValue High = DAG.getNode(Op.getOpcode(), DL, MVT::i16, LeftHigh, RightHigh);
+  return BuildI32FromWords(Low, High, DL, DAG);
 }
 
 SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
@@ -1170,26 +1264,22 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
   if (Op.getOpcode() == ISD::SRA && Count == 1)
     return DAG.getNode(AVMISD::SRA32_1, DL, MVT::i32, Value);
 
-  SDValue Low;
-  SDValue High;
-
-  if (Value.getOpcode() == ISD::ZERO_EXTEND &&
-      Value.getOperand(0).getValueType() == MVT::i16) {
-    // Avoid materializing the wide zero extension and then extracting its
-    // statically-zero high word.
-    Low = Value.getOperand(0);
-    High = DAG.getConstant(0, DL, MVT::i16);
-  } else if (Value.getOpcode() == ISD::SIGN_EXTEND &&
-            Value.getOperand(0).getValueType() == MVT::i16) {
-    Low = Value.getOperand(0);
-    High = DAG.getNode(
-        ISD::SRA, DL, MVT::i16, Low,
-        DAG.getConstant(15, DL, MVT::i16));
-  } else {
-    Low = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
-    SDValue ShiftedHigh =
-        DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Value);
-    High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
+  auto [Low, High] = getI32Words(Value, DL, DAG);
+  if (Value.getOpcode() != ISD::BUILD_PAIR &&
+      Value.getOpcode() != AVMISD::BUILD_HI16 &&
+      Value.getOpcode() != ISD::ZERO_EXTEND &&
+      Value.getOpcode() != ISD::SIGN_EXTEND &&
+      Value.getOpcode() != ISD::ANY_EXTEND) {
+    // An opaque full-width input benefits from the native pair carrier. Keep
+    // exposed or known-zero words scalar, as needed for aggregate packing.
+    KnownBits Known = DAG.computeKnownBits(Value);
+    if (!Known.Zero.getLoBits(16).isAllOnes() &&
+        !Known.Zero.getHiBits(16).isAllOnes()) {
+      if (Count == 16 && Op.getOpcode() == ISD::SRA)
+        return DAG.getNode(AVMISD::SRA32_16, DL, MVT::i32, Value);
+      High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16,
+                         DAG.getNode(AVMISD::SRL32_16, DL, MVT::i32, Value));
+    }
   }
 
   auto ShiftCount = [&](uint64_t Amount) {
@@ -1219,28 +1309,25 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
   }
 
   if (Count == 16) {
-    if (Op.getOpcode() == ISD::SHL &&
-        (Value.getOpcode() == ISD::ZERO_EXTEND ||
-         Value.getOpcode() == ISD::SIGN_EXTEND ||
-         Value.getOpcode() == ISD::ANY_EXTEND) &&
-        Value.getOperand(0).getValueType() == MVT::i16)
-      return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, Value.getOperand(0));
-    unsigned Opcode = Op.getOpcode() == ISD::SHL   ? AVMISD::SHL32_16
-                      : Op.getOpcode() == ISD::SRL ? AVMISD::SRL32_16
-                                                   : AVMISD::SRA32_16;
-    return DAG.getNode(Opcode, DL, MVT::i32, Value);
+    SDValue Zero = DAG.getConstant(0, DL, MVT::i16);
+    if (Op.getOpcode() == ISD::SHL)
+      return BuildI32FromWords(Zero, Low, DL, DAG);
+    SDValue Sign = Op.getOpcode() == ISD::SRA
+                       ? DAG.getNode(ISD::SRA, DL, MVT::i16, High, ShiftCount(15))
+                       : Zero;
+    return BuildI32FromWords(High, Sign, DL, DAG);
   }
 
   uint64_t WordCount = Count - 16;
   if (Op.getOpcode() == ISD::SHL) {
     SDValue NewHigh =
         DAG.getNode(ISD::SHL, DL, MVT::i16, Low, ShiftCount(WordCount));
-    return DAG.getNode(AVMISD::BUILD_HI16, DL, MVT::i32, NewHigh);
+    return BuildI32FromWords(DAG.getConstant(0, DL, MVT::i16), NewHigh, DL, DAG);
   }
   if (Op.getOpcode() == ISD::SRL) {
     SDValue NewLow =
         DAG.getNode(ISD::SRL, DL, MVT::i16, High, ShiftCount(WordCount));
-    return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, NewLow);
+    return BuildI32FromWords(NewLow, DAG.getConstant(0, DL, MVT::i16), DL, DAG);
   }
 
   SDValue NewLow =
@@ -1249,8 +1336,58 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
   return BuildI32FromWords(NewLow, Sign, DL, DAG);
 }
 
+void AVMTargetLowering::computeKnownBitsForTargetNode(
+    SDValue Op, KnownBits &Known, const APInt &DemandedElts,
+    const SelectionDAG &DAG, unsigned Depth) const {
+  KnownBits Count = KnownBits::makeConstant(APInt(32, 16));
+  switch (Op.getOpcode()) {
+  case AVMISD::BUILD_HI16:
+    Known = DAG.computeKnownBits(Op.getOperand(0), Depth + 1).zext(32);
+    Known = KnownBits::shl(Known, Count);
+    return;
+  case AVMISD::SHL32_16:
+    Known = KnownBits::shl(DAG.computeKnownBits(Op.getOperand(0), Depth + 1),
+                           Count);
+    return;
+  case AVMISD::SRL32_16:
+    Known = KnownBits::lshr(DAG.computeKnownBits(Op.getOperand(0), Depth + 1),
+                            Count);
+    return;
+  case AVMISD::SRA32_16:
+    Known = KnownBits::ashr(DAG.computeKnownBits(Op.getOperand(0), Depth + 1),
+                            Count);
+    return;
+  default:
+    TargetLowering::computeKnownBitsForTargetNode(Op, Known, DemandedElts, DAG,
+                                                 Depth);
+  }
+}
+
 SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
+  if (N->getOpcode() == ISD::BUILD_PAIR && N->getValueType(0) == MVT::i32) {
+    SDValue Pair = BuildI32FromWords(N->getOperand(0), N->getOperand(1),
+                                    SDLoc(N), DCI.DAG);
+    return Pair == SDValue(N, 0) ? SDValue() : Pair;
+  }
+  if (N->getOpcode() == ISD::EXTRACT_ELEMENT &&
+      N->getValueType(0) == MVT::i16 &&
+      N->getOperand(0).getValueType() == MVT::i32) {
+    SDValue Word = getI32Word(N->getOperand(0), N->getConstantOperandVal(1),
+                              SDLoc(N), DCI.DAG);
+    return Word == SDValue(N, 0) ? SDValue() : Word;
+  }
+  if (N->getOpcode() == ISD::TRUNCATE && N->getValueType(0) == MVT::i16 &&
+      N->getOperand(0).getValueType() == MVT::i32) {
+    SDValue Word = getI32Word(N->getOperand(0), 0, SDLoc(N), DCI.DAG);
+    // Keep the generic truncation available for demanded-bits and memory
+    // combines unless this actually exposes a native word or constant.
+    if (Word.getOpcode() == ISD::EXTRACT_ELEMENT &&
+        Word.getOperand(0) == N->getOperand(0))
+      return SDValue();
+    return Word == SDValue(N, 0) ? SDValue() : Word;
+  }
+
   if (auto *Load = dyn_cast<LoadSDNode>(N)) {
     // Every unsigned byte load zeroes the rest of its destination word. Make
     // that choice explicit before instruction selection so all users (including
@@ -1410,6 +1547,9 @@ SDValue AVMTargetLowering::LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
+  case ISD::EXTRACT_ELEMENT:
+    return getI32Word(Op.getOperand(0), Op.getConstantOperandVal(1), SDLoc(Op),
+                       DAG);
   case ISD::INTRINSIC_VOID: {
     const auto *ID = cast<ConstantSDNode>(Op.getOperand(1));
     SDLoc DL(Op);
@@ -1469,6 +1609,9 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SRL:
   case ISD::SRA:
     return LowerI32Shift(Op, DAG);
+  case ISD::AND:
+  case ISD::OR:
+    return LowerI32Bitwise(Op, DAG);
   case ISD::SELECT:
     return LowerSelect(Op, DAG);
   case ISD::SELECT_CC:

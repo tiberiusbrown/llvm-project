@@ -97,6 +97,10 @@ public:
                               SDValue C) const override;
 
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+  void computeKnownBitsForTargetNode(SDValue Op, KnownBits &Known,
+                                     const APInt &DemandedElts,
+                                     const SelectionDAG &DAG,
+                                     unsigned Depth = 0) const override;
 
 private:
   SDValue BuildI32FromWords(SDValue Low, SDValue High, const SDLoc &DL,
@@ -107,6 +111,7 @@ private:
   SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,
                                const SDLoc &DL, SelectionDAG &DAG) const;
   SDValue LowerI32Shift(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerI32Bitwise(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerISFPClass(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMULH(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const;

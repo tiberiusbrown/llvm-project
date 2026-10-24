@@ -249,6 +249,37 @@ public:
           Changed = true;
           continue;
         }
+        case AVM::BUILD_PAIR_PSEUDO: {
+          const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+          Register Dest = MI.getOperand(0).getReg();
+          Register Lo = TRI.getSubReg(Dest, AVM::sub_lo16);
+          Register Hi = TRI.getSubReg(Dest, AVM::sub_hi16);
+          Register SrcLo = MI.getOperand(1).getReg();
+          Register SrcHi = MI.getOperand(2).getReg();
+          // The destination can overlap either source. Resolve these as
+          // parallel copies, including a cycle when both words are reversed.
+          if (Lo == SrcHi && Hi == SrcLo) {
+            unsigned Opcode = IsUpper(Lo) ? AVM::XOR : AVM::XOR_RR;
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Lo)
+                .addReg(Lo)
+                .addReg(Hi);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Hi)
+                .addReg(Hi)
+                .addReg(Lo);
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Opcode), Lo)
+                .addReg(Lo)
+                .addReg(Hi);
+          } else if (Lo == SrcHi) {
+            EmitMove(MBB, MI, Hi, SrcHi);
+            EmitMove(MBB, MI, Lo, SrcLo);
+          } else {
+            EmitMove(MBB, MI, Lo, SrcLo);
+            EmitMove(MBB, MI, Hi, SrcHi);
+          }
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         case AVM::SHL32_16_PSEUDO:
         case AVM::SRL32_16_PSEUDO:
         case AVM::SRA32_16_PSEUDO: {

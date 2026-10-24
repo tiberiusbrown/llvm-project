@@ -1,0 +1,88 @@
+# RUN: llc -mtriple=avm -run-pass=avm-expand-pseudo -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  define void @identity() { ret void }
+  define void @independent() { ret void }
+  define void @overlap_low() { ret void }
+  define void @overlap_high() { ret void }
+  define void @swap_upper() { ret void }
+  define void @swap_cold() { ret void }
+  define void @broadcast() { ret void }
+...
+---
+name: identity
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: identity
+    ; CHECK: bb.0:
+    ; CHECK-NEXT: RET
+    $r4r5 = BUILD_PAIR_PSEUDO $r4, $r5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: independent
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: independent
+    ; CHECK: $r4 = MOV $r6
+    ; CHECK-NEXT: $r5 = MOV $r7
+    ; CHECK-NEXT: RET
+    $r4r5 = BUILD_PAIR_PSEUDO $r6, $r7
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: overlap_low
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: overlap_low
+    ; CHECK: $r5 = MOV $r4
+    ; CHECK-NEXT: $r4 = MOV $r6
+    ; CHECK-NEXT: RET
+    $r4r5 = BUILD_PAIR_PSEUDO $r6, $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: overlap_high
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: overlap_high
+    ; CHECK: $r4 = MOV $r5
+    ; CHECK-NEXT: $r5 = MOV $r6
+    ; CHECK-NEXT: RET
+    $r4r5 = BUILD_PAIR_PSEUDO $r5, $r6
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: swap_upper
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: swap_upper
+    ; CHECK: $r4 = XOR $r4, $r5
+    ; CHECK-NEXT: $r5 = XOR $r5, $r4
+    ; CHECK-NEXT: $r4 = XOR $r4, $r5
+    ; CHECK-NEXT: RET
+    $r4r5 = BUILD_PAIR_PSEUDO $r5, $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: swap_cold
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: swap_cold
+    ; CHECK: $r0 = XOR_RR $r0, $r1
+    ; CHECK-NEXT: $r1 = XOR_RR $r1, $r0
+    ; CHECK-NEXT: $r0 = XOR_RR $r0, $r1
+    ; CHECK-NEXT: RET
+    $r0r1 = BUILD_PAIR_PSEUDO $r1, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: broadcast
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: broadcast
+    ; CHECK: $r1 = MOV_RR $r0
+    ; CHECK-NEXT: RET
+    $r0r1 = BUILD_PAIR_PSEUDO $r0, $r0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

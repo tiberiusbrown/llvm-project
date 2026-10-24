@@ -661,6 +661,24 @@ private:
   }
 
   bool selectExtendOrTruncate32(SDNode *Node) {
+    if (Node->getOpcode() == ISD::BUILD_PAIR &&
+        Node->getValueType(0) == MVT::i32) {
+      SDValue Ops[] = {Node->getOperand(0), Node->getOperand(1)};
+      CurDAG->SelectNodeTo(Node, AVM::BUILD_PAIR_PSEUDO, MVT::i32, Ops);
+      return true;
+    }
+    if (Node->getOpcode() == ISD::EXTRACT_ELEMENT &&
+        Node->getValueType(0) == MVT::i16 &&
+        Node->getOperand(0).getValueType() == MVT::i32) {
+      SDValue Ops[] = {
+          Node->getOperand(0),
+          CurDAG->getTargetConstant(Node->getConstantOperandVal(1)
+                                        ? AVM::sub_hi16
+                                        : AVM::sub_lo16,
+                                    SDLoc(Node), MVT::i32)};
+      CurDAG->SelectNodeTo(Node, TargetOpcode::EXTRACT_SUBREG, MVT::i16, Ops);
+      return true;
+    }
     if (Node->getOpcode() == ISD::SIGN_EXTEND_INREG &&
         Node->getValueType(0) == MVT::i32 &&
         cast<VTSDNode>(Node->getOperand(1))->getVT() == MVT::i8) {
@@ -1495,6 +1513,8 @@ private:
         return;
       break;
     case ISD::ZERO_EXTEND:
+    case ISD::BUILD_PAIR:
+    case ISD::EXTRACT_ELEMENT:
     case ISD::ANY_EXTEND:
     case ISD::SIGN_EXTEND:
     case ISD::SIGN_EXTEND_INREG:

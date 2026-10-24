@@ -653,6 +653,13 @@ def BUILD_HI16_PSEUDO
           (outs GPR32:$dst),
           (ins GPR16:$src),
           [(set GPR32:$dst, (AVMbuild_hi16 GPR16:$src))]>;
+
+// Keep independently computed words in general registers until the pair is
+// needed. REG_SEQUENCE would constrain their entire live ranges to its halves.
+def BUILD_PAIR_PSEUDO
+    : AVMPureCodeGenPseudo<(outs GPR32:$dst),
+                          (ins GPR16:$lo, GPR16:$hi)>;
+
 def LSR32_1_PSEUDO
     : AVMPureCodeGenPseudo<
           (outs GPR32:$dst),
