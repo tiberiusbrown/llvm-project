@@ -67,7 +67,7 @@ body: |
 
     ; CHECK-LABEL: name: large_return_tail
     ; CHECK:       bb.0:
-    ; CHECK:       RELAX_JMP %bb.1
+    ; CHECK-NOT:   RELAX_JMP %bb.1
     RELAX_JMP %bb.1
 
   bb.1:

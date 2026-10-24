@@ -1,0 +1,500 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  declare i16 @callee()
+  define void @byte_load_through_copy(ptr %unknown) { ret void }
+  define void @program_pointer_high_word(ptr %unknown) { ret void }
+  define void @program_pointer_post_load(ptr %unknown) { ret void }
+  define void @keep_wide_program_load(ptr %unknown) { ret void }
+  define void @keep_after_pair_clobber(ptr %unknown) { ret void }
+  define void @keep_post_increment_address(ptr %unknown) { ret void }
+  define void @call_preserved_byte(ptr %unknown) { ret void }
+  define void @repeated_zero_and_immediate(ptr %unknown) { ret void }
+  define void @pair_copy_round_trip(ptr %unknown) { ret void }
+  define void @keep_changed_pair_copy(ptr %unknown) { ret void }
+  define void @bitwise_byte_facts(ptr %unknown) { ret void }
+  define void @stack_write_back(ptr %unknown) { ret void }
+  define void @stack_load_forwarding(ptr %unknown) { ret void }
+  define void @byte_facts_through_stack(ptr %unknown) { ret void }
+  define void @keep_volatile_stack(ptr %unknown) { ret void }
+  define void @keep_unknown_alias_write(ptr %unknown) { ret void }
+  define void @keep_overlapping_stack_write(ptr %unknown) { ret void }
+  define void @keep_after_stack_adjustment(ptr %unknown) { ret void }
+  define void @keep_missing_memory_info(ptr %unknown) { ret void }
+  define void @preserve_comparison_flags(ptr %unknown) { ret void }
+  define void @keep_undefined_source(ptr %unknown) { ret void }
+  define void @keep_undefined_store(ptr %unknown) { ret void }
+  define void @retain_old_constant_definition(ptr %unknown) { ret void }
+  define void @keep_stack_across_call(ptr %unknown) { ret void }
+  define void @keep_atomic_stack(ptr %unknown) { ret void }
+  define void @keep_block_boundary_extension(ptr %unknown) { ret void }
+  define void @keep_implicit_definition(ptr %unknown) { ret void }
+...
+---
+name: byte_load_through_copy
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: byte_load_through_copy
+    liveins: $r4
+    ; CHECK: $r5 = LD8U $r4
+    ; CHECK-NEXT: $r0 = MOV_RR killed $r5
+    ; CHECK-NEXT: $r6 = LDI16 1234
+    ; CHECK-NOT: ZEXT8
+    $r5 = LD8U $r4
+    $r0 = MOV_RR killed $r5
+    $r6 = LDI16 1234
+    $r0 = ZEXT8 $r0
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: program_pointer_high_word
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: program_pointer_high_word
+    liveins: $r6r7
+    ; CHECK: $r4r5 = LDP24 $r6r7
+    ; CHECK-NEXT: $r0r1 = MOV32_F2 killed $r4r5
+    ; CHECK-NEXT: $r6 = LDI16 1234
+    ; CHECK-NOT: ZEXT8
+    $r4r5 = LDP24 $r6r7
+    $r0r1 = MOV32_F2 killed $r4r5
+    $r6 = LDI16 1234
+    $r1 = ZEXT8 $r1
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: program_pointer_post_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: program_pointer_post_load
+    liveins: $r6r7
+    ; CHECK: early-clobber $r4r5, $r6r7 = LDP24_POST $r6r7
+    ; CHECK-NEXT: $r0 = MOV_RR $r5
+    ; CHECK-NOT: ZEXT8
+    early-clobber $r4r5, $r6r7 = LDP24_POST $r6r7
+    $r0 = MOV_RR $r5
+    $r0 = ZEXT8 $r0
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_wide_program_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_wide_program_load
+    liveins: $r6r7
+    ; CHECK: $r4r5 = LDP32 $r6r7
+    ; CHECK-NEXT: $r5 = ZEXT8 $r5
+    $r4r5 = LDP32 $r6r7
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_after_pair_clobber
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_after_pair_clobber
+    liveins: $r6r7
+    ; CHECK: $r4r5 = LDP24 $r6r7
+    ; CHECK-NEXT: $r4r5 = ADD32 $r4r5, $r6r7
+    ; CHECK-NEXT: $r5 = ZEXT8 $r5
+    $r4r5 = LDP24 $r6r7
+    $r4r5 = ADD32 $r4r5, $r6r7
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_post_increment_address
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_post_increment_address
+    liveins: $r6
+    ; CHECK: $r6 = LDI8 255
+    ; CHECK-NEXT: early-clobber $r5, $r6 = F7LD8U_POST $r6
+    ; CHECK-NEXT: $r6 = ZEXT8 $r6
+    ; CHECK-NOT: $r5 = ZEXT8
+    $r6 = LDI8 255
+    early-clobber $r5, $r6 = F7LD8U_POST $r6
+    $r6 = ZEXT8 $r6
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: call_preserved_byte
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: call_preserved_byte
+    liveins: $r6
+    ; CHECK: $r0 = F5LD8U $r6
+    ; CHECK: RELAX_CALL @callee
+    ; CHECK-NOT: $r0 = ZEXT8
+    ; CHECK: $r4 = ZEXT8 $r4
+    $r0 = F5LD8U $r6
+    $r4 = MOV_RR $r0
+    STACKCALL 0, 0
+    RELAX_CALL @callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit $sp, implicit-def $r4
+    $r0 = ZEXT8 $r0
+    $r4 = ZEXT8 $r4
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: repeated_zero_and_immediate
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: repeated_zero_and_immediate
+    liveins: $r5, $sp
+    ; CHECK: $r4 = XOR undef $r4, undef $r4
+    ; CHECK-NEXT: STSP16 20, $r4, implicit $sp
+    ; CHECK-NEXT: $r6 = LDI16 515
+    ; CHECK-NEXT: $r0 = MOV_RR $r6
+    ; CHECK-NEXT: RET
+    $r4 = XOR undef $r4, undef $r4
+    STSP16 20, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r4 = XOR $r4, $r4
+    $r6 = LDI16 515
+    $r0 = MOV_RR $r6
+    $r0 = COLDLDI16 515
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: pair_copy_round_trip
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: pair_copy_round_trip
+    liveins: $r4r5
+    ; CHECK: $r0r1 = MOV32_F2 $r4r5
+    ; CHECK-NEXT: $r6 = LDI8 17
+    ; CHECK-NEXT: RET
+    $r0r1 = MOV32_F2 killed $r4r5
+    $r6 = LDI8 17
+    $r4r5 = MOV32_F2 $r0r1
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_changed_pair_copy
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_changed_pair_copy
+    liveins: $r4r5
+    ; CHECK: $r0r1 = MOV32_F2 $r4r5
+    ; CHECK-NEXT: $r0 = COLDLDI16 2000
+    ; CHECK-NEXT: $r4r5 = MOV32_F2 $r0r1
+    $r0r1 = MOV32_F2 $r4r5
+    $r0 = COLDLDI16 2000
+    $r4r5 = MOV32_F2 $r0r1
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: bitwise_byte_facts
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: bitwise_byte_facts
+    liveins: $r4
+    ; CHECK: $r6 = LDI8 255
+    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK-NEXT: $r5 = AND $r5, $r6
+    ; CHECK-NEXT: $r5 = OR $r5, $r6
+    ; CHECK-NOT: ZEXT8
+    $r6 = LDI8 255
+    $r5 = MOV $r4
+    $r5 = AND $r5, $r6
+    $r5 = ZEXT8 $r5
+    $r5 = OR $r5, $r6
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: stack_write_back
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: stack_write_back
+    liveins: $sp
+    ; CHECK: $r6 = LDSP16 20, implicit $sp
+    ; CHECK-NEXT: $r4 = LDI8 7
+    ; CHECK-NEXT: RET
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r4 = LDI8 7
+    STSP16 20, killed $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: stack_load_forwarding
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: stack_load_forwarding
+    liveins: $r4, $sp
+    ; CHECK: STSP16 20, $r4, implicit $sp
+    ; CHECK-NEXT: $r6 = LDI16 1234
+    ; CHECK-NEXT: $r0 = MOV_RR $r4
+    ; CHECK-NEXT: RET
+    STSP16 20, killed $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r6 = LDI16 1234
+    $r0 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r4 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    STSP16 20, $r0, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: byte_facts_through_stack
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: byte_facts_through_stack
+    liveins: $r4, $sp
+    ; CHECK: $r5 = LD8U $r4
+    ; CHECK: STSP16 20, $r5, implicit $sp
+    ; CHECK-NEXT: $r5 = LDI16 4097
+    ; CHECK-NEXT: $r6 = LDSP16 20, implicit $sp
+    ; CHECK-NOT: ZEXT8
+    $r5 = LD8U $r4
+    STSP16 20, $r5, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = LDI16 4097
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r6 = ZEXT8 $r6
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_volatile_stack
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_volatile_stack
+    liveins: $r4, $sp
+    ; CHECK: STSP16 20, $r4
+    ; CHECK-NEXT: $r4 = LDSP16 20
+    ; CHECK-NEXT: STSP16 20, $r4
+    STSP16 20, $r4, implicit $sp :: (volatile store (s16) into %stack.0, align 1)
+    $r4 = LDSP16 20, implicit $sp :: (volatile load (s16) from %stack.0, align 1)
+    STSP16 20, $r4, implicit $sp :: (volatile store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_unknown_alias_write
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_unknown_alias_write
+    liveins: $r4, $r5, $sp
+    ; CHECK: $r6 = LDSP16 20
+    ; CHECK-NEXT: ST16 $r4, $r5
+    ; CHECK-NEXT: STSP16 20, $r6
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    ST16 $r4, $r5 :: (store (s16) into %ir.unknown, align 1)
+    STSP16 20, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_overlapping_stack_write
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_overlapping_stack_write
+    liveins: $r4, $sp
+    ; CHECK: $r6 = LDSP16 20
+    ; CHECK-NEXT: STSP16 21, $r4
+    ; CHECK-NEXT: $r5 = LDSP16 20
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    STSP16 21, $r4, implicit $sp :: (store (s16) into %stack.0 + 1, align 1)
+    $r5 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_after_stack_adjustment
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_after_stack_adjustment
+    liveins: $sp
+    ; CHECK: $r6 = LDSP16 20
+    ; CHECK-NEXT: ADJSP -2
+    ; CHECK-NEXT: STSP16 20, $r6
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    ADJSP -2, implicit-def $sp, implicit $sp
+    STSP16 20, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_missing_memory_info
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_missing_memory_info
+    liveins: $r4, $sp
+    ; CHECK: STSP16 20, $r4
+    ; CHECK-NEXT: $r4 = LDSP16 20
+    ; CHECK-NEXT: STSP16 20, $r4
+    STSP16 20, $r4, implicit $sp
+    $r4 = LDSP16 20, implicit $sp
+    STSP16 20, $r4, implicit $sp
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: preserve_comparison_flags
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: preserve_comparison_flags
+    liveins: $r5, $r6, $sp
+    ; CHECK: CMP $r5, $r6, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR undef $r4, undef $r4
+    ; CHECK-NEXT: STSP16 20, $r4
+    ; CHECK-NEXT: $r4 = CMOV_NE $r4, $r5, implicit $cc
+    CMP $r5, $r6, implicit-def $cc
+    $r4 = XOR undef $r4, undef $r4
+    STSP16 20, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r4 = XOR $r4, $r4
+    $r4 = CMOV_NE $r4, $r5, implicit $cc
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_undefined_source
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_undefined_source
+    liveins: $r5
+    ; CHECK: $r5 = LDI8 7
+    ; CHECK-NEXT: $r4 = MOV undef $r5
+    ; CHECK-NEXT: $r4 = ZEXT8 $r4
+    ; CHECK-NEXT: $r5 = LDI8 255
+    ; CHECK-NEXT: $r4 = LDI16 4097
+    ; CHECK-NEXT: $r4 = AND $r4, undef $r5
+    ; CHECK-NEXT: $r4 = ZEXT8 $r4
+    $r5 = LDI8 7
+    $r4 = MOV undef $r5
+    $r4 = ZEXT8 $r4
+    $r5 = LDI8 255
+    $r4 = LDI16 4097
+    $r4 = AND $r4, undef $r5
+    $r4 = ZEXT8 $r4
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_undefined_store
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_undefined_store
+    liveins: $sp
+    ; CHECK: $r4 = LDI8 7
+    ; CHECK-NEXT: STSP16 20, undef $r4
+    ; CHECK-NEXT: $r5 = LDSP16 20
+    ; CHECK-NEXT: $r5 = ZEXT8 $r5
+    $r4 = LDI8 7
+    STSP16 20, undef $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: retain_old_constant_definition
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retain_old_constant_definition
+    ; CHECK: $r4 = LDI8 7
+    ; CHECK-NEXT: $r5 = MOV $r4
+    dead $r4 = LDI8 7
+    $r4 = LDI8 7
+    $r5 = MOV $r4
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_stack_across_call
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_stack_across_call
+    liveins: $sp
+    ; CHECK: $r0 = LDSP16 20
+    ; CHECK-NEXT: RELAX_CALL @callee
+    ; CHECK-NEXT: STSP16 20, $r0
+    $r0 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RELAX_CALL @callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit $sp, implicit-def $r4
+    STSP16 20, $r0, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_atomic_stack
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_atomic_stack
+    liveins: $r4, $sp
+    ; CHECK: STSP16 20, $r4
+    ; CHECK-NEXT: $r4 = LDSP16 20
+    ; CHECK-NEXT: STSP16 20, $r4
+    STSP16 20, $r4, implicit $sp :: (store release (s16) into %stack.0, align 1)
+    $r4 = LDSP16 20, implicit $sp :: (load acquire (s16) from %stack.0, align 1)
+    STSP16 20, $r4, implicit $sp :: (store release (s16) into %stack.0, align 1)
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_block_boundary_extension
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_block_boundary_extension
+    successors: %bb.1
+    liveins: $r4
+    $r5 = LD8U $r4
+    RELAX_JMP %bb.1
+  bb.1:
+    liveins: $r5
+    ; CHECK: $r5 = ZEXT8 $r5
+    $r5 = ZEXT8 $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_implicit_definition
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_implicit_definition
+    ; CHECK: $r4 = LDI8 7
+    ; CHECK-NEXT: $r4 = IMPLICIT_DEF
+    ; CHECK-NEXT: $r4 = ZEXT8 $r4
+    $r4 = LDI8 7
+    $r4 = IMPLICIT_DEF
+    $r4 = ZEXT8 $r4
+    RET implicit-def dead $sp, implicit $sp
+...

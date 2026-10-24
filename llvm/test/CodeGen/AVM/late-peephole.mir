@@ -77,7 +77,7 @@ body: |
     liveins: $r2, $sp
     ; CHECK-LABEL: name: keep_live_spill
     ; CHECK: STSP16_COMPACT 6, $r6, implicit $sp
-    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 6, implicit $sp
+    ; CHECK-NEXT: $r4 = MOV $r6
     ; CHECK: STSP16_COMPACT 6, $r6, implicit $sp
     $r6 = LDI8 7
     STSP16_COMPACT 6, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
@@ -136,7 +136,6 @@ body: |
     ; CHECK-LABEL: name: keep_ordered_roundtrips
     ; CHECK: STSP16_COMPACT 6, $r4, implicit $sp
     ; CHECK-NEXT: $r4 = LDSP16_COMPACT 6, implicit $sp
-    ; CHECK-NEXT: STSP16_COMPACT 6, $r4, implicit $sp
     ; CHECK-NEXT: $r4 = LDSP16_COMPACT 6, implicit $sp
     STSP16_COMPACT 6, $r4, implicit $sp :: (volatile store (s16) into %stack.0, align 1)
     $r4 = LDSP16_COMPACT 6, implicit $sp :: (load (s16) from %stack.0, align 1)
@@ -156,7 +155,7 @@ body: |
     ; CHECK: STSP16_COMPACT 6, $r4, implicit $sp
     ; CHECK-NEXT: $r4 = LDSP16_COMPACT 8, implicit $sp
     ; CHECK-NEXT: STSP16_COMPACT 8, $r5, implicit $sp
-    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 8, implicit $sp
+    ; CHECK-NEXT: $r4 = MOV $r5
     STSP16_COMPACT 6, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
     $r4 = LDSP16_COMPACT 8, implicit $sp :: (load (s16) from %stack.1, align 1)
     STSP16_COMPACT 8, $r5, implicit $sp :: (store (s16) into %stack.1, align 1)

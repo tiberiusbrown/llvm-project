@@ -1,0 +1,97 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-final-control-flow -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @next_block() { ret void }
+  define void @empty_intervening_blocks() { ret void }
+  define void @keep_nonzero_jump() { ret void }
+  define void @keep_self_jump() { ret void }
+  define void @keep_alignment_gap() { ret void }
+  define void @conditional_fallthrough() { ret void }
+...
+---
+name: next_block
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: next_block
+    ; CHECK: $r4 = LDI8 7
+    ; CHECK-NOT: RELAX_JMP
+    ; CHECK: bb.1:
+    ; CHECK: $r5 = LDI16 1234
+    $r4 = LDI8 7
+    RELAX_JMP %bb.1
+  bb.1:
+    $r5 = LDI16 1234
+    RET implicit-def $sp, implicit $sp
+...
+---
+name: empty_intervening_blocks
+body: |
+  bb.0:
+    successors: %bb.2
+    ; CHECK-LABEL: name: empty_intervening_blocks
+    ; CHECK: successors: %bb.1
+    ; CHECK-NOT: RELAX_JMP
+    RELAX_JMP %bb.2
+  bb.1:
+    successors: %bb.2
+  bb.2:
+    $r5 = LDI16 1234
+    RET implicit-def $sp, implicit $sp
+...
+---
+name: keep_nonzero_jump
+body: |
+  bb.0:
+    successors: %bb.2
+    ; CHECK-LABEL: name: keep_nonzero_jump
+    ; CHECK: RELAX_JMP %bb.2
+    RELAX_JMP %bb.2
+  bb.1:
+    $r5 = LDI16 9876
+    RET implicit-def $sp, implicit $sp
+  bb.2:
+    $r5 = LDI16 1234
+    RET implicit-def $sp, implicit $sp
+...
+---
+name: keep_self_jump
+body: |
+  bb.0:
+    successors: %bb.0
+    ; CHECK-LABEL: name: keep_self_jump
+    ; CHECK: RELAX_JMP %bb.0
+    RELAX_JMP %bb.0
+...
+---
+name: keep_alignment_gap
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: keep_alignment_gap
+    ; CHECK: RELAX_JMP %bb.1
+    RELAX_JMP %bb.1
+  bb.1 (align 4):
+    $r5 = LDI16 1234
+    RET implicit-def $sp, implicit $sp
+...
+---
+name: conditional_fallthrough
+body: |
+  bb.0:
+    successors: %bb.1, %bb.2
+    liveins: $cc
+    ; CHECK-LABEL: name: conditional_fallthrough
+    ; CHECK: RELAX_BR_NE %bb.2, implicit $cc
+    ; CHECK-NOT: RELAX_JMP %bb.1
+    ; CHECK: bb.1:
+    RELAX_BR_NE %bb.2, implicit $cc
+    RELAX_JMP %bb.1
+  bb.1:
+    $r5 = LDI16 1234
+    RET implicit-def $sp, implicit $sp
+  bb.2:
+    $r5 = LDI16 9876
+    RET implicit-def $sp, implicit $sp
+...

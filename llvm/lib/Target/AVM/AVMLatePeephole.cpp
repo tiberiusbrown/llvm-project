@@ -12,6 +12,7 @@
 #include "llvm/CodeGen/LiveStacks.h"
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/InitializePasses.h"
+#include <array>
 #include <iterator>
 #include <optional>
 
@@ -167,23 +168,261 @@ static bool producesZeroExtendedByte(const MachineInstr &MI) {
   }
 }
 
-static bool removeRedundantByteExtends(MachineBasicBlock &MBB) {
+// Facts are local to a basic block. Identities describe values rather than
+// mutable registers, and known bits describe the complete 16-bit word.
+struct WordValue {
+  unsigned Identity = 0;
+  uint16_t Zero = 0, One = 0;
+
+  bool isConstant() const { return uint16_t(Zero | One) == UINT16_MAX; }
+  bool equals(const WordValue &Other) const {
+    return (Identity && Identity == Other.Identity) ||
+           (isConstant() && Other.isConstant() && One == Other.One);
+  }
+  static WordValue constant(uint16_t V) { return {0, uint16_t(~V), V}; }
+};
+
+static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
+                                        const AVMInstrInfo &TII) {
+  const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+  constexpr MCPhysReg Words[] = {AVM::R0, AVM::R1, AVM::R2, AVM::R3,
+                                 AVM::R4, AVM::R5, AVM::R6, AVM::R7};
+  auto Index = [&](Register R) {
+    for (unsigned I = 0; I != 8; ++I)
+      if (R == Words[I])
+        return I;
+    return 8u;
+  };
+  unsigned NextIdentity = 0;
+  auto Fresh = [&]() { return WordValue{++NextIdentity}; };
+  std::array<WordValue, 8> Values;
+  for (WordValue &V : Values)
+    V = Fresh();
+  DenseMap<int64_t, WordValue> Stack;
+  unsigned ChangedRegisters = 0;
+  auto ChangedReg = [&](Register R) {
+    for (unsigned I = 0; I != 8; ++I)
+      if (TRI.regsOverlap(R, Words[I]))
+        ChangedRegisters |= 1u << I;
+  };
   bool Changed = false;
   for (auto It = MBB.begin(); It != MBB.end();) {
-    auto Producer = It++;
-    if (!producesZeroExtendedByte(*Producer))
+    MachineInstr &MI = *It++;
+    // STACKCALL is a zero-size annotation consumed by the assembly printer.
+    // The following call, rather than its annotation, carries the clobbers.
+    if (MI.isDebugInstr() || MI.getOpcode() == AVM::STACKCALL)
       continue;
-    auto Extend = It;
-    while (Extend != MBB.end() && Extend->isDebugInstr())
-      ++Extend;
-    if (Extend == MBB.end() || Extend->getOpcode() != AVM::ZEXT8 ||
-        Producer->getOperand(0).getReg() != Extend->getOperand(0).getReg() ||
-        Extend->getOperand(0).getReg() != Extend->getOperand(1).getReg())
+    // IMPLICIT_DEF and other metadata can end a physical value's lifetime.
+    // They emit no code, but must still invalidate facts about their defs.
+    if (MI.isMetaInstruction()) {
+      for (unsigned I = 0; I != 8; ++I)
+        if (MI.modifiesRegister(Words[I], &TRI))
+          Values[I] = Fresh();
+      if (MI.modifiesRegister(AVM::SP, &TRI) || MI.mayStore() ||
+          MI.hasUnmodeledSideEffects())
+        Stack.clear();
       continue;
-    It = std::next(Extend);
-    MBB.erase(Extend);
-    Changed = true;
+    }
+    if (MI.isBundled()) {
+      Stack.clear();
+      for (WordValue &V : Values)
+        V = Fresh();
+      continue;
+    }
+    SmallVector<std::pair<unsigned, WordValue>, 2> Results;
+    bool Remove = false;
+    bool HandledStack = false;
+    unsigned Dest = MI.getNumOperands() && MI.getOperand(0).isReg()
+                        ? Index(MI.getOperand(0).getReg())
+                        : 8;
+    unsigned Opcode = MI.getOpcode();
+    if ((Opcode == AVM::MOV || Opcode == AVM::MOV_RR) && Dest != 8) {
+      unsigned Src = Index(MI.getOperand(1).getReg());
+      if (Src != 8) {
+        Remove = Values[Dest].equals(Values[Src]);
+        Results.emplace_back(Dest, MI.getOperand(1).isUndef() ? Fresh()
+                                                              : Values[Src]);
+        if (MI.getOperand(1).isUndef())
+          Remove = false;
+      }
+    } else if (Opcode == AVM::MOV32 || Opcode == AVM::MOV32_F2) {
+      Register D = MI.getOperand(0).getReg(), S = MI.getOperand(1).getReg();
+      unsigned DL = Index(TRI.getSubReg(D, AVM::sub_lo16));
+      unsigned DH = Index(TRI.getSubReg(D, AVM::sub_hi16));
+      unsigned SL = Index(TRI.getSubReg(S, AVM::sub_lo16));
+      unsigned SH = Index(TRI.getSubReg(S, AVM::sub_hi16));
+      if (DL != 8 && DH != 8 && SL != 8 && SH != 8 &&
+          !MI.getOperand(1).isUndef()) {
+        Remove = Values[DL].equals(Values[SL]) && Values[DH].equals(Values[SH]);
+        Results.emplace_back(DL, Values[SL]);
+        Results.emplace_back(DH, Values[SH]);
+      }
+    } else if (Dest != 8 &&
+               (Opcode == AVM::LDI8 || Opcode == AVM::COLDLDI8 ||
+                Opcode == AVM::LDI16 || Opcode == AVM::COLDLDI16) &&
+               MI.getOperand(1).isImm()) {
+      uint16_t V = MI.getOperand(1).getImm();
+      if (Opcode == AVM::LDI8 || Opcode == AVM::COLDLDI8)
+        V &= 255;
+      Results.emplace_back(Dest, WordValue::constant(V));
+      Remove = Values[Dest].equals(Results.back().second);
+    } else if (Dest != 8 && Opcode == AVM::ZEXT8) {
+      unsigned Src = Index(MI.getOperand(1).getReg());
+      if (Src != 8) {
+        WordValue V = MI.getOperand(1).isUndef() ? Fresh() : Values[Src];
+        if ((V.Zero & 0xff00) == 0xff00) {
+          Remove = Values[Dest].equals(V);
+          Results.emplace_back(Dest, V);
+        } else {
+          V.Identity = ++NextIdentity;
+          V.Zero |= 0xff00;
+          V.One &= 0xff;
+          Results.emplace_back(Dest, V);
+        }
+      }
+    } else if (Dest != 8 && (Opcode == AVM::XOR || Opcode == AVM::XOR_RR ||
+                             Opcode == AVM::SUB || Opcode == AVM::SUB_RR ||
+                             Opcode == AVM::AND || Opcode == AVM::AND_RR ||
+                             Opcode == AVM::OR || Opcode == AVM::OR_RR)) {
+      unsigned L = Index(MI.getOperand(1).getReg());
+      unsigned R = Index(MI.getOperand(2).getReg());
+      if (L != 8 && R != 8) {
+        WordValue A = MI.getOperand(1).isUndef() ? Fresh() : Values[L];
+        WordValue B = MI.getOperand(2).isUndef() ? Fresh() : Values[R];
+        WordValue V = Fresh();
+        if (Opcode == AVM::XOR || Opcode == AVM::XOR_RR) {
+          V.Zero = (A.Zero & B.Zero) | (A.One & B.One);
+          V.One = (A.Zero & B.One) | (A.One & B.Zero);
+          if (L == R || A.equals(B))
+            V = WordValue::constant(0);
+        } else if (Opcode == AVM::AND || Opcode == AVM::AND_RR) {
+          V.Zero = A.Zero | B.Zero;
+          V.One = A.One & B.One;
+          if (A.equals(B))
+            V = A;
+        } else if (Opcode == AVM::OR || Opcode == AVM::OR_RR) {
+          V.Zero = A.Zero & B.Zero;
+          V.One = A.One | B.One;
+          if (A.equals(B))
+            V = A;
+        } else if (L == R || A.equals(B)) {
+          V = WordValue::constant(0);
+        }
+        Remove = Values[Dest].equals(V);
+        Results.emplace_back(Dest, V);
+      }
+    } else if (Dest != 8 && producesZeroExtendedByte(MI)) {
+      WordValue V = Fresh();
+      V.Zero = 0xff00;
+      Results.emplace_back(Dest, V);
+    } else if (Opcode == AVM::LDP24 || Opcode == AVM::LDP24_POST) {
+      unsigned Hi =
+          Index(TRI.getSubReg(MI.getOperand(0).getReg(), AVM::sub_hi16));
+      if (Hi != 8) {
+        WordValue V = Fresh();
+        V.Zero = 0xff00;
+        Results.emplace_back(Hi, V);
+      }
+    }
+
+    if ((isWordStackLoad(MI) || isWordStackStore(MI)) &&
+        !MI.hasOrderedMemoryRef()) {
+      bool Load = isWordStackLoad(MI);
+      unsigned OffsetOperand = Load ? 1 : 0;
+      unsigned Reg = Load ? Dest : Index(MI.getOperand(1).getReg());
+      const MachineOperand &Offset = MI.getOperand(OffsetOperand);
+      if (Reg != 8 && Offset.isImm() && Offset.getImm() >= 0 &&
+          Offset.getImm() < UINT16_MAX) {
+        int64_t At = Offset.getImm();
+        HandledStack = true;
+        auto Found = Stack.find(At);
+        if (Load) {
+          WordValue V = Found == Stack.end() ? Fresh() : Found->second;
+          Stack[At] = V;
+          Remove = Values[Reg].equals(V);
+          if (!Remove) {
+            // A full-register MOV costs 37 cycles, versus at least 38 for a
+            // word stack load, and never uses more bytes. Prefer upper donors.
+            for (unsigned I : {4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u}) {
+              if (!Values[I].equals(V))
+                continue;
+              unsigned Move = Reg >= 4 && I >= 4 ? AVM::MOV : AVM::MOV_RR;
+              BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(Move))
+                  .add(MI.getOperand(0))
+                  .addReg(Words[I]);
+              ChangedReg(Words[I]);
+              Remove = true;
+              break;
+            }
+          }
+          Results.emplace_back(Reg, V);
+        } else {
+          WordValue V = MI.getOperand(1).isUndef() ? Fresh() : Values[Reg];
+          Remove = Found != Stack.end() && Found->second.equals(V);
+          for (auto S = Stack.begin(); S != Stack.end();) {
+            auto Current = S++;
+            if (Current->first < At + 2 && At < Current->first + 2)
+              Stack.erase(Current);
+          }
+          Stack[At] = V;
+        }
+      }
+    }
+    // A pure operation may be removed only if it has no additional defs or
+    // unmodeled effects. Ordered memory operations were excluded above.
+    if (Remove && !HandledStack) {
+      if (MI.mayLoadOrStore() || MI.hasUnmodeledSideEffects())
+        Remove = false;
+      for (const MachineOperand &MO : MI.operands())
+        if (MO.isRegMask() ||
+            (MO.isReg() && MO.isDef() && MO.getReg() &&
+             !TRI.regsOverlap(MO.getReg(), MI.getOperand(0).getReg())))
+          Remove = false;
+    }
+    if (!HandledStack &&
+        (MI.mayStore() || MI.isCall() || MI.hasUnmodeledSideEffects() ||
+         MI.hasOrderedMemoryRef()))
+      Stack.clear();
+    if (MI.modifiesRegister(AVM::SP, &TRI))
+      Stack.clear();
+    if (!Remove) {
+      bool UnknownClobbers =
+          MI.hasUnmodeledSideEffects() &&
+          llvm::none_of(MI.operands(), [](const MachineOperand &MO) {
+            return MO.isRegMask();
+          });
+      for (unsigned I = 0; I != 8; ++I)
+        if (UnknownClobbers || MI.modifiesRegister(Words[I], &TRI))
+          Values[I] = Fresh();
+    }
+    for (const auto &[I, V] : Results)
+      Values[I] = V;
+    if (Remove) {
+      for (const MachineOperand &MO : MI.operands())
+        if (MO.isReg() && MO.getReg())
+          ChangedReg(MO.getReg());
+      MI.eraseFromParent();
+      Changed = true;
+    }
   }
+  // Reusing a physical value can extend a lifetime past an old kill or dead
+  // marker. Allocation is finished; clear only flags for affected registers.
+  if (ChangedRegisters)
+    for (MachineInstr &MI : MBB)
+      for (MachineOperand &MO : MI.operands()) {
+        if (!MO.isReg() || !MO.getReg())
+          continue;
+        for (unsigned I = 0; I != 8; ++I) {
+          if (!(ChangedRegisters & (1u << I)) ||
+              !TRI.regsOverlap(MO.getReg(), Words[I]))
+            continue;
+          if (MO.isUse())
+            MO.setIsKill(false);
+          else if (MO.isDef())
+            MO.setIsDead(false);
+          break;
+        }
+      }
   return Changed;
 }
 
@@ -460,12 +699,12 @@ public:
     const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
     bool Changed = false;
     for (MachineBasicBlock &MBB : MF) {
-      Changed |= removeRedundantByteExtends(MBB);
       Changed |= removeRedundantStackReloads(MBB, TII.getRegisterInfo());
       Changed |= reuseReversedCompare(MBB, TII);
       if (!MF.getFunction().hasOptSize())
         Changed |= selectByBitOne(MBB, TII);
       Changed |= reuseBooleanCompareFlags(MBB, TII);
+      Changed |= cleanRegisterAndStackValues(MBB, TII);
     }
     return Changed;
   }

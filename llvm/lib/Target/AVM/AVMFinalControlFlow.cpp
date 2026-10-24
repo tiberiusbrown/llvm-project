@@ -252,6 +252,32 @@ public:
           !Target->hasAddressTaken() && !hasPhysicalFallthroughInto(*Target))
         Target->eraseFromParent();
 
+    // Tail folding and dead-instruction cleanup can leave jumps whose target
+    // is the next instruction. Skip only empty, unaligned blocks, and retain
+    // the immediate fallthrough edge expected by MachineVerifier.
+    for (MachineBasicBlock &MBB : MF) {
+      auto Last = getLastCodeInstructions(MBB);
+      if (Last.empty() || Last.back()->getOpcode() != AVM::RELAX_JMP ||
+          !Last.back()->getOperand(0).isMBB())
+        continue;
+      MachineBasicBlock *Target = Last.back()->getOperand(0).getMBB();
+      for (auto I = std::next(MBB.getIterator()); I != MF.end(); ++I) {
+        if (I->getAlignment() > Align(1))
+          break;
+        if (&*I == Target) {
+          Last.back()->eraseFromParent();
+          MachineBasicBlock *Immediate = MBB.getNextNode();
+          if (Immediate != Target && MBB.isSuccessor(Target) &&
+              !MBB.isSuccessor(Immediate))
+            MBB.replaceSuccessor(Target, Immediate);
+          Changed = true;
+          break;
+        }
+        if (emitsCode(*I))
+          break;
+      }
+    }
+
     return Changed;
   }
 };
