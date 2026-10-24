@@ -241,11 +241,49 @@ static bool stripByteValue(SDValue Value, SDValue &ByteValue) {
   return false;
 }
 
+static SDValue getCompareWord(SDValue Value, const SDLoc &DL,
+                              SelectionDAG &DAG) {
+  // Comparison lowering runs after the generic trunc-of-binop combine.
+  // Push the demanded word through a mask here so instruction selection can
+  // use ZEXT8 instead of forming both words of a masked i32 value.
+  if (ISD::isBitwiseLogicOp(Value.getOpcode())) {
+    SDValue LHS = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value.getOperand(0));
+    SDValue RHS = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value.getOperand(1));
+    return DAG.getNode(Value.getOpcode(), DL, MVT::i16, LHS, RHS);
+  }
+  return DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
+}
+
 static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
                                                  ISD::CondCode CC,
                                                  const SDLoc &DL,
                                                  SelectionDAG &DAG) {
   AVMCC::CondCode TargetCond = canonicalizeCondCode(CC, LHS, RHS);
+
+  if (LHS.getValueType() == MVT::i32) {
+    // Aggregate fields can retain their promoted i32 type after masking.
+    // Discard a common constant high word, or redundant sign extension,
+    // before choosing the native word compare and its immediate form.
+    KnownBits Left = DAG.computeKnownBits(LHS);
+    KnownBits Right = DAG.computeKnownBits(RHS);
+    APInt HighMask = APInt::getHighBitsSet(32, 16);
+    APInt CommonBits = (Left.Zero & Right.Zero) | (Left.One & Right.One);
+    bool SameHighWord = (CommonBits & HighMask) == HighMask;
+    bool SignExtended = DAG.ComputeNumSignBits(LHS) >= 17 &&
+                        DAG.ComputeNumSignBits(RHS) >= 17;
+    if (SameHighWord || SignExtended) {
+      // With equal high words, ordering depends on the unsigned low words.
+      // Retain signed ordering only when both operands fit in signed i16.
+      if (!SignExtended) {
+        if (TargetCond == AVMCC::SLT)
+          TargetCond = AVMCC::ULT;
+        else if (TargetCond == AVMCC::SGE)
+          TargetCond = AVMCC::UGE;
+      }
+      LHS = getCompareWord(LHS, DL, DAG);
+      RHS = getCompareWord(RHS, DL, DAG);
+    }
+  }
 
   if (const auto *C = dyn_cast<ConstantSDNode>(LHS);
       C && LHS.getValueType() == MVT::i16 && !isa<ConstantSDNode>(RHS)) {
