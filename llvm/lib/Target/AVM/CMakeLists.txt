@@ -16,6 +16,7 @@ tablegen(LLVM AVMGenDAGISel.inc -gen-dag-isel)
 add_public_tablegen_target(AVMCommonTableGen)
 
 add_llvm_target(AVMCodeGen
+  AVMAddressReuse.cpp
   AVMAsmPrinter.cpp
   AVMBranchPolarity.cpp
   AVMCanonicalizeBooleans.cpp

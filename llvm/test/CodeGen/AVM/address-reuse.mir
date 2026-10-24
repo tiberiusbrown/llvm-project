@@ -1,0 +1,417 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-address-reuse,dead-mi-elimination \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  @game = global [1024 x i8] zeroinitializer
+  @other = global [1024 x i8] zeroinitializer
+  declare void @callee()
+  define void @reuse_global_byte() { ret void }
+  define void @reuse_global_word_successor() { ret void }
+  define void @reuse_global_store() { ret void }
+  define void @negative_boundary() { ret void }
+  define void @positive_boundary() { ret void }
+  define void @below_boundary() { ret void }
+  define void @above_boundary() { ret void }
+  define void @wraparound() { ret void }
+  define void @keep_dead_base() { ret void }
+  define void @keep_cheaper_direct_load() { ret void }
+  define void @keep_clobbered_base() { ret void }
+  define void @keep_pair_clobbered_base() { ret void }
+  define void @keep_across_call() { ret void }
+  define void @reuse_existing_displacement() { ret void }
+  define void @keep_different_symbols() { ret void }
+  define void @reuse_cold_base() { ret void }
+  define void @keep_differing_join_values() { ret void }
+  define void @reuse_word_store() { ret void }
+  define void @reuse_exact_base() { ret void }
+  define void @keep_loop_entry_uncertainty() { ret void }
+...
+---
+name: reuse_global_byte
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_global_byte
+    ; CHECK: $r7 = ADD
+    ; CHECK-NEXT: $r4 = DPLD8U $r7, 84 :: (volatile load (s8) from @game)
+    ; CHECK-NEXT: RET
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4 :: (volatile load (s8) from @game)
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_global_word_successor
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_global_word_successor
+    ; CHECK: bb.1:
+    ; CHECK-NOT: LDI16
+    ; CHECK: $r4 = DPLD16 $r7, 76 :: (load (s16) from @game, align 1)
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r6, $r7
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 365
+    $r4 = ADD $r4, $r5
+    $r4 = LD16 $r4 :: (load (s16) from @game, align 1)
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_global_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_global_store
+    ; CHECK: $r7 = ADD
+    ; CHECK-NEXT: $r5 = LDI8 0
+    ; CHECK-NEXT: DPST8 $r7, 91, $r5 :: (volatile store (s8) into @game)
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 380
+    $r4 = ADD $r4, $r5
+    $r5 = LDI8 0
+    ST8 $r4, $r5 :: (volatile store (s8) into @game)
+    RET implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: negative_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: negative_boundary
+    ; CHECK: $r4 = DPLD8U $r7, -32
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 257
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: positive_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: positive_boundary
+    ; CHECK: $r4 = DPLD8U $r7, 223
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 512
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: below_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: below_boundary
+    ; CHECK: $r5 = LDI16
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 256
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: above_boundary
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: above_boundary
+    ; CHECK: $r5 = LDI16
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 513
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: wraparound
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: wraparound
+    ; CHECK: $r4 = DPLD8U $r7, -32
+    $r7 = MOV $r6
+    $r4 = LDI16 17
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 65521
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_dead_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_dead_base
+    ; CHECK-NOT: DPLD
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_cheaper_direct_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: keep_cheaper_direct_load
+    ; CHECK: $r4 = ADDIS8 $r4, 85
+    ; CHECK-NEXT: $r4 = LD8U $r4
+    $r7 = MOV $r4
+    $r7 = ADDIS8 $r7, 84
+    $r4 = ADDIS8 $r4, 85
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_clobbered_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_clobbered_base
+    ; CHECK: $r7 = LDI8 7
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r7 = LDI8 7
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_pair_clobbered_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6, $r0r1
+    ; CHECK-LABEL: name: keep_pair_clobbered_base
+    ; CHECK: $r6r7 = MOV32 $r0r1
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r6r7 = MOV32 $r0r1
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_across_call
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_across_call
+    ; CHECK: CALL16 @callee
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    CALL16 @callee
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_existing_displacement
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_existing_displacement
+    ; CHECK: $r4 = DPLD8U $r7, 89
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = DPLD8U $r4, 5
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_different_symbols
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_different_symbols
+    ; CHECK: $r5 = LDI16 @other + 373
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @other + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_cold_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_cold_base
+    ; CHECK: $r0 = ADD_RR $r0, $r4
+    ; CHECK-NEXT: $r4 = DPLD16 $r0, 84
+    $r0 = MOV_RR $r6
+    $r4 = LDI16 @game + 289
+    $r0 = ADD_RR $r0, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD16 $r4
+    RET implicit $r4, implicit $r0, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_differing_join_values
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_differing_join_values
+    ; CHECK: bb.3:
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    CMP $r6, $r7, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r6, $r7
+    $r7 = ADDIS8 $r7, 1
+    RELAX_JMP %bb.3
+
+  bb.2:
+    liveins: $r6, $r7
+    RELAX_JMP %bb.3
+
+  bb.3:
+    liveins: $r6, $r7
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_word_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6, $r2
+    ; CHECK-LABEL: name: reuse_word_store
+    ; CHECK: $r7 = ADD
+    ; CHECK-NEXT: DPST16 $r7, 84, $r2 :: (volatile store (s16) into @game, align 1)
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    F5ST16 $r4, $r2 :: (volatile store (s16) into @game, align 1)
+    RET implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: reuse_exact_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: reuse_exact_base
+    ; CHECK: $r7 = MOV $r6
+    ; CHECK-NEXT: $r4 = LD16 $r7
+    ; CHECK-NEXT: RET
+    $r7 = MOV $r6
+    $r4 = MOV $r7
+    $r4 = LD16 $r4
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_loop_entry_uncertainty
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r6
+    ; CHECK-LABEL: name: keep_loop_entry_uncertainty
+    ; CHECK: bb.1:
+    ; CHECK: $r5 = LDI16 @game + 373
+    ; CHECK: $r4 = LD8U $r4
+    $r7 = MOV $r6
+    $r4 = LDI16 @game + 289
+    $r7 = ADD $r7, $r4
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r6, $r7
+    $r4 = MOV $r6
+    $r5 = LDI16 @game + 373
+    $r4 = ADD $r4, $r5
+    $r4 = LD8U $r4
+    $r7 = ADDIS8 $r7, 1
+    CMP $r4, $r7, implicit-def $cc
+    RELAX_BR_EQ %bb.1, implicit $cc
+    RELAX_JMP %bb.2
+
+  bb.2:
+    liveins: $r4, $r7
+    RET implicit $r4, implicit $r7, implicit-def dead $sp, implicit $sp
+...
