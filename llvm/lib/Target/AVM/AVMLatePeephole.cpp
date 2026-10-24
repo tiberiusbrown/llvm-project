@@ -4,6 +4,8 @@
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -11,6 +13,7 @@
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/InitializePasses.h"
 #include <iterator>
+#include <optional>
 
 using namespace llvm;
 
@@ -179,6 +182,108 @@ static bool removeRedundantByteExtends(MachineBasicBlock &MBB) {
       continue;
     It = std::next(Extend);
     MBB.erase(Extend);
+    Changed = true;
+  }
+  return Changed;
+}
+
+// Adjacent entries are complementary conditions. Keep these tables separate
+// from the instruction encoding: opcode numbering is not a condition code.
+static constexpr unsigned CSetOpcodes[] = {
+    AVM::CSET_EQ, AVM::CSET_NE, AVM::CSET_ULT,
+    AVM::CSET_UGE, AVM::CSET_SLT, AVM::CSET_SGE};
+static constexpr unsigned CMovOpcodes[] = {
+    AVM::CMOV_EQ, AVM::CMOV_NE, AVM::CMOV_ULT,
+    AVM::CMOV_UGE, AVM::CMOV_SLT, AVM::CMOV_SGE};
+static constexpr unsigned BranchOpcodes[] = {
+    AVM::RELAX_BR_EQ, AVM::RELAX_BR_NE, AVM::RELAX_BR_ULT,
+    AVM::RELAX_BR_UGE, AVM::RELAX_BR_SLT, AVM::RELAX_BR_SGE};
+
+static std::optional<unsigned> csetCondition(unsigned Opcode) {
+  for (unsigned I = 0; I != 6; ++I)
+    if (Opcode == CSetOpcodes[I])
+      return I;
+  return std::nullopt;
+}
+
+static unsigned booleanFlagsConsumer(unsigned Opcode, unsigned Condition) {
+  for (const unsigned *Opcodes : {CMovOpcodes, BranchOpcodes, CSetOpcodes}) {
+    if (Opcode == Opcodes[0])
+      return Opcodes[Condition ^ 1]; // Boolean == 0.
+    if (Opcode == Opcodes[1])
+      return Opcodes[Condition]; // Boolean != 0.
+  }
+  return 0;
+}
+
+// CSET preserves CC, as do ordinary arithmetic and logical instructions. A
+// zero test of its unmodified Boolean can therefore use the original flags,
+// provided every reader of the test's flags can be translated as well.
+static bool reuseBooleanCompareFlags(MachineBasicBlock &MBB,
+                                     const AVMInstrInfo &TII) {
+  if (!MBB.getParent()->getProperties().hasProperty(
+          MachineFunctionProperties::Property::TracksLiveness))
+    return false;
+  const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+  LivePhysRegs LiveOut(TRI);
+  LiveOut.addLiveOuts(MBB);
+  bool Changed = false;
+  for (auto It = MBB.begin(); It != MBB.end();) {
+    auto Test = It++;
+    if (Test->getOpcode() != AVM::TST8 && Test->getOpcode() != AVM::TST16)
+      continue;
+    Register Bool = Test->getOperand(0).getReg();
+    auto Set = Test;
+    std::optional<unsigned> Condition;
+    while (Set != MBB.begin()) {
+      --Set;
+      if (Set->isMetaInstruction())
+        continue;
+      if (Set->isCall() || Set->isInlineAsm() ||
+          Set->hasUnmodeledSideEffects() || Set->modifiesRegister(AVM::CC, &TRI))
+        break;
+      if (Set->modifiesRegister(Bool, &TRI)) {
+        if (Set->getOperand(0).isReg() && Set->getOperand(0).getReg() == Bool)
+          Condition = csetCondition(Set->getOpcode());
+        break;
+      }
+    }
+    if (!Condition)
+      continue;
+
+    SmallVector<std::pair<MachineInstr *, unsigned>, 4> Consumers;
+    auto End = It;
+    bool Safe = true;
+    for (; End != MBB.end(); ++End) {
+      if (End->isMetaInstruction())
+        continue;
+      if (End->isInlineAsm() || End->hasUnmodeledSideEffects()) {
+        Safe = false;
+        break;
+      }
+      if (End->readsRegister(AVM::CC, &TRI)) {
+        unsigned Opcode = booleanFlagsConsumer(End->getOpcode(), *Condition);
+        if (!Opcode) {
+          Safe = false;
+          break;
+        }
+        Consumers.emplace_back(&*End, Opcode);
+      }
+      if (End->modifiesRegister(AVM::CC, &TRI) || End->isCall())
+        break;
+    }
+    if (!Safe || Consumers.empty() ||
+        (End == MBB.end() && LiveOut.contains(AVM::CC)))
+      continue;
+
+    for (auto [Consumer, Opcode] : Consumers)
+      Consumer->setDesc(TII.get(Opcode));
+    // The original flags now live through CSET and any intervening readers.
+    // Leave CSET itself for machine DCE, which keeps it if the Boolean also
+    // escapes as a data value (including through a register-pair alias).
+    for (auto Scan = Set; Scan != End; ++Scan)
+      Scan->clearRegisterKills(AVM::CC, &TRI);
+    MBB.erase(Test);
     Changed = true;
   }
   return Changed;
@@ -360,6 +465,7 @@ public:
       Changed |= reuseReversedCompare(MBB, TII);
       if (!MF.getFunction().hasOptSize())
         Changed |= selectByBitOne(MBB, TII);
+      Changed |= reuseBooleanCompareFlags(MBB, TII);
     }
     return Changed;
   }

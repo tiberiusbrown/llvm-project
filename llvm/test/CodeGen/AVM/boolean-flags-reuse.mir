@@ -1,0 +1,767 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole,dead-mi-elimination \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  declare void @callee()
+  define void @cmov_eq_ne() { ret void }
+  define void @branch_eq_ne() { ret void }
+  define void @cmov_eq_eq() { ret void }
+  define void @branch_eq_eq() { ret void }
+  define void @cmov_ne_ne() { ret void }
+  define void @branch_ne_ne() { ret void }
+  define void @cmov_ne_eq() { ret void }
+  define void @branch_ne_eq() { ret void }
+  define void @cmov_ult_ne() { ret void }
+  define void @branch_ult_ne() { ret void }
+  define void @cmov_ult_eq() { ret void }
+  define void @branch_ult_eq() { ret void }
+  define void @cmov_uge_ne() { ret void }
+  define void @branch_uge_ne() { ret void }
+  define void @cmov_uge_eq() { ret void }
+  define void @branch_uge_eq() { ret void }
+  define void @cmov_slt_ne() { ret void }
+  define void @branch_slt_ne() { ret void }
+  define void @cmov_slt_eq() { ret void }
+  define void @branch_slt_eq() { ret void }
+  define void @cmov_sge_ne() { ret void }
+  define void @branch_sge_ne() { ret void }
+  define void @cmov_sge_eq() { ret void }
+  define void @branch_sge_eq() { ret void }
+  define void @multiple_readers() { ret void }
+  define void @preserve_boolean_data() { ret void }
+  define void @preserve_boolean_pair_alias() { ret void }
+  define void @flags_reader_between_set_and_test() { ret void }
+  define void @stop_at_new_compare() { ret void }
+  define void @keep_clobbered_flags() { ret void }
+  define void @keep_changed_boolean() { ret void }
+  define void @keep_changed_pair() { ret void }
+  define void @keep_unsupported_flags_reader() { ret void }
+  define void @keep_liveout_flags() { ret void }
+  define void @keep_across_call() { ret void }
+  define void @test_reused_boolean_twice() { ret void }
+  define void @retarget_materialized_flags_user() { ret void }
+...
+---
+name: cmov_eq_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_eq_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_EQ $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_EQ implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_eq_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_eq_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_EQ %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_EQ implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_eq_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_eq_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_NE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_EQ implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_eq_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_eq_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_NE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_EQ implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_ne_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_ne_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_NE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_NE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_ne_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_ne_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_NE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_NE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_ne_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_ne_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_EQ $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_NE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_ne_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_ne_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_EQ %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_NE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_ult_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_ult_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_ult_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_ult_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_ULT %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_ult_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_ult_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_UGE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_ult_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_ult_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_UGE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_uge_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_uge_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_UGE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_UGE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_uge_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_uge_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_UGE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_UGE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_uge_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_uge_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_UGE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_uge_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_uge_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_ULT %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_UGE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_slt_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_slt_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_SLT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SLT implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_slt_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_slt_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_SLT %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SLT implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_slt_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_slt_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_SGE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SLT implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_slt_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_slt_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_SGE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SLT implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_sge_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_sge_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_SGE $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SGE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_sge_ne
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_sge_ne
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_SGE %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SGE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: cmov_sge_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: cmov_sge_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = XOR $r4, $r4
+    ; CHECK-NEXT: $r4 = CMOV_SLT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SGE implicit killed $cc
+    $r4 = XOR $r4, $r4
+    TST8 killed $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit killed $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: branch_sge_eq
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: branch_sge_eq
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: RELAX_BR_SLT %bb.2, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_SGE implicit killed $cc
+    TST16 killed $r5, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit killed $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+
+  bb.2:
+    liveins: $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: multiple_readers
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: multiple_readers
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: $r4 = CMOV_UGE $r4, $r7, implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    $r4 = CMOV_EQ $r4, $r7, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: preserve_boolean_data
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: preserve_boolean_data
+    ; CHECK: $r5 = CSET_ULT implicit $cc
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: ST16 $r7, $r5
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    ST16 $r7, $r5
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: preserve_boolean_pair_alias
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: preserve_boolean_pair_alias
+    ; CHECK: $r5 = CSET_ULT implicit $cc
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: RET implicit $r4r5
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4r5, implicit-def dead $sp, implicit $sp
+...
+---
+name: flags_reader_between_set_and_test
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: flags_reader_between_set_and_test
+    ; CHECK: $r4 = CMOV_SLT $r4, $r7, implicit $cc
+    ; CHECK-NEXT: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    $r4 = CMOV_SLT $r4, $r7, implicit killed $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: stop_at_new_compare
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: stop_at_new_compare
+    ; CHECK: $r4 = CMOV_ULT $r4, $r6, implicit $cc
+    ; CHECK-NEXT: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = CMOV_EQ $r4, $r7, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    CMP $r6, $r7, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r7, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_clobbered_flags
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_clobbered_flags
+    ; CHECK: $r5 = CSET_ULT
+    ; CHECK: CMP $r4, $r7
+    ; CHECK: TST8 $r5
+    ; CHECK: $r4 = CMOV_NE
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    CMP $r4, $r7, implicit-def $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_changed_boolean
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_changed_boolean
+    ; CHECK: $r5 = ADDIS8 $r5, 1
+    ; CHECK-NEXT: TST8 $r5
+    ; CHECK-NEXT: $r4 = CMOV_NE
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    $r5 = ADDIS8 $r5, 1
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_changed_pair
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_changed_pair
+    ; CHECK: $r4r5 = MOV32 $r6r7
+    ; CHECK-NEXT: TST8 $r5
+    ; CHECK-NEXT: $r4 = CMOV_NE
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    $r4r5 = MOV32 $r6r7
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_unsupported_flags_reader
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_unsupported_flags_reader
+    ; CHECK: $r5 = CSET_ULT
+    ; CHECK: TST8 $r5
+    ; CHECK: $r4 = CMOV_NE
+    ; CHECK: $r4 = CMOV_SLT
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    $r4 = CMOV_SLT $r4, $r7, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_liveout_flags
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_liveout_flags
+    ; CHECK: $r5 = CSET_ULT
+    ; CHECK: TST8 $r5
+    ; CHECK: $r4 = CMOV_NE
+    ; CHECK: bb.1:
+    ; CHECK: $r4 = CMOV_EQ
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r4, $r7, $cc
+    $r4 = CMOV_EQ $r4, $r7, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: keep_across_call
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: keep_across_call
+    ; CHECK: $r5 = CSET_ULT
+    ; CHECK: CALL16 @callee
+    ; CHECK: TST8 $r5
+    ; CHECK: $r4 = CMOV_NE
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    CALL16 @callee
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: test_reused_boolean_twice
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: test_reused_boolean_twice
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = CMOV_ULT
+    ; CHECK-NEXT: $r4 = CMOV_UGE
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_NE $r4, $r6, implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r7, implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: retarget_materialized_flags_user
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6, $r7
+    ; CHECK-LABEL: name: retarget_materialized_flags_user
+    ; CHECK: CMP $r6, $r7, implicit-def $cc
+    ; CHECK-NEXT: $r4 = CSET_UGE implicit $cc
+    ; CHECK-NEXT: RET
+    CMP $r6, $r7, implicit-def $cc
+    $r5 = CSET_ULT implicit $cc
+    TST8 $r5, implicit-def $cc
+    $r4 = CSET_EQ implicit $cc
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
