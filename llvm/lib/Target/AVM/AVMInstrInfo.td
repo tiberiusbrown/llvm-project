@@ -877,6 +877,19 @@ def SYS_MEMCPY_P_PSEUDO
   let mayStore = 1;
 }
 
+// Keep constant setup out of register allocation. The register mask models
+// service scratch registers; this is a memory operation, not a function call.
+// Expand the address and length directly into physical registers after RA.
+def CONST_COPY_P_PSEUDO
+    : AVMCodeGenPseudo<(outs),
+                       (ins R4Only:$dst, i32imm:$source, i16imm:$size,
+                            variable_ops)> {
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 1;
+  let Defs = [CC];
+}
+
 def SYS_MEMSET_PSEUDO
     : AVMSystemServicePseudo<(outs GPR16:$dst),
                              (ins GPR16:$dst_in, GPR16:$value,

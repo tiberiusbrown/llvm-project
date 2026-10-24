@@ -5,8 +5,10 @@
 #include "AVMISelLowering.h"
 #include "AVMInstrInfo.h"
 #include "AVMSystemServiceInfo.h"
+#include "AVMSubtarget.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/IR/GlobalVariable.h"
 
 using namespace llvm;
 
@@ -117,6 +119,36 @@ SDValue AVMSelectionDAGInfo::EmitTargetCodeForMemcpyWithAA(
     Opcode = AVM::SYS_MEMCPY_P_PSEUDO;
   else
     return {};
+
+  // Constant pools have an immediate address and size. Hide their setup from
+  // the allocator so service register affinities cannot spread into surrounding
+  // loops. A register mask describes the scratch registers without inventing a
+  // call or changing the IR memory intrinsic.
+  const auto *Pool = dyn_cast_or_null<GlobalVariable>(
+      dyn_cast_if_present<const Value *>(SrcPtrInfo.V));
+  const auto *Length = dyn_cast<ConstantSDNode>(Size);
+  if (Opcode == AVM::SYS_MEMCPY_P_PSEUDO && Pool && Length &&
+      SrcPtrInfo.Offset == 0 && Pool->getMetadata("avm.constant.initializer")) {
+    MachineFunction &MF = DAG.getMachineFunction();
+    const auto *TRI = MF.getSubtarget<AVMSubtarget>().getRegisterInfo();
+    Chain = DAG.getCopyToReg(Chain, DL, AVM::R4, Dst, SDValue());
+    SDValue Ops[] = {
+        DAG.getRegister(AVM::R4, MVT::i16),
+        DAG.getTargetGlobalAddress(Pool, DL, MVT::i32),
+        DAG.getTargetConstant(Length->getZExtValue(), DL, MVT::i16),
+        DAG.getRegisterMask(TRI->getCallPreservedMask(MF, CallingConv::C)),
+        Chain, Chain.getValue(1)};
+    MachineSDNode *Node = DAG.getMachineNode(AVM::CONST_COPY_P_PSEUDO, DL,
+                                           MVT::Other, Ops);
+    LocationSize MemSize = LocationSize::precise(Length->getZExtValue());
+    MachineMemOperand *MMOs[] = {
+        MF.getMachineMemOperand(DstPtrInfo, MachineMemOperand::MOStore, MemSize,
+                                Alignment, AAInfo),
+        MF.getMachineMemOperand(SrcPtrInfo, MachineMemOperand::MOLoad, MemSize,
+                                Align(1), AAInfo)};
+    DAG.setNodeMemRefs(Node, MMOs);
+    return SDValue(Node, 0);
+  }
 
   return emitCopyOrMoveService(Opcode, DAG, DL, Chain, Dst, Src, Size,
                                Alignment, DstPtrInfo, SrcPtrInfo, AAInfo);

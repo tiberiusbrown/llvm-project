@@ -286,6 +286,28 @@ public:
           Changed = true;
           continue;
         }
+        case AVM::CONST_COPY_P_PSEUDO: {
+          assert(MI.getOperand(0).getReg() == AVM::R4 &&
+                 "constant copy destination must be in the service register");
+          MachineOperand LoAddress = MI.getOperand(1);
+          MachineOperand HiAddress = MI.getOperand(1);
+          LoAddress.setTargetFlags(AVMII::MO_LO16);
+          HiAddress.setTargetFlags(AVMII::MO_HI8);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::LDI16), AVM::R6)
+              .add(LoAddress);
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::LDI8), AVM::R7)
+              .add(HiAddress);
+          EmitImmediate(MBB, MI, AVM::R5, MI.getOperand(2).getImm());
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::SYS_MEMCPY_P_PSEUDO))
+              .addReg(AVM::R4, RegState::Define | RegState::Dead)
+              .addReg(AVM::R4)
+              .addReg(AVM::R6R7)
+              .addReg(AVM::R5)
+              .cloneMemRefs(MI);
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
         case AVM::PROG_ADDR_PSEUDO: {
           const AVMRegisterInfo &TRI = TII.getRegisterInfo();
           Register Dest = MI.getOperand(0).getReg();

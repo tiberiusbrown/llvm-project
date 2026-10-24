@@ -1,0 +1,32 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-expand-pseudo -verify-machineinstrs %s -o - | FileCheck %s
+
+# The pool and length are immediates through RA. Expansion uses only the scratch
+# registers covered by the mask, retains both memory operands, and adds no call.
+--- |
+  target triple = "avm"
+  @pool = private addrspace(1) constant [512 x i8] zeroinitializer
+  define void @constant_copy(ptr %dst) { ret void }
+...
+---
+name: constant_copy
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: constant_copy
+    ; CHECK-NOT: CALL
+    ; CHECK: $r6 = LDI16 target-flags({{.*}}) @pool
+    ; CHECK-NEXT: $r7 = LDI8 target-flags({{.*}}) @pool
+    ; CHECK-NEXT: $r5 = LDI8 64
+    ; CHECK-NEXT: dead $r4 = SYS_MEMCPY_P_PSEUDO $r4, $r6r7, $r5{{.*}} :: (store (s512) into %ir.dst, align 1), (load (s512) from @pool, align 1, addrspace 1)
+    ; CHECK-NEXT: $r4 = LDI16 32
+    ; CHECK-NEXT: $r6 = LDI16 target-flags({{.*}}) @pool
+    ; CHECK-NEXT: $r7 = LDI8 target-flags({{.*}}) @pool
+    ; CHECK-NEXT: $r5 = LDI16 512
+    ; CHECK-NEXT: dead $r4 = SYS_MEMCPY_P_PSEUDO
+    ; CHECK-NEXT: RET
+    CONST_COPY_P_PSEUDO $r4, @pool, 64, csr_avm_call, implicit-def dead $cc :: (store (s512) into %ir.dst, align 1), (load (s512) from @pool, align 1, addrspace 1)
+    $r4 = LDI16 32
+    CONST_COPY_P_PSEUDO $r4, @pool, 512, csr_avm_call, implicit-def dead $cc :: (store (s4096) into %ir.dst, align 1), (load (s4096) from @pool, align 1, addrspace 1)
+    RET implicit-def $sp, implicit $sp
+...
