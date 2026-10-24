@@ -32,6 +32,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   registerAVMTailDuplicationOptions();
   initializeAVMBranchPolarityPass(PR);
   initializeAVMCanonicalizeBooleansPass(PR);
+  initializeAVMBytePHIsPass(PR);
   initializeAVMConstantInitializersPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
@@ -115,6 +116,14 @@ public:
   bool addInstSelector() override {
     addPass(createAVMISelDag(getTM<AVMTargetMachine>(), getOptLevel()));
     return false;
+  }
+
+  void addCodeGenPrepare() override {
+    // Keep free byte extensions explicit across cyclic PHIs before DAG
+    // legalization loses their upper-bit facts.
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(createAVMBytePHIsPass());
+    TargetPassConfig::addCodeGenPrepare();
   }
 
   void addPreRegAlloc() override {

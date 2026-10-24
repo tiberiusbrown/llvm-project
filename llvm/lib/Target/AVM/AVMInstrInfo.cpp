@@ -21,6 +21,50 @@ AVMInstrInfo::AVMInstrInfo(const AVMSubtarget &STI)
     : AVMGenInstrInfo(STI, RI, AVM::ADJCALLSTACKDOWN, AVM::ADJCALLSTACKUP),
       RI() {}
 
+Register AVMInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
+                                         int &FrameIndex) const {
+  // Only full-word and full-pair transfers preserve the entire register.
+  // Extending byte loads and 24-bit pointer loads are not spill reloads.
+  if ((MI.getOpcode() == AVM::STACK_LOAD16_PSEUDO ||
+       MI.getOpcode() == AVM::STACK_LOAD32_PSEUDO) &&
+      MI.getOperand(1).isFI() && MI.getOperand(2).getImm() == 0 &&
+      !MI.hasOrderedMemoryRef()) {
+    FrameIndex = MI.getOperand(1).getIndex();
+    return MI.getOperand(0).getReg();
+  }
+  return 0;
+}
+
+Register AVMInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
+                                        int &FrameIndex) const {
+  if ((MI.getOpcode() == AVM::STACK_STORE16_PSEUDO ||
+       MI.getOpcode() == AVM::STACK_STORE32_PSEUDO) &&
+      MI.getOperand(0).isFI() && MI.getOperand(1).getImm() == 0 &&
+      !MI.hasOrderedMemoryRef()) {
+    FrameIndex = MI.getOperand(0).getIndex();
+    return MI.getOperand(2).getReg();
+  }
+  return 0;
+}
+
+Register AVMInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
+                                         int &FrameIndex,
+                                         TypeSize &MemBytes) const {
+  Register Reg = isLoadFromStackSlot(MI, FrameIndex);
+  MemBytes = TypeSize::getFixed(!Reg ? 0 :
+      MI.getOpcode() == AVM::STACK_LOAD16_PSEUDO ? 2 : 4);
+  return Reg;
+}
+
+Register AVMInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
+                                        int &FrameIndex,
+                                        TypeSize &MemBytes) const {
+  Register Reg = isStoreToStackSlot(MI, FrameIndex);
+  MemBytes = TypeSize::getFixed(!Reg ? 0 :
+      MI.getOpcode() == AVM::STACK_STORE16_PSEUDO ? 2 : 4);
+  return Reg;
+}
+
 bool AVMInstrInfo::isReMaterializableImpl(const MachineInstr &MI) const {
   if ((MI.getOpcode() == AVM::LDI8_PSEUDO ||
        MI.getOpcode() == AVM::LDI16_PSEUDO ||

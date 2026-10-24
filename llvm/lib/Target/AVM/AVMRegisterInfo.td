@@ -62,6 +62,9 @@ def ProgPtrGPR32 : RegisterClass<"AVM", [i32], 8,
 // genuinely fixed target operations. System-service pseudos themselves use
 // semantic general classes; the descriptor-driven service passes introduce
 // these carriers only where keeping a value in its ABI register is profitable.
+// Allocate these constrained intervals before ordinary classes so spill
+// products cannot occupy their only register before the ABI setup is assigned.
+let AllocationPriority = 1 in {
 def R0Only : RegisterClass<"AVM", [i16], 8, (add R0)>;
 def R1Only : RegisterClass<"AVM", [i16], 8, (add R1)>;
 def R2Only : RegisterClass<"AVM", [i16], 8, (add R2)>;
@@ -74,6 +77,7 @@ def Q0Only : RegisterClass<"AVM", [i32, f32], 8, (add R0R1)>;
 def Q1Only : RegisterClass<"AVM", [i32, f32], 8, (add R2R3)>;
 def Q2Only : RegisterClass<"AVM", [i32, f32], 8, (add R4R5)>;
 def Q3Only : RegisterClass<"AVM", [i32, f32], 8, (add R6R7)>;
+}
 
 // Keep the MC-facing class names so the parser, emitter, printer, and their
 // established tests retain their spelling and register acceptance.

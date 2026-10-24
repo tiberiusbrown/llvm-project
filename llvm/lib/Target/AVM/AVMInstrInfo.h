@@ -35,6 +35,14 @@ public:
   bool isProfitableToFoldRedundantCopy(
       const MachineInstr &PrevCopy, const MachineInstr &Copy,
       const MachineRegisterInfo &MRI) const override;
+  Register isLoadFromStackSlot(const MachineInstr &MI,
+                               int &FrameIndex) const override;
+  Register isLoadFromStackSlot(const MachineInstr &MI, int &FrameIndex,
+                               TypeSize &MemBytes) const override;
+  Register isStoreToStackSlot(const MachineInstr &MI,
+                              int &FrameIndex) const override;
+  Register isStoreToStackSlot(const MachineInstr &MI, int &FrameIndex,
+                              TypeSize &MemBytes) const override;
 
   void storeRegToStackSlot(
       MachineBasicBlock &MBB, MachineBasicBlock::iterator MI, Register SrcReg,

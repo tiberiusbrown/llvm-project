@@ -27,6 +27,12 @@ using namespace llvm;
 
 AVMRegisterInfo::AVMRegisterInfo() : AVMGenRegisterInfo(0) {}
 
+float AVMRegisterInfo::getSpillWeightScaleFactor(
+    const TargetRegisterClass *RC) const {
+  // Each word of a register pair requires its own stack transfer.
+  return getSpillSize(*RC) / 2.0f;
+}
+
 const uint16_t *
 AVMRegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
   return CSR_AVM_SaveList;
@@ -228,6 +234,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       Opcode == AVM::STACK_LOAD24_PSEUDO || Opcode == AVM::STACK_STORE24_PSEUDO;
   Register ValueReg = Old.getOperand(IsLoad ? 0 : 2).getReg();
   bool IsKill = !IsLoad && Old.getOperand(2).isKill();
+  unsigned SrcFlags = !IsLoad && Old.getOperand(2).isUndef() ? RegState::Undef : 0;
 
   if (Base == AVM::SP && isUInt<8>(Offset) &&
       (!IsPair || isUInt<8>(Offset + 2))) {
@@ -260,7 +267,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                  : BuildMI(MBB, MI, DL, TII.get(NewOpcode));
       MIB.addImm(Offset);
       if (!IsLoad)
-        MIB.addReg(ValueReg, getKillRegState(IsKill));
+        MIB.addReg(ValueReg, SrcFlags | getKillRegState(IsKill));
       CloneMemRefs(MIB);
       if (SignExtendAfterLoad)
         BuildMI(MBB, MI, DL, TII.get(AVM::SEXT8), ValueReg).addReg(ValueReg);
@@ -285,10 +292,15 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       CloneMemRefs(
           BuildMI(MBB, MI, DL, TII.get(HiOpcode), Hi).addImm(Offset + 2));
     } else {
+      // A pair spill can have one undefined lane. Keep its implicit whole-pair
+      // use on both word stores, and defer the pair kill until the last one.
+      // Otherwise splitting the spill would turn the undefined lane into an
+      // apparently uninitialized scalar use (or kill the only defined lane).
       CloneMemRefs(BuildMI(MBB, MI, DL,
                            TII.get(getStackStoreOpcode(MF, TII, Lo, Offset)))
                        .addImm(Offset)
-                       .addReg(Lo, getKillRegState(IsKill)));
+                       .addReg(Lo, SrcFlags)
+                       .addReg(ValueReg, SrcFlags | RegState::Implicit));
       unsigned HiOpcode =
           Is24 ? preferCompact(MF, TII,
                                AVM::UpperGPR16RegClass.contains(Hi) &&
@@ -298,7 +310,9 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
                : getStackStoreOpcode(MF, TII, Hi, Offset + 2);
       CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(HiOpcode))
                        .addImm(Offset + 2)
-                       .addReg(Hi, getKillRegState(IsKill)));
+                       .addReg(Hi, SrcFlags | getKillRegState(IsKill))
+                       .addReg(ValueReg, SrcFlags | RegState::Implicit |
+                                             getKillRegState(IsKill)));
     }
     Old.eraseFromParent();
     return true;
@@ -319,10 +333,12 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
         BuildDisplacedLoad(AVM::DPLD8U, Hi, Address, 2);
         BuildDisplacedLoad(AVM::DPLD16, Lo, Address, 0, RegState::Kill);
       } else {
-        BuildDisplacedStore(AVM::DPST16, Address, 0, Lo, 0,
-                            getKillRegState(IsKill));
+        BuildDisplacedStore(AVM::DPST16, Address, 0, Lo, 0, SrcFlags)
+            .addReg(ValueReg, SrcFlags | RegState::Implicit);
         BuildDisplacedStore(AVM::DPST8, Address, 2, Hi, RegState::Kill,
-                            getKillRegState(IsKill));
+                            SrcFlags | getKillRegState(IsKill))
+            .addReg(ValueReg, SrcFlags | RegState::Implicit |
+                                  getKillRegState(IsKill));
       }
     } else if (IsLoad)
       CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::LD32), ValueReg)
@@ -330,7 +346,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     else
       CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(AVM::ST32))
                        .addReg(Address, RegState::Kill)
-                       .addReg(ValueReg, getKillRegState(IsKill)));
+                       .addReg(ValueReg, SrcFlags | getKillRegState(IsKill)));
   } else if (IsLoad) {
     unsigned LoadOpcode =
         Opcode == AVM::STACK_LOAD16_PSEUDO ? AVM::DPLD16 : AVM::DPLD8U;
@@ -341,7 +357,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     unsigned StoreOpcode =
         Opcode == AVM::STACK_STORE8_PSEUDO ? AVM::DPST8 : AVM::DPST16;
     BuildDisplacedStore(StoreOpcode, Address, 0, ValueReg, RegState::Kill,
-                        getKillRegState(IsKill));
+                        SrcFlags | getKillRegState(IsKill));
   }
 
   Old.eraseFromParent();

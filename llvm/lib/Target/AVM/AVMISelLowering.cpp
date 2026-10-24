@@ -546,7 +546,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
-  setTargetDAGCombine({ISD::MUL, ISD::SUB});
+  setTargetDAGCombine({ISD::LOAD, ISD::MUL, ISD::SUB});
   for (MVT VT : {MVT::i16, MVT::i32}) {
     setOperationAction(ISD::ROTL, VT, Expand);
     setOperationAction(ISD::ROTR, VT, Expand);
@@ -1251,6 +1251,27 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
+  if (auto *Load = dyn_cast<LoadSDNode>(N)) {
+    // Every unsigned byte load zeroes the rest of its destination word. Make
+    // that choice explicit before instruction selection so all users (including
+    // outgoing ABI extensions) can use the known upper bits. EXTLOAD alone
+    // leaves those bits unspecified, hiding the instruction's actual semantics.
+    if (Load->getMemoryVT() == MVT::i8 &&
+        Load->getValueType(0) == MVT::i16 &&
+        Load->getExtensionType() == ISD::EXTLOAD &&
+        (Load->getAddressSpace() == 0 || Load->getAddressSpace() == 1)) {
+      SDValue Result = DCI.DAG.getExtLoad(ISD::ZEXTLOAD, SDLoc(N), MVT::i16,
+                                          Load->getChain(), Load->getBasePtr(),
+                                          MVT::i8, Load->getMemOperand());
+      if (!Load->isUnindexed())
+        Result = DCI.DAG.getIndexedLoad(Result, SDLoc(N), Load->getBasePtr(),
+                                        Load->getOffset(),
+                                        Load->getAddressingMode());
+      return Result;
+    }
+    return SDValue();
+  }
+
   if (N->getOpcode() == ISD::MUL && N->getValueType(0) == MVT::i32) {
     // Program-pointer indexing uses i32 offsets even for byte indices. Keep
     // the multiplication native when the entire unsigned product fits in a

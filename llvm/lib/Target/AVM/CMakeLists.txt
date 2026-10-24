@@ -19,6 +19,7 @@ add_llvm_target(AVMCodeGen
   AVMAddressReuse.cpp
   AVMAsmPrinter.cpp
   AVMBranchPolarity.cpp
+  AVMBytePHIs.cpp
   AVMCanonicalizeBooleans.cpp
   AVMConstantInitializers.cpp
   AVMCostModel.cpp

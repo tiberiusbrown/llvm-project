@@ -1,0 +1,44 @@
+# RUN: llc -mtriple=avm -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+# A spill may have an undefined lane. Splitting it into word stores must keep
+# the implicit pair use and must not kill its defined lane before the last use.
+---
+name: low_word_defined
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: low_word_defined
+    ; CHECK: STSP16_COMPACT 0, $r4, implicit $sp, implicit $r4r5
+    ; CHECK-NEXT: STSP16_COMPACT 2, killed $r5, implicit $sp, implicit killed $r4r5
+    STACK_STORE32_PSEUDO %stack.0, 0, killed $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: high_word_defined
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r5
+    ; CHECK-LABEL: name: high_word_defined
+    ; CHECK: STSP16_COMPACT 0, $r4, implicit $sp, implicit $r4r5
+    ; CHECK-NEXT: STSP16_COMPACT 2, killed $r5, implicit $sp, implicit killed $r4r5
+    STACK_STORE32_PSEUDO %stack.0, 0, killed $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: undefined_pair
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: undefined_pair
+    ; CHECK: STSP16_COMPACT 0, undef $r4, implicit $sp, implicit undef $r4r5
+    ; CHECK-NEXT: STSP16_COMPACT 2, undef $r5, implicit $sp, implicit undef $r4r5
+    STACK_STORE32_PSEUDO %stack.0, 0, undef $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

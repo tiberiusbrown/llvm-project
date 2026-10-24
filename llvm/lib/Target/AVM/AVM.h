@@ -23,6 +23,7 @@ FunctionPass *createAVMTailDuplicationPass(
     CodeGenOptLevel OptLevel = CodeGenOptLevel::Default);
 FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMCanonicalizeBooleansPass();
+FunctionPass *createAVMBytePHIsPass();
 FunctionPass *createAVMExpandPseudoPass();
 FunctionPass *createAVMFinalControlFlowPass();
 FunctionPass *createAVMLatePeepholePass();
@@ -38,6 +39,7 @@ void initializeAVMTailDuplicationPass(PassRegistry &);
 void registerAVMTailDuplicationOptions();
 void initializeAVMBranchPolarityPass(PassRegistry &);
 void initializeAVMCanonicalizeBooleansPass(PassRegistry &);
+void initializeAVMBytePHIsPass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 void initializeAVMFinalControlFlowPass(PassRegistry &);

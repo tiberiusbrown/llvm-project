@@ -25,6 +25,12 @@ public:
     return true;
   }
   BitVector getReservedRegs(const MachineFunction &MF) const override;
+  float getSpillWeightScaleFactor(const TargetRegisterClass *RC) const override;
+  bool regClassPriorityTrumpsGlobalness(const MachineFunction &) const override {
+    // Fixed ABI carriers need their only register before general intervals
+    // are split into spill products that can no longer be evicted.
+    return true;
+  }
   bool shouldCoalesce(MachineInstr *MI, const TargetRegisterClass *SrcRC,
                       unsigned SubReg, const TargetRegisterClass *DstRC,
                       unsigned DstSubReg, const TargetRegisterClass *NewRC,

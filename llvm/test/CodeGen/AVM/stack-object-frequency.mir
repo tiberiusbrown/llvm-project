@@ -1,0 +1,71 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+# Speed uses execution frequency; size counts each static access once.
+--- |
+  target triple = "avm"
+  define void @loop_slot() { ret void }
+  define void @size_slot() optsize { ret void }
+...
+---
+name: loop_slot
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: default, size: 16, alignment: 1 }
+  - { id: 1, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1
+    liveins: $r4
+    ; CHECK-LABEL: name: loop_slot
+    ; CHECK: STSP16 16, $r4
+    ; CHECK: STSP16 16, $r4
+    ; CHECK: STSP16 16, $r4
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    RELAX_JMP %bb.1
+
+  bb.1:
+    successors: %bb.1(0x7c000000), %bb.2(0x04000000)
+    liveins: $r4
+    ; CHECK: bb.1:
+    ; CHECK: STSP16_COMPACT 0, $r4
+    STACK_STORE16_PSEUDO %stack.1, 0, $r4, implicit $sp
+    TST16 $r4, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+    RELAX_JMP %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: size_slot
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: default, size: 16, alignment: 1 }
+  - { id: 1, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1
+    liveins: $r4
+    ; CHECK-LABEL: name: size_slot
+    ; CHECK: STSP16_COMPACT 0, $r4
+    ; CHECK: STSP16_COMPACT 0, $r4
+    ; CHECK: STSP16_COMPACT 0, $r4
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    RELAX_JMP %bb.1
+
+  bb.1:
+    successors: %bb.1(0x7c000000), %bb.2(0x04000000)
+    liveins: $r4
+    ; CHECK: bb.1:
+    ; CHECK: STSP16 16, $r4
+    STACK_STORE16_PSEUDO %stack.1, 0, $r4, implicit $sp
+    TST16 $r4, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+    RELAX_JMP %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

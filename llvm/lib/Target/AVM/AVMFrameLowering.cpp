@@ -7,9 +7,13 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/BinaryFormat/AVM.h"
+#include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
+#include "llvm/CodeGen/MachineBranchProbabilityInfo.h"
+#include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -245,8 +249,17 @@ void AVMFrameLowering::orderFrameObjects(
     return;
 
   const auto &TRI = *MF.getSubtarget<AVMSubtarget>().getRegisterInfo();
-  SmallVector<uint64_t, 16> Uses(MFI.getObjectIndexEnd(), 0);
+  MachineDominatorTree MDT(const_cast<MachineFunction &>(MF));
+  MachineLoopInfo MLI(MDT);
+  MachineBranchProbabilityInfo MBPI;
+  MachineBlockFrequencyInfo MBFI(MF, MBPI, MLI);
+  SmallVector<double, 16> Uses(MFI.getObjectIndexEnd(), 0);
   for (const MachineBasicBlock &MBB : MF) {
+    // For size, each static access contributes once. For speed, compact stack
+    // encodings are most valuable on the frequently executed paths.
+    double Frequency = MF.getFunction().hasOptSize()
+                           ? 1.0
+                           : MBFI.getBlockFreqRelativeToEntryBlock(&MBB);
     for (const MachineInstr &MI : MBB) {
       bool IsLoad;
       bool IsPair = false;
@@ -282,13 +295,13 @@ void AVMFrameLowering::orderFrameObjects(
         continue;
       Register Reg = MI.getOperand(IsLoad ? 0 : 2).getReg();
       if (IsPair) {
-        Uses[FI] += AVM::UpperGPR16RegClass.contains(
+        Uses[FI] += Frequency * (AVM::UpperGPR16RegClass.contains(
                         TRI.getSubReg(Reg, AVM::sub_lo16)) +
                     (Displacement <= 13 &&
                      AVM::UpperGPR16RegClass.contains(
-                         TRI.getSubReg(Reg, AVM::sub_hi16)));
+                         TRI.getSubReg(Reg, AVM::sub_hi16))));
       } else if (AVM::UpperGPR16RegClass.contains(Reg)) {
-        ++Uses[FI];
+        Uses[FI] += Frequency;
       }
     }
   }
