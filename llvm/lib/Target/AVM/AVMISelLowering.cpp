@@ -1213,6 +1213,27 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
+  if (N->getOpcode() == ISD::MUL && N->getValueType(0) == MVT::i32) {
+    // Program-pointer indexing uses i32 offsets even for byte indices. Keep
+    // the multiplication native when the entire unsigned product fits in a
+    // word, then restore the wide offset with a zero high word. Compute the
+    // bound in 64 bits so it cannot wrap for unrestricted i32 operands.
+    uint64_t MaxLHS =
+        DCI.DAG.computeKnownBits(N->getOperand(0)).getMaxValue().getZExtValue();
+    uint64_t MaxRHS =
+        DCI.DAG.computeKnownBits(N->getOperand(1)).getMaxValue().getZExtValue();
+    if (MaxLHS * MaxRHS <= UINT16_MAX) {
+      SDLoc DL(N);
+      SDValue LHS =
+          DCI.DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, N->getOperand(0));
+      SDValue RHS =
+          DCI.DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, N->getOperand(1));
+      SDValue Product = DCI.DAG.getNode(ISD::MUL, DL, MVT::i16, LHS, RHS);
+      return DCI.DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Product);
+    }
+    return SDValue();
+  }
+
   if (N->getValueType(0) != MVT::i16)
     return SDValue();
 
