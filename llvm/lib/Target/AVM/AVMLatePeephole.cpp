@@ -86,8 +86,8 @@ static bool sameStackOffset(const MachineInstr &Store,
              Other.getOperand(OtherOffset).getImm();
 }
 
-static bool removeDeadSpillRoundTrips(MachineBasicBlock &MBB,
-                                       const AVMRegisterInfo &TRI) {
+static bool removeRedundantStackReloads(MachineBasicBlock &MBB,
+                                        const AVMRegisterInfo &TRI) {
   bool Changed = false;
   for (auto It = MBB.begin(); It != MBB.end();) {
     auto Store = It++;
@@ -117,11 +117,15 @@ static bool removeDeadSpillRoundTrips(MachineBasicBlock &MBB,
           Scan->modifiesRegister(AVM::SP, &TRI))
         break;
     }
-    if (!Overwritten)
-      continue;
     It = std::next(Load);
     MBB.erase(Load);
-    MBB.erase(Store);
+    if (Overwritten)
+      MBB.erase(Store);
+    else
+      // The reload no longer defines the register used by later instructions.
+      // Keep the saved value for other readers, but extend its register lifetime
+      // past the store if register allocation marked that use as a kill.
+      Store->getOperand(1).setIsKill(false);
     Changed = true;
   }
   return Changed;
@@ -352,7 +356,7 @@ public:
     bool Changed = false;
     for (MachineBasicBlock &MBB : MF) {
       Changed |= removeRedundantByteExtends(MBB);
-      Changed |= removeDeadSpillRoundTrips(MBB, TII.getRegisterInfo());
+      Changed |= removeRedundantStackReloads(MBB, TII.getRegisterInfo());
       Changed |= reuseReversedCompare(MBB, TII);
       if (!MF.getFunction().hasOptSize())
         Changed |= selectByBitOne(MBB, TII);

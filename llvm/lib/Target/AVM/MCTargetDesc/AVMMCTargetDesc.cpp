@@ -195,8 +195,30 @@ static MCSubtargetInfo *createAVMMCSubtargetInfo(const Triple &TT,
                                       "avm-interpreter-32u4-v1", FS);
 }
 
+class AVMMCInstrAnalysis final : public MCInstrAnalysis {
+public:
+  explicit AVMMCInstrAnalysis(const MCInstrInfo *Info) : MCInstrAnalysis(Info) {}
+
+  bool evaluateBranch(const MCInst &Inst, uint64_t Addr, uint64_t Size,
+                      uint64_t &Target) const override {
+    if ((!isBranch(Inst) && !isCall(Inst)) || Inst.getNumOperands() != 1 ||
+        !Inst.getOperand(0).isImm() || Addr > 0xffffff)
+      return false;
+
+    int64_t Value = Inst.getOperand(0).getImm();
+    // Relative control transfers are based on the end of the instruction.
+    // Far transfers carry an absolute, packed 24-bit program address.
+    if (Inst.getOpcode() != AVM::JMPF && Inst.getOpcode() != AVM::CALLF)
+      Value += static_cast<int64_t>(Addr) + Size;
+    if (Value < 0 || Value > 0xffffff)
+      return false;
+    Target = Value;
+    return true;
+  }
+};
+
 static MCInstrAnalysis *createAVMMCInstrAnalysis(const MCInstrInfo *Info) {
-  return new MCInstrAnalysis(Info);
+  return new AVMMCInstrAnalysis(Info);
 }
 
 static MCInstPrinter *createAVMMCInstPrinter(const Triple &, unsigned Variant,

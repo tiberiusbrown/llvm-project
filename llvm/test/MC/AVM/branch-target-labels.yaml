@@ -1,0 +1,87 @@
+# RUN: yaml2obj %s -o %t
+# RUN: llvm-objdump -d --symbolize-operands --no-show-raw-insn %t \
+# RUN:   | FileCheck %s --check-prefix=LABELS
+# RUN: llvm-objdump -d --symbolize-operands --no-show-raw-insn \
+# RUN:   --disassemble-symbols=entry %t | FileCheck %s --check-prefix=FUNCTION
+# RUN: llvm-objdump -d --no-symbolize-operands --no-show-raw-insn %t \
+# RUN:   | FileCheck %s --check-prefix=PLAIN
+
+# The short branch skips the store and targets the immediately following load:
+#   1020: brne8 3
+#   1022: stsp16 [sp+26], r0
+#   1025: ldsp16 r0, [sp+26]
+# The rest exercises backward/forward, short/long/far and indirect transfers,
+# existing function symbols, and invalid targets inside an instruction or
+# outside the 24-bit program address range. Use a nonzero section address.
+
+# LABELS: <entry>:
+# LABELS-NEXT: 1020: brne8 0x3 <L0>
+# LABELS-NEXT: 1022: stsp16 [sp+0x1a], r0
+# LABELS-NEXT: <L0>:
+# LABELS-NEXT: 1025: ldsp16 r0, [sp+0x1a]
+# LABELS-NEXT: 1028: breq16 -0x6 <L0>
+# LABELS-NEXT: {{.*}}jmp16 {{.*}} <L1>
+# LABELS-NEXT: {{.*}}call8 named
+# LABELS-NEXT: {{.*}}call16 named
+# LABELS-NEXT: {{.*}}callf named
+# LABELS-NEXT: {{.*}}jmpf 0x1025 <L0>
+# LABELS-NEXT: {{.*}}jmpp q0
+# LABELS-NEXT: {{.*}}callp q1
+# LABELS-NEXT: <L1>:
+# LABELS-NEXT: {{.*}}jmp8 {{.*}} <L0>
+# LABELS-NEXT: {{.*}}ret
+# LABELS: <named>:
+# LABELS-NEXT: {{.*}}ret
+# LABELS: <invalid_targets>:
+# LABELS-NOT: <L
+# LABELS: jmp16 -2
+# LABELS-NOT: <L
+# LABELS: jmp16 -32768
+# LABELS-NOT: <L
+
+# FUNCTION: <entry>:
+# FUNCTION: <L0>:
+# FUNCTION: <L1>:
+# FUNCTION: ret
+# FUNCTION-NOT: <named>:
+
+# PLAIN: <entry>:
+# PLAIN-NOT: <L
+# PLAIN: brne8 0x3 <entry+0x5>
+# PLAIN-NOT: <L
+# PLAIN: <named>:
+
+--- !ELF
+FileHeader:
+  Class: ELFCLASS32
+  Data: ELFDATA2LSB
+  Type: ET_EXEC
+  Machine: EM_AVM
+  Entry: 0x1020
+Sections:
+  - Name: .text
+    Type: SHT_PROGBITS
+    Flags: [ SHF_ALLOC, SHF_EXECINSTR ]
+    Address: 0x1020
+    AddressAlign: 1
+    Content: D103F0381AF0301ADAFAFFE00F00D510E10D00E3401000E2251000E4E9D4E6EFEFE0FEFFE00080
+Symbols:
+  - Name: entry
+    Type: STT_FUNC
+    Section: .text
+    Binding: STB_GLOBAL
+    Value: 0x1020
+    Size: 0x20
+  - Name: named
+    Type: STT_FUNC
+    Section: .text
+    Binding: STB_GLOBAL
+    Value: 0x1040
+    Size: 1
+  - Name: invalid_targets
+    Type: STT_FUNC
+    Section: .text
+    Binding: STB_GLOBAL
+    Value: 0x1041
+    Size: 6
+...

@@ -49,12 +49,13 @@ public:
       --It;
       if (It->IsMappingSymbol)
         continue;
+      // Keep unresolved targets numeric so MCInstrAnalysis can discover local
+      // branch labels. A preceding function symbol plus an offset would hide
+      // that target from llvm-objdump's label collection pass.
+      if (It->Addr != Target)
+        return false;
       auto *Symbol = Ctx.getOrCreateSymbol(It->Name);
       const MCExpr *Expr = MCSymbolRefExpr::create(Symbol, Ctx);
-      const uint64_t Offset = Target - It->Addr;
-      if (Offset)
-        Expr = MCBinaryExpr::createAdd(
-            Expr, MCConstantExpr::create(Offset, Ctx), Ctx);
       Inst.addOperand(MCOperand::createExpr(Expr));
       return true;
     }

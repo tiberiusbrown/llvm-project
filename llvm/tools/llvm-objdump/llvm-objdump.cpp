@@ -1614,13 +1614,15 @@ collectLocalBranchTargets(ArrayRef<uint8_t> Bytes, MCInstrAnalysis *MIA,
   const bool isX86 = STI->getTargetTriple().isX86();
   const bool isAArch64 = STI->getTargetTriple().isAArch64();
   const bool isBPF = STI->getTargetTriple().isBPF();
-  if (!isPPC && !isX86 && !isAArch64 && !isBPF)
+  const bool isAVM = STI->getTargetTriple().getArch() == Triple::avm;
+  if (!isPPC && !isX86 && !isAArch64 && !isBPF && !isAVM)
     return;
 
   if (MIA)
     MIA->resetState();
 
   std::set<uint64_t> Targets;
+  std::set<uint64_t> InstructionStarts;
   Start += SectionAddr;
   End += SectionAddr;
   const bool isXCOFF = STI->getTargetTriple().isOSBinFormatXCOFF();
@@ -1637,6 +1639,8 @@ collectLocalBranchTargets(ArrayRef<uint8_t> Bytes, MCInstrAnalysis *MIA,
 
     if (MIA) {
       if (Disassembled) {
+        if (isAVM)
+          InstructionStarts.insert(Index);
         uint64_t Target;
         bool TargetKnown = MIA->evaluateBranch(Inst, Index, Size, Target);
         if (TargetKnown && (Target >= Start && Target < End) &&
@@ -1656,6 +1660,12 @@ collectLocalBranchTargets(ArrayRef<uint8_t> Bytes, MCInstrAnalysis *MIA,
   }
 
   Labels.clear();
+  if (isAVM)
+    for (auto It = Targets.begin(); It != Targets.end();)
+      if (!InstructionStarts.count(*It))
+        It = Targets.erase(It);
+      else
+        ++It;
   for (auto [Idx, Target] : enumerate(Targets))
     Labels[Target] = ("L" + Twine(Idx)).str();
 }
