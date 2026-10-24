@@ -1,0 +1,193 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -O0 -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=O0
+
+--- |
+  target triple = "avm"
+  define void @hot_word() { ret void }
+  define void @upper_pair() { ret void }
+  define void @fixed_argument() { ret void }
+  define void @aligned_objects() { ret void }
+  define void @signed_byte() { ret void }
+  define void @frequency_priority() { ret void }
+  define void @small_frame() { ret void }
+...
+---
+name: hot_word
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 2, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: hot_word
+    ; CHECK: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 0
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 0
+    ; CHECK-NEXT: STSP16_COMPACT 2, $r4
+    ; CHECK-NEXT: $r5 = LEASP 4
+    ; O0-LABEL: name: hot_word
+    ; O0: STSP16 18, $r4
+    ; O0: $r5 = LEASP 0
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp
+    STACK_STORE16_PSEUDO %stack.1, 0, $r4, implicit $sp
+    $r5 = FRAMEADDR_PSEUDO %stack.2, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: upper_pair
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+  - { id: 1, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 2, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; CHECK-LABEL: name: upper_pair
+    ; CHECK: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP16_COMPACT 2, $r5
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 0
+    ; CHECK-NEXT: $r5 = LDSP16_COMPACT 2
+    ; CHECK-NEXT: $r0 = LDSP16 20
+    ; CHECK-NEXT: $r0 = LDSP16 20
+    ; CHECK-NEXT: $r0 = LDSP16 20
+    ; O0-LABEL: name: upper_pair
+    ; O0: STSP16 18, $r4
+    STACK_STORE32_PSEUDO %stack.0, 0, $r4r5, implicit $sp
+    $r4r5 = STACK_LOAD32_PSEUDO %stack.0, 0, implicit $sp
+    $r0 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp
+    $r0 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp
+    $r0 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp
+    $r6 = FRAMEADDR_PSEUDO %stack.2, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: fixed_argument
+tracksRegLiveness: true
+fixedStack:
+  - { id: 0, type: default, offset: 3, size: 2, alignment: 1, isImmutable: true }
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: fixed_argument
+    ; CHECK: $r4 = LDSP16_COMPACT 0
+    ; CHECK-NEXT: $r4 = LDSP16 21
+    ; O0-LABEL: name: fixed_argument
+    ; O0: $r4 = LDSP16 16
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp
+    $r4 = STACK_LOAD16_PSEUDO %fixed-stack.0, 0, implicit $sp
+    $r5 = FRAMEADDR_PSEUDO %stack.1, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: aligned_objects
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 4 }
+  - { id: 1, type: default, size: 16, alignment: 4 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: aligned_objects
+    ; CHECK: id: 0, {{.*}}offset: -20, size: 2, alignment: 4
+    ; CHECK: id: 1, {{.*}}offset: -16, size: 16, alignment: 4
+    ; CHECK: $r4 = LDSP16_COMPACT 0
+    ; O0-LABEL: name: aligned_objects
+    ; O0: $r4 = LDSP16 16
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp
+    $r5 = FRAMEADDR_PSEUDO %stack.1, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: signed_byte
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: default, size: 1, alignment: 1 }
+  - { id: 1, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 2, type: default, size: 16, alignment: 1 }
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: signed_byte
+    ; CHECK: $r4 = LDSP8S 18
+    ; CHECK-NEXT: $r4 = LDSP8S 18
+    ; CHECK-NEXT: $r4 = LDSP8S 18
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 0
+    ; O0-LABEL: name: signed_byte
+    ; O0: $r4 = LDSP8S 18
+    $r4 = STACK_LOAD8S_PSEUDO %stack.0, 0, implicit $sp
+    $r4 = STACK_LOAD8S_PSEUDO %stack.0, 0, implicit $sp
+    $r4 = STACK_LOAD8S_PSEUDO %stack.0, 0, implicit $sp
+    $r4 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp
+    $r5 = FRAMEADDR_PSEUDO %stack.2, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: frequency_priority
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 2, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 3, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 4, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 5, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 6, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 7, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 8, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 9, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; Ten word slots compete for the compact range. Slot 3 has the most
+    ; upper-register uses; equal-priority cold slots retain their order.
+    ; CHECK-LABEL: name: frequency_priority
+    ; CHECK: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP16_COMPACT 0, $r4
+    ; CHECK-NEXT: STSP16 18, $r4
+    ; CHECK-NEXT: STSP16 16, $r4
+    ; CHECK-NEXT: STSP16_COMPACT 14, $r4
+    ; CHECK-NEXT: STSP16_COMPACT 12, $r4
+    ; O0-LABEL: name: frequency_priority
+    ; O0: STSP16_COMPACT 12, $r4
+    ; O0: STSP16 18, $r4
+    STACK_STORE16_PSEUDO %stack.3, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.3, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.3, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.1, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.2, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.4, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.5, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.6, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.7, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.8, 0, $r4, implicit $sp
+    STACK_STORE16_PSEUDO %stack.9, 0, $r4, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: small_frame
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, type: default, size: 14, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; All accesses already fit in the compact range; retain this layout.
+    ; CHECK-LABEL: name: small_frame
+    ; CHECK: STSP16_COMPACT 14, $r4
+    ; CHECK-NEXT: $r4 = LDSP16_COMPACT 14
+    ; CHECK-NEXT: $r5 = LEASP 0
+    ; O0-LABEL: name: small_frame
+    ; O0: STSP16_COMPACT 14, $r4
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp
+    $r4 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp
+    $r5 = FRAMEADDR_PSEUDO %stack.1, 0, implicit $sp
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

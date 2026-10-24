@@ -28,6 +28,8 @@ public:
                                 MachineBasicBlock::iterator MI) const override;
   void processFunctionBeforeFrameFinalized(
       MachineFunction &MF, RegScavenger *RS = nullptr) const override;
+  void orderFrameObjects(const MachineFunction &MF,
+                         SmallVectorImpl<int> &ObjectsToAllocate) const override;
   bool needsFrameIndexResolution(const MachineFunction &MF) const override;
   bool hasReservedCallFrame(const MachineFunction &) const override {
     return false;

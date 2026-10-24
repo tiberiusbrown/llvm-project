@@ -4,6 +4,8 @@
 #include "AVM.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/BinaryFormat/AVM.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -228,6 +230,79 @@ void AVMFrameLowering::processFunctionBeforeFrameFinalized(
   MachineFrameInfo &MFI = MF.getFrameInfo();
   if (hasFP(MF) || MFI.estimateStackSize(MF) > AVM::StackLimit - 1)
     RS->addScavengingFrameIndex(MFI.CreateSpillStackObject(2, Align(1)));
+}
+
+void AVMFrameLowering::orderFrameObjects(
+    const MachineFunction &MF, SmallVectorImpl<int> &ObjectsToAllocate) const {
+  if (hasFP(MF) || ObjectsToAllocate.size() < 2)
+    return;
+
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  uint64_t LocalSize = 0;
+  for (int FI : ObjectsToAllocate)
+    LocalSize += MFI.getObjectSize(FI);
+  if (LocalSize <= 16)
+    return;
+
+  const auto &TRI = *MF.getSubtarget<AVMSubtarget>().getRegisterInfo();
+  SmallVector<uint64_t, 16> Uses(MFI.getObjectIndexEnd(), 0);
+  for (const MachineBasicBlock &MBB : MF) {
+    for (const MachineInstr &MI : MBB) {
+      bool IsLoad;
+      bool IsPair = false;
+      switch (MI.getOpcode()) {
+      case AVM::STACK_LOAD8U_PSEUDO:
+      case AVM::STACK_LOAD16_PSEUDO:
+        IsLoad = true;
+        break;
+      case AVM::STACK_STORE8_PSEUDO:
+      case AVM::STACK_STORE16_PSEUDO:
+        IsLoad = false;
+        break;
+      case AVM::STACK_LOAD24_PSEUDO:
+      case AVM::STACK_LOAD32_PSEUDO:
+        IsLoad = true;
+        IsPair = true;
+        break;
+      case AVM::STACK_STORE24_PSEUDO:
+      case AVM::STACK_STORE32_PSEUDO:
+        IsLoad = false;
+        IsPair = true;
+        break;
+      case AVM::STACK_LOAD8S_PSEUDO:
+        // The short byte load needs an extra SEXT8, so moving it into the
+        // compact range would not save either bytes or interpreter cycles.
+        continue;
+      default:
+        continue;
+      }
+      int FI = MI.getOperand(IsLoad ? 1 : 0).getIndex();
+      int64_t Displacement = MI.getOperand(IsLoad ? 2 : 1).getImm();
+      if (FI < 0 || Displacement < 0 || Displacement > 15)
+        continue;
+      Register Reg = MI.getOperand(IsLoad ? 0 : 2).getReg();
+      if (IsPair) {
+        Uses[FI] += AVM::UpperGPR16RegClass.contains(
+                        TRI.getSubReg(Reg, AVM::sub_lo16)) +
+                    (Displacement <= 13 &&
+                     AVM::UpperGPR16RegClass.contains(
+                         TRI.getSubReg(Reg, AVM::sub_hi16)));
+      } else if (AVM::UpperGPR16RegClass.contains(Reg)) {
+        ++Uses[FI];
+      }
+    }
+  }
+
+  // PEI allocates downward from the incoming SP, so the last objects end up
+  // closest to the final SP. Favor accesses that can use the two-byte r4-r7
+  // encodings, rather than cold-register accesses or address materialization.
+  // Fixed objects, callee saves, protected objects and scavenging slots are
+  // excluded from this list by PEI; it also handles alignment and overlap.
+  llvm::stable_sort(ObjectsToAllocate, [&](int A, int B) {
+    uint64_t SizeA = std::max<int64_t>(MFI.getObjectSize(A), 1);
+    uint64_t SizeB = std::max<int64_t>(MFI.getObjectSize(B), 1);
+    return Uses[A] * SizeB < Uses[B] * SizeA;
+  });
 }
 
 bool AVMFrameLowering::needsFrameIndexResolution(
