@@ -1,0 +1,238 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-system-service-regions \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @conditional_affine_inputs() { ret void }
+  define void @escaping_coordinate() { ret void }
+  define void @non_dominating_setup() { ret void }
+  define void @different_scales() { ret void }
+...
+---
+name: conditional_affine_inputs
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: conditional_affine_inputs
+    ; CHECK: bb.1:
+    ; CHECK: [[X0:%[0-9]+]]:r4only = COPY %4
+    ; CHECK: bb.2:
+    ; CHECK: SYS_DEBUG_PUTC_PSEUDO [[X0]]
+    ; CHECK: bb.3:
+    ; CHECK: [[X1:%[0-9]+]]:r4only = ADDIS8_PSEUDO [[X0]], 7
+    ; CHECK: bb.4:
+    ; CHECK: SYS_DEBUG_PUTC_PSEUDO [[X1]]
+    ; CHECK: bb.5:
+    ; CHECK: [[X2:%[0-9]+]]:r4only = ADDIS8_PSEUDO [[X1]], 11
+    ; CHECK: bb.6:
+    ; CHECK: SYS_DEBUG_PUTC_PSEUDO [[X2]]
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = LDI8_PSEUDO 0
+    %3:gpr16 = LDI8_PSEUDO 7
+    %4:gpr16 = SUB16_PSEUDO %2, %0
+    %5:gpr16 = SUB16_PSEUDO %3, %0
+    %6:gpr16 = ADDIS8_PSEUDO %5, 11
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2, %bb.3
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.3
+    SYS_DEBUG_PUTC_PSEUDO %4
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.4, %bb.5
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.5, 0, implicit $cc
+    JMP_PSEUDO %bb.4
+
+  bb.4:
+    successors: %bb.5
+    SYS_DEBUG_PUTC_PSEUDO %5
+    JMP_PSEUDO %bb.5
+
+  bb.5:
+    successors: %bb.6, %bb.7
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+    JMP_PSEUDO %bb.6
+
+  bb.6:
+    successors: %bb.7
+    SYS_DEBUG_PUTC_PSEUDO %6
+    JMP_PSEUDO %bb.7
+
+  bb.7:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: escaping_coordinate
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: escaping_coordinate
+    ; CHECK-NOT: :r4only = ADDIS8_PSEUDO
+    ; CHECK: RET_PSEUDO
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = LDI8_PSEUDO 0
+    %3:gpr16 = LDI8_PSEUDO 7
+    %4:gpr16 = SUB16_PSEUDO %2, %0
+    %5:gpr16 = SUB16_PSEUDO %3, %0
+    %6:gpr16 = ADDIS8_PSEUDO %5, 11
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2, %bb.3
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.3
+    SYS_DEBUG_PUTC_PSEUDO %4
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.4, %bb.5
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.5, 0, implicit $cc
+    JMP_PSEUDO %bb.4
+
+  bb.4:
+    successors: %bb.5
+    SYS_DEBUG_PUTC_PSEUDO %5
+    JMP_PSEUDO %bb.5
+
+  bb.5:
+    successors: %bb.6, %bb.7
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+    JMP_PSEUDO %bb.6
+
+  bb.6:
+    successors: %bb.7
+    SYS_DEBUG_PUTC_PSEUDO %6
+    JMP_PSEUDO %bb.7
+
+  bb.7:
+    SYS_DEBUG_PUTC_PSEUDO %5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: non_dominating_setup
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: non_dominating_setup
+    ; CHECK-NOT: :r4only = ADDIS8_PSEUDO
+    ; CHECK: RET_PSEUDO
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = LDI8_PSEUDO 0
+    %3:gpr16 = LDI8_PSEUDO 7
+    %5:gpr16 = SUB16_PSEUDO %3, %0
+    %6:gpr16 = ADDIS8_PSEUDO %5, 11
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2, %bb.3
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.3
+    %4:gpr16 = SUB16_PSEUDO %2, %0
+    SYS_DEBUG_PUTC_PSEUDO %4
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.4, %bb.5
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.5, 0, implicit $cc
+    JMP_PSEUDO %bb.4
+
+  bb.4:
+    successors: %bb.5
+    SYS_DEBUG_PUTC_PSEUDO %5
+    JMP_PSEUDO %bb.5
+
+  bb.5:
+    successors: %bb.6, %bb.7
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+    JMP_PSEUDO %bb.6
+
+  bb.6:
+    successors: %bb.7
+    SYS_DEBUG_PUTC_PSEUDO %6
+    JMP_PSEUDO %bb.7
+
+  bb.7:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: different_scales
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: different_scales
+    ; CHECK-NOT: :r4only = ADDIS8_PSEUDO
+    ; CHECK: RET_PSEUDO
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = LDI8_PSEUDO 0
+    %3:gpr16 = LDI8_PSEUDO 7
+    %4:gpr16 = SUB16_PSEUDO %2, %0
+    %5:gpr16 = ADD16_PSEUDO %3, %0
+    %6:gpr16 = ADDIS8_PSEUDO %5, 11
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2, %bb.3
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.3
+    SYS_DEBUG_PUTC_PSEUDO %4
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    successors: %bb.4, %bb.5
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.5, 0, implicit $cc
+    JMP_PSEUDO %bb.4
+
+  bb.4:
+    successors: %bb.5
+    SYS_DEBUG_PUTC_PSEUDO %5
+    JMP_PSEUDO %bb.5
+
+  bb.5:
+    successors: %bb.6, %bb.7
+    CMP16_PSEUDO %0, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.7, 0, implicit $cc
+    JMP_PSEUDO %bb.6
+
+  bb.6:
+    successors: %bb.7
+    SYS_DEBUG_PUTC_PSEUDO %6
+    JMP_PSEUDO %bb.7
+
+  bb.7:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+

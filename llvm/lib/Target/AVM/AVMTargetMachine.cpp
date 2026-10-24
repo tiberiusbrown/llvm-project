@@ -36,6 +36,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
   initializeAVMLatePeepholePass(PR);
+  initializeAVMPrivateSpillCleanupPass(PR);
   initializeAVMProgramMemoryWideningPass(PR);
   initializeAVMSystemServiceRegionsPass(PR);
   initializeAVMExpandSystemServicesPass(PR);
@@ -122,6 +123,14 @@ public:
   void addPreSched2() override {
     if (getOptLevel() != CodeGenOptLevel::None)
       addPass(&IfConverterID);
+  }
+
+  bool addRegAssignAndRewriteOptimized() override {
+    bool Rewritten = TargetPassConfig::addRegAssignAndRewriteOptimized();
+    // Private spill slots still have distinct identities before coloring.
+    if (Rewritten)
+      addPass(createAVMPrivateSpillCleanupPass());
+    return Rewritten;
   }
 
   void addPreEmitPass() override {

@@ -8,6 +8,7 @@
 #include "AVM.h"
 #include "AVMInstrInfo.h"
 #include "AVMSystemServiceInfo.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/CodeGen/MachineDominators.h"
@@ -39,6 +40,7 @@ struct AffineValue {
   Register Base;
   int64_t Offset = 0;
   SmallVector<MachineInstr *, 2> Setup;
+  int Scale = 1;
 };
 
 static bool aliasesRequiredServiceRegister(Register Reg,
@@ -140,8 +142,21 @@ static bool hasConflictingInputBetween(ArrayRef<MachineInstr *> Services,
   return false;
 }
 
+static std::optional<int64_t> getI16Immediate(Register Reg,
+                                             MachineRegisterInfo &MRI) {
+  if (!Reg.isVirtual())
+    return std::nullopt;
+  MachineInstr *Def = MRI.getUniqueVRegDef(Reg);
+  if (!Def || (Def->getOpcode() != AVM::LDI8_PSEUDO &&
+               Def->getOpcode() != AVM::LDI16_PSEUDO) ||
+      !Def->getOperand(1).isImm())
+    return std::nullopt;
+  return Def->getOperand(1).getImm();
+}
+
 static std::optional<AffineValue> decomposeAffineI16(Register Reg,
-                                                     MachineRegisterInfo &MRI) {
+                                                     MachineRegisterInfo &MRI,
+                                                     unsigned Depth = 0) {
   if (!Reg.isVirtual())
     return std::nullopt;
 
@@ -149,6 +164,44 @@ static std::optional<AffineValue> decomposeAffineI16(Register Reg,
   SmallVector<MachineInstr *, 2> Defs;
   for (MachineInstr &Def : MRI.def_instructions(Reg))
     Defs.push_back(&Def);
+
+  // Normalize equivalent SSA arithmetic forms before matching service inputs.
+  // In particular, InstCombine rewrites (0 - base) + C into C - base.
+  if (Defs.size() == 1 && Depth < 8) {
+    MachineInstr *Def = Defs.front();
+    Register Source;
+    int Scale = 1;
+    int64_t Offset = 0;
+    if (Def->isCopy()) {
+      Source = Def->getOperand(1).getReg();
+    } else if (Def->getOpcode() == AVM::ADDIS8_PSEUDO) {
+      Source = Def->getOperand(1).getReg();
+      Offset = Def->getOperand(2).getImm();
+    } else if (Def->getOpcode() == AVM::ADD16_PSEUDO ||
+               Def->getOpcode() == AVM::SUB16_PSEUDO) {
+      Register LHS = Def->getOperand(1).getReg();
+      Register RHS = Def->getOperand(2).getReg();
+      if (auto Immediate = getI16Immediate(RHS, MRI)) {
+        Source = LHS;
+        Offset = Def->getOpcode() == AVM::SUB16_PSEUDO ? -*Immediate : *Immediate;
+      } else if (auto Immediate = getI16Immediate(LHS, MRI)) {
+        Source = RHS;
+        Scale = Def->getOpcode() == AVM::SUB16_PSEUDO ? -1 : 1;
+        Offset = *Immediate;
+      }
+    }
+    if (Source.isVirtual() && Source != Reg) {
+      auto Base = decomposeAffineI16(Source, MRI, Depth + 1);
+      if (!Base)
+        return std::nullopt;
+      Result.Base = Base->Base;
+      Result.Scale = Scale * Base->Scale;
+      Result.Offset = Offset + Scale * Base->Offset;
+      Result.Setup = std::move(Base->Setup);
+      Result.Setup.push_back(Def);
+      return Result;
+    }
+  }
 
   if (Defs.size() == 1 && !Defs.front()->isCopy() &&
       Defs.front()->getOpcode() != AVM::ADDIS8_PSEUDO)
@@ -197,9 +250,7 @@ static std::optional<AffineValue> decomposeAffineI16(Register Reg,
 
 static bool setupIsSafe(const AffineValue &Value) {
   return llvm::all_of(Value.Setup, [](const MachineInstr *MI) {
-    // Affine decomposition admits only COPY and ADDIS8_PSEUDO.  The latter is
-    // conservatively marked as unmodelled by TableGen, but is still a pure
-    // register-plus-immediate operation.
+    // Only copies and pure affine arithmetic are admitted by decomposition.
     return !MI->mayLoadOrStore() && !MI->isCall() && !MI->isInlineAsm() &&
            !MI->isBarrier();
   });
@@ -216,7 +267,10 @@ static bool isUseCoveredByRun(const MachineOperand &MO,
 static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
                               MachineRegisterInfo &MRI,
                               const TargetInstrInfo &TII,
-                              const TargetRegisterInfo &TRI) {
+                              const TargetRegisterInfo &TRI,
+                              MachineDominatorTree *MDT = nullptr,
+                              const DenseMap<MachineInstr *, MachineInstr *> *
+                                  SetupPoints = nullptr) {
   bool Changed = false;
   SmallVector<ServiceUse, 8> AllUses = collectServiceUses(Services);
 
@@ -280,7 +334,8 @@ static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
 
     for (unsigned I = 1; I != Values.size(); ++I) {
       int64_t Delta = Values[I].Offset - PreviousOffset;
-      if (Values[I].Base != Base || !isInt<8>(Delta)) {
+      if (Values[I].Base != Base ||
+          Values[I].Scale != Values.front().Scale || !isInt<8>(Delta)) {
         Valid = false;
         break;
       }
@@ -314,12 +369,22 @@ static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
     if (!Valid)
       continue;
 
+    auto SetupPoint = [&](const ServiceUse &Use) {
+      return SetupPoints ? SetupPoints->lookup(Use.MI) : Use.MI;
+    };
+    if (MDT) {
+      MachineInstr *Def = MRI.getVRegDef(Values.front().Reg);
+      if (!Def || !MDT->dominates(Def, SetupPoint(Run.front())))
+        continue;
+    }
+
     const TargetRegisterClass *FixedRC =
         getAVMFixedRegisterClass(Seed.Input->PhysReg, AVMServiceValueKind::I16);
     assert(FixedRC && "invalid fixed i16 service register");
-    MachineBasicBlock &MBB = *Run.front().MI->getParent();
+    MachineInstr *FirstSetup = SetupPoint(Run.front());
+    MachineBasicBlock &MBB = *FirstSetup->getParent();
     Register Chain = MRI.createVirtualRegister(FixedRC);
-    BuildMI(MBB, Run.front().MI->getIterator(),
+    BuildMI(MBB, FirstSetup->getIterator(),
             Run.front().MI->getDebugLoc(),
             TII.get(TargetOpcode::COPY), Chain)
         .addReg(Values.front().Reg);
@@ -331,7 +396,8 @@ static bool chainAffineInputs(ArrayRef<MachineInstr *> Services,
       int64_t Delta = Values[I].Offset - PreviousOffset;
       if (Delta) {
         Register Next = MRI.createVirtualRegister(FixedRC);
-        BuildMI(MBB, Run[I].MI->getIterator(), Run[I].MI->getDebugLoc(),
+        MachineInstr *At = SetupPoint(Run[I]);
+        BuildMI(*At->getParent(), At->getIterator(), Run[I].MI->getDebugLoc(),
                 TII.get(AVM::ADDIS8_PSEUDO), Next)
             .addReg(Chain)
             .addImm(Delta);
@@ -369,6 +435,98 @@ static const AVMServiceInputInfo *getInputForOperand(const MachineInstr &MI,
     ++Current;
   }
   return nullptr;
+}
+
+struct ConditionalService {
+  MachineBasicBlock *Next;
+  MachineInstr *Service;
+};
+
+// Extend an affine service region through a conditional block when its
+// optional service immediately reconverges with the skip path.
+// The ABI setup is placed before the condition's terminator, so later inputs
+// can advance the carrier whether or not an earlier service executed.
+static std::optional<ConditionalService>
+getConditionalService(MachineBasicBlock &Test, ArrayRef<MCPhysReg> RequiredRegs,
+                       const TargetRegisterInfo &TRI) {
+  if (Test.succ_size() != 2)
+    return std::nullopt;
+  for (MachineInstr &MI : Test) {
+    if (MI.isDebugInstr())
+      continue;
+    if (MI.isTerminator()) {
+      if (MI.getOpcode() != AVM::BR_CC_PSEUDO &&
+          MI.getOpcode() != AVM::JMP_PSEUDO)
+        return std::nullopt;
+    } else if (isAVMSystemService(MI.getOpcode()) ||
+               isRegionBoundary(MI, RequiredRegs, TRI)) {
+      return std::nullopt;
+    }
+    for (const MachineOperand &MO : MI.operands())
+      if (MO.isReg() &&
+          aliasesRequiredServiceRegister(MO.getReg(), RequiredRegs, TRI))
+        return std::nullopt;
+  }
+  for (MachineBasicBlock *Optional : Test.successors()) {
+    if (Optional == &Test || Optional->pred_size() != 1 ||
+        Optional->succ_size() != 1)
+      continue;
+    MachineBasicBlock *Next = *Optional->succ_begin();
+    if (Next == Optional || Next == &Test || Next->pred_size() != 2 ||
+        !Test.isSuccessor(Next))
+      continue;
+    MachineInstr *Service = nullptr;
+    bool Valid = true;
+    for (MachineInstr &MI : *Optional) {
+      if (MI.isDebugInstr() || MI.getOpcode() == AVM::JMP_PSEUDO)
+        continue;
+      if (isAVMSystemService(MI.getOpcode())) {
+        if (Service)
+          Valid = false;
+        Service = &MI;
+      } else if (isRegionBoundary(MI, RequiredRegs, TRI)) {
+        Valid = false;
+      } else {
+        for (const MachineOperand &MO : MI.operands())
+          if (MO.isReg() && aliasesRequiredServiceRegister(
+                                MO.getReg(), RequiredRegs, TRI))
+            Valid = false;
+      }
+    }
+    if (Valid && Service)
+      return ConditionalService{Next, Service};
+  }
+  return std::nullopt;
+}
+
+static bool chainConditionalServiceInputs(MachineFunction &MF,
+                                          ArrayRef<MCPhysReg> RequiredRegs,
+                                          MachineRegisterInfo &MRI,
+                                          MachineDominatorTree &MDT,
+                                          const TargetInstrInfo &TII,
+                                          const TargetRegisterInfo &TRI) {
+  SmallPtrSet<MachineBasicBlock *, 16> Handled;
+  bool Changed = false;
+  for (MachineBasicBlock &Start : MF) {
+    if (Handled.contains(&Start))
+      continue;
+    SmallVector<MachineInstr *, 16> Services;
+    DenseMap<MachineInstr *, MachineInstr *> SetupPoints;
+    SmallPtrSet<MachineBasicBlock *, 16> Seen;
+    MachineBasicBlock *Test = &Start;
+    while (Services.size() != 16 && Seen.insert(Test).second) {
+      auto Conditional = getConditionalService(*Test, RequiredRegs, TRI);
+      if (!Conditional)
+        break;
+      Services.push_back(Conditional->Service);
+      SetupPoints[Conditional->Service] = &*Test->getFirstTerminator();
+      Handled.insert(Test);
+      Test = Conditional->Next;
+    }
+    if (Services.size() >= 2)
+      Changed |= chainAffineInputs(Services, MRI, TII, TRI, &MDT, &SetupPoints);
+  }
+  return Changed;
 }
 
 static bool formTiedResultChains(ArrayRef<MachineInstr *> Services,
@@ -994,6 +1152,8 @@ public:
                        RequiredRegs.end());
 
     if (MF.getTarget().getOptLevel() != CodeGenOptLevel::None) {
+      Changed |= chainConditionalServiceInputs(MF, RequiredRegs, MRI, MDT,
+                                               TII, TRI);
       for (MachineBasicBlock &MBB : MF) {
         auto RegionBegin = MBB.begin();
         while (RegionBegin != MBB.end()) {

@@ -3,8 +3,12 @@
 #include "AVM.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/LiveStacks.h"
+#include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/InitializePasses.h"
 #include <iterator>
 
@@ -14,6 +18,54 @@ using namespace llvm;
 #define PASS_NAME "AVM late peephole"
 
 namespace {
+
+// Register allocation can spill a value and immediately reload it into the
+// same physical register. If those are the only references to a private spill
+// slot, both accesses and the frame object are unnecessary. Do this before
+// coloring can merge the slot with unrelated values and obscure the proof.
+static bool removePrivateSpillRoundTrips(MachineFunction &MF,
+                                         SlotIndexes *Indexes) {
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  DenseMap<int, unsigned> References;
+  for (MachineBasicBlock &MBB : MF)
+    for (MachineInstr &MI : MBB)
+      for (const MachineOperand &MO : MI.operands())
+        if (MO.isFI())
+          ++References[MO.getIndex()];
+
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    for (auto It = MBB.begin(); It != MBB.end();) {
+      auto Store = It++;
+      if (Store->getOpcode() != AVM::STACK_STORE16_PSEUDO ||
+          Store->hasOrderedMemoryRef() || !Store->getOperand(0).isFI())
+        continue;
+      int FI = Store->getOperand(0).getIndex();
+      if (FI < 0 || !MFI.isSpillSlotObjectIndex(FI) || References.lookup(FI) != 2)
+        continue;
+      auto Load = It;
+      while (Load != MBB.end() && Load->isDebugInstr())
+        ++Load;
+      if (Load == MBB.end() ||
+          Load->getOpcode() != AVM::STACK_LOAD16_PSEUDO ||
+          Load->hasOrderedMemoryRef() || !Load->getOperand(1).isFI() ||
+          Load->getOperand(1).getIndex() != FI ||
+          Store->getOperand(1).getImm() != Load->getOperand(2).getImm() ||
+          Store->getOperand(2).getReg() != Load->getOperand(0).getReg())
+        continue;
+      It = std::next(Load);
+      if (Indexes) {
+        Indexes->removeMachineInstrFromMaps(*Load);
+        Indexes->removeMachineInstrFromMaps(*Store);
+      }
+      MBB.erase(Load);
+      MBB.erase(Store);
+      MFI.RemoveStackObject(FI);
+      Changed = true;
+    }
+  }
+  return Changed;
+}
 
 static bool isWordStackStore(const MachineInstr &MI) {
   return MI.getOpcode() == AVM::STSP16_COMPACT ||
@@ -266,6 +318,28 @@ static bool selectByBitOne(MachineBasicBlock &MBB, const AVMInstrInfo &TII) {
   return Changed;
 }
 
+class AVMPrivateSpillCleanup final : public MachineFunctionPass {
+public:
+  static char ID;
+  AVMPrivateSpillCleanup() : MachineFunctionPass(ID) {}
+
+  StringRef getPassName() const override { return "AVM private spill cleanup"; }
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesCFG();
+    AU.addPreserved<SlotIndexesWrapperPass>();
+    // The remaining intervals retain their indices and are unchanged. The
+    // removed object's interval is ignored by stack-slot coloring.
+    AU.addPreserved<LiveStacksWrapperLegacy>();
+    MachineFunctionPass::getAnalysisUsage(AU);
+  }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    auto *Wrapper = getAnalysisIfAvailable<SlotIndexesWrapperPass>();
+    return removePrivateSpillRoundTrips(MF, Wrapper ? &Wrapper->getSI() : nullptr);
+  }
+};
+
 class AVMLatePeephole final : public MachineFunctionPass {
 public:
   static char ID;
@@ -290,8 +364,15 @@ public:
 } // namespace
 
 char AVMLatePeephole::ID = 0;
+char AVMPrivateSpillCleanup::ID = 0;
 
 INITIALIZE_PASS(AVMLatePeephole, DEBUG_TYPE, PASS_NAME, false, false)
+INITIALIZE_PASS(AVMPrivateSpillCleanup, "avm-private-spill-cleanup",
+                "AVM private spill cleanup", false, false)
+
+FunctionPass *llvm::createAVMPrivateSpillCleanupPass() {
+  return new AVMPrivateSpillCleanup();
+}
 
 FunctionPass *llvm::createAVMLatePeepholePass() {
   return new AVMLatePeephole();

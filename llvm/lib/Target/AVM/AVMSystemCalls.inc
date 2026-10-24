@@ -173,6 +173,8 @@ AVM_SYS_DEF(0x37, debug_printfv_p, AVM_SYS_PSEUDO,
             avm_debug_printfv_p, AVM_NO_COST, AVM_NO_COST)
 
 // 0x38 is the runtime's multiplexed audio service.
+AVM_SYS_DEF(0x38, audio, AVM_NO_PSEUDO, NoPseudo,
+            AVM_NO_INTRINSIC, NoIntrinsic, AVM_NO_COST, AVM_NO_COST)
 AVM_SYS_DEF(0x39, send_display_command, AVM_SYS_PSEUDO,
             SYS_SEND_DISPLAY_COMMAND_PSEUDO, AVM_SYS_INTRINSIC,
             avm_send_display_command, AVM_NO_COST, AVM_NO_COST)
