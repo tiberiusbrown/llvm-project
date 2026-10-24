@@ -599,6 +599,7 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::DEC16_PSEUDO:
   case AVM::MUL8_PSEUDO:
   case AVM::MULU8W_PSEUDO:
+  case AVM::MULU8W_FLEX_PSEUDO:
   case AVM::MULS8W_PSEUDO:
   case AVM::MULSU8W_PSEUDO:
   case AVM::MUL16_PSEUDO:

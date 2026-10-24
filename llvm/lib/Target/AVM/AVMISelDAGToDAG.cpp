@@ -5,6 +5,7 @@
 #include "AVMTargetMachine.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -38,6 +39,8 @@ public:
   }
 
 private:
+  SmallDenseSet<Register, 16> UnsignedByteInputs;
+
   static SDValue stripProgramPointerNormalization(SDValue Value) {
     for (;;) {
       if (Value.getOpcode() == AVMISD::NORMALIZE_PROGPTR) {
@@ -71,6 +74,13 @@ private:
   }
 
   void PreprocessISelDAG() override {
+    UnsignedByteInputs.clear();
+    for (const auto &[Value, Reg] : FuncInfo->ValueMap)
+      if (const auto *I = dyn_cast<Instruction>(Value);
+          I && I->getType()->isIntegerTy(16) &&
+          I->getMetadata("avm.unsigned-byte"))
+        UnsignedByteInputs.insert(Reg);
+
     SmallDenseSet<Register, 4> ProgramPointerInputs;
     for (SDNode &Node : CurDAG->allnodes()) {
       if (Node.getOpcode() != ISD::INLINEASM &&
@@ -114,7 +124,18 @@ private:
 
   enum class ByteExtension { None, Unsigned, Signed };
 
+  bool hasUnsignedByteRange(SDValue Value) const {
+    return Value.getOpcode() == ISD::CopyFromReg &&
+           Value.getValueType() == MVT::i16 &&
+           UnsignedByteInputs.contains(
+               cast<RegisterSDNode>(Value.getOperand(1))->getReg());
+  }
+
   ByteExtension classifyByteValue(SDValue Value, SDValue &ByteValue) const {
+    if (hasUnsignedByteRange(Value)) {
+      ByteValue = Value;
+      return ByteExtension::Unsigned;
+    }
     if (Value.getOpcode() == ISD::AssertZext &&
         cast<VTSDNode>(Value.getOperand(1))->getVT() == MVT::i8) {
       ByteValue = Value.getOperand(0);
@@ -440,9 +461,20 @@ private:
     SDValue RHS = Node->getOperand(1);
 
     if (Left == ByteExtension::Unsigned && Right == ByteExtension::Unsigned) {
-      Opcode = AVM::MULU8W_PSEUDO;
-      LHS = LeftByte;
-      RHS = RightByte;
+      auto IsFullWordByte = [](SDValue Value, SDValue Byte) {
+        return Value == Byte || Value.getOpcode() == ISD::AssertZext;
+      };
+      if ((hasUnsignedByteRange(LHS) || hasUnsignedByteRange(RHS)) &&
+          IsFullWordByte(LHS, LeftByte) && IsFullWordByte(RHS, RightByte)) {
+        // Both full words fit in a byte, so MUL16 is an equivalent fallback.
+        // Do not constrain live induction values to four upper registers just
+        // to save eight interpreter cycles on a multiply.
+        Opcode = AVM::MULU8W_FLEX_PSEUDO;
+      } else {
+        Opcode = AVM::MULU8W_PSEUDO;
+        LHS = LeftByte;
+        RHS = RightByte;
+      }
     } else if (Left == ByteExtension::Signed &&
                Right == ByteExtension::Signed) {
       Opcode = AVM::MULS8W_PSEUDO;

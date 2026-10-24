@@ -24,6 +24,7 @@ FunctionPass *createAVMTailDuplicationPass(
 FunctionPass *createAVMBranchPolarityPass();
 FunctionPass *createAVMCanonicalizeBooleansPass();
 FunctionPass *createAVMBytePHIsPass();
+FunctionPass *createAVMLoopStrengthReducePass();
 FunctionPass *createAVMExpandPseudoPass();
 FunctionPass *createAVMFinalControlFlowPass();
 FunctionPass *createAVMLatePeepholePass();
@@ -40,6 +41,7 @@ void registerAVMTailDuplicationOptions();
 void initializeAVMBranchPolarityPass(PassRegistry &);
 void initializeAVMCanonicalizeBooleansPass(PassRegistry &);
 void initializeAVMBytePHIsPass(PassRegistry &);
+void initializeAVMLoopStrengthReducePass(PassRegistry &);
 void initializeAVMDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeAVMExpandPseudoPass(PassRegistry &);
 void initializeAVMFinalControlFlowPass(PassRegistry &);

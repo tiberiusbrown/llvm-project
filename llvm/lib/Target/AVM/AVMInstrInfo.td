@@ -1066,6 +1066,9 @@ def ADDIS8_PSEUDO
 
 def MUL8_PSEUDO : AVMUpperTwoAddr16Pseudo;
 def MULU8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
+// Full-word operands proven to fit in unsigned bytes may use MUL16 when
+// register allocation chooses a register outside the compact upper bank.
+def MULU8W_FLEX_PSEUDO : AVMTwoAddr16Pseudo;
 def MULS8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
 def MULSU8W_PSEUDO : AVMUpperTwoAddr16Pseudo;
 def MUL16_PSEUDO : AVMTwoAddr16Pseudo;

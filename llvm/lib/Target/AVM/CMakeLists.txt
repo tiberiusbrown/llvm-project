@@ -32,6 +32,7 @@ add_llvm_target(AVMCodeGen
   AVMInstrInfo.cpp
   AVMInlineAsmStack.cpp
   AVMLatePeephole.cpp
+  AVMLoopStrengthReduce.cpp
   AVMMachineFunctionInfo.cpp
   AVMMCInstLower.cpp
   AVMProgramMemoryWidening.cpp

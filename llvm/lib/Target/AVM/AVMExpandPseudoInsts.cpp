@@ -482,6 +482,12 @@ public:
         case AVM::MULU8W_PSEUDO:
           NewOpcode = AVM::MULU8W;
           break;
+        case AVM::MULU8W_FLEX_PSEUDO:
+          NewOpcode = IsUpper(MI.getOperand(0).getReg()) &&
+                              IsUpper(MI.getOperand(2).getReg())
+                          ? AVM::MULU8W
+                          : AVM::MUL16;
+          break;
         case AVM::MULS8W_PSEUDO:
           NewOpcode = AVM::MULS8W;
           break;

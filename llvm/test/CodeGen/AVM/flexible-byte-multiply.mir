@@ -1,0 +1,26 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-expand-pseudo \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# These operands are full words proven to lie in [0,255]. Selection must not
+# constrain them to upper registers: choose the byte encoding when allocation
+# permits it, and retain a legal full-word multiply otherwise. This is ordinary
+# pseudo lowering, with no instruction-pattern rewriting after allocation.
+--- |
+  target triple = "avm"
+  define void @multiply() { ret void }
+...
+---
+name: multiply
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: multiply
+    ; CHECK: $r4 = MULU8W $r4, $r5
+    ; CHECK-NEXT: $r0 = MUL16 $r0, $r5
+    ; CHECK-NEXT: $r4 = MUL16 $r4, $r1
+    ; CHECK-NEXT: $r0 = MUL16 $r0, $r1
+    $r4 = MULU8W_FLEX_PSEUDO $r4, $r5
+    $r0 = MULU8W_FLEX_PSEUDO $r0, $r5
+    $r4 = MULU8W_FLEX_PSEUDO $r4, $r1
+    $r0 = MULU8W_FLEX_PSEUDO $r0, $r1
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
