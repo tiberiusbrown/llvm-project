@@ -1317,6 +1317,34 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
     return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, DL).first;
   };
 
+  if (!CountNode && Op.getOpcode() == ISD::SHL &&
+      DAG.computeKnownBits(Op.getOperand(1)).getMaxValue().ult(16) &&
+      DAG.computeKnownBits(Value).getMaxValue().ule(UINT16_MAX)) {
+    // A zero-extended word shifted by less than a word needs only the low
+    // word and its carry. Prove the range before truncating the count so a
+    // wide, otherwise unknown count cannot accidentally take this path.
+    SDValue Low = getI32Word(Value, 0, DL, DAG);
+    SDValue Count = DAG.getZExtOrTrunc(Op.getOperand(1), DL, MVT::i16);
+    SDValue NewLow = DAG.getNode(ISD::SHL, DL, MVT::i16, Low, Count);
+    SDValue CarryCount;
+    SDValue CarryInput = Low;
+    if (DAG.isKnownNeverZero(Op.getOperand(1))) {
+      CarryCount = DAG.getNode(ISD::SUB, DL, MVT::i16,
+                               DAG.getConstant(16, DL, MVT::i16), Count);
+    } else {
+      // Neither LLVM's i16 shifts nor AVM's masked variable counts can
+      // express a shift by 16. Split off one bit so count zero produces a
+      // zero carry without a branch or conditional move: (low >> 1) >> (15-n).
+      CarryInput = DAG.getNode(ISD::SRL, DL, MVT::i16, Low,
+                               DAG.getConstant(1, DL, MVT::i16));
+      CarryCount = DAG.getNode(ISD::XOR, DL, MVT::i16, Count,
+                               DAG.getConstant(15, DL, MVT::i16));
+    }
+    SDValue NewHigh =
+        DAG.getNode(ISD::SRL, DL, MVT::i16, CarryInput, CarryCount);
+    return BuildI32FromWords(NewLow, NewHigh, DL, DAG);
+  }
+
   if (!CountNode)
     return EmitLibCall();
 
