@@ -283,6 +283,13 @@ public:
                             PN->getIncomingBlock(I));
       }
 
+    // Profitability pruning can leave arithmetic with word consumers even
+    // when its byte-only PHI users are no longer candidates. Such arithmetic
+    // was not necessarily visited while populating the retained wide PHIs.
+    for (Instruction *I : Values)
+      if (Candidates.contains(I))
+        GetWord(GetWord, I);
+
     // Widen consumers that need the unsigned value. Other uses retain their
     // byte semantics through a truncation; memory widths and ABI types stay
     // unchanged. This avoids promoting unrelated arithmetic/comparison trees.
