@@ -1947,6 +1947,12 @@ public:
                                 const MachineInstr &DefMI,
                                 unsigned DefIdx) const;
 
+  /// Allow cheap loop invariants to be hoisted when register pressure stays
+  /// below the limit. The default only hoists them without increasing pressure.
+  virtual bool shouldHoistCheapInst(const MachineInstr &MI) const {
+    return false;
+  }
+
   /// Perform target-specific instruction verification.
   virtual bool verifyInstruction(const MachineInstr &MI,
                                  StringRef &ErrInfo) const {

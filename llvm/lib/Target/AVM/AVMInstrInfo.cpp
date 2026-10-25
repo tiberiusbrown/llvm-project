@@ -7,6 +7,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -72,6 +73,32 @@ bool AVMInstrInfo::isReMaterializableImpl(const MachineInstr &MI) const {
       !MI.getFlag(MachineInstr::NoMerge))
     return false;
   return TargetInstrInfo::isReMaterializableImpl(MI);
+}
+
+bool AVMInstrInfo::shouldHoistCheapInst(const MachineInstr &MI) const {
+  if (MI.getOpcode() != AVM::FRAMEADDR_PSEUDO)
+    return false;
+  // Indexed accesses can reuse a base for both reads and writes. A frame
+  // address only copied into call arguments can instead cost an extra spill
+  // across each call. Keep the ordinary cheap-instruction policy for those.
+  const MachineRegisterInfo &MRI = MI.getMF()->getRegInfo();
+  return any_of(MRI.use_nodbg_instructions(MI.getOperand(0).getReg()),
+                [](const MachineInstr &Use) {
+                  return Use.getOpcode() == AVM::ADD16_PSEUDO;
+                });
+}
+
+bool AVMInstrInfo::shouldHoist(const MachineInstr &MI,
+                              const MachineLoop *L) const {
+  if (MI.getOpcode() != AVM::FRAMEADDR_PSEUDO)
+    return true;
+  // A new base live across calls competes for just four preserved registers.
+  // Retain local materialization in those loops; CSE can still reuse a base
+  // that is already live through the loop without increasing pressure.
+  for (const MachineBasicBlock *MBB : L->blocks())
+    if (any_of(*MBB, [](const MachineInstr &I) { return I.isCall(); }))
+      return false;
+  return true;
 }
 
 bool AVMInstrInfo::isProfitableToFoldRedundantCopy(
@@ -929,6 +956,7 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Fixed(AVMCostKind::GetSP);
   case AVM::SETSP:
     return Fixed(AVMCostKind::SetSP);
+  case AVM::FRAMEADDR_PSEUDO:
   case AVM::LEASP:
     return Fixed(AVMCostKind::LeaSP);
   case AVM::ADD:

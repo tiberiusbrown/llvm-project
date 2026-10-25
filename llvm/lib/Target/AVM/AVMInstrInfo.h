@@ -86,6 +86,8 @@ public:
                            unsigned *PredCost = nullptr) const override;
   unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
   bool isReMaterializableImpl(const MachineInstr &MI) const override;
+  bool shouldHoistCheapInst(const MachineInstr &MI) const override;
+  bool shouldHoist(const MachineInstr &MI, const MachineLoop *L) const override;
 };
 } // namespace llvm
 

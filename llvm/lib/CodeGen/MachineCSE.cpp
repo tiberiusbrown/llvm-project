@@ -77,10 +77,12 @@ class MachineCSEImpl {
   MachineDominatorTree *DT = nullptr;
   MachineRegisterInfo *MRI = nullptr;
   MachineBlockFrequencyInfo *MBFI = nullptr;
+  MachineLoopInfo *MLI = nullptr;
 
 public:
-  MachineCSEImpl(MachineDominatorTree *DT, MachineBlockFrequencyInfo *MBFI)
-      : DT(DT), MBFI(MBFI) {}
+  MachineCSEImpl(MachineDominatorTree *DT, MachineBlockFrequencyInfo *MBFI,
+                 MachineLoopInfo *MLI)
+      : DT(DT), MBFI(MBFI), MLI(MLI) {}
   bool run(MachineFunction &MF);
 
 private:
@@ -145,6 +147,7 @@ public:
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
     MachineFunctionPass::getAnalysisUsage(AU);
+    AU.addRequired<MachineLoopInfoWrapperPass>();
     AU.addPreservedID(MachineLoopInfoID);
     AU.addRequired<MachineDominatorTreeWrapperPass>();
     AU.addPreserved<MachineDominatorTreeWrapperPass>();
@@ -165,6 +168,7 @@ char &llvm::MachineCSELegacyID = MachineCSELegacy::ID;
 INITIALIZE_PASS_BEGIN(MachineCSELegacy, DEBUG_TYPE,
                       "Machine Common Subexpression Elimination", false, false)
 INITIALIZE_PASS_DEPENDENCY(MachineDominatorTreeWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(MachineLoopInfoWrapperPass)
 INITIALIZE_PASS_END(MachineCSELegacy, DEBUG_TYPE,
                     "Machine Common Subexpression Elimination", false, false)
 
@@ -467,6 +471,24 @@ bool MachineCSEImpl::isProfitableToCSE(Register CSReg, Register Reg,
       }
   }
   if (!MayIncreasePressure) return true;
+
+  // A value defined outside a loop and used inside it is already live around
+  // the backedge. Reusing it elsewhere in that loop does not extend its live
+  // range, even when the existing use is in a different basic block.
+  if (CSReg.isVirtual()) {
+    const MachineLoop *Loop = MLI->getLoopFor(MI->getParent());
+    if (Loop && !Loop->contains(CSBB)) {
+      int NumUses = 0;
+      for (const MachineOperand &Use : MRI->use_nodbg_operands(CSReg)) {
+        if (++NumUses > CSUsesThreshold)
+          break;
+        if (Use.readsReg() && !Use.getSubReg() &&
+            !Use.getParent()->isPHI() &&
+            Loop->contains(Use.getParent()->getParent()))
+          return true;
+      }
+    }
+  }
 
   if (MayIncreasePressure &&
       CSBB != MI->getParent() &&
@@ -960,7 +982,8 @@ PreservedAnalyses MachineCSEPass::run(MachineFunction &MF,
   MachineDominatorTree &MDT = MFAM.getResult<MachineDominatorTreeAnalysis>(MF);
   MachineBlockFrequencyInfo &MBFI =
       MFAM.getResult<MachineBlockFrequencyAnalysis>(MF);
-  MachineCSEImpl Impl(&MDT, &MBFI);
+  MachineLoopInfo &MLI = MFAM.getResult<MachineLoopAnalysis>(MF);
+  MachineCSEImpl Impl(&MDT, &MBFI, &MLI);
   bool Changed = Impl.run(MF);
   if (!Changed)
     return PreservedAnalyses::all();
@@ -981,6 +1004,7 @@ bool MachineCSELegacy::runOnMachineFunction(MachineFunction &MF) {
       getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree();
   MachineBlockFrequencyInfo &MBFI =
       getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI();
-  MachineCSEImpl Impl(&MDT, &MBFI);
+  MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLI();
+  MachineCSEImpl Impl(&MDT, &MBFI, &MLI);
   return Impl.run(MF);
 }

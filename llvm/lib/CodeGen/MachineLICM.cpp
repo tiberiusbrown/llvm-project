@@ -1314,7 +1314,8 @@ bool MachineLICMImpl::IsProfitableToHoist(MachineInstr &MI,
 
   // Visit BBs from header to current BB, if hoisting this doesn't cause
   // high register pressure, then it's safe to proceed.
-  if (!CanCauseHighRegPressure(Cost, CheapInstr)) {
+  if (!CanCauseHighRegPressure(
+          Cost, CheapInstr && !TII->shouldHoistCheapInst(MI))) {
     LLVM_DEBUG(dbgs() << "Hoist non-reg-pressure: " << MI);
     ++NumLowRP;
     return true;

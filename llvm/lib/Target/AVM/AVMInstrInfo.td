@@ -1199,10 +1199,15 @@ def STACKCALL : AVMCodeGenPseudo<(outs), (ins i16imm:$stackbytes,
   let Size = 0;
 }
 
+// Fixed-object addresses do not depend on the current SP value: frame-index
+// elimination accounts for call adjustments and chooses FP for dynamic frames.
+// LEASP is cheap enough to keep CSE conservative across branches. The target
+// LICM hook permits sharing a loop base when register pressure allows it.
 def FRAMEADDR_PSEUDO
     : AVMPureCodeGenPseudo<(outs PTR16:$dst),
-                       (ins i16imm:$fi, i16imm:$offset)> {
-  let Uses = [SP];
+                           (ins i16imm:$fi, i16imm:$offset)> {
+  let Size = 3;
+  let isAsCheapAsAMove = 1;
 }
 
 def DATA_ADDR_PSEUDO

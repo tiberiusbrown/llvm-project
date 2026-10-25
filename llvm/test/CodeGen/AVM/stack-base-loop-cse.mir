@@ -1,0 +1,123 @@
+# RUN: llc -mtriple=avm -run-pass=machine-cse -verify-machineinstrs %s -o - | FileCheck %s
+--- |
+  target triple = "avm"
+  @program_data = external addrspace(1) constant [8 x i8]
+  define void @live_loop_base() { ret void }
+  define void @partial_loop_use() { ret void }
+  define void @base_used_before_loop() { ret void }
+...
+---
+name: live_loop_base
+tracksRegLiveness: true
+stack:
+  - { id: 0, size: 8, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: live_loop_base
+    ; CHECK: %[[BASE:[0-9]+]]:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %0:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %1:gpr16 = LDI8_PSEUDO 7
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2, %bb.3
+    %2:gpr16 = PHI %1, %bb.0, %6, %bb.2
+    %3:gpr16 = ADD16_PSEUDO %0, %2
+    %4:gpr16 = LOAD8U_PSEUDO %3
+    TST8_PSEUDO %4, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.1
+    ; The base used by the header is already live through this backedge.
+    ; CHECK: bb.2:
+    ; CHECK-NOT: FRAMEADDR_PSEUDO
+    ; CHECK: {{%[0-9]+}}:gpr16 = ADD16_PSEUDO %[[BASE]], {{%[0-9]+}}
+    %5:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %6:gpr16 = DEC16_PSEUDO %2
+    %7:gpr16 = ADD16_PSEUDO %5, %6
+    STORE8_PSEUDO %7, %4
+    JMP_PSEUDO %bb.1
+
+  bb.3:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: partial_loop_use
+tracksRegLiveness: true
+stack:
+  - { id: 0, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1, %bb.3
+    liveins: $r4
+    ; CHECK-LABEL: name: partial_loop_use
+    ; CHECK: PROG_ADDR_PSEUDO @program_data
+    %0:gpr32 = PROG_ADDR_PSEUDO @program_data
+    %1:gpr16 = LDI8_PSEUDO 7
+    TST16_PSEUDO $r4, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2
+    %2:gpr16 = PHI %1, %bb.0, %7, %bb.2
+    %3:gpr16 = COPY %0.sub_lo16
+    STACK_STORE16_PSEUDO %stack.0, 0, %3, implicit $sp
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.1, %bb.3
+    ; Only the low lane is already live. Reusing the full pair would extend
+    ; the high lane's live range, so the pressure-free reuse rule cannot apply.
+    ; CHECK: bb.2:
+    ; CHECK: PROG_ADDR_PSEUDO @program_data
+    %6:gpr32 = PROG_ADDR_PSEUDO @program_data
+    STACK_STORE32_PSEUDO %stack.0, 0, %6, implicit $sp
+    %7:gpr16 = DEC16_PSEUDO %2
+    TST16_PSEUDO %7, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: base_used_before_loop
+tracksRegLiveness: true
+stack:
+  - { id: 0, size: 8, alignment: 1 }
+  - { id: 1, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1
+    ; CHECK-LABEL: name: base_used_before_loop
+    ; CHECK: %0:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %0:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    STACK_STORE16_PSEUDO %stack.1, 0, %0, implicit $sp
+    %1:gpr16 = LDI8_PSEUDO 7
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.2
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    successors: %bb.2, %bb.3
+    ; A use before the loop does not make this base live around the loop.
+    ; CHECK: bb.2:
+    ; CHECK: {{%[0-9]+}}:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %2:gpr16 = PHI %1, %bb.1, %6, %bb.2
+    %3:ptr16 = FRAMEADDR_PSEUDO %stack.0, 0
+    %4:gpr16 = ADD16_PSEUDO %3, %2
+    %5:gpr16 = LOAD8U_PSEUDO %4
+    %6:gpr16 = DEC16_PSEUDO %2
+    TST16_PSEUDO %6, implicit-def $cc
+    BR_CC_PSEUDO %bb.2, 1, implicit $cc
+    JMP_PSEUDO %bb.3
+
+  bb.3:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
