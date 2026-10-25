@@ -250,6 +250,9 @@ private:
     auto Cycles = AVM::getFixedCycles;
     const int BaseCycles = Cycles(AVMCostKind::Ldi16Upper) +
                            Cycles(AVMCostKind::AddUpper);
+    bool HasPairInput = llvm::any_of(CurDAG->allnodes(), [](const SDNode &N) {
+      return N.getOpcode() == ISD::CopyFromReg && N.getValueType(0) == MVT::i32;
+    });
     auto AddressCycles = [&](const Access &A) -> int {
       if (A.Parts.Symbol)
         return BaseCycles;
@@ -285,10 +288,21 @@ private:
       // Choose an existing address as the anchor. Count only address nodes
       // used exclusively by this group; other users still need their original
       // calculation. Ignore copy savings to leave some allocation headroom.
+      // Three load results, a live-in pair, the index and the shared address
+      // can leave only one of the eight word registers for arithmetic. Budget
+      // a cold spill/reload in that case. Small groups still have headroom;
+      // larger groups can amortize this allowance over more address savings.
+      unsigned LoadResults =
+          llvm::count_if(Group, [](const Access &A) { return A.IsLoad; });
+      int PressureCycles =
+          HasPairInput && LoadResults >= 3
+              ? Cycles(AVMCostKind::StSp16Cold) +
+                    Cycles(AVMCostKind::LdSp16Cold)
+              : 0;
       int BestSaving = 0;
       const Access *Best = nullptr;
       for (const Access &Anchor : Group) {
-        int Saving = -AddressCycles(Anchor);
+        int Saving = -AddressCycles(Anchor) - PressureCycles;
         SmallPtrSet<SDNode *, 16> Counted;
         for (const Access &A : Group) {
           int Offset = int16_t(uint16_t(A.Parts.Offset - Anchor.Parts.Offset));

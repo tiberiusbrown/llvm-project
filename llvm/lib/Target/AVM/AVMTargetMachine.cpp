@@ -7,6 +7,7 @@
 #include "AVMTargetTransformInfo.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/CodeGen/GlobalMerge.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Function.h"
@@ -98,6 +99,29 @@ AVMTargetMachine::getSubtargetImpl(const Function &F) const {
 }
 
 namespace {
+// GlobalMerge's legacy FunctionPass runs in doInitialization(), before loop
+// strength reduction regardless of its pipeline position. Run its module
+// implementation here instead: merging must expose relative addresses to
+// selection without changing which loop induction variables are selected.
+class AVMGlobalMerge : public ModulePass {
+  const AVMTargetMachine &TM;
+
+public:
+  static char ID;
+  explicit AVMGlobalMerge(const AVMTargetMachine &TM) : ModulePass(ID), TM(TM) {}
+
+  bool runOnModule(Module &M) override {
+    GlobalMergeOptions Options;
+    Options.MaxOffset = 224;
+    Options.MergeExternal = false;
+    ModuleAnalysisManager MAM;
+    return !GlobalMergePass(&TM, Options).run(M, MAM).areAllPreserved();
+  }
+
+  StringRef getPassName() const override { return "AVM late global merging"; }
+};
+char AVMGlobalMerge::ID;
+
 class AVMPassConfig final : public TargetPassConfig {
 public:
   AVMPassConfig(AVMTargetMachine &TM, PassManagerBase &PM)
@@ -120,6 +144,16 @@ public:
 
   bool addInstSelector() override {
     addPass(createAVMISelDag(getTM<AVMTargetMachine>(), getOptLevel()));
+    return false;
+  }
+
+  bool addPreISel() override {
+    // Give co-used local data a known relative layout before DAG address
+    // selection. The selector can then cost a shared base against independent
+    // pointers, including the slower displaced loads. Keep each merged object
+    // within the positive displacement window and preserve external symbols.
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(new AVMGlobalMerge(getTM<AVMTargetMachine>()));
     return false;
   }
 
