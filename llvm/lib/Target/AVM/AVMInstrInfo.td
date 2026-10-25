@@ -1440,6 +1440,14 @@ def FTOS32 : AVMFFPairPairInst<"ftos32 $dst, $src">;
 def FTOU32 : AVMFFPairPairInst<"ftou32 $dst, $src">;
 def FCMP : AVMFFCompareInst<"fcmp $dst, $left, $right">;
 def FCLASS : AVMFFScalarPairInst<"fclass $scalar, $pair">;
+
+// The count header can be followed by .float/.long data. The disassembler
+// includes those coefficients as variadic operands for lossless round trips.
+def FPOLY : AVMInst<"fpoly $count", 3, (ins AVMImm8:$count, variable_ops)> {
+  let Uses = [R4R5];
+  let Defs = [R4R5];
+  let hasNoSchedulingInfo = 1; // Variable count and data-dependent FP helpers.
+}
 def MULU8W : AVMF3WideningMultiplyInst<"mulu8.w $dst, $src2">;
 def MULS8W : AVMF3WideningMultiplyInst<"muls8.w $dst, $src2">;
 def MULSU8W : AVMF3WideningMultiplyInst<"mulsu8.w $dst, $src2">;

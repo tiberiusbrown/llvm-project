@@ -120,7 +120,7 @@ public:
     // CFI offsets must describe the packed three-byte return address as well
     // as two-byte saved registers, so the data-alignment factor is one byte.
     CalleeSaveStackSlotSize = 1;
-    MaxInstLength = 6;
+    MaxInstLength = 3 + 4 * 255; // FPOLY includes its inline coefficients.
     MinInstAlignment = 1;
     SupportsDebugInformation = true;
     UsesCFIWithoutEH = true;

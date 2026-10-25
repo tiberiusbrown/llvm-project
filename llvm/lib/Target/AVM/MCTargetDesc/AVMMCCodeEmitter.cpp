@@ -1092,6 +1092,23 @@ public:
     case AVM::MOV: emitCompactMatrix(MI, Out, 0x00); return;
     case AVM::MOV32: emitMOV32(MI, Out, false); return;
     case AVM::MOV32_F2: emitMOV32(MI, Out, true); return;
+    case AVM::FPOLY: {
+      const int64_t Count = MI.getOperand(0).getImm();
+      if (Count < 1 || Count > 255 ||
+          (MI.getNumOperands() != 1 && MI.getNumOperands() != Count + 1))
+        return error(MI, "invalid fpoly coefficient count");
+      emit8(Out, 0xff);
+      emit8(Out, 0xca);
+      emit8(Out, Count);
+      for (unsigned I = 1; I < MI.getNumOperands(); ++I) {
+        const int64_t Bits = MI.getOperand(I).getImm();
+        if (!isUInt<32>(Bits) && !isInt<32>(Bits))
+          return error(MI, "fpoly coefficient bits must fit 32 bits");
+        emit16(Out, Bits);
+        emit16(Out, uint64_t(Bits) >> 16);
+      }
+      return;
+    }
     case AVM::FADD: emitFFPairBinary(MI, Out, 0x00); return;
     case AVM::FSUB: emitFFPairBinary(MI, Out, 0x10); return;
     case AVM::FMUL: emitFFPairBinary(MI, Out, 0x20); return;

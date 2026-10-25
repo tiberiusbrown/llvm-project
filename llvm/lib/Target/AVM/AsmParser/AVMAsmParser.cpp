@@ -2,6 +2,8 @@
 #include "MCTargetDesc/AVMMCExpr.h"
 #include "TargetInfo/AVMTargetInfo.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/Support/Error.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCInst.h"
@@ -846,6 +848,53 @@ class AVMAsmParser final : public MCTargetAsmParser {
                              Operands, Name, NameLoc);
   }
 
+  bool parseFPoly(StringRef Name, SMLoc NameLoc, OperandVector &Operands) {
+    uint64_t Count = 0;
+    SMLoc Loc;
+    if (parseAbsoluteU8(Count, Loc))
+      return true;
+    if (!Count)
+      return error(Loc, "fpoly coefficient count must be 1 through 255");
+    MCInst Inst;
+    Inst.setOpcode(AVM::FPOLY);
+    Inst.addOperand(MCOperand::createImm(Count));
+    // Optional exact binary32 bit patterns; .float/.long after the count
+    // header is also supported by the ordinary assembler data directives.
+    while (Parser.getTok().is(AsmToken::Comma)) {
+      Parser.Lex();
+      const AsmToken &Tok = Parser.getTok();
+      const bool HasSign = Tok.is(AsmToken::Minus) || Tok.is(AsmToken::Plus);
+      const AsmToken ValueTok = HasSign ? Parser.getLexer().peekTok() : Tok;
+      int64_t Bits = 0;
+      if (ValueTok.is(AsmToken::Real) || ValueTok.is(AsmToken::Identifier)) {
+        const bool Negative = Tok.is(AsmToken::Minus);
+        if (HasSign) Parser.Lex();
+        StringRef Literal = Parser.getTok().getString();
+        APFloat Value(APFloat::IEEEsingle());
+        if (Literal.equals_insensitive("inf") || Literal.equals_insensitive("infinity"))
+          Value = APFloat::getInf(APFloat::IEEEsingle());
+        else if (Literal.equals_insensitive("nan"))
+          Value = APFloat::getNaN(APFloat::IEEEsingle());
+        else if (errorToBool(Value.convertFromString(Literal,
+                              APFloat::rmNearestTiesToEven).takeError()))
+          return error(Parser.getTok().getLoc(), "invalid fpoly float literal");
+        if (Negative) Value.changeSign();
+        Bits = Value.bitcastToAPInt().getZExtValue();
+        Parser.Lex();
+      } else {
+        if (Parser.parseAbsoluteExpression(Bits))
+          return true;
+        if (!isUInt<32>(Bits) && !isInt<32>(Bits))
+          return error(NameLoc, "fpoly coefficient bits must fit 32 bits");
+      }
+      Inst.addOperand(MCOperand::createImm(Bits));
+    }
+    if (Inst.getNumOperands() != 1 && Inst.getNumOperands() != Count + 1)
+      return error(NameLoc, "fpoly coefficient count does not match inline data");
+    return finishInstruction(std::move(Inst), Parser.getTok().getLoc(),
+                             Operands, Name, NameLoc);
+  }
+
   bool parseFFPairBinary(unsigned Opcode, StringRef Name, SMLoc NameLoc,
                          OperandVector &Operands) {
     MCRegister Destination, Source;
@@ -1300,6 +1349,7 @@ public:
     }
     if (Lower == "mov32")
       return parseFFPairBinary(AVM::MOV32, Name, NameLoc, Operands);
+    if (Lower == "fpoly") return parseFPoly(Name, NameLoc, Operands);
     if (Lower == "fadd") return parseFFPairBinary(AVM::FADD, Name, NameLoc, Operands);
     if (Lower == "fsub") return parseFFPairBinary(AVM::FSUB, Name, NameLoc, Operands);
     if (Lower == "fmul") return parseFFPairBinary(AVM::FMUL, Name, NameLoc, Operands);

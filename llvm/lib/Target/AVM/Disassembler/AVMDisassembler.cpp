@@ -440,6 +440,28 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
+      if (Secondary == 0xca) {
+        if (Bytes.size() < 3 || !Bytes[2]) {
+          Size = Bytes.size() < 3 ? 2 : 3;
+          return Fail;
+        }
+        const unsigned Count = Bytes[2];
+        Size = 3 + 4 * Count;
+        if (Bytes.size() < Size) {
+          Size = Bytes.size();
+          return Fail;
+        }
+        MI.setOpcode(AVM::FPOLY);
+        MI.addOperand(MCOperand::createImm(Count));
+        for (unsigned I = 0; I < Count; ++I) {
+          const unsigned Offset = 3 + 4 * I;
+          uint32_t Bits = 0;
+          for (unsigned J = 0; J < 4; ++J)
+            Bits |= uint32_t(Bytes[Offset + J]) << (8 * J);
+          MI.addOperand(MCOperand::createImm(Bits));
+        }
+        return Success;
+      }
       if (Secondary < 0x60) {
         static constexpr unsigned Opcodes[] = {AVM::FADD, AVM::FSUB,
                                                 AVM::FMUL, AVM::FDIV,

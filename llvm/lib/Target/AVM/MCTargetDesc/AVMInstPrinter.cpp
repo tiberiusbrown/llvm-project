@@ -1,6 +1,8 @@
 #include "AVMInstPrinter.h"
 #include "MCTargetDesc/AVMMCTargetDesc.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
@@ -13,6 +15,7 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::MOV: return {"mov", 0};
   case AVM::MOV32:
   case AVM::MOV32_F2: return {"mov32", 0};
+  case AVM::FPOLY: return {"fpoly", 0};
   case AVM::FADD: return {"fadd", 0};
   case AVM::FSUB: return {"fsub", 0};
   case AVM::FMUL: return {"fmul", 0};
@@ -274,6 +277,22 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   }
   OS << getMnemonic(*MI).first;
   switch (MI->getOpcode()) {
+  case AVM::FPOLY:
+    OS << '\t' << MI->getOperand(0).getImm();
+    for (unsigned I = 1; I < MI->getNumOperands(); ++I) {
+      const uint32_t Bits = MI->getOperand(I).getImm();
+      OS << ", ";
+      if ((Bits & 0x7f800000) == 0x7f800000) {
+        OS << format_hex(Bits, 10); // Preserve nonfinite payloads exactly.
+        continue;
+      }
+      SmallString<32> Literal;
+      APFloat(APFloat::IEEEsingle(), APInt(32, Bits)).toString(Literal);
+      OS << Literal;
+      if (!StringRef(Literal).contains('.') && !StringRef(Literal).contains('E') && !StringRef(Literal).contains('e'))
+        OS << ".0";
+    }
+    break;
   case AVM::MOV32:
   case AVM::MOV32_F2:
   case AVM::FADD:
