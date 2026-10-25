@@ -106,6 +106,8 @@ private:
   SDValue BuildI32FromWords(SDValue Low, SDValue High, const SDLoc &DL,
                             SelectionDAG &DAG) const;
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+  void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue> &Results,
+                          SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,

@@ -61,6 +61,12 @@ public:
 
   bool useFastCCForInternalCall(Function &) const override { return false; }
 
+  bool hasDivRemOp(Type *DataType, bool IsSigned) const override {
+    // Keep wide pairs together for the pointer-output runtime helpers instead
+    // of expanding the remainder to a wide multiply and subtract in IR.
+    return DataType->isIntegerTy(32) || DataType->isIntegerTy(64);
+  }
+
   TTI::AddressingModeKind
   getPreferredAddressingMode(const Loop *L, ScalarEvolution *SE) const override;
 

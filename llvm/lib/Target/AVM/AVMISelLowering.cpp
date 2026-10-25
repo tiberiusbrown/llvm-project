@@ -572,12 +572,20 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   for (unsigned Opcode : {ISD::MUL, ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM,
                           ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i64, LibCall);
+  // i32 pairs use the generic pointer-output divmod libcall expansion. i64
+  // needs custom type legalization because it is not a legal register type.
+  for (unsigned Opcode : {ISD::UDIVREM, ISD::SDIVREM}) {
+    setOperationAction(Opcode, MVT::i32, Expand);
+    setOperationAction(Opcode, MVT::i64, Custom);
+  }
 
   setLibcallImpl(RTLIB::MUL_I32, RTLIB::impl___avm_mulsi3);
   setLibcallImpl(RTLIB::UDIV_I32, RTLIB::impl___avm_udivsi3);
   setLibcallImpl(RTLIB::UREM_I32, RTLIB::impl___avm_umodsi3);
   setLibcallImpl(RTLIB::SDIV_I32, RTLIB::impl___avm_divsi3);
   setLibcallImpl(RTLIB::SREM_I32, RTLIB::impl___avm_modsi3);
+  setLibcallImpl(RTLIB::UDIVREM_I32, RTLIB::impl___avm_udivmodsi4);
+  setLibcallImpl(RTLIB::SDIVREM_I32, RTLIB::impl___avm_divmodsi4);
   setLibcallImpl(RTLIB::SHL_I32, RTLIB::impl___avm_ashlsi3);
   setLibcallImpl(RTLIB::SRL_I32, RTLIB::impl___avm_lshrsi3);
   setLibcallImpl(RTLIB::SRA_I32, RTLIB::impl___avm_ashrsi3);
@@ -586,6 +594,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::UREM_I64, RTLIB::impl___avm_umoddi3);
   setLibcallImpl(RTLIB::SDIV_I64, RTLIB::impl___avm_divdi3);
   setLibcallImpl(RTLIB::SREM_I64, RTLIB::impl___avm_moddi3);
+  setLibcallImpl(RTLIB::UDIVREM_I64, RTLIB::impl___avm_udivmoddi4);
+  setLibcallImpl(RTLIB::SDIVREM_I64, RTLIB::impl___avm_divmoddi4);
   setLibcallImpl(RTLIB::SHL_I64, RTLIB::impl___avm_ashldi3);
   setLibcallImpl(RTLIB::SRL_I64, RTLIB::impl___avm_lshrdi3);
   setLibcallImpl(RTLIB::SRA_I64, RTLIB::impl___avm_ashrdi3);
@@ -1583,6 +1593,49 @@ SDValue AVMTargetLowering::LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const {
   SDValue High = DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, ShiftedHigh);
 
   return DAG.getMergeValues({Low, High}, DL);
+}
+
+void AVMTargetLowering::ReplaceNodeResults(
+    SDNode *N, SmallVectorImpl<SDValue> &Results, SelectionDAG &DAG) const {
+  assert((N->getOpcode() == ISD::UDIVREM ||
+          N->getOpcode() == ISD::SDIVREM) &&
+         N->getValueType(0) == MVT::i64 && "unexpected custom legalization");
+  bool IsSigned = N->getOpcode() == ISD::SDIVREM;
+  bool HasQuotient = N->hasAnyUseOfValue(0);
+  bool HasRemainder = N->hasAnyUseOfValue(1);
+  SDLoc DL(N);
+  MakeLibCallOptions CallOptions;
+  CallOptions.setIsSigned(IsSigned);
+  SmallVector<SDValue, 3> Ops(N->op_values());
+
+  // Type legalization also routes standalone i64 DIV/REM through DIVREM.
+  // Keep their existing helpers and avoid an unused stack output argument.
+  if (!HasQuotient || !HasRemainder) {
+    RTLIB::Libcall LC = HasQuotient
+                            ? (IsSigned ? RTLIB::SDIV_I64 : RTLIB::UDIV_I64)
+                            : (IsSigned ? RTLIB::SREM_I64 : RTLIB::UREM_I64);
+    SDValue Value = makeLibCall(DAG, LC, MVT::i64, Ops, CallOptions, DL).first;
+    Results.push_back(HasQuotient ? Value : DAG.getUNDEF(MVT::i64));
+    Results.push_back(HasRemainder ? Value : DAG.getUNDEF(MVT::i64));
+    return;
+  }
+
+  SDValue RemainderPtr = DAG.CreateStackTemporary(MVT::i64);
+  Ops.push_back(RemainderPtr);
+  // Preserve the pointer's ABI type instead of treating it as an integer.
+  Type *IntTy = Type::getInt64Ty(*DAG.getContext());
+  Type *ArgTypes[] = {IntTy, IntTy,
+                      PointerType::getUnqual(*DAG.getContext())};
+  CallOptions.setOpsTypeOverrides(ArgTypes);
+  RTLIB::Libcall LC = IsSigned ? RTLIB::SDIVREM_I64 : RTLIB::UDIVREM_I64;
+  auto [Quotient, Chain] =
+      makeLibCall(DAG, LC, MVT::i64, Ops, CallOptions, DL);
+  int FI = cast<FrameIndexSDNode>(RemainderPtr)->getIndex();
+  SDValue Remainder = DAG.getLoad(
+      MVT::i64, DL, Chain, RemainderPtr,
+      MachinePointerInfo::getFixedStack(DAG.getMachineFunction(), FI));
+  Results.push_back(Quotient);
+  Results.push_back(Remainder);
 }
 
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
