@@ -8,6 +8,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
+#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -42,6 +43,109 @@ public:
 
 private:
   SmallDenseSet<Register, 16> UnsignedByteInputs;
+
+  void formAffineStoreValues() {
+    if (OptLevel == CodeGenOptLevel::None)
+      return;
+    struct StoreValue {
+      StoreSDNode *Store;
+      SDValue Base;
+      uint16_t Offset;
+    };
+    SmallVector<SmallVector<StoreValue, 8>, 4> Groups;
+    for (SDNode &Node : CurDAG->allnodes()) {
+      auto *Store = dyn_cast<StoreSDNode>(&Node);
+      if (!Store || !Store->isSimple() || !Store->isUnindexed() ||
+          (Store->getMemoryVT() != MVT::i8 &&
+           Store->getMemoryVT() != MVT::i16))
+        continue;
+      // Argument stores are scheduled together with fixed-register arguments.
+      // Serializing them can lengthen those live ranges and introduce spills.
+      if (const auto *PSV = Store->getMemOperand()->getPseudoValue();
+          PSV && PSV->isStack())
+        continue;
+      SDValue Value = Store->getValue();
+      if (Value.getValueType() != MVT::i16 || !Value.hasOneUse() ||
+          (Value.getOpcode() != ISD::ADD && Value.getOpcode() != ISD::SUB))
+        continue;
+      const auto *C = dyn_cast<ConstantSDNode>(Value.getOperand(1));
+      if (!C)
+        continue;
+      SDValue Base = Value.getOperand(0);
+      uint16_t Offset = C->getZExtValue();
+      if (Value.getOpcode() == ISD::SUB)
+        Offset = -Offset;
+      auto Group = llvm::find_if(Groups, [&](const auto &G) {
+        return G.front().Base == Base &&
+               G.front().Store->getMemoryVT() == Store->getMemoryVT() &&
+               G.front().Store->getChain() == Store->getChain();
+      });
+      if (Group == Groups.end()) {
+        Groups.emplace_back();
+        Group = std::prev(Groups.end());
+      }
+      Group->push_back({Store, Base, Offset});
+    }
+
+    using AVM::AVMCostKind;
+    auto AddCycles = [](int Offset) {
+      if (Offset == 1 || Offset == -1)
+        return AVM::getFixedCycles(AVMCostKind::Inc16);
+      if (isInt<8>(Offset))
+        return AVM::getFixedCycles(AVMCostKind::AddIS8Upper);
+      return AVM::getFixedCycles(AVMCostKind::Ldi16Upper) +
+             AVM::getFixedCycles(AVMCostKind::AddUpper);
+    };
+    bool Changed = false;
+    for (auto &Group : Groups) {
+      if (Group.size() < 2)
+        continue;
+      // These stores have the same input chain, so they can execute in either
+      // order. Follow the reverse IR order used by bottom-up scheduling.
+      llvm::stable_sort(Group, [](const auto &A, const auto &B) {
+        return A.Store->getIROrder() > B.Store->getIROrder();
+      });
+      SDValue Previous = Group.front().Store->getValue();
+      StoreSDNode *PreviousStore = Group.front().Store;
+      unsigned PreviousOffset = Group.front().Offset;
+      for (const StoreValue &S : ArrayRef(Group).drop_front()) {
+        int Delta = int16_t(uint16_t(S.Offset - PreviousOffset));
+        if (S.Store->getMemoryVT() == MVT::i8)
+          Delta = int8_t(uint8_t(Delta));
+        SDValue Value = S.Store->getValue();
+        // Only the store observes this value. For byte stores, the arithmetic
+        // is modulo 256 even though legalization promoted it to a word.
+        // Require a cheap immediate update and leave allocation headroom by
+        // counting only the cheapest possible eliminated register copy.
+        if (Delta && isInt<8>(Delta) &&
+            AddCycles(Delta) <=
+                AddCycles(int16_t(S.Offset)) +
+                    AVM::getFixedCycles(AVMCostKind::MovUpper)) {
+          SDLoc DL(S.Store);
+          unsigned Opcode = Delta == 1     ? AVM::INC16_PSEUDO
+                            : Delta == -1 ? AVM::DEC16_PSEUDO
+                                          : AVM::ADDIS8_PSEUDO;
+          SmallVector<SDValue, 3> Ops{Previous};
+          if (Opcode == AVM::ADDIS8_PSEUDO)
+            Ops.push_back(CurDAG->getSignedTargetConstant(Delta, DL, MVT::i16));
+          // Consume the preceding value before updating it. This dependency
+          // lets the two-address operations share a register without keeping
+          // multiple partial sums live. Select here so DAG reassociation cannot
+          // turn the recurrence back into independent seed + constant nodes.
+          Ops.push_back(SDValue(PreviousStore, 0));
+          SDValue Next(CurDAG->getMachineNode(Opcode, DL, MVT::i16, Ops), 0);
+          CurDAG->ReplaceAllUsesOfValueWith(Value, Next);
+          Value = Next;
+          Changed = true;
+        }
+        Previous = Value;
+        PreviousStore = S.Store;
+        PreviousOffset = S.Offset;
+      }
+    }
+    if (Changed)
+      CurDAG->RemoveDeadNodes();
+  }
 
   struct DataAddress {
     SDValue Index;
@@ -268,6 +372,7 @@ private:
   }
 
   void PreprocessISelDAG() override {
+    formAffineStoreValues();
     formSharedDataBases();
     UnsignedByteInputs.clear();
     for (const auto &[Value, Reg] : FuncInfo->ValueMap)
