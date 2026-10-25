@@ -10,7 +10,10 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/CFG.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -23,6 +26,53 @@ using namespace llvm;
 #define DEBUG_TYPE "avm-byte-phis"
 
 namespace {
+// An induction state carried through a nested loop can affect allocation in
+// its much hotter body. Avoid that risk when all normalization savings for
+// the dependent byte web are outside the nested loop. This is deliberately
+// structural: it does not yet try to predict spills or compare block counts.
+static bool
+isUnprofitableOuterInduction(PHINode *PN,
+                             const SmallPtrSetImpl<Instruction *> &Candidates,
+                             function_ref<bool(Instruction *)> IsWordUse,
+                             LoopInfo &LI, ScalarEvolution &SE) {
+  Loop *L = LI.getLoopFor(PN->getParent());
+  if (!L || L->getHeader() != PN->getParent() || L->isInnermost())
+    return false;
+  const auto *AR = dyn_cast<SCEVAddRecExpr>(SE.getSCEV(PN));
+  if (!AR || AR->getLoop() != L || !AR->isAffine())
+    return false;
+
+  SmallVector<Instruction *, 8> Consumers;
+  SmallVector<Instruction *, 8> Worklist{PN};
+  SmallPtrSet<Instruction *, 16> Seen{PN};
+  while (!Worklist.empty())
+    for (User *U : Worklist.pop_back_val()->users()) {
+      auto *I = cast<Instruction>(U);
+      if (Candidates.contains(I) && Seen.insert(I).second)
+        Worklist.push_back(I);
+      if (IsWordUse(I))
+        Consumers.push_back(I);
+    }
+
+  SmallPtrSet<BasicBlock *, 1> Excluded{L->getHeader()};
+  for (Loop *Nested : L->getLoopsInPreorder()) {
+    if (Nested == L || llvm::any_of(Consumers, [&](Instruction *I) {
+          return Nested->contains(I);
+        }))
+      continue;
+    // State is live across the nested loop if execution can still reach a
+    // backedge carrying the next induction value. Excluding the outer header
+    // keeps a later outer iteration from making an exit-only path look live.
+    // This also covers updates computed before entering the nested loop.
+    for (BasicBlock *Incoming : PN->blocks())
+      if (L->contains(Incoming) &&
+          isPotentiallyReachable(Nested->getHeader(), Incoming, &Excluded,
+                                 nullptr, &LI))
+        return true;
+  }
+  return false;
+}
+
 class AVMBytePHIs : public FunctionPass {
 public:
   static char ID;
@@ -31,6 +81,7 @@ public:
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<ScalarEvolutionWrapperPass>();
     AU.setPreservesCFG();
   }
@@ -40,6 +91,7 @@ public:
       return false;
 
     auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+    auto &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     SmallVector<Instruction *, 16> Values;
     SmallPtrSet<Instruction *, 16> Candidates;
     DenseMap<BinaryOperator *, ConstantInt *> Decrements;
@@ -104,14 +156,18 @@ public:
     for (Instruction *I : Values)
       if (!llvm::all_of(I->operands(), CanExtend))
         Invalid.push_back(I);
-    while (!Invalid.empty()) {
-      Instruction *I = Invalid.pop_back_val();
-      if (!Candidates.erase(I))
-        continue;
-      for (User *U : I->users())
-        if (auto *UserI = dyn_cast<Instruction>(U); Candidates.contains(UserI))
-          Invalid.push_back(UserI);
-    }
+    auto InvalidateDependents = [&] {
+      while (!Invalid.empty()) {
+        Instruction *I = Invalid.pop_back_val();
+        if (!Candidates.erase(I))
+          continue;
+        for (User *U : I->users())
+          if (auto *UserI = dyn_cast<Instruction>(U);
+              Candidates.contains(UserI))
+            Invalid.push_back(UserI);
+      }
+    };
+    InvalidateDependents();
 
     // Do not widen arithmetic left behind by a rejected PHI graph.
     SmallPtrSet<Instruction *, 16> Needed;
@@ -130,6 +186,37 @@ public:
     if (Candidates.empty())
       return false;
 
+    auto IsWordUse = [&](Instruction *I) {
+      if (isa<ZExtInst>(I))
+        return true;
+      if (auto *Cmp = dyn_cast<ICmpInst>(I)) {
+        if ((!Cmp->isUnsigned() && !Cmp->isEquality()) ||
+            !CanExtend(Cmp->getOperand(0)) || !CanExtend(Cmp->getOperand(1)))
+          return false;
+        auto *LHS = dyn_cast<ConstantInt>(Cmp->getOperand(0));
+        auto *RHS = dyn_cast<ConstantInt>(Cmp->getOperand(1));
+        return (!LHS || !LHS->isZero()) && (!RHS || !RHS->isZero());
+      }
+      if (auto *Switch = dyn_cast<SwitchInst>(I))
+        return llvm::any_of(Switch->cases(), [](auto Case) {
+          return !Case.getCaseValue()->isZero();
+        });
+      return false;
+    };
+
+    // A rejected web can invalidate another web's unsigned comparison. Repeat
+    // until only graphs with eligible hot consumers remain exempt.
+    do {
+      for (Instruction *I : Values)
+        if (auto *PN = dyn_cast<PHINode>(I);
+            PN && Candidates.contains(PN) &&
+            isUnprofitableOuterInduction(PN, Candidates, IsWordUse, LI, SE))
+          Invalid.push_back(PN);
+      if (Invalid.empty())
+        break;
+      InvalidateDependents();
+    } while (!Candidates.empty());
+
     // Widen only graphs with an unsigned consumer that would otherwise need
     // normalization. Byte stores and comparisons with zero already use the
     // low byte directly. Promoting their recurrences has no benefit and can
@@ -138,23 +225,8 @@ public:
     for (Instruction *I : Values) {
       if (!Candidates.contains(I))
         continue;
-      bool HasWordUse = llvm::any_of(I->users(), [&](User *U) {
-        if (isa<ZExtInst>(U))
-          return true;
-        if (auto *Cmp = dyn_cast<ICmpInst>(U)) {
-          if ((!Cmp->isUnsigned() && !Cmp->isEquality()) ||
-              !CanExtend(Cmp->getOperand(0)) || !CanExtend(Cmp->getOperand(1)))
-            return false;
-          auto *LHS = dyn_cast<ConstantInt>(Cmp->getOperand(0));
-          auto *RHS = dyn_cast<ConstantInt>(Cmp->getOperand(1));
-          return (!LHS || !LHS->isZero()) && (!RHS || !RHS->isZero());
-        }
-        if (auto *Switch = dyn_cast<SwitchInst>(U))
-          return llvm::any_of(Switch->cases(), [](auto Case) {
-            return !Case.getCaseValue()->isZero();
-          });
-        return false;
-      });
+      bool HasWordUse = llvm::any_of(
+          I->users(), [&](User *U) { return IsWordUse(cast<Instruction>(U)); });
       if (HasWordUse) {
         Needed.insert(I);
         Worklist.push_back(I);
@@ -290,6 +362,7 @@ public:
 char AVMBytePHIs::ID = 0;
 INITIALIZE_PASS_BEGIN(AVMBytePHIs, DEBUG_TYPE, "AVM byte PHI promotion", false,
                       false)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
 INITIALIZE_PASS_END(AVMBytePHIs, DEBUG_TYPE, "AVM byte PHI promotion", false,
                     false)

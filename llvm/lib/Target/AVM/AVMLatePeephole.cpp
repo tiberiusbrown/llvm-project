@@ -2,6 +2,7 @@
 
 #include "AVM.h"
 #include "AVMInstrInfo.h"
+#include "AVMRegisterRange.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -183,7 +184,8 @@ struct WordValue {
 };
 
 static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
-                                        const AVMInstrInfo &TII) {
+                                        const AVMInstrInfo &TII,
+                                        const AVMRegisterRange &Ranges) {
   const AVMRegisterInfo &TRI = TII.getRegisterInfo();
   constexpr MCPhysReg Words[] = {AVM::R0, AVM::R1, AVM::R2, AVM::R3,
                                  AVM::R4, AVM::R5, AVM::R6, AVM::R7};
@@ -206,8 +208,13 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
         ChangedRegisters |= 1u << I;
   };
   bool Changed = false;
+  auto RangeState = Ranges.getEntry(MBB);
   for (auto It = MBB.begin(); It != MBB.end();) {
     MachineInstr &MI = *It++;
+    bool ByteInput = MI.getOpcode() == AVM::ZEXT8 &&
+                     !MI.getOperand(1).isUndef() &&
+                     Ranges.get(RangeState, MI.getOperand(1).getReg()).Hi <= 255;
+    Ranges.step(RangeState, MI);
     // STACKCALL is a zero-size annotation consumed by the assembly printer.
     // The following call, rather than its annotation, carries the clobbers.
     if (MI.isDebugInstr() || MI.getOpcode() == AVM::STACKCALL)
@@ -270,6 +277,8 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
       unsigned Src = Index(MI.getOperand(1).getReg());
       if (Src != 8) {
         WordValue V = MI.getOperand(1).isUndef() ? Fresh() : Values[Src];
+        if (ByteInput)
+          V.Zero |= 0xff00;
         if ((V.Zero & 0xff00) == 0xff00) {
           Remove = Values[Dest].equals(V);
           Results.emplace_back(Dest, V);
@@ -423,6 +432,73 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
           break;
         }
       }
+  return Changed;
+}
+
+// A proven redundant normalization can leave a copy used only by a compare.
+// Forward that use after allocation, accounting for a slower compare when its
+// donor is a lower register. No register assignment or spill decision changes.
+static bool forwardCompareCopies(MachineBasicBlock &MBB,
+                                  const AVMInstrInfo &TII) {
+  const auto &TRI = TII.getRegisterInfo();
+  LivePhysRegs Live(TRI);
+  Live.addLiveOuts(MBB);
+  bool Changed = false;
+  for (auto It = MBB.end(); It != MBB.begin();) {
+    MachineInstr &MI = *--It;
+    unsigned Opcode = MI.getOpcode();
+    bool Immediate = Opcode == AVM::CMPIS8 || Opcode == AVM::COLDCMPIS8;
+    bool Binary = Opcode == AVM::CMP || Opcode == AVM::CMP_RR;
+    bool Test = Opcode == AVM::TST8 || Opcode == AVM::TST16;
+    if (!MI.isBundled() && (Immediate || Binary || Test)) {
+      for (;;) {
+        auto Copy = MI.getIterator();
+        while (Copy != MBB.begin()) {
+          --Copy;
+          if (!Copy->isDebugInstr())
+            break;
+        }
+        if (Copy == MI.getIterator() ||
+            Copy->isBundled() ||
+            (Copy->getOpcode() != AVM::MOV && Copy->getOpcode() != AVM::MOV_RR) ||
+            Copy->getOperand(1).isUndef())
+          break;
+        Register D = Copy->getOperand(0).getReg();
+        Register S = Copy->getOperand(1).getReg();
+        if (D == S || Live.contains(D))
+          break;
+        unsigned Count = Binary ? 2 : 1;
+        bool Reads = false;
+        bool Upper = true;
+        for (unsigned I = 0; I != Count; ++I) {
+          Register R = MI.getOperand(I).getReg();
+          Reads |= R == D;
+          Upper &= AVM::UpperGPR16RegClass.contains(R == D ? S : R);
+        }
+        if (!Reads)
+          break;
+        // The maximum compare penalty is 21 cycles. A full-register copy
+        // costs 37; an upper-register copy leaves the compare compact.
+        for (unsigned I = 0; I != Count; ++I)
+          if (MI.getOperand(I).getReg() == D) {
+            MI.getOperand(I).setReg(S);
+            MI.getOperand(I).setIsKill(false);
+          }
+        if (Immediate)
+          MI.setDesc(TII.get(Upper ? AVM::CMPIS8 : AVM::COLDCMPIS8));
+        else if (Binary)
+          MI.setDesc(TII.get(Upper ? AVM::CMP : AVM::CMP_RR));
+        MBB.erase(Copy);
+        Changed = true;
+      }
+    }
+    Live.stepBackward(MI);
+  }
+  if (Changed)
+    for (MachineInstr &MI : MBB)
+      for (MachineOperand &MO : MI.operands())
+        if (MO.isReg() && MO.isUse())
+          MO.setIsKill(false);
   return Changed;
 }
 
@@ -704,7 +780,11 @@ public:
       if (!MF.getFunction().hasOptSize())
         Changed |= selectByBitOne(MBB, TII);
       Changed |= reuseBooleanCompareFlags(MBB, TII);
-      Changed |= cleanRegisterAndStackValues(MBB, TII);
+    }
+    AVMRegisterRange Ranges(MF, TII);
+    for (MachineBasicBlock &MBB : MF) {
+      Changed |= cleanRegisterAndStackValues(MBB, TII, Ranges);
+      Changed |= forwardCompareCopies(MBB, TII);
     }
     return Changed;
   }

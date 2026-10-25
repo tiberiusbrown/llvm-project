@@ -1,0 +1,377 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# These facts describe full allocated words, not truncated byte values.
+# A loop backedge is refined only when the comparison value is identical
+# to the induction value; normalization after a possible wrap breaks that link.
+
+--- |
+  target triple = "avm"
+  declare void @callee()
+  define void @bounded_ne() { ret void }
+  define void @unknown_start() { ret void }
+  define void @byte_wrap() { ret void }
+  define void @word_wrap() { ret void }
+  define void @step_over_limit() { ret void }
+  define void @bounded_ult() { ret void }
+  define void @alias_clobber() { ret void }
+  define void @nested_spill() { ret void }
+  define void @overlapping_spill() { ret void }
+  define void @unknown_store() { ret void }
+  define void @path_merge() { ret void }
+  define void @live_compare_copy() { ret void }
+  define void @forward_compare_copy() { ret void }
+  define void @descending() { ret void }
+  define void @call_clobber() { ret void }
+  define void @false_edge() { ret void }
+  define void @full_word_test() { ret void }
+...
+---
+name: bounded_ne
+body: |
+  ; CHECK-LABEL: name: bounded_ne
+  ; CHECK: $r2 = INC16 $r2
+  ; CHECK-NEXT: COLDCMPIS8 $r2, 32, implicit-def $cc
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 32, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: unknown_start
+body: |
+  ; CHECK-LABEL: name: unknown_start
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    liveins: $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 32, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: byte_wrap
+body: |
+  ; CHECK-LABEL: name: byte_wrap
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    $r2 = COLDLDI8 254
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 2, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: word_wrap
+body: |
+  ; CHECK-LABEL: name: word_wrap
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    $r2 = COLDLDI16 65534
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 2, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: step_over_limit
+body: |
+  ; CHECK-LABEL: name: step_over_limit
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = COLDADDIS8 $r2, 2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 31, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: bounded_ult
+body: |
+  ; CHECK-LABEL: name: bounded_ult
+  ; CHECK: $r2 = INC16 $r2
+  ; CHECK-NEXT: COLDCMPIS8 $r2, 32, implicit-def $cc
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 32, implicit-def $cc
+    RELAX_BR_ULT %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: alias_clobber
+body: |
+  ; CHECK-LABEL: name: alias_clobber
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    $r2r3 = IMPLICIT_DEF
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 32, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: nested_spill
+stack:
+  - { id: 0, type: spill-slot, offset: 0, size: 2, alignment: 1 }
+body: |
+  ; CHECK-LABEL: name: nested_spill
+  ; CHECK: $r2 = INC16 $r2
+  ; CHECK-NEXT: COLDCMPIS8 $r2, 8, implicit-def $cc
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.2
+    STSP16 0, $r2, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r4 = LDI8 0
+    RELAX_JMP %bb.2
+  bb.2:
+    successors: %bb.2, %bb.3
+    $r2 = COLDLDI16 12345
+    $r4 = INC16 $r4
+    CMPIS8 $r4, 64, implicit-def $cc
+    RELAX_BR_NE %bb.2, implicit $cc
+  bb.3:
+    successors: %bb.1, %bb.4
+    $r2 = LDSP16 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r2 = INC16 $r2
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 8, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.4:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: overlapping_spill
+stack:
+  - { id: 0, type: spill-slot, offset: 0, size: 2, alignment: 1 }
+  - { id: 1, type: spill-slot, offset: 1, size: 1, alignment: 1 }
+body: |
+  ; CHECK-LABEL: name: overlapping_spill
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    liveins: $r3, $sp
+    $r2 = COLDLDI8 7
+    STSP16 0, $r2, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.2
+    STSP8 1, $r3, implicit $sp :: (store (s8) into %stack.1, align 1)
+    RELAX_JMP %bb.2
+  bb.2:
+    $r2 = LDSP16 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r2 = ZEXT8 $r2
+    RET implicit $r2, implicit-def dead $sp, implicit $sp
+...
+---
+name: unknown_store
+stack:
+  - { id: 0, type: spill-slot, offset: 0, size: 2, alignment: 1 }
+body: |
+  ; CHECK-LABEL: name: unknown_store
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1
+    liveins: $r3, $sp
+    $r2 = COLDLDI8 7
+    STSP16 0, $r2, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.2
+    STSP16 0, $r3, implicit $sp
+    RELAX_JMP %bb.2
+  bb.2:
+    $r2 = LDSP16 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r2 = ZEXT8 $r2
+    RET implicit $r2, implicit-def dead $sp, implicit $sp
+...
+---
+name: path_merge
+body: |
+  ; CHECK-LABEL: name: path_merge
+  ; CHECK: ZEXT8
+  bb.0:
+    successors: %bb.1, %bb.2
+    liveins: $r4
+    CMPIS8 $r4, 0, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit $cc
+  bb.1:
+    successors: %bb.3
+    $r2 = COLDLDI8 7
+    RELAX_JMP %bb.3
+  bb.2:
+    successors: %bb.3
+    $r2 = COLDLDI16 300
+    RELAX_JMP %bb.3
+  bb.3:
+    $r2 = ZEXT8 $r2
+    RET implicit $r2, implicit-def dead $sp, implicit $sp
+...
+---
+name: live_compare_copy
+body: |
+  ; CHECK-LABEL: name: live_compare_copy
+  ; CHECK: $r5 = MOV_RR $r2
+  ; CHECK-NEXT: CMPIS8 $r5, 32, implicit-def $cc
+  bb.0:
+    liveins: $r2
+    $r5 = MOV_RR $r2
+    CMPIS8 $r5, 32, implicit-def $cc
+    RET implicit $r5, implicit-def dead $sp, implicit $sp
+...
+---
+name: forward_compare_copy
+body: |
+  ; CHECK-LABEL: name: forward_compare_copy
+  ; CHECK-NOT: MOV
+  ; CHECK: COLDCMPIS8 $r2, 32, implicit-def $cc
+  bb.0:
+    liveins: $r2
+    $r5 = MOV_RR $r2
+    CMPIS8 $r5, 32, implicit-def $cc
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: descending
+body: |
+  ; CHECK-LABEL: name: descending
+  ; CHECK: $r2 = DEC16 $r2
+  ; CHECK-NEXT: COLDCMPIS8 $r2, 0, implicit-def $cc
+  bb.0:
+    successors: %bb.1
+    $r2 = COLDLDI8 32
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = DEC16 $r2
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 0, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: call_clobber
+body: |
+  ; CHECK-LABEL: name: call_clobber
+  ; CHECK: RELAX_CALL
+  ; CHECK: $r4 = ZEXT8 $r4
+  bb.0:
+    successors: %bb.1
+    $r4 = LDI8 7
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.2
+    RELAX_CALL @callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit $sp
+    RELAX_JMP %bb.2
+  bb.2:
+    $r4 = ZEXT8 $r4
+    RET implicit $r4, implicit-def dead $sp, implicit $sp
+...
+---
+name: false_edge
+body: |
+  ; CHECK-LABEL: name: false_edge
+  ; CHECK: $r2 = INC16 $r2
+  ; CHECK-NEXT: COLDCMPIS8 $r2, 32, implicit-def $cc
+  bb.0:
+    successors: %bb.1
+    $r2 = SUB_RR undef $r2, undef $r2
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r2 = INC16 $r2
+    $r5 = MOV_RR $r2
+    $r5 = ZEXT8 $r5
+    CMPIS8 $r5, 32, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit $cc
+    RELAX_JMP %bb.1
+  bb.2:
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: full_word_test
+body: |
+  ; CHECK-LABEL: name: full_word_test
+  ; CHECK: CMP_RR $r2, $r4, implicit-def $cc
+  ; CHECK: bb.1:
+  ; CHECK-NOT: ZEXT8
+  ; CHECK: RET
+  ; CHECK: bb.2:
+  ; CHECK: $r2 = ZEXT8 $r2
+  bb.0:
+    successors: %bb.1, %bb.2
+    liveins: $r2
+    $r4 = LDI16 256
+    CMP_RR $r2, $r4, implicit-def $cc
+    RELAX_BR_UGE %bb.2, implicit $cc
+  bb.1:
+    $r2 = ZEXT8 $r2
+    RET implicit $r2, implicit-def dead $sp, implicit $sp
+  bb.2:
+    $r2 = ZEXT8 $r2
+    RET implicit $r2, implicit-def dead $sp, implicit $sp
+...

@@ -28,7 +28,7 @@
   define void @retain_old_constant_definition(ptr %unknown) { ret void }
   define void @keep_stack_across_call(ptr %unknown) { ret void }
   define void @keep_atomic_stack(ptr %unknown) { ret void }
-  define void @keep_block_boundary_extension(ptr %unknown) { ret void }
+  define void @remove_block_boundary_extension(ptr %unknown) { ret void }
   define void @keep_implicit_definition(ptr %unknown) { ret void }
 ...
 ---
@@ -469,18 +469,19 @@ body: |
     RET implicit-def dead $sp, implicit $sp
 ...
 ---
-name: keep_block_boundary_extension
+name: remove_block_boundary_extension
 tracksRegLiveness: true
 body: |
   bb.0:
-    ; CHECK-LABEL: name: keep_block_boundary_extension
+    ; CHECK-LABEL: name: remove_block_boundary_extension
     successors: %bb.1
     liveins: $r4
     $r5 = LD8U $r4
     RELAX_JMP %bb.1
   bb.1:
     liveins: $r5
-    ; CHECK: $r5 = ZEXT8 $r5
+    ; CHECK-NOT: ZEXT8
+    ; CHECK: RET
     $r5 = ZEXT8 $r5
     RET implicit-def dead $sp, implicit $sp
 ...
