@@ -558,9 +558,9 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setTargetDAGCombine(
       {ISD::LOAD, ISD::MUL, ISD::SUB, ISD::BUILD_PAIR, ISD::EXTRACT_ELEMENT,
        ISD::TRUNCATE});
-  for (MVT VT : {MVT::i16, MVT::i32}) {
-    setOperationAction(ISD::ROTL, VT, Expand);
-    setOperationAction(ISD::ROTR, VT, Expand);
+  for (unsigned Opcode : {ISD::ROTL, ISD::ROTR}) {
+    setOperationAction(Opcode, MVT::i16, Expand);
+    setOperationAction(Opcode, MVT::i32, Custom);
   }
   for (unsigned Opcode :
        {ISD::MULHU, ISD::MULHS, ISD::UMUL_LOHI, ISD::SMUL_LOHI})
@@ -1246,6 +1246,47 @@ SDValue AVMTargetLowering::LowerI32Bitwise(SDValue Op,
   return BuildI32FromWords(Low, High, DL, DAG);
 }
 
+SDValue AVMTargetLowering::LowerI32Rotate(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  SDValue Value = Op.getOperand(0);
+  SDValue Count = Op.getOperand(1);
+  bool IsLeft = Op.getOpcode() == ISD::ROTL;
+  if (const auto *C = dyn_cast<ConstantSDNode>(Count)) {
+    // Keep constant rotations in native code through the constant-shift
+    // lowering, including a pure word exchange for a rotation by 16.
+    unsigned Amount = C->getZExtValue() & 31;
+    if (!Amount)
+      return Value;
+    if (!IsLeft)
+      Amount = 32 - Amount;
+    SDValue Left = DAG.getNode(ISD::SHL, DL, MVT::i32, Value,
+                               DAG.getConstant(Amount, DL, MVT::i16));
+    SDValue Right = DAG.getNode(ISD::SRL, DL, MVT::i32, Value,
+                                DAG.getConstant(32 - Amount, DL, MVT::i16));
+    return DAG.getNode(ISD::OR, DL, MVT::i32, Left, Right);
+  }
+
+  // Rotation only depends on the low five count bits. The target helpers
+  // accept a native word count and normalize it modulo 32 themselves.
+  Count = DAG.getZExtOrTrunc(Count, DL, MVT::i16);
+  ArgListTy Args;
+  for (SDValue Arg : {Value, Count}) {
+    ArgListEntry Entry(Arg, Arg.getValueType().getTypeForEVT(*DAG.getContext()));
+    Entry.IsZExt = true;
+    Args.push_back(Entry);
+  }
+  SDValue Callee = DAG.getExternalSymbol(
+      IsLeft ? "__avm_rotlsi3" : "__avm_rotrsi3",
+      getPointerTy(DAG.getDataLayout()));
+  CallLoweringInfo CLI(DAG);
+  CLI.setDebugLoc(DL)
+      .setChain(DAG.getEntryNode())
+      .setLibCallee(CallingConv::C, Type::getInt32Ty(*DAG.getContext()), Callee,
+                    std::move(Args))
+      .setZExtResult(true);
+  return LowerCallTo(CLI).first;
+}
+
 SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
   assert(Op.getValueType() == MVT::i32 && "expected i32 shift");
 
@@ -1702,6 +1743,9 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SRL:
   case ISD::SRA:
     return LowerI32Shift(Op, DAG);
+  case ISD::ROTL:
+  case ISD::ROTR:
+    return LowerI32Rotate(Op, DAG);
   case ISD::AND:
   case ISD::OR:
     return LowerI32Bitwise(Op, DAG);

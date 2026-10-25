@@ -113,6 +113,7 @@ private:
   SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,
                                const SDLoc &DL, SelectionDAG &DAG) const;
   SDValue LowerI32Shift(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerI32Rotate(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerI32Bitwise(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerISFPClass(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerMULH(SDValue Op, SelectionDAG &DAG) const;

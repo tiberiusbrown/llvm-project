@@ -8869,6 +8869,27 @@ static bool matchRotateSub(SDValue Pos, SDValue Neg, unsigned EltSize,
   //
   // We also need to account for a potential truncation of NegOp1 if the amount
   // has already been legalized to a shift amount type.
+  // Integer promotions can give the two counts different cast chains, e.g.
+  // zext i8 n and (sub i16 32, (zext i8 n)) on a target with 16-bit int.
+  // For a power-of-two rotate, casts preserving the low log2(EltSize) bits
+  // cannot change the result for any defined pair of shifts. Peel them on
+  // both sides before comparing the underlying count values.
+  if (IsRotate && !FromAdd && isPowerOf2_64(EltSize)) {
+    unsigned Bits = Log2_64(EltSize);
+    auto PeelCountCasts = [Bits](SDValue Count) {
+      while ((Count.getOpcode() == ISD::ZERO_EXTEND ||
+              Count.getOpcode() == ISD::SIGN_EXTEND ||
+              Count.getOpcode() == ISD::ANY_EXTEND ||
+              Count.getOpcode() == ISD::TRUNCATE) &&
+             Count.getScalarValueSizeInBits() >= Bits &&
+             Count.getOperand(0).getScalarValueSizeInBits() >= Bits)
+        Count = Count.getOperand(0);
+      return Count;
+    };
+    Pos = PeelCountCasts(Pos);
+    NegOp1 = PeelCountCasts(NegOp1);
+  }
+
   APInt Width;
   if ((Pos == NegOp1) ||
       (NegOp1.getOpcode() == ISD::TRUNCATE && Pos == NegOp1.getOperand(0)))
