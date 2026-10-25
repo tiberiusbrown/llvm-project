@@ -525,6 +525,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SETCC, MVT::i16, Custom);
   setOperationAction(ISD::SETCC, MVT::i32, Custom);
   setOperationAction(ISD::SETCC, MVT::f32, Custom);
+  setOperationAction(ISD::UADDSAT, MVT::i16, Custom);
   if (TM.getOptLevel() == CodeGenOptLevel::None) {
     setOperationAction(ISD::SELECT, MVT::i16, Custom);
     setOperationAction(ISD::SELECT, MVT::i32, Custom);
@@ -558,7 +559,7 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i32, Custom);
   setTargetDAGCombine(
       {ISD::LOAD, ISD::MUL, ISD::SUB, ISD::BUILD_PAIR, ISD::EXTRACT_ELEMENT,
-       ISD::TRUNCATE});
+       ISD::TRUNCATE, ISD::UMIN});
   for (unsigned Opcode : {ISD::ROTL, ISD::ROTR}) {
     setOperationAction(Opcode, MVT::i16, Expand);
     setOperationAction(Opcode, MVT::i32, Custom);
@@ -1432,6 +1433,32 @@ void AVMTargetLowering::computeKnownBitsForTargetNode(
 
 SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
+  if (N->getOpcode() == ISD::UMIN && N->getValueType(0) == MVT::i32) {
+    SDValue Sum = N->getOperand(0), Limit = N->getOperand(1);
+    if (isa<ConstantSDNode>(Sum))
+      std::swap(Sum, Limit);
+    const auto *Max = dyn_cast<ConstantSDNode>(Limit);
+    if (Max && Max->getZExtValue() == UINT16_MAX &&
+        Sum.getOpcode() == ISD::ADD && Sum.hasOneUse()) {
+      SelectionDAG &DAG = DCI.DAG;
+      SDValue LHS = Sum.getOperand(0), RHS = Sum.getOperand(1);
+      // Recognize a clamped widening add before min/max expansion hides it
+      // behind a wide compare and select. Ranges, rather than just explicit
+      // extensions, also cover masked operands and zero-extending loads.
+      // Two unsigned words cannot overflow i32, so this preserves all bits
+      // even when callers retain the clamped result as an i32 value.
+      if (DAG.computeKnownBits(LHS).getMaxValue().ule(UINT16_MAX) &&
+          DAG.computeKnownBits(RHS).getMaxValue().ule(UINT16_MAX)) {
+        SDLoc DL(N);
+        SDValue Sat = DAG.getNode(
+            ISD::UADDSAT, DL, MVT::i16,
+            DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, LHS),
+            DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, RHS));
+        return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Sat);
+      }
+    }
+    return SDValue();
+  }
   if (N->getOpcode() == ISD::BUILD_PAIR && N->getValueType(0) == MVT::i32) {
     SDValue Pair = BuildI32FromWords(N->getOperand(0), N->getOperand(1),
                                     SDLoc(N), DCI.DAG);
@@ -1722,6 +1749,16 @@ void AVMTargetLowering::ReplaceNodeResults(
 
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
+  case ISD::UADDSAT: {
+    SDLoc DL(Op);
+    SDValue LHS = Op.getOperand(0), RHS = Op.getOperand(1);
+    // Unsigned overflow is exactly (LHS + RHS) mod 2^16 < LHS. Keep
+    // the comparison as glue so no intermediate boolean is materialized.
+    SDValue Sum = DAG.getNode(ISD::ADD, DL, MVT::i16, LHS, RHS);
+    auto [TargetCC, Glue] = getAVMCompare(Sum, LHS, ISD::SETUGE, DL, DAG);
+    return DAG.getNode(AVMISD::CMOV, DL, MVT::i16, Sum,
+                       DAG.getAllOnesConstant(DL, MVT::i16), TargetCC, Glue);
+  }
   case ISD::EXTRACT_ELEMENT:
     return getI32Word(Op.getOperand(0), Op.getConstantOperandVal(1), SDLoc(Op),
                        DAG);
