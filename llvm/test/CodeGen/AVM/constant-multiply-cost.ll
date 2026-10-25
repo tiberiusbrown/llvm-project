@@ -55,3 +55,16 @@ define i16 @mul31(i16 %x) {
   %product = mul i16 %x, 31
   ret i16 %product
 }
+
+; Subtract forms use the same native-cycle profitability check. Small
+; constants above still keep MUL16 when decomposition would be slower.
+define i16 @mul511(i16 %x) {
+; CHECK-LABEL: mul511:
+; CHECK-NOT: mul16
+; CHECK: lsl16i {{r[4-7]}}, 9
+; CHECK: sub
+; CHECK-NOT: mul16
+; CHECK: ret
+  %product = mul i16 %x, 511
+  ret i16 %product
+}

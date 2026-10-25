@@ -16,6 +16,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MathExtras.h"
+#include <algorithm>
 
 using namespace llvm;
 
@@ -27,31 +28,32 @@ bool AVMTargetLowering::decomposeMulByConstant(LLVMContext &, EVT VT,
   if (!Constant)
     return false;
 
-  // The generic DAG combiner can turn 2^N + 1 into a shift and an add. Count
-  // the extra copy needed to retain the original operand, as well as the
+  // The generic DAG combiner can turn 2^N +/- 1 into a shift and an add/sub.
+  // Count the extra copy needed to retain the original operand, as well as the
   // immediate materialization that a MUL16 would require. A small margin
   // accounts for the extra live value introduced by the decomposition.
   uint64_t Multiplier = Constant->getZExtValue();
-  if (Multiplier < 3 || Multiplier == 5 || Multiplier > INT16_MAX ||
-      !isPowerOf2_64(Multiplier - 1))
+  if (Multiplier < 3 || Multiplier == 5 || Multiplier > INT16_MAX)
     return false;
-  unsigned Shift = Log2_64(Multiplier - 1);
+  bool IsAdd = isPowerOf2_64(Multiplier - 1);
+  if (!IsAdd && !isPowerOf2_64(Multiplier + 1))
+    return false;
+  unsigned Shift = Log2_64(IsAdd ? Multiplier - 1 : Multiplier + 1);
   if (Shift >= 16)
     return false;
 
   using AVM::AVMCostKind;
   unsigned MultiplyCycles =
-      AVM::getFixedCycles(Multiplier <= UINT8_MAX
-                              ? AVMCostKind::Ldi8Upper
-                              : AVMCostKind::Ldi16Upper) +
+      AVM::getFixedCycles(Multiplier <= UINT8_MAX ? AVMCostKind::Ldi8Upper
+                                                  : AVMCostKind::Ldi16Upper) +
       AVM::getFixedCycles(AVMCostKind::Mul16);
   unsigned ShiftCycles =
-      Shift <= 3
-          ? Shift * AVM::getFixedCycles(AVMCostKind::AddUpper)
-          : AVM::getShiftCycles(AVMCostKind::Lsl16I, Shift);
-  unsigned DecomposedCycles = AVM::getFixedCycles(AVMCostKind::MovUpper) +
-                              ShiftCycles +
-                              AVM::getFixedCycles(AVMCostKind::AddUpper);
+      Shift <= 3 ? Shift * AVM::getFixedCycles(AVMCostKind::AddUpper)
+                 : AVM::getShiftCycles(AVMCostKind::Lsl16I, Shift);
+  unsigned DecomposedCycles =
+      AVM::getFixedCycles(AVMCostKind::MovUpper) + ShiftCycles +
+      AVM::getFixedCycles(IsAdd ? AVMCostKind::AddUpper
+                                : AVMCostKind::SubUpper);
   return DecomposedCycles + 10 <= MultiplyCycles;
 }
 
@@ -1414,18 +1416,56 @@ SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
     // the multiplication native when the entire unsigned product fits in a
     // word, then restore the wide offset with a zero high word. Compute the
     // bound in 64 bits so it cannot wrap for unrestricted i32 operands.
-    uint64_t MaxLHS =
-        DCI.DAG.computeKnownBits(N->getOperand(0)).getMaxValue().getZExtValue();
-    uint64_t MaxRHS =
-        DCI.DAG.computeKnownBits(N->getOperand(1)).getMaxValue().getZExtValue();
+    SelectionDAG &DAG = DCI.DAG;
+    SDLoc DL(N);
+    SDValue LHS = N->getOperand(0), RHS = N->getOperand(1);
+    KnownBits Left = DAG.computeKnownBits(LHS);
+    KnownBits Right = DAG.computeKnownBits(RHS);
+    uint64_t MaxLHS = Left.getMaxValue().getZExtValue();
+    uint64_t MaxRHS = Right.getMaxValue().getZExtValue();
+    auto LowProduct = [&]() {
+      return DAG.getNode(ISD::MUL, DL, MVT::i16,
+                         DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, LHS),
+                         DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, RHS));
+    };
     if (MaxLHS * MaxRHS <= UINT16_MAX) {
-      SDLoc DL(N);
-      SDValue LHS =
-          DCI.DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, N->getOperand(0));
-      SDValue RHS =
-          DCI.DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, N->getOperand(1));
-      SDValue Product = DCI.DAG.getNode(ISD::MUL, DL, MVT::i16, LHS, RHS);
-      return DCI.DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, Product);
+      return DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i32, LowProduct());
+    }
+
+    // KnownBits alone cannot express that unknown high bits are copies of
+    // the sign bit. Intersect its bounds with ComputeNumSignBits so signed
+    // extensions and sign-extended loads retain their narrow value ranges.
+    auto SignedBounds = [&](SDValue Value, const KnownBits &Known) {
+      int64_t Magnitude = int64_t(1) << (32 - DAG.ComputeNumSignBits(Value));
+      return std::pair(
+          std::max(-Magnitude, Known.getSignedMinValue().getSExtValue()),
+          std::min(Magnitude - 1, Known.getSignedMaxValue().getSExtValue()));
+    };
+    auto [MinLeft, MaxLeft] = SignedBounds(LHS, Left);
+    auto [MinRight, MaxRight] = SignedBounds(RHS, Right);
+    // All four signed i32 endpoint products fit in int64_t.
+    int64_t Products[] = {MinLeft * MinRight, MinLeft * MaxRight,
+                          MaxLeft * MinRight, MaxLeft * MaxRight};
+    auto [MinProduct, MaxProduct] =
+        std::minmax_element(std::begin(Products), std::end(Products));
+    if (*MinProduct >= INT16_MIN && *MaxProduct <= INT16_MAX)
+      return DAG.getNode(ISD::SIGN_EXTEND, DL, MVT::i32, LowProduct());
+
+    // A product in [-65536, 65535] has only a sign in its high word, even
+    // when its low word overflows signed i16 (e.g. -128 * 257 = -32896).
+    // A strictly positive factor preserves the other operand's sign. Zero
+    // must be excluded: negative * zero needs a zero high word as well.
+    if (*MinProduct >= -65536 && *MaxProduct <= UINT16_MAX &&
+        (MinLeft > 0 || MinRight > 0)) {
+      SDValue Signed = MinRight > 0 ? LHS : RHS;
+      int64_t MinSigned = MinRight > 0 ? MinLeft : MinRight;
+      int64_t MaxSigned = MinRight > 0 ? MaxLeft : MaxRight;
+      unsigned SignWord =
+          MinSigned >= INT16_MIN && MaxSigned <= INT16_MAX ? 0 : 1;
+      SDValue High = DAG.getNode(ISD::SRA, DL, MVT::i16,
+                                 getI32Word(Signed, SignWord, DL, DAG),
+                                 DAG.getConstant(15, DL, MVT::i16));
+      return BuildI32FromWords(LowProduct(), High, DL, DAG);
     }
     return SDValue();
   }
