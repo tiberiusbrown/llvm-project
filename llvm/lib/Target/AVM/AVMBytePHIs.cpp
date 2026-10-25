@@ -10,6 +10,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -30,6 +31,7 @@ public:
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<ScalarEvolutionWrapperPass>();
     AU.setPreservesCFG();
   }
 
@@ -37,72 +39,175 @@ public:
     if (skipFunction(F))
       return false;
 
-    SmallVector<PHINode *, 16> Phis;
-    SmallPtrSet<PHINode *, 16> Candidates;
+    auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+    SmallVector<Instruction *, 16> Values;
+    SmallPtrSet<Instruction *, 16> Candidates;
+    DenseMap<BinaryOperator *, ConstantInt *> Decrements;
     for (BasicBlock &BB : F) {
       if (BB.getFirstInsertionPt() == BB.end())
         continue;
       for (PHINode &PN : BB.phis())
         if (PN.getType()->isIntegerTy(8)) {
-          Phis.push_back(&PN);
+          Values.push_back(&PN);
           Candidates.insert(&PN);
         }
     }
 
+    // Follow arithmetic feeding the PHIs only when its unsigned byte result
+    // equals the native word result. NUW flags carry the optimizer's range
+    // proofs; ScalarEvolution can also prove bounded induction updates that
+    // have not acquired flags. NSW alone does not exclude unsigned wrapping.
+    for (unsigned I = 0; I != Values.size(); ++I)
+      for (Value *V : Values[I]->operands()) {
+        auto *Op = dyn_cast<BinaryOperator>(V);
+        if (!Op || Candidates.contains(Op) ||
+            (Op->getOpcode() != Instruction::Add &&
+             Op->getOpcode() != Instruction::Sub))
+          continue;
+        if (!Op->hasNoUnsignedWrap() &&
+            !SE.willNotOverflow(Op->getOpcode(), false,
+                                SE.getSCEV(Op->getOperand(0)),
+                                SE.getSCEV(Op->getOperand(1)), Op)) {
+          // InstCombine canonicalizes byte subtraction by a constant to an
+          // add of its negation. Prove the subtraction, then widen its positive
+          // magnitude rather than zero-extending the negative byte constant.
+          auto *Step = dyn_cast<ConstantInt>(Op->getOperand(1));
+          if (Op->getOpcode() != Instruction::Add || !Step ||
+              !Step->isNegative())
+            continue;
+          auto *Magnitude =
+              ConstantInt::get(Step->getContext(), -Step->getValue());
+          if (!SE.willNotOverflow(Instruction::Sub, false,
+                                  SE.getSCEV(Op->getOperand(0)),
+                                  SE.getSCEV(Magnitude), Op))
+            continue;
+          Decrements[Op] = Magnitude;
+        }
+        Values.push_back(Op);
+        Candidates.insert(Op);
+      }
+
     // Byte loads and constants already produce zero-extended native words.
-    // Keep that representation through joins, including cyclic PHI graphs.
-    // Arithmetic inputs are excluded: extending a wrapping byte operation
-    // could require an additional instruction or change its semantics.
+    // Keep that representation through joins and proven nonwrapping updates,
+    // including cycles. An unknown/wrapping input invalidates its dependents.
     auto CanExtend = [&](Value *V) {
       if (isa<ConstantInt>(V))
         return true;
-      if (auto *PN = dyn_cast<PHINode>(V))
-        return Candidates.contains(PN);
+      if (auto *I = dyn_cast<Instruction>(V); Candidates.contains(I))
+        return true;
       auto *LI = dyn_cast<LoadInst>(V);
       return LI && LI->getType()->isIntegerTy(8) &&
              (LI->getPointerAddressSpace() == 0 ||
               LI->getPointerAddressSpace() == 1);
     };
-    SmallVector<PHINode *, 16> Invalid;
-    for (PHINode *PN : Phis)
-      if (!llvm::all_of(PN->incoming_values(), CanExtend))
-        Invalid.push_back(PN);
+    SmallVector<Instruction *, 16> Invalid;
+    for (Instruction *I : Values)
+      if (!llvm::all_of(I->operands(), CanExtend))
+        Invalid.push_back(I);
     while (!Invalid.empty()) {
-      PHINode *PN = Invalid.pop_back_val();
-      if (!Candidates.erase(PN))
+      Instruction *I = Invalid.pop_back_val();
+      if (!Candidates.erase(I))
         continue;
-      for (User *U : PN->users())
-        if (auto *UserPN = dyn_cast<PHINode>(U))
-          Invalid.push_back(UserPN);
+      for (User *U : I->users())
+        if (auto *UserI = dyn_cast<Instruction>(U); Candidates.contains(UserI))
+          Invalid.push_back(UserI);
     }
+
+    // Do not widen arithmetic left behind by a rejected PHI graph.
+    SmallPtrSet<Instruction *, 16> Needed;
+    SmallVector<Instruction *, 16> Worklist;
+    for (Instruction *I : Values)
+      if (isa<PHINode>(I) && Candidates.contains(I)) {
+        Needed.insert(I);
+        Worklist.push_back(I);
+      }
+    while (!Worklist.empty())
+      for (Value *V : Worklist.pop_back_val()->operands())
+        if (auto *I = dyn_cast<Instruction>(V);
+            Candidates.contains(I) && Needed.insert(I).second)
+          Worklist.push_back(I);
+    Candidates = std::move(Needed);
+    if (Candidates.empty())
+      return false;
+
+    // Widen only graphs with an unsigned consumer that would otherwise need
+    // normalization. Byte stores and comparisons with zero already use the
+    // low byte directly. Promoting their recurrences has no benefit and can
+    // disturb scheduling and register allocation in surrounding loops.
+    Needed.clear();
+    for (Instruction *I : Values) {
+      if (!Candidates.contains(I))
+        continue;
+      bool HasWordUse = llvm::any_of(I->users(), [&](User *U) {
+        if (isa<ZExtInst>(U))
+          return true;
+        if (auto *Cmp = dyn_cast<ICmpInst>(U)) {
+          if ((!Cmp->isUnsigned() && !Cmp->isEquality()) ||
+              !CanExtend(Cmp->getOperand(0)) || !CanExtend(Cmp->getOperand(1)))
+            return false;
+          auto *LHS = dyn_cast<ConstantInt>(Cmp->getOperand(0));
+          auto *RHS = dyn_cast<ConstantInt>(Cmp->getOperand(1));
+          return (!LHS || !LHS->isZero()) && (!RHS || !RHS->isZero());
+        }
+        if (auto *Switch = dyn_cast<SwitchInst>(U))
+          return llvm::any_of(Switch->cases(), [](auto Case) {
+            return !Case.getCaseValue()->isZero();
+          });
+        return false;
+      });
+      if (HasWordUse) {
+        Needed.insert(I);
+        Worklist.push_back(I);
+      }
+    }
+    while (!Worklist.empty())
+      for (Value *V : Worklist.pop_back_val()->operands())
+        if (auto *I = dyn_cast<Instruction>(V);
+            Candidates.contains(I) && Needed.insert(I).second)
+          Worklist.push_back(I);
+    Candidates = std::move(Needed);
     if (Candidates.empty())
       return false;
 
     Type *WordTy = Type::getInt16Ty(F.getContext());
     DenseMap<Value *, Value *> Words;
-    for (PHINode *PN : Phis)
-      if (Candidates.contains(PN)) {
-        auto *Wide = PHINode::Create(WordTy, PN->getNumIncomingValues(),
-                                    PN->getName() + ".word", PN->getIterator());
+    for (Instruction *I : Values)
+      if (auto *PN = dyn_cast<PHINode>(I); PN && Candidates.contains(PN)) {
+        auto *Wide =
+            PHINode::Create(WordTy, PN->getNumIncomingValues(),
+                            PN->getName() + ".word", PN->getIterator());
         Wide->setDebugLoc(PN->getDebugLoc());
         Words[PN] = Wide;
       }
 
-    auto GetWord = [&](Value *V) -> Value * {
+    auto GetWord = [&](auto &&GetWord, Value *V) -> Value * {
       if (Value *Word = Words.lookup(V))
         return Word;
       if (auto *CI = dyn_cast<ConstantInt>(V))
         return ConstantInt::get(WordTy, CI->getZExtValue());
+      if (auto *Op = dyn_cast<BinaryOperator>(V)) {
+        Value *LHS = GetWord(GetWord, Op->getOperand(0));
+        ConstantInt *Magnitude = Decrements.lookup(Op);
+        Value *RHS =
+            GetWord(GetWord, Magnitude ? Magnitude : Op->getOperand(1));
+        IRBuilder<> B(Op);
+        Value *Wide =
+            B.CreateBinOp(Magnitude ? Instruction::Sub : Op->getOpcode(), LHS,
+                          RHS, Op->getName() + ".word");
+        if (auto *WideOp = dyn_cast<BinaryOperator>(Wide))
+          WideOp->setHasNoUnsignedWrap(true);
+        return Words[V] = Wide;
+      }
       auto *LI = cast<LoadInst>(V);
       IRBuilder<> B(LI->getParent(), std::next(LI->getIterator()));
       B.SetCurrentDebugLocation(LI->getDebugLoc());
       return Words[V] = B.CreateZExt(V, WordTy, V->getName() + ".word");
     };
-    for (PHINode *PN : Phis)
-      if (Candidates.contains(PN)) {
+    for (Instruction *I : Values)
+      if (auto *PN = dyn_cast<PHINode>(I); PN && Candidates.contains(PN)) {
         auto *Wide = cast<PHINode>(Words[PN]);
         for (unsigned I = 0; I != PN->getNumIncomingValues(); ++I)
-          Wide->addIncoming(GetWord(PN->getIncomingValue(I)),
+          Wide->addIncoming(GetWord(GetWord, PN->getIncomingValue(I)),
                             PN->getIncomingBlock(I));
       }
 
@@ -111,38 +216,43 @@ public:
     // unchanged. This avoids promoting unrelated arithmetic/comparison trees.
     SmallVector<Instruction *, 16> Dead;
     SmallPtrSet<Instruction *, 16> Seen;
-    for (PHINode *PN : Phis) {
-      if (!Candidates.contains(PN))
+    for (Instruction *V : Values) {
+      if (!Candidates.contains(V))
         continue;
-      SmallVector<User *, 8> Users(PN->users());
+      SmallVector<User *, 8> Users(V->users());
       for (User *U : Users) {
         auto *I = cast<Instruction>(U);
         if (!Seen.insert(I).second)
           continue;
         IRBuilder<> B(I);
         if (auto *Ext = dyn_cast<ZExtInst>(I)) {
-          Value *Word = Words[PN];
+          Value *Word = Words[V];
           Ext->replaceAllUsesWith(B.CreateZExtOrTrunc(Word, Ext->getType()));
           Dead.push_back(Ext);
         } else if (auto *Cmp = dyn_cast<ICmpInst>(I)) {
           if ((!Cmp->isUnsigned() && !Cmp->isEquality()) ||
-              !CanExtend(Cmp->getOperand(0)) ||
-              !CanExtend(Cmp->getOperand(1)))
+              !CanExtend(Cmp->getOperand(0)) || !CanExtend(Cmp->getOperand(1)))
+            continue;
+          // Byte tests against zero already lower directly to TST8. Keep
+          // their byte type even when another consumer needs a native word.
+          auto *LHS = dyn_cast<ConstantInt>(Cmp->getOperand(0));
+          auto *RHS = dyn_cast<ConstantInt>(Cmp->getOperand(1));
+          if ((LHS && LHS->isZero()) || (RHS && RHS->isZero()))
             continue;
           Value *WideCmp = B.CreateICmp(Cmp->getPredicate(),
-                                       GetWord(Cmp->getOperand(0)),
-                                       GetWord(Cmp->getOperand(1)));
+                                        GetWord(GetWord, Cmp->getOperand(0)),
+                                        GetWord(GetWord, Cmp->getOperand(1)));
           Cmp->replaceAllUsesWith(WideCmp);
           Dead.push_back(Cmp);
         } else if (auto *Switch = dyn_cast<SwitchInst>(I)) {
-          auto *WideSwitch = SwitchInst::Create(
-              Words[PN], Switch->getDefaultDest(), Switch->getNumCases(),
-              Switch->getIterator());
+          auto *WideSwitch =
+              SwitchInst::Create(Words[V], Switch->getDefaultDest(),
+                                 Switch->getNumCases(), Switch->getIterator());
           WideSwitch->copyMetadata(*Switch);
           WideSwitch->setDebugLoc(Switch->getDebugLoc());
           for (auto Case : Switch->cases())
             WideSwitch->addCase(
-                cast<ConstantInt>(GetWord(Case.getCaseValue())),
+                cast<ConstantInt>(GetWord(GetWord, Case.getCaseValue())),
                 Case.getCaseSuccessor());
           Dead.push_back(Switch);
         }
@@ -152,17 +262,23 @@ public:
       I->eraseFromParent();
 
     SmallVector<Instruction *, 16> Truncs;
-    for (PHINode *PN : Phis)
-      if (Candidates.contains(PN)) {
-        IRBuilder<> B(PN->getParent(), PN->getParent()->getFirstInsertionPt());
-        B.SetCurrentDebugLocation(PN->getDebugLoc());
-        auto *Trunc = cast<Instruction>(B.CreateTrunc(Words[PN], PN->getType()));
-        PN->replaceAllUsesWith(Trunc);
-        Truncs.push_back(Trunc);
+    for (Instruction *I : Values)
+      if (Candidates.contains(I)) {
+        IRBuilder<> B(I);
+        if (isa<PHINode>(I))
+          B.SetInsertPoint(I->getParent(),
+                           I->getParent()->getFirstInsertionPt());
+        Value *Trunc = B.CreateTrunc(Words[I], I->getType());
+        I->replaceAllUsesWith(Trunc);
+        if (auto *TruncI = dyn_cast<Instruction>(Trunc))
+          Truncs.push_back(TruncI);
       }
-    for (PHINode *PN : Phis)
-      if (Candidates.contains(PN))
-        PN->eraseFromParent();
+    for (Instruction *I : Values)
+      if (Candidates.contains(I))
+        I->dropAllReferences();
+    for (Instruction *I : Values)
+      if (Candidates.contains(I))
+        I->eraseFromParent();
     for (Instruction *I : Truncs)
       if (I->use_empty())
         I->eraseFromParent();
@@ -172,5 +288,9 @@ public:
 } // namespace
 
 char AVMBytePHIs::ID = 0;
-INITIALIZE_PASS(AVMBytePHIs, DEBUG_TYPE, "AVM byte PHI promotion", false, false)
+INITIALIZE_PASS_BEGIN(AVMBytePHIs, DEBUG_TYPE, "AVM byte PHI promotion", false,
+                      false)
+INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
+INITIALIZE_PASS_END(AVMBytePHIs, DEBUG_TYPE, "AVM byte PHI promotion", false,
+                    false)
 FunctionPass *llvm::createAVMBytePHIsPass() { return new AVMBytePHIs(); }

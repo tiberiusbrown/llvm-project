@@ -158,11 +158,11 @@ public:
   }
 
   void addCodeGenPrepare() override {
-    // Keep free byte extensions explicit across cyclic PHIs before DAG
-    // legalization loses their upper-bit facts.
+    TargetPassConfig::addCodeGenPrepare();
+    // Preserve native byte representations after CodeGenPrepare has made its
+    // placement decisions, but before DAG legalization loses their facts.
     if (getOptLevel() != CodeGenOptLevel::None)
       addPass(createAVMBytePHIsPass());
-    TargetPassConfig::addCodeGenPrepare();
     if (getOptLevel() != CodeGenOptLevel::None)
       addPass(createAVMLoopStrengthReducePass());
   }
