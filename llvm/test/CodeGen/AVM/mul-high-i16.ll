@@ -9,7 +9,7 @@
 define i16 @unsigned_high(i16 %left, i16 %right) {
 entry:
 ; CHECK-LABEL: unsigned_high:
-; CHECK: __avm_mulsi3
+; CHECK: __avm_umulhisi3
   %left.wide = zext i16 %left to i32
   %right.wide = zext i16 %right to i32
   %product = mul i32 %left.wide, %right.wide
@@ -21,7 +21,7 @@ entry:
 define i16 @signed_high(i16 %left, i16 %right) {
 entry:
 ; CHECK-LABEL: signed_high:
-; CHECK: __avm_mulsi3
+; CHECK: __avm_mulhisi3
   %left.wide = sext i16 %left to i32
   %right.wide = sext i16 %right to i32
   %product = mul i32 %left.wide, %right.wide
@@ -33,7 +33,7 @@ entry:
 define void @unsigned_low_high(i16 %left, i16 %right) {
 entry:
 ; CHECK-LABEL: unsigned_low_high:
-; CHECK: __avm_mulsi3
+; CHECK: __avm_umulhisi3
   %left.wide = zext i16 %left to i32
   %right.wide = zext i16 %right to i32
   %product = mul i32 %left.wide, %right.wide
@@ -48,7 +48,7 @@ entry:
 define void @signed_low_high(i16 %left, i16 %right) {
 entry:
 ; CHECK-LABEL: signed_low_high:
-; CHECK: __avm_mulsi3
+; CHECK: __avm_mulhisi3
   %left.wide = sext i16 %left to i32
   %right.wide = sext i16 %right to i32
   %product = mul i32 %left.wide, %right.wide

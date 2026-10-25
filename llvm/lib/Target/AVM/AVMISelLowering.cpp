@@ -551,7 +551,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   // are legalized into pairs.
   setOperationAction(ISD::EXTRACT_ELEMENT, MVT::i16, Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32, Legal);
-  for (unsigned Opcode : {ISD::MUL, ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM})
+  setOperationAction(ISD::MUL, MVT::i32, Custom);
+  for (unsigned Opcode : {ISD::UDIV, ISD::UREM, ISD::SDIV, ISD::SREM})
     setOperationAction(Opcode, MVT::i32, LibCall);
   for (unsigned Opcode : {ISD::SHL, ISD::SRL, ISD::SRA})
     setOperationAction(Opcode, MVT::i32, Custom);
@@ -1172,6 +1173,19 @@ static SDValue getI32Word(SDValue Value, unsigned Index, const SDLoc &DL,
     return Value.getOperand(Index);
   if (Value.getOpcode() == AVMISD::BUILD_HI16)
     return Index ? Value.getOperand(0) : DAG.getConstant(0, DL, MVT::i16);
+  if (Value.getOpcode() == ISD::SIGN_EXTEND_INREG) {
+    unsigned Bits = cast<VTSDNode>(Value.getOperand(1))->getVT().getSizeInBits();
+    if (Bits <= 16 * Index)
+      return DAG.getNode(ISD::SRA, DL, MVT::i16,
+                         getI32Word(Value, 0, DL, DAG),
+                         DAG.getConstant(15, DL, MVT::i16));
+    SDValue Word = getI32Word(Value.getOperand(0), Index, DL, DAG);
+    if (Bits >= 16 * (Index + 1))
+      return Word;
+    EVT NarrowVT = EVT::getIntegerVT(*DAG.getContext(), Bits - 16 * Index);
+    return DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, MVT::i16, Word,
+                       DAG.getValueType(NarrowVT));
+  }
   if (ISD::isBitwiseLogicOp(Value.getOpcode()) && Value.hasOneUse())
     return DAG.getNode(Value.getOpcode(), DL, MVT::i16,
                        getI32Word(Value.getOperand(0), Index, DL, DAG),
@@ -1583,21 +1597,48 @@ SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
   return SDValue();
 }
 
+SDValue AVMTargetLowering::LowerI32Multiply(SDValue Op,
+                                         SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  SDValue LHS = Op.getOperand(0), RHS = Op.getOperand(1);
+  // Select by the operands' value ranges, including masks and extending
+  // loads. The full product can exceed a word even though both inputs fit.
+  bool IsUnsigned = DAG.computeKnownBits(LHS).getMaxValue().ule(UINT16_MAX) &&
+                    DAG.computeKnownBits(RHS).getMaxValue().ule(UINT16_MAX);
+  bool IsSigned = DAG.ComputeNumSignBits(LHS) >= 17 &&
+                  DAG.ComputeNumSignBits(RHS) >= 17;
+  if (IsUnsigned || IsSigned)
+    return LowerI16FullMultiply(
+        getI32Word(LHS, 0, DL, DAG), getI32Word(RHS, 0, DL, DAG),
+        !IsUnsigned, DL, DAG);
+
+  MakeLibCallOptions CallOptions;
+  SDValue Ops[] = {LHS, RHS};
+  return makeLibCall(DAG, RTLIB::MUL_I32, MVT::i32, Ops, CallOptions, DL).first;
+}
+
 SDValue AVMTargetLowering::LowerI16FullMultiply(SDValue LHS, SDValue RHS,
                                                 bool IsSigned, const SDLoc &DL,
                                                 SelectionDAG &DAG) const {
   assert(LHS.getValueType() == MVT::i16 && RHS.getValueType() == MVT::i16 &&
          "expected i16 multiply operands");
 
-  unsigned ExtendOpcode = IsSigned ? ISD::SIGN_EXTEND : ISD::ZERO_EXTEND;
-
-  SDValue WideLHS = DAG.getNode(ExtendOpcode, DL, MVT::i32, LHS);
-  SDValue WideRHS = DAG.getNode(ExtendOpcode, DL, MVT::i32, RHS);
-
-  MakeLibCallOptions CallOptions;
-  SDValue Ops[] = {WideLHS, WideRHS};
-
-  return makeLibCall(DAG, RTLIB::MUL_I32, MVT::i32, Ops, CallOptions, DL).first;
+  ArgListTy Args;
+  for (SDValue Arg : {LHS, RHS}) {
+    ArgListEntry Entry(Arg, Type::getInt16Ty(*DAG.getContext()));
+    Entry.IsSExt = IsSigned;
+    Entry.IsZExt = !IsSigned;
+    Args.push_back(Entry);
+  }
+  SDValue Callee = DAG.getExternalSymbol(
+      IsSigned ? "__avm_mulhisi3" : "__avm_umulhisi3",
+      getPointerTy(DAG.getDataLayout()));
+  CallLoweringInfo CLI(DAG);
+  CLI.setDebugLoc(DL)
+      .setChain(DAG.getEntryNode())
+      .setLibCallee(CallingConv::C, Type::getInt32Ty(*DAG.getContext()), Callee,
+                   std::move(Args));
+  return LowerCallTo(CLI).first;
 }
 
 SDValue AVMTargetLowering::LowerMULH(SDValue Op, SelectionDAG &DAG) const {
@@ -1728,6 +1769,8 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerISFPClass(Op, DAG);
   case ISD::VASTART:
     return LowerVASTART(Op, DAG);
+  case ISD::MUL:
+    return LowerI32Multiply(Op, DAG);
   case ISD::MULHU:
   case ISD::MULHS:
     return LowerMULH(Op, DAG);

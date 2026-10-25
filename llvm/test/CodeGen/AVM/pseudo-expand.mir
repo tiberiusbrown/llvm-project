@@ -5,6 +5,7 @@
 --- |
   target triple = "avm-unknown-arduboyfx"
   define void @expand() { ret void }
+  define i32 @sext_overlapping_low() { ret i32 0 }
 ...
 ---
 name: expand
@@ -32,4 +33,17 @@ body: |
     $r4 = SHL16_SMALL_PSEUDO $r4, 3
     $r0 = SHL16_SMALL_PSEUDO $r0, 2
     RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: sext_overlapping_low
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: sext_overlapping_low
+    ; CHECK: $r5 = MOV $r4
+    ; CHECK-NEXT: $r5 = ASR16I $r5, 15
+    ; CHECK-NEXT: RET implicit-def dead $sp, implicit $sp, implicit $r4r5
+    $r4r5 = SEXT16_32_PSEUDO killed $r4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
 ...

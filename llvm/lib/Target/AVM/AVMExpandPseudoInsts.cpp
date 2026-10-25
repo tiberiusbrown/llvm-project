@@ -226,8 +226,10 @@ public:
             EmitImmediate(MBB, MI, Hi, 0);
           } else {
             assert(IsUpper(Hi) && "signed extension requires an upper pair");
+            // When Src is the low destination, its value survives as part
+            // of the result even if the pseudo's input was marked killed.
             EmitMove(MBB, MI, Hi, Src,
-                     MI.getOperand(1).isKill() ? RegState::Kill : 0);
+                     MI.getOperand(1).isKill() && Src != Lo ? RegState::Kill : 0);
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::ASR16I), Hi)
                 .addReg(Hi)
                 .addImm(15);

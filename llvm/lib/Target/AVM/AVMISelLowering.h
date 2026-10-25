@@ -110,6 +110,7 @@ private:
                           SelectionDAG &DAG) const override;
   SDValue LowerBRCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerI32Multiply(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerI16FullMultiply(SDValue LHS, SDValue RHS, bool IsSigned,
                                const SDLoc &DL, SelectionDAG &DAG) const;
   SDValue LowerI32Shift(SDValue Op, SelectionDAG &DAG) const;

@@ -69,7 +69,7 @@ define ptr addrspace(1) @record_title(i8 %index) {
 ; These products must retain their full width.
 define i32 @byte_times_258(i8 %index) {
 ; NARROW-LABEL: byte_times_258:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_umulhisi3
   %wide = zext i8 %index to i32
   %product = mul i32 %wide, 258
   ret i32 %product
@@ -77,7 +77,7 @@ define i32 @byte_times_258(i8 %index) {
 
 define i32 @word_times_six(i16 %index) {
 ; NARROW-LABEL: word_times_six:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_umulhisi3
   %wide = zext i16 %index to i32
   %product = mul i32 %wide, 6
   ret i32 %product
@@ -163,7 +163,7 @@ define i32 @signed_byte_times_positive_word(i8 %left, i16 %right) {
 ; Guard the 17-bit bound, sign changes, and multiplication by zero.
 define i32 @signed_byte_times_513(i8 %index) {
 ; NARROW-LABEL: signed_byte_times_513:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_mulhisi3
   %wide = sext i8 %index to i32
   %product = mul i32 %wide, 513
   ret i32 %product
@@ -171,7 +171,7 @@ define i32 @signed_byte_times_513(i8 %index) {
 
 define i32 @signed_byte_times_negative_257(i8 %index) {
 ; NARROW-LABEL: signed_byte_times_negative_257:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_mulhisi3
   %wide = sext i8 %index to i32
   %product = mul i32 %wide, -257
   ret i32 %product
@@ -179,7 +179,7 @@ define i32 @signed_byte_times_negative_257(i8 %index) {
 
 define i32 @signed_byte_times_zero_through_511(i8 %left, i16 %right) {
 ; NARROW-LABEL: signed_byte_times_zero_through_511:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_mulhisi3
   %a = sext i8 %left to i32
   %masked = and i16 %right, 511
   %b = zext i16 %masked to i32
@@ -189,7 +189,7 @@ define i32 @signed_byte_times_zero_through_511(i8 %left, i16 %right) {
 
 define i32 @signed_word_times_257(i16 %index) {
 ; NARROW-LABEL: signed_word_times_257:
-; NARROW: {{(call|jmp)}} __avm_mulsi3
+; NARROW: {{(call|jmp)}} __avm_mulhisi3
   %wide = sext i16 %index to i32
   %product = mul i32 %wide, 257
   ret i32 %product
