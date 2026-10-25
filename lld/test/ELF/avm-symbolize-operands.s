@@ -70,13 +70,14 @@ function:
 # SYM: callf target
 # SYM: call8 back
 # SYM: jmp16 back
-# SYM: call8 function+1
-# SYM: jmp8 function+1
-# SYM: breq8 function+1
-# SYM: call16 function+1
-# SYM: jmp16 function+1
-# SYM: breq16 function+1
-# SYM: callf function+1
-# SYM: jmpf function+1
+# SYM: <L[[DEST:[0-9]+]]>:
+# SYM: call8 {{.*}}<L[[DEST]]>
+# SYM: jmp8 {{.*}}<L[[DEST]]>
+# SYM: breq8 {{.*}}<L[[DEST]]>
+# SYM: call16 {{.*}}<L[[DEST]]>
+# SYM: jmp16 {{.*}}<L[[DEST]]>
+# SYM: breq16 {{.*}}<L[[DEST]]>
+# SYM: callf {{.*}}<L[[DEST]]>
+# SYM: jmpf {{.*}}<L[[DEST]]>
 
 # NO-SYM: call8 0x{{[0-9a-f]+}}

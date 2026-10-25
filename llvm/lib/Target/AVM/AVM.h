@@ -19,6 +19,7 @@ enum CondCode : unsigned { EQ, NE, ULT, UGE, SLT, SGE };
 FunctionPass *createAVMISelDag(AVMTargetMachine &TM, CodeGenOptLevel OptLevel);
 ModulePass *createAVMStackTargetsPass();
 ModulePass *createAVMConstantInitializersPass();
+ModulePass *createAVMAggregateReturnsPass();
 FunctionPass *createAVMTailDuplicationPass(
     CodeGenOptLevel OptLevel = CodeGenOptLevel::Default);
 FunctionPass *createAVMBranchPolarityPass();
@@ -36,6 +37,7 @@ FunctionPass *createAVMExpandSystemServicesPass();
 
 void initializeAVMAsmPrinterPass(PassRegistry &);
 void initializeAVMConstantInitializersPass(PassRegistry &);
+void initializeAVMAggregateReturnsPass(PassRegistry &);
 void initializeAVMTailDuplicationPass(PassRegistry &);
 void registerAVMTailDuplicationOptions();
 void initializeAVMBranchPolarityPass(PassRegistry &);

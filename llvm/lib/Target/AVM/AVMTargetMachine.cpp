@@ -35,6 +35,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMBytePHIsPass(PR);
   initializeAVMLoopStrengthReducePass(PR);
   initializeAVMConstantInitializersPass(PR);
+  initializeAVMAggregateReturnsPass(PR);
   initializeAVMDAGToDAGISelLegacyPass(PR);
   initializeAVMExpandPseudoPass(PR);
   initializeAVMFinalControlFlowPass(PR);
@@ -105,6 +106,7 @@ public:
     TargetPassConfig::addIRPasses();
 
     if (getOptLevel() != CodeGenOptLevel::None) {
+      addPass(createAVMAggregateReturnsPass());
       addPass(createAVMProgramMemoryWideningPass());
       addPass(createInstructionCombiningPass());
       addPass(createAVMConstantInitializersPass());
