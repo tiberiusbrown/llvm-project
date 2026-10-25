@@ -35,6 +35,9 @@ public:
   // consumed word live just because its sibling is still needed.
   bool enableSubRegLiveness() const override { return true; }
 
+  RegisterScheduler::FunctionPassCtor
+  getDAGScheduler(CodeGenOptLevel OptLevel) const override;
+
   const AVMInstrInfo *getInstrInfo() const override { return &InstrInfo; }
   const AVMRegisterInfo *getRegisterInfo() const override {
     return &InstrInfo.getRegisterInfo();
