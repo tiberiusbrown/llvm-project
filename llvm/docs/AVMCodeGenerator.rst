@@ -33,6 +33,20 @@ Stack arguments, byval, varargs, sret, and incompatible return ABIs also use
 ordinary calls. Unsupported ``musttail`` calls are diagnosed. The late
 frameless call/return fold remains available independently of this lowering.
 
+Bounded variable shifts
+-----------------------
+
+The backend lowers 32-bit left, logical-right, and arithmetic-right shifts to
+native 16-bit word shifts when known bits prove the count lies in 0..31.
+Counts below 16 combine shifted words with a cross-word carry; counts in
+16..31 need only one variable word shift and zero or sign fill. A range
+crossing 16 shares a word shift and selects the appropriate result halves.
+Known zero and sign-extended words simplify during DAG legalization.
+
+The carry calculation handles a zero count without shifting an LLVM i16 by
+16 or relying on AVM's modulo-16 variable counts. Counts whose full range
+is not proven retain the runtime helper.
+
 Optional schedule validation
 ----------------------------
 

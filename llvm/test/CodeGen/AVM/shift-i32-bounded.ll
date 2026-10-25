@@ -93,10 +93,14 @@ define i32 @word_shift_derived(i16 %input, i16 %count) {
   ret i32 %result
 }
 
-; Unproven input bits or counts retain the general helper.
+; Full-width and sign-extended values also use native word shifts.
 define i32 @full_word_shift(i32 %input, i32 %count) {
 ; CHECK-LABEL: full_word_shift:
-; CHECK: {{call|jmp}} __avm_ashlsi3
+; CHECK-NOT: __avm_
+; CHECK-DAG: shl16v
+; CHECK-DAG: lsr16v
+; CHECK-NOT: __avm_
+; CHECK: ret
   %bounded = and i32 %count, 7
   %result = shl i32 %input, %bounded
   ret i32 %result
@@ -104,7 +108,11 @@ define i32 @full_word_shift(i32 %input, i32 %count) {
 
 define i32 @signed_word_shift(i16 %input, i32 %count) {
 ; CHECK-LABEL: signed_word_shift:
-; CHECK: {{call|jmp}} __avm_ashlsi3
+; CHECK-NOT: __avm_
+; CHECK-DAG: shl16v
+; CHECK-DAG: lsr16v
+; CHECK-NOT: __avm_
+; CHECK: ret
   %value = sext i16 %input to i32
   %bounded = and i32 %count, 7
   %result = shl i32 %value, %bounded
@@ -113,7 +121,11 @@ define i32 @signed_word_shift(i16 %input, i32 %count) {
 
 define i32 @word_shift31(i16 %input, i32 %count) {
 ; CHECK-LABEL: word_shift31:
-; CHECK: {{call|jmp}} __avm_ashlsi3
+; CHECK-NOT: __avm_
+; CHECK-DAG: shl16v
+; CHECK-DAG: lsr16v
+; CHECK-NOT: __avm_
+; CHECK: ret
   %value = zext i16 %input to i32
   %bounded = and i32 %count, 31
   %result = shl i32 %value, %bounded
@@ -122,13 +134,17 @@ define i32 @word_shift31(i16 %input, i32 %count) {
 
 define i32 @word_shift16(i16 %input, i32 %count) {
 ; CHECK-LABEL: word_shift16:
-; CHECK: {{call|jmp}} __avm_ashlsi3
+; CHECK-NOT: __avm_
+; CHECK: cmov.ne
+; CHECK-NOT: __avm_
+; CHECK: ret
   %value = zext i16 %input to i32
   %bounded = and i32 %count, 16
   %result = shl i32 %value, %bounded
   ret i32 %result
 }
 
+; Counts outside 0..31 still use the helper, without truncating high bits.
 define i32 @wide_count(i16 %input, i32 %count) {
 ; CHECK-LABEL: wide_count:
 ; CHECK: {{call|jmp}} __avm_ashlsi3

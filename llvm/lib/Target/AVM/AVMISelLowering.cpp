@@ -1336,31 +1336,80 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
     return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, DL).first;
   };
 
-  if (!CountNode && Op.getOpcode() == ISD::SHL &&
-      DAG.computeKnownBits(Op.getOperand(1)).getMaxValue().ult(16) &&
-      DAG.computeKnownBits(Value).getMaxValue().ule(UINT16_MAX)) {
-    // A zero-extended word shifted by less than a word needs only the low
-    // word and its carry. Prove the range before truncating the count so a
-    // wide, otherwise unknown count cannot accidentally take this path.
-    SDValue Low = getI32Word(Value, 0, DL, DAG);
+  if (!CountNode &&
+      DAG.computeKnownBits(Op.getOperand(1)).getMaxValue().ult(32)) {
+    // Prove the full count range before narrowing it: wide, unproven counts
+    // retain the helper. Known zero/sign words fold out of these native word
+    // shifts, as do carries which the input's known bits cannot reach.
+    KnownBits KnownCount = DAG.computeKnownBits(Op.getOperand(1));
+    bool SmallOnly = KnownCount.getMaxValue().ult(16);
+    bool LargeOnly = KnownCount.getMinValue().uge(16);
     SDValue Count = DAG.getZExtOrTrunc(Op.getOperand(1), DL, MVT::i16);
-    SDValue NewLow = DAG.getNode(ISD::SHL, DL, MVT::i16, Low, Count);
+    SDValue WordCount = SmallOnly
+                            ? Count
+                            : DAG.getNode(ISD::AND, DL, MVT::i16, Count,
+                                          DAG.getConstant(15, DL, MVT::i16));
+    auto [Low, High] = getI32Words(Value, DL, DAG);
+    SDValue Zero = DAG.getConstant(0, DL, MVT::i16);
+    bool IsLeft = Op.getOpcode() == ISD::SHL;
+    bool IsArithmetic = Op.getOpcode() == ISD::SRA;
+    SDValue Sign = IsArithmetic ? DAG.getNode(ISD::SRA, DL, MVT::i16, High,
+                                              DAG.getConstant(15, DL, MVT::i16))
+                                : Zero;
+    SDValue WordBit;
+    if (!SmallOnly && !LargeOnly)
+      WordBit = DAG.getNode(ISD::AND, DL, MVT::i16, Count,
+                            DAG.getConstant(16, DL, MVT::i16));
+    if (IsArithmetic && DAG.ComputeNumSignBits(Value) >= 17) {
+      // A sign-extended word needs no cross-word carry. Counts >= 16 leave
+      // only its sign, while smaller counts use one native arithmetic shift.
+      SDValue Word = LargeOnly
+                         ? Sign
+                         : DAG.getNode(ISD::SRA, DL, MVT::i16, Low, WordCount);
+      if (!SmallOnly && !LargeOnly)
+        Word = DAG.getSelectCC(DL, WordBit, Zero, Sign, Word, ISD::SETNE);
+      return DAG.getNode(ISD::SIGN_EXTEND, DL, MVT::i32, Word);
+    }
+    // The word which survives a count >= 16 is also one of the words needed
+    // for a count < 16, so a range crossing 16 shares this shift.
+    SDValue Shifted = DAG.getNode(IsLeft         ? ISD::SHL
+                                  : IsArithmetic ? ISD::SRA
+                                                 : ISD::SRL,
+                                  DL, MVT::i16, IsLeft ? Low : High, WordCount);
+    SDValue LargeLow = IsLeft ? Zero : Shifted;
+    SDValue LargeHigh = IsLeft ? Shifted : Sign;
+    if (LargeOnly)
+      return BuildI32FromWords(LargeLow, LargeHigh, DL, DAG);
+
+    unsigned CarryOpcode = IsLeft ? ISD::SRL : ISD::SHL;
+    SDValue CarryInput = IsLeft ? Low : High;
     SDValue CarryCount;
-    SDValue CarryInput = Low;
-    if (DAG.isKnownNeverZero(Op.getOperand(1))) {
+    if (DAG.isKnownNeverZero(WordCount)) {
       CarryCount = DAG.getNode(ISD::SUB, DL, MVT::i16,
-                               DAG.getConstant(16, DL, MVT::i16), Count);
+                               DAG.getConstant(16, DL, MVT::i16), WordCount);
     } else {
-      // Neither LLVM's i16 shifts nor AVM's masked variable counts can
-      // express a shift by 16. Split off one bit so count zero produces a
-      // zero carry without a branch or conditional move: (low >> 1) >> (15-n).
-      CarryInput = DAG.getNode(ISD::SRL, DL, MVT::i16, Low,
+      // LLVM i16 shifts cannot express a count of 16, and AVM masks counts
+      // modulo 16. Split off one bit to make a zero count produce zero carry:
+      // (low >> 1) >> (15-n), or (high << 1) << (15-n) for right shifts.
+      CarryInput = DAG.getNode(CarryOpcode, DL, MVT::i16, CarryInput,
                                DAG.getConstant(1, DL, MVT::i16));
-      CarryCount = DAG.getNode(ISD::XOR, DL, MVT::i16, Count,
+      CarryCount = DAG.getNode(ISD::XOR, DL, MVT::i16, WordCount,
                                DAG.getConstant(15, DL, MVT::i16));
     }
+    SDValue Carry =
+        DAG.getNode(CarryOpcode, DL, MVT::i16, CarryInput, CarryCount);
+    SDValue Other = DAG.getNode(IsLeft ? ISD::SHL : ISD::SRL, DL, MVT::i16,
+                                IsLeft ? High : Low, WordCount);
+    Other = DAG.getNode(ISD::OR, DL, MVT::i16, Other, Carry);
+    SDValue SmallLow = IsLeft ? Shifted : Other;
+    SDValue SmallHigh = IsLeft ? Other : Shifted;
+    if (SmallOnly)
+      return BuildI32FromWords(SmallLow, SmallHigh, DL, DAG);
+
+    SDValue NewLow =
+        DAG.getSelectCC(DL, WordBit, Zero, LargeLow, SmallLow, ISD::SETNE);
     SDValue NewHigh =
-        DAG.getNode(ISD::SRL, DL, MVT::i16, CarryInput, CarryCount);
+        DAG.getSelectCC(DL, WordBit, Zero, LargeHigh, SmallHigh, ISD::SETNE);
     return BuildI32FromWords(NewLow, NewHigh, DL, DAG);
   }
 
