@@ -1,0 +1,332 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-private-spill-cleanup \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# Allocator-generated stores only become dead after forwarding their reloads.
+# This includes nonadjacent accesses, different reload registers and slot widths.
+---
+name: copy_before_spill
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: copy_before_spill
+    ; CHECK-NOT: STACK_
+    ; CHECK: $r5 = COPY $r4
+    ; CHECK-NEXT: $r5 = LDI8_PSEUDO 0
+    ; CHECK-NEXT: $r7 = COPY $r4
+    ; CHECK-NEXT: RET_PSEUDO
+    $r5 = COPY killed $r4
+    STACK_STORE16_PSEUDO %stack.0, 0, killed $r5, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = LDI8_PSEUDO 0
+    $r7 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r7
+...
+---
+name: copy_after_spill
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: copy_after_spill
+    ; CHECK-NOT: STACK_
+    ; CHECK: $r5 = COPY $r4
+    ; CHECK-NEXT: $r4 = LDI8_PSEUDO 0
+    ; CHECK-NEXT: $r7 = COPY $r5
+    ; CHECK-NEXT: RET_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = COPY $r4
+    $r4 = LDI8_PSEUDO 0
+    $r7 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r7
+...
+---
+name: overwritten_word
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4, $r5
+    ; CHECK-LABEL: name: overwritten_word
+    ; CHECK-NOT: STACK_STORE16_PSEUDO %stack.0, 0, $r4
+    ; CHECK: $r5 = STACK_LOAD16_PSEUDO %stack.1
+    ; CHECK-NEXT: $r7 = COPY $r4
+    ; CHECK-NEXT: $r7 = ADD16_PSEUDO
+    ; CHECK-NEXT: STACK_STORE16_PSEUDO %stack.0, 0, $r7
+    ; CHECK: $r6 = STACK_LOAD16_PSEUDO %stack.0
+    STACK_STORE16_PSEUDO %stack.0, 0, killed $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp :: (load (s16) from %stack.1, align 1)
+    $r7 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r7 = ADD16_PSEUDO $r7, $r5
+    STACK_STORE16_PSEUDO %stack.0, 0, $r7, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r7 = LDI8_PSEUDO 0
+    $r6 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r6
+...
+---
+name: forwarded_pair_kills
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; CHECK-LABEL: name: forwarded_pair_kills
+    ; CHECK-NOT: STACK_
+    ; CHECK: $r0 = COPY $r4
+    ; CHECK-NEXT: $r6r7 = COPY $r4r5
+    ; CHECK-NEXT: RET_PSEUDO
+    STACK_STORE32_PSEUDO %stack.0, 0, $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    $r0 = COPY killed $r4
+    $r6r7 = STACK_LOAD32_PSEUDO %stack.0, 0, implicit $sp :: (load (s32) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r6r7
+...
+---
+name: overwritten_pair_by_words
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5, $r6r7
+    ; CHECK-LABEL: name: overwritten_pair_by_words
+    ; CHECK-NOT: STACK_STORE32
+    ; CHECK: STACK_STORE16_PSEUDO %stack.0, 0, $r6
+    ; CHECK-NEXT: STACK_STORE16_PSEUDO %stack.0, 2, $r7
+    ; CHECK-NEXT: $r4r5 = STACK_LOAD32_PSEUDO
+    STACK_STORE32_PSEUDO %stack.0, 0, $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.0, 0, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.0, 2, $r7, implicit $sp :: (store (s16) into %stack.0 + 2, align 1)
+    $r4r5 = STACK_LOAD32_PSEUDO %stack.0, 0, implicit $sp :: (load (s32) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...
+---
+name: partially_overwritten_pair
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5, $r6
+    ; CHECK-LABEL: name: partially_overwritten_pair
+    ; CHECK: STACK_STORE32_PSEUDO
+    ; CHECK-NEXT: STACK_STORE16_PSEUDO
+    ; CHECK-NEXT: $r4r5 = STACK_LOAD32_PSEUDO
+    STACK_STORE32_PSEUDO %stack.0, 0, $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.0, 0, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r4r5 = STACK_LOAD32_PSEUDO %stack.0, 0, implicit $sp :: (load (s32) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...
+---
+name: intervening_byte_read
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4, $r5
+    ; CHECK-LABEL: name: intervening_byte_read
+    ; CHECK: STACK_STORE16_PSEUDO %stack.0, 0, $r4
+    ; CHECK-NEXT: $r6 = STACK_LOAD8U_PSEUDO
+    ; CHECK-NOT: STACK_STORE
+    ; CHECK: RET_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r6 = STACK_LOAD8U_PSEUDO %stack.0, 1, implicit $sp :: (load (s8) from %stack.0 + 1)
+    STACK_STORE16_PSEUDO %stack.0, 0, $r5, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r6
+...
+---
+name: successor_read
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1, %bb.2
+    liveins: $r4
+    ; CHECK-LABEL: name: successor_read
+    ; CHECK: bb.0:
+    ; CHECK: STACK_STORE16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    TST16 $r4, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit $cc
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.2
+    liveins: $r4
+    ; CHECK: bb.1:
+    ; CHECK: STACK_STORE16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.2
+  bb.2:
+    ; CHECK: bb.2:
+    ; CHECK: $r5 = STACK_LOAD16_PSEUDO
+    $r5 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r5
+...
+---
+name: loop_carried_spill
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1
+    liveins: $r4
+    ; CHECK-LABEL: name: loop_carried_spill
+    ; CHECK: bb.0:
+    ; CHECK: STACK_STORE16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    liveins: $r4
+    ; CHECK: bb.1:
+    ; CHECK: $r5 = STACK_LOAD16_PSEUDO
+    ; CHECK-NEXT: STACK_STORE16_PSEUDO
+    $r5 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    TST16 $r5, implicit-def $cc
+    RELAX_BR_NE %bb.1, implicit $cc
+    RELAX_JMP %bb.2
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: overwritten_on_every_path
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    successors: %bb.1, %bb.2
+    liveins: $r4
+    ; CHECK-LABEL: name: overwritten_on_every_path
+    ; CHECK: bb.0:
+    ; CHECK-NOT: STACK_STORE
+    ; CHECK: TST16
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    TST16 $r4, implicit-def $cc
+    RELAX_BR_EQ %bb.2, implicit $cc
+    RELAX_JMP %bb.1
+  bb.1:
+    successors: %bb.3
+    liveins: $r4
+    ; CHECK: bb.1:
+    ; CHECK: STACK_STORE16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.3
+  bb.2:
+    successors: %bb.3
+    liveins: $r4
+    ; CHECK: bb.2:
+    ; CHECK: STACK_STORE16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RELAX_JMP %bb.3
+  bb.3:
+    ; CHECK: bb.3:
+    ; CHECK: $r5 = STACK_LOAD16_PSEUDO
+    $r5 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r5
+...
+---
+name: opaque_assembly
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: opaque_assembly
+    ; CHECK: STACK_STORE16_PSEUDO
+    ; CHECK-NEXT: INLINEASM
+    ; CHECK-NEXT: $r5 = STACK_LOAD16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    INLINEASM &"", 25
+    $r5 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r5
+...
+---
+name: overlapping_register_clobber
+stack:
+  - { id: 0, type: spill-slot, size: 4, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; CHECK-LABEL: name: overlapping_register_clobber
+    ; CHECK: STACK_STORE32_PSEUDO
+    ; CHECK-NEXT: $r4 = LDI8_PSEUDO 0
+    ; CHECK-NEXT: $r6r7 = STACK_LOAD32_PSEUDO
+    STACK_STORE32_PSEUDO %stack.0, 0, $r4r5, implicit $sp :: (store (s32) into %stack.0, align 1)
+    $r4 = LDI8_PSEUDO 0
+    $r6r7 = STACK_LOAD32_PSEUDO %stack.0, 0, implicit $sp :: (load (s32) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r6r7
+...
+---
+name: call_clobbers
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+  - { id: 1, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r0, $r4
+    ; CHECK-LABEL: name: call_clobbers
+    ; CHECK-NOT: STACK_STORE16_PSEUDO %stack.0
+    ; CHECK: STACK_STORE16_PSEUDO %stack.1
+    ; CHECK-NEXT: CALL_DIRECT_PSEUDO
+    ; CHECK-NEXT: $r1 = COPY $r0
+    ; CHECK-NEXT: $r5 = STACK_LOAD16_PSEUDO %stack.1
+    STACK_STORE16_PSEUDO %stack.0, 0, $r0, implicit $sp :: (store (s16) into %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.1, 0, $r4, implicit $sp :: (store (s16) into %stack.1, align 1)
+    CALL_DIRECT_PSEUDO &callee, 0, 0, csr_avm_call, implicit-def $sp, implicit-def dead $cc, implicit $sp
+    $r1 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r5 = STACK_LOAD16_PSEUDO %stack.1, 0, implicit $sp :: (load (s16) from %stack.1, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r1, implicit $r5
+...
+---
+name: three_byte_slot
+stack:
+  - { id: 0, type: spill-slot, size: 3, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4r5, $r6r7
+    ; CHECK-LABEL: name: three_byte_slot
+    ; CHECK-NOT: STACK_STORE24
+    ; CHECK: STACK_STORE16_PSEUDO %stack.0, 0, $r6
+    ; CHECK-NEXT: STACK_STORE8_PSEUDO %stack.0, 2, $r7
+    ; CHECK-NEXT: $r4r5 = STACK_LOAD24_PSEUDO
+    STACK_STORE24_PSEUDO %stack.0, 0, $r4r5, implicit $sp :: (store (s24) into %stack.0, align 1)
+    STACK_STORE16_PSEUDO %stack.0, 0, $r6, implicit $sp :: (store (s16) into %stack.0, align 1)
+    STACK_STORE8_PSEUDO %stack.0, 2, $r7, implicit $sp :: (store (s8) into %stack.0 + 2)
+    $r4r5 = STACK_LOAD24_PSEUDO %stack.0, 0, implicit $sp :: (load (s24) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...
+---
+name: call_without_mask
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: call_without_mask
+    ; CHECK: STACK_STORE16_PSEUDO
+    ; CHECK-NEXT: CALL_DIRECT_PSEUDO
+    ; CHECK-NEXT: $r5 = STACK_LOAD16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    CALL_DIRECT_PSEUDO &callee, 0, 0, implicit-def $sp, implicit-def dead $cc, implicit $sp
+    $r5 = STACK_LOAD16_PSEUDO %stack.0, 0, implicit $sp :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r5
+...
+---
+name: memory_operand_only_read
+stack:
+  - { id: 0, type: spill-slot, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4, $r6
+    ; CHECK-LABEL: name: memory_operand_only_read
+    ; CHECK: STACK_STORE16_PSEUDO
+    ; CHECK-NEXT: $r5 = LOAD16_PSEUDO
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r5 = LOAD16_PSEUDO $r6 :: (load (s16) from %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r5
+...

@@ -180,7 +180,8 @@ public:
 
   bool addRegAssignAndRewriteOptimized() override {
     bool Rewritten = TargetPassConfig::addRegAssignAndRewriteOptimized();
-    // Private spill slots still have distinct identities before coloring.
+    // Allocation introduces the spill stores and reloads. Optimize them while
+    // private slots still have distinct identities, before coloring.
     if (Rewritten)
       addPass(createAVMPrivateSpillCleanupPass());
     return Rewritten;

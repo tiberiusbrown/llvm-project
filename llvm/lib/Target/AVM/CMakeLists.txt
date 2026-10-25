@@ -38,6 +38,7 @@ add_llvm_target(AVMCodeGen
   AVMMachineFunctionInfo.cpp
   AVMMCInstLower.cpp
   AVMProgramMemoryWidening.cpp
+  AVMPrivateSpillCleanup.cpp
   AVMRegisterInfo.cpp
   AVMRegisterRange.cpp
   AVMSelectionDAGInfo.cpp
