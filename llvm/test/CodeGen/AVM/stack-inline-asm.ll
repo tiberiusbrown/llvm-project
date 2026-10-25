@@ -33,6 +33,24 @@ define i16 @arithmetic(i16 %a, i16 %b) {
   ret i16 %v
 }
 
+; The 32-bit runtime shift helpers use compact variable word shifts. Their
+; substituted register operands must retain a complete stack marker too.
+define i16 @variable_shifts(i16 %a, i16 %n) {
+; CHECK-LABEL: variable_shifts:
+; CHECK: shl16v
+; CHECK: lsr16v
+; CHECK: asr16v
+; CHECK: .section .avm.stackcalls,
+; CHECK: .short 0
+; CHECK-NEXT: .byte 0
+; CHECK-NEXT: .short 0
+; CHECK-NEXT: .byte 8
+  %left = call i16 asm "shl16v $0, $2", "=c,0,c"(i16 %a, i16 %n)
+  %logical = call i16 asm "lsr16v $0, $2", "=c,0,c"(i16 %left, i16 %n)
+  %arithmetic = call i16 asm "asr16v $0, $2", "=c,0,c"(i16 %logical, i16 %n)
+  ret i16 %arithmetic
+}
+
 define void @local_loop() {
 ; CHECK-LABEL: local_loop:
 ; CHECK: .section .avm.stackcalls,

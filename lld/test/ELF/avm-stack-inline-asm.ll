@@ -6,6 +6,8 @@
 ; RUN: llvm-as %s -o %t.bc
 ; RUN: ld.lld --gc-sections --lto-O2 --avm-print-stack-usage --avm-print-stack-gaps %t.bc -o %t.lto 2>&1 | FileCheck %s --check-prefix=SAFE
 ; RUN: ld.lld -e opaque --lto-O2 --avm-print-stack-usage --avm-print-stack-gaps %t.bc -o %t.lto-opaque 2>&1 | FileCheck %s --check-prefix=OPAQUE
+; RUN: not ld.lld -e overflow --gc-sections %t.o -o %t.overflow 2>&1 | FileCheck %s --check-prefix=OVERFLOW
+; RUN: not ld.lld -e overflow --gc-sections --lto-O2 %t.bc -o %t.lto-overflow 2>&1 | FileCheck %s --check-prefix=OVERFLOW
 
 ; SAFE: complete bound: yes
 ; SAFE: safe: frame {{[3-9][0-9]}}
@@ -13,6 +15,9 @@
 ; OPAQUE: complete bound: no
 ; OPAQUE: opaque: compiler-marked incomplete
 ; OPAQUE: AVM stack analysis gaps: 1; paths shown: 1; omitted: 0
+; OVERFLOW: error: AVM maximum provable stack usage is {{[0-9]+}} bytes; limit is 256 bytes
+; OVERFLOW: overflow: frame
+; OVERFLOW: safe: frame
 
 target triple = "avm"
 target datalayout = "e-P1-p:16:8-p1:24:8-i8:8-i16:8-i24:8-i32:8-i64:8-f32:8-f64:8-a:8-n8:16-S8"
@@ -28,8 +33,22 @@ define i16 @safe(i16 %a, i16 %b) addrspace(1) noinline {
   %slot = alloca [32 x i8], align 1
   store volatile i8 1, ptr %slot
   %result = call i16 asm "mul16 $0, $2", "=r,0,r"(i16 %a, i16 %b)
+  %left = call i16 asm "shl16v $0, $2", "=c,0,c"(i16 %result, i16 %b)
+  %logical = call i16 asm "lsr16v $0, $2", "=c,0,c"(i16 %left, i16 %b)
+  %arithmetic = call i16 asm "asr16v $0, $2", "=c,0,c"(i16 %logical, i16 %b)
   call void asm sideeffect "", "r,~{memory}"(ptr %slot)
-  ret i16 %result
+  ret i16 %arithmetic
+}
+
+; A caller with a large fixed frame must still fail when its callee uses
+; certified inline assembly, in both native-object and LTO links.
+define void @overflow() addrspace(1) {
+  %slot = alloca [224 x i8], align 1
+  call void asm sideeffect "", "r,~{memory}"(ptr %slot)
+  %result = call addrspace(1) i16 @safe(i16 3, i16 7)
+  store volatile i16 %result, ptr @output
+  call void asm sideeffect "", "r,~{memory}"(ptr %slot)
+  ret void
 }
 
 define void @opaque() addrspace(1) {
