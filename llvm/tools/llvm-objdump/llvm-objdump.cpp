@@ -1660,12 +1660,13 @@ collectLocalBranchTargets(ArrayRef<uint8_t> Bytes, MCInstrAnalysis *MIA,
   }
 
   Labels.clear();
-  if (isAVM)
+  if (isAVM) {
     for (auto It = Targets.begin(); It != Targets.end();)
       if (!InstructionStarts.count(*It))
         It = Targets.erase(It);
       else
         ++It;
+  }
   for (auto [Idx, Target] : enumerate(Targets))
     Labels[Target] = ("L" + Twine(Idx)).str();
 }

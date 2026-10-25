@@ -1,10 +1,12 @@
 //===-- AVMISelDAGToDAG.cpp - AVM DAG instruction selector ---------------===//
 
 #include "AVM.h"
+#include "AVMCostModel.h"
 #include "AVMSystemServiceInfo.h"
 #include "AVMTargetMachine.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
@@ -41,6 +43,198 @@ public:
 private:
   SmallDenseSet<Register, 16> UnsignedByteInputs;
 
+  struct DataAddress {
+    SDValue Index;
+    const GlobalAddressSDNode *Symbol = nullptr;
+    uint16_t Offset = 0;
+
+    bool hasSameBase(const DataAddress &Other) const {
+      return Index == Other.Index &&
+             ((!Symbol && !Other.Symbol) ||
+              (Symbol && Other.Symbol &&
+               Symbol->getGlobal() == Other.Symbol->getGlobal() &&
+               Symbol->getTargetFlags() == Other.Symbol->getTargetFlags()));
+    }
+  };
+
+  // Separate the relocation's addend from the dynamic part. DAG combining
+  // normally distributes a shared (symbol + index) across constant offsets,
+  // leaving (symbol + offset) + index at each unrolled access.
+  static DataAddress splitDataAddress(SDValue Address) {
+    DataAddress Parts;
+    for (;;) {
+      if (Address.getOpcode() == ISD::ADD) {
+        SDValue Left = Address.getOperand(0), Right = Address.getOperand(1);
+        if (isa<ConstantSDNode>(Left) || Left.getOpcode() == AVMISD::WRAPPER)
+          std::swap(Left, Right);
+        if (const auto *C = dyn_cast<ConstantSDNode>(Right)) {
+          Parts.Offset += C->getZExtValue();
+          Address = Left;
+          continue;
+        }
+        if (!Parts.Symbol && Right.getOpcode() == AVMISD::WRAPPER) {
+          Parts.Symbol =
+              dyn_cast<GlobalAddressSDNode>(Right.getOperand(0));
+          if (!Parts.Symbol)
+            return {};
+          Parts.Offset += Parts.Symbol->getOffset();
+          Address = Left;
+          continue;
+        }
+      } else if (Address.getOpcode() == ISD::SUB) {
+        if (const auto *C =
+                dyn_cast<ConstantSDNode>(Address.getOperand(1))) {
+          Parts.Offset -= C->getZExtValue();
+          Address = Address.getOperand(0);
+          continue;
+        }
+      }
+      // Absolute and frame addresses already have dedicated instructions.
+      if (Address.getOpcode() == AVMISD::WRAPPER ||
+          isa<ConstantSDNode, FrameIndexSDNode>(Address))
+        return {};
+      Parts.Index = Address;
+      return Parts;
+    }
+  }
+
+  void formSharedDataBases() {
+    if (OptLevel == CodeGenOptLevel::None)
+      return;
+    struct Access {
+      SDNode *Memory;
+      SDValue Address;
+      DataAddress Parts;
+      bool IsLoad, IsByte;
+      int RemovableCycles = 0;
+    };
+    SmallVector<SmallVector<Access, 4>, 4> Groups;
+    SmallVector<DataAddress, 4> Unfoldable;
+    for (SDNode &Node : CurDAG->allnodes()) {
+      auto *Memory = dyn_cast<LSBaseSDNode>(&Node);
+      if (!Memory || Memory->getAddressSpace() != 0)
+        continue;
+      SDValue Address = Memory->getBasePtr();
+      if (Address.getValueType() != MVT::i16)
+        continue;
+      DataAddress Parts = splitDataAddress(Address);
+      if (!Parts.Index)
+        continue;
+      if (!Memory->isUnindexed() ||
+          (Memory->getMemoryVT() != MVT::i8 &&
+           Memory->getMemoryVT() != MVT::i16)) {
+        Unfoldable.push_back(Parts);
+        continue;
+      }
+      SDValue ExistingBase;
+      int64_t ExistingOffset;
+      if (matchDisplacedDataAddress(Address, ExistingBase, ExistingOffset))
+        continue;
+      auto SameBase = [&](const auto &Group) {
+        return Parts.hasSameBase(Group.front().Parts);
+      };
+      auto Group = llvm::find_if(Groups, SameBase);
+      if (Group == Groups.end()) {
+        Groups.emplace_back();
+        Group = std::prev(Groups.end());
+      }
+      Group->push_back({&Node, Address, Parts, isa<LoadSDNode>(Memory),
+                        Memory->getMemoryVT() == MVT::i8});
+    }
+
+    using AVM::AVMCostKind;
+    auto Cycles = AVM::getFixedCycles;
+    const int BaseCycles = Cycles(AVMCostKind::Ldi16Upper) +
+                           Cycles(AVMCostKind::AddUpper);
+    auto AddressCycles = [&](const Access &A) -> int {
+      if (A.Parts.Symbol)
+        return BaseCycles;
+      int Offset = int16_t(A.Parts.Offset);
+      if (!Offset)
+        return 0;
+      if (Offset == 1 || Offset == -1)
+        return Cycles(AVMCostKind::Inc16);
+      return isInt<8>(Offset) ? Cycles(AVMCostKind::AddIS8Upper) : BaseCycles;
+    };
+    bool Changed = false;
+    for (auto &Group : Groups) {
+      if (Group.size() < 2)
+        continue;
+      // Pair and updating accesses cannot use the displaced forms. Keeping
+      // their original pointer alongside a new narrow-field base increases
+      // pressure precisely where pair values already need extra registers.
+      if (llvm::any_of(Unfoldable, [&](const DataAddress &A) {
+            return A.hasSameBase(Group.front().Parts);
+          }))
+        continue;
+      SmallPtrSet<SDNode *, 16> Memories;
+      for (const Access &A : Group)
+        Memories.insert(A.Memory);
+      for (Access &A : Group) {
+        bool Exclusive = llvm::all_of(A.Address->uses(), [&](const SDUse &U) {
+          return Memories.contains(U.getUser()) &&
+                 U.getOperandNo() == (isa<LoadSDNode>(U.getUser()) ? 1u : 2u);
+        });
+        if (Exclusive)
+          A.RemovableCycles = AddressCycles(A);
+      }
+      // Choose an existing address as the anchor. Count only address nodes
+      // used exclusively by this group; other users still need their original
+      // calculation. Ignore copy savings to leave some allocation headroom.
+      int BestSaving = 0;
+      const Access *Best = nullptr;
+      for (const Access &Anchor : Group) {
+        int Saving = -AddressCycles(Anchor);
+        SmallPtrSet<SDNode *, 16> Counted;
+        for (const Access &A : Group) {
+          int Offset = int16_t(uint16_t(A.Parts.Offset - Anchor.Parts.Offset));
+          if (Offset < -32 || Offset > 223)
+            continue;
+          if (Counted.insert(A.Address.getNode()).second)
+            Saving += A.RemovableCycles;
+          if (!Offset)
+            continue;
+          AVMCostKind Direct = A.IsLoad ? AVMCostKind::Ld8UUpper
+                                       : AVMCostKind::St8Upper;
+          AVMCostKind Displaced = A.IsLoad ? AVMCostKind::Ld8UDisplaced
+                                          : AVMCostKind::St8Displaced;
+          if (!A.IsByte) {
+            Direct = A.IsLoad ? AVMCostKind::Ld16Upper : AVMCostKind::St16Upper;
+            Displaced = A.IsLoad ? AVMCostKind::Ld16Displaced
+                                : AVMCostKind::St16Displaced;
+          }
+          Saving -= Cycles(Displaced) - Cycles(Direct);
+        }
+        if (Saving > BestSaving) {
+          BestSaving = Saving;
+          Best = &Anchor;
+        }
+      }
+      if (!Best)
+        continue;
+      SDValue Base = Best->Address;
+      for (const Access &A : Group) {
+        int Offset = int16_t(uint16_t(A.Parts.Offset - Best->Parts.Offset));
+        if (Offset < -32 || Offset > 223 || A.Address == Base)
+          continue;
+        // This is the final addressing-mode choice, after DAG combining and
+        // before scheduling/allocation. Keep the shared base as an actual DAG
+        // operand so liveness and register pressure include it normally.
+        SDValue Address = CurDAG->getNode(
+            ISD::ADD, SDLoc(A.Memory), MVT::i16, Base,
+            CurDAG->getSignedConstant(Offset, SDLoc(A.Memory), MVT::i16));
+        SmallVector<SDValue, 4> Ops(A.Memory->op_begin(), A.Memory->op_end());
+        Ops[A.IsLoad ? 1 : 2] = Address;
+        SDNode *Updated = CurDAG->UpdateNodeOperands(A.Memory, Ops);
+        if (Updated != A.Memory)
+          CurDAG->ReplaceAllUsesWith(A.Memory, Updated);
+        Changed = true;
+      }
+    }
+    if (Changed)
+      CurDAG->RemoveDeadNodes();
+  }
+
   static SDValue stripProgramPointerNormalization(SDValue Value) {
     for (;;) {
       if (Value.getOpcode() == AVMISD::NORMALIZE_PROGPTR) {
@@ -74,6 +268,7 @@ private:
   }
 
   void PreprocessISelDAG() override {
+    formSharedDataBases();
     UnsignedByteInputs.clear();
     for (const auto &[Value, Reg] : FuncInfo->ValueMap)
       if (const auto *I = dyn_cast<Instruction>(Value);
