@@ -703,7 +703,10 @@ def SUB32_PSEUDO : AVMBinary32Pseudo;
 def AND32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def OR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def XOR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
-def PROG_ADD_PSEUDO : AVMBinary32Pseudo;
+// Pointer addition uses the same full pair addition as integer arithmetic.
+// Allow the two-address pass to overwrite a dead offset instead of copying a
+// live base, so loop-invariant program addresses can stay in registers.
+def PROG_ADD_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def BSWAP32_PSEUDO : AVMUnary32Pseudo;
 
 def FADD_PSEUDO : AVMBinary32Pseudo;
