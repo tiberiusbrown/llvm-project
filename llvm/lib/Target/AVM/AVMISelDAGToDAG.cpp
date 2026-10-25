@@ -1890,6 +1890,21 @@ private:
       if (selectAddSub(Node))
         return;
       break;
+    case ISD::BITCAST:
+      // Float kernels inspect and construct IEEE words. Both types use the
+      // same register pairs. Use a coalescible class copy so inspecting IEEE
+      // fields does not introduce moves or constrain register allocation.
+      if ((Node->getValueType(0) == MVT::f32 &&
+           Node->getOperand(0).getValueType() == MVT::i32) ||
+          (Node->getValueType(0) == MVT::i32 &&
+           Node->getOperand(0).getValueType() == MVT::f32)) {
+        SDValue RC = CurDAG->getTargetConstant(AVM::GPR32RegClassID, SDLoc(Node),
+                                             MVT::i16);
+        CurDAG->SelectNodeTo(Node, TargetOpcode::COPY_TO_REGCLASS,
+                            Node->getValueType(0), Node->getOperand(0), RC);
+        return;
+      }
+      break;
     case ISD::BSWAP:
       if (selectBSwap32(Node))
         return;

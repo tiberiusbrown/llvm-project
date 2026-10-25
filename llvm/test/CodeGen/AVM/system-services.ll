@@ -79,17 +79,17 @@ define void @display_service(i16 %clear) {
 
 define float @math_services(float %x, float %y) {
 ; CHECK-LABEL: math_services:
-; CHECK:       sys sinf
-; CHECK:       sys cosf
-; CHECK:       sys atan2f
-; CHECK:       sys tanf
-; CHECK:       sys expf
-; CHECK:       sys logf
-; CHECK:       sys log2f
-; CHECK:       sys log10f
-; CHECK:       sys powf
-; CHECK:       sys hypotf
-; CHECK:       sys fmodf
+; CHECK:       {{call|jmp}} sinf
+; CHECK:       {{call|jmp}} cosf
+; CHECK:       {{call|jmp}} atan2f
+; CHECK:       {{call|jmp}} tanf
+; CHECK:       {{call|jmp}} expf
+; CHECK:       {{call|jmp}} logf
+; CHECK:       {{call|jmp}} log2f
+; CHECK:       {{call|jmp}} log10f
+; CHECK:       {{call|jmp}} powf
+; CHECK:       {{call|jmp}} hypotf
+; CHECK:       {{call|jmp}} fmodf
   %sin = call float @llvm.avm.sinf(float %x)
   %cos = call float @llvm.avm.cosf(float %sin)
   %atan = call float @llvm.avm.atan2f(float %cos, float %y)
@@ -186,17 +186,17 @@ define void @global_sprite_object_mmo() {
 ; MIR-LABEL: name: display_service
 ; MIR:       SYS_DISPLAY_PSEUDO {{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-LABEL: name: math_services
-; MIR-O2:    [[SINF:%[0-9]+]]:q2only = SYS_SINF_PSEUDO
-; MIR-O2:    [[COSF:%[0-9]+]]:q2only = SYS_COSF_PSEUDO
-; MIR-O2:    [[ATAN2F:%[0-9]+]]:q2only = SYS_ATAN2F_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-O2:    [[TANF:%[0-9]+]]:q2only = SYS_TANF_PSEUDO
-; MIR-O2:    [[EXPF:%[0-9]+]]:q2only = SYS_EXPF_PSEUDO
-; MIR-O2:    [[LOGF:%[0-9]+]]:q2only = SYS_LOGF_PSEUDO
-; MIR-O2:    [[LOG2F:%[0-9]+]]:q2only = SYS_LOG2F_PSEUDO
-; MIR-O2:    [[LOG10F:%[0-9]+]]:q2only = SYS_LOG10F_PSEUDO
-; MIR-O2:    [[POWF:%[0-9]+]]:q2only = SYS_POWF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-O2:    [[HYPOTF:%[0-9]+]]:q2only = SYS_HYPOTF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
-; MIR-O2:    [[FMODF:%[0-9]+]]:q2only = SYS_FMODF_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}sinf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}cosf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}atan2f
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}tanf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}expf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}logf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}log2f
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}log10f
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}powf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}hypotf
+; MIR-O2:    {{CALL|TCRETURN}}{{.*}}fmodf
 ; MIR-LABEL: name: display_and_sprite_services
 ; MIR-O0:    SYS_DISPLAY_PSEUDO {{(killed )?}}{{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-O2:    [[X:%[0-9]+]]:r4only = COPY
@@ -228,9 +228,9 @@ declare float @llvm.pow.f32(float, float)
 
 define float @standard_math_intrinsics(float %x, float %y) {
 ; CHECK-LABEL: standard_math_intrinsics:
-; CHECK:       sys sinf
-; CHECK:       sys cosf
-; CHECK:       sys powf
+; CHECK:       {{call|jmp}} sinf
+; CHECK:       {{call|jmp}} cosf
+; CHECK:       {{call|jmp}} powf
   %sin = call float @llvm.sin.f32(float %x)
   %cos = call float @llvm.cos.f32(float %sin)
   %pow = call float @llvm.pow.f32(float %cos, float %y)
@@ -239,8 +239,8 @@ define float @standard_math_intrinsics(float %x, float %y) {
 
 define float @overlapping_math_results(float %x, float %y) {
 ; CHECK-LABEL: overlapping_math_results:
-; CHECK-DAG:   sys sinf
-; CHECK-DAG:   sys powf
+; CHECK-DAG:   {{call|jmp}} sinf
+; CHECK-DAG:   {{call|jmp}} powf
 ; CHECK:       fadd
   %sin = call float @llvm.avm.sinf(float %x)
   %pow = call float @llvm.avm.powf(float %x, float %y)
@@ -250,8 +250,8 @@ define float @overlapping_math_results(float %x, float %y) {
 
 define float @two_binary_results(float %x, float %y) {
 ; CHECK-LABEL: two_binary_results:
-; CHECK-DAG:   sys powf
-; CHECK-DAG:   sys hypotf
+; CHECK-DAG:   {{call|jmp}} powf
+; CHECK-DAG:   {{call|jmp}} hypotf
 ; CHECK:       fadd
   %pow = call float @llvm.avm.powf(float %x, float %y)
   %hypot = call float @llvm.avm.hypotf(float %x, float %y)
@@ -261,8 +261,8 @@ define float @two_binary_results(float %x, float %y) {
 
 define float @chained_services(float %x, float %y) {
 ; CHECK-LABEL: chained_services:
-; CHECK:       sys powf
-; CHECK:       sys sinf
+; CHECK:       {{call|jmp}} powf
+; CHECK:       {{call|jmp}} sinf
   %pow = call float @llvm.avm.powf(float %x, float %y)
   %sin = call float @llvm.avm.sinf(float %pow)
   ret float %sin

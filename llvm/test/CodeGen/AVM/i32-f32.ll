@@ -125,9 +125,9 @@ define float @float_arithmetic(float %a, float %b) {
 ; CHECK:       fmul
 ; CHECK:       fdiv
 ; CHECK:       fabs
-; CHECK:       fsqrt
-; CHECK:       fmin
-; CHECK:       fmax
+; CHECK:       call sqrtf
+; CHECK:       call fminf
+; CHECK:       call fmaxf
   %add = fadd float %a, %b
   %sub = fsub float %add, %a
   %mul = fmul float %sub, %b

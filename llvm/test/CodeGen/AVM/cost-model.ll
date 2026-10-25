@@ -121,26 +121,26 @@ define void @wide_float_and_program_costs(i32 %a, i32 %b, float %x, float %y,
 
 define void @remaining_float_costs(float %x, float %y) {
 ; CHECK-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %neg = fneg float %x
-; CHECK:       Cost Model: Found an estimated cost of 18 for instruction: %rem = frem float %x, %y
-; CHECK:       Cost Model: Found an estimated cost of 33 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
+; CHECK:       Cost Model: Found an estimated cost of 206 for instruction: %rem = frem float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 735 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
 ; CHECK:       Cost Model: Found an estimated cost of 3 for instruction: %abs = call{{.*}} float @llvm.fabs.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %min = call{{.*}} float @llvm.minnum.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %floor = call{{.*}} float @llvm.floor.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
-; CHECK:       Cost Model: Found an estimated cost of 7 for instruction: %round = call{{.*}} float @llvm.round.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %min = call{{.*}} float @llvm.minnum.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %floor = call{{.*}} float @llvm.floor.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
+; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %round = call{{.*}} float @llvm.round.f32
 ; CHECK:       Cost Model: Found an estimated cost of 8 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
 ; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %neg = fneg float %x
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %rem = frem float %x, %y
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %rem = frem float %x, %y
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %abs = call{{.*}} float @llvm.fabs.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %min = call{{.*}} float @llvm.minnum.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %floor = call{{.*}} float @llvm.floor.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %round = call{{.*}} float @llvm.round.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %min = call{{.*}} float @llvm.minnum.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %floor = call{{.*}} float @llvm.floor.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %round = call{{.*}} float @llvm.round.f32
 ; SIZE:       Cost Model: Found an estimated cost of 3 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
   %neg = fneg float %x
   %rem = frem float %x, %y
@@ -161,20 +161,20 @@ define void @service_costs(i8 %c, float %x, float %y) {
 ; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: call{{.*}} void @llvm.avm.debug.break
 ; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %millis = call{{.*}} i16 @llvm.avm.millis
 ; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %millis32 = call{{.*}} i32 @llvm.avm.millis32
-; CHECK:       Cost Model: Found an estimated cost of 106 for instruction: %sin = call{{.*}} float @llvm.avm.sinf
-; CHECK:       Cost Model: Found an estimated cost of 106 for instruction: %cos = call{{.*}} float @llvm.avm.cosf
-; CHECK:       Cost Model: Found an estimated cost of 171 for instruction: %atan = call{{.*}} float @llvm.avm.atan2f
-; CHECK:       Cost Model: Found an estimated cost of 135 for instruction: %tan = call{{.*}} float @llvm.avm.tanf
-; CHECK:       Cost Model: Found an estimated cost of 141 for instruction: %exp = call{{.*}} float @llvm.avm.expf
-; CHECK:       Cost Model: Found an estimated cost of 129 for instruction: %log = call{{.*}} float @llvm.avm.logf
-; CHECK:       Cost Model: Found an estimated cost of 124 for instruction: %log2 = call{{.*}} float @llvm.avm.log2f
-; CHECK:       Cost Model: Found an estimated cost of 129 for instruction: %log10 = call{{.*}} float @llvm.avm.log10f
-; CHECK:       Cost Model: Found an estimated cost of 271 for instruction: %pow = call{{.*}} float @llvm.avm.powf
-; CHECK:       Cost Model: Found an estimated cost of 53 for instruction: %hypot = call{{.*}} float @llvm.avm.hypotf
-; CHECK:       Cost Model: Found an estimated cost of 18 for instruction: %fmod = call{{.*}} float @llvm.avm.fmodf
+; CHECK:       Cost Model: Found an estimated cost of 559 for instruction: %sin = call{{.*}} float @llvm.avm.sinf
+; CHECK:       Cost Model: Found an estimated cost of 618 for instruction: %cos = call{{.*}} float @llvm.avm.cosf
+; CHECK:       Cost Model: Found an estimated cost of 1176 for instruction: %atan = call{{.*}} float @llvm.avm.atan2f
+; CHECK:       Cost Model: Found an estimated cost of 1000 for instruction: %tan = call{{.*}} float @llvm.avm.tanf
+; CHECK:       Cost Model: Found an estimated cost of 647 for instruction: %exp = call{{.*}} float @llvm.avm.expf
+; CHECK:       Cost Model: Found an estimated cost of 794 for instruction: %log = call{{.*}} float @llvm.avm.logf
+; CHECK:       Cost Model: Found an estimated cost of 853 for instruction: %log2 = call{{.*}} float @llvm.avm.log2f
+; CHECK:       Cost Model: Found an estimated cost of 1000 for instruction: %log10 = call{{.*}} float @llvm.avm.log10f
+; CHECK:       Cost Model: Found an estimated cost of 2647 for instruction: %pow = call{{.*}} float @llvm.avm.powf
+; CHECK:       Cost Model: Found an estimated cost of 1118 for instruction: %hypot = call{{.*}} float @llvm.avm.hypotf
+; CHECK:       Cost Model: Found an estimated cost of 206 for instruction: %fmod = call{{.*}} float @llvm.avm.fmodf
 ; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: call{{.*}} void @llvm.avm.debug.putc
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %sin = call{{.*}} float @llvm.avm.sinf
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %pow = call{{.*}} float @llvm.avm.powf
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %sin = call{{.*}} float @llvm.avm.sinf
+; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %pow = call{{.*}} float @llvm.avm.powf
   call void @llvm.avm.debug.putc(i8 %c)
   call void @llvm.avm.debug.break()
   %millis = call i16 @llvm.avm.millis()

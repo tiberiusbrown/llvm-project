@@ -108,24 +108,64 @@ public:
                                 : AVM::getCycleRange(Kind).Typical;
       return normalizedCycles(Cycles);
     };
+    // Guest libm calls include their body cost. Estimates are based on the
+    // compiled math benchmarks; arguments and range reduction change latency.
+    auto RuntimeMathCost = [&](unsigned Cycles) -> InstructionCost {
+      if (CostKind == TTI::TCK_CodeSize)
+        return encodedBytes(AVM::CALLF);
+      return normalizedCycles(Cycles);
+    };
     switch (ICA.getID()) {
     case Intrinsic::sqrt:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FSqrt, AVM::FSQRT);
+      return RuntimeMathCost(12500);
+    case Intrinsic::minnum:
+      return RuntimeMathCost(2000);
+    case Intrinsic::maxnum:
+      return RuntimeMathCost(2000);
+    case Intrinsic::trunc:
+      return RuntimeMathCost(2000);
+    case Intrinsic::floor:
+      return RuntimeMathCost(2000);
+    case Intrinsic::ceil:
+      return RuntimeMathCost(2000);
+    case Intrinsic::round:
+      return RuntimeMathCost(2000);
+    case Intrinsic::sin:
+    case Intrinsic::avm_sinf:
+      return RuntimeMathCost(9500);
+    case Intrinsic::cos:
+    case Intrinsic::avm_cosf:
+      return RuntimeMathCost(10500);
+    case Intrinsic::atan2:
+    case Intrinsic::avm_atan2f:
+      return RuntimeMathCost(20000);
+    case Intrinsic::tan:
+    case Intrinsic::avm_tanf:
+      return RuntimeMathCost(17000);
+    case Intrinsic::exp:
+    case Intrinsic::avm_expf:
+      return RuntimeMathCost(11000);
+    case Intrinsic::log:
+    case Intrinsic::avm_logf:
+      return RuntimeMathCost(13500);
+    case Intrinsic::log2:
+    case Intrinsic::avm_log2f:
+      return RuntimeMathCost(14500);
+    case Intrinsic::log10:
+    case Intrinsic::avm_log10f:
+      return RuntimeMathCost(17000);
+    case Intrinsic::pow:
+    case Intrinsic::avm_powf:
+      return RuntimeMathCost(45000);
+    case Intrinsic::avm_hypotf: return RuntimeMathCost(19000);
+    case Intrinsic::avm_fmodf: return RuntimeMathCost(3500);
+    default: break;
+    }
+
+    switch (ICA.getID()) {
     case Intrinsic::fabs:
       return FloatIntrinsicCost(AVM::AVMCostKind::FAbs, AVM::FABS,
                                 /*IsFixed=*/true);
-    case Intrinsic::minnum:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FMin, AVM::FMIN);
-    case Intrinsic::maxnum:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FMax, AVM::FMAX);
-    case Intrinsic::trunc:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FTrunc, AVM::FTRUNC);
-    case Intrinsic::floor:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FFloor, AVM::FFLOOR);
-    case Intrinsic::ceil:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FCeil, AVM::FCEIL);
-    case Intrinsic::round:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FRound, AVM::FROUND);
     case Intrinsic::is_fpclass:
       return FloatIntrinsicCost(AVM::AVMCostKind::FClass, AVM::FCLASS);
     default:
@@ -133,24 +173,6 @@ public:
     }
 
     switch (ICA.getID()) {
-    case Intrinsic::sin:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysSinf, AVM::SYS);
-    case Intrinsic::cos:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysCosf, AVM::SYS);
-    case Intrinsic::atan2:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysAtan2f, AVM::SYS);
-    case Intrinsic::tan:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysTanf, AVM::SYS);
-    case Intrinsic::exp:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysExpf, AVM::SYS);
-    case Intrinsic::log:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysLogf, AVM::SYS);
-    case Intrinsic::log2:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysLog2f, AVM::SYS);
-    case Intrinsic::log10:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysLog10f, AVM::SYS);
-    case Intrinsic::pow:
-      return FloatIntrinsicCost(AVM::AVMCostKind::SysPowf, AVM::SYS);
 #define AVM_SYS_FIXED_COST(IntrinsicName, Cost)                                \
   case Intrinsic::IntrinsicName:                                               \
     if (CostKind == TTI::TCK_CodeSize)                                         \
@@ -205,7 +227,7 @@ public:
         case ISD::FDIV:
           return encodedBytes(AVM::FDIV);
         case ISD::FREM:
-          return encodedBytes(AVM::SYS);
+          return encodedBytes(AVM::CALLF);
         case ISD::FNEG:
           return encodedBytes(AVM::FNEG);
         default:
@@ -292,7 +314,7 @@ public:
       case ISD::FDIV:
         return Normalized(AVM::getCycleRange(AVMCostKind::FDiv).Typical);
       case ISD::FREM:
-        return Normalized(AVM::getCycleRange(AVMCostKind::SysFmodf).Typical);
+        return Normalized(3500);
       case ISD::FNEG:
         return Normalized(AVM::getFixedCycles(AVMCostKind::FNeg));
       default:

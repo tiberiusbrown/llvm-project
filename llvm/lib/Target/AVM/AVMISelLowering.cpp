@@ -606,6 +606,22 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::MUL_F32, RTLIB::impl___mulsf3);
   setLibcallImpl(RTLIB::DIV_F32, RTLIB::impl___divsf3);
   setLibcallImpl(RTLIB::SQRT_F32, RTLIB::impl_sqrtf);
+  setLibcallImpl(RTLIB::SIN_F32, RTLIB::impl_sinf);
+  setLibcallImpl(RTLIB::COS_F32, RTLIB::impl_cosf);
+  setLibcallImpl(RTLIB::TAN_F32, RTLIB::impl_tanf);
+  setLibcallImpl(RTLIB::ATAN2_F32, RTLIB::impl_atan2f);
+  setLibcallImpl(RTLIB::EXP_F32, RTLIB::impl_expf);
+  setLibcallImpl(RTLIB::LOG_F32, RTLIB::impl_logf);
+  setLibcallImpl(RTLIB::LOG2_F32, RTLIB::impl_log2f);
+  setLibcallImpl(RTLIB::LOG10_F32, RTLIB::impl_log10f);
+  setLibcallImpl(RTLIB::POW_F32, RTLIB::impl_powf);
+  setLibcallImpl(RTLIB::REM_F32, RTLIB::impl_fmodf);
+  setLibcallImpl(RTLIB::TRUNC_F32, RTLIB::impl_truncf);
+  setLibcallImpl(RTLIB::FLOOR_F32, RTLIB::impl_floorf);
+  setLibcallImpl(RTLIB::CEIL_F32, RTLIB::impl_ceilf);
+  setLibcallImpl(RTLIB::ROUND_F32, RTLIB::impl_roundf);
+  setLibcallImpl(RTLIB::FMIN_F32, RTLIB::impl_fminf);
+  setLibcallImpl(RTLIB::FMAX_F32, RTLIB::impl_fmaxf);
   setLibcallImpl(RTLIB::FPTOSINT_F32_I32, RTLIB::impl___fixsfsi);
   setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
   setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
@@ -631,13 +647,16 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
 
   for (unsigned Opcode :
-       {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FSQRT, ISD::FNEG,
-        ISD::FABS, ISD::FMINNUM, ISD::FMAXNUM})
+       {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FNEG, ISD::FABS})
     setOperationAction(Opcode, MVT::f32, Legal);
   for (unsigned Opcode :
        {ISD::FSIN, ISD::FCOS, ISD::FATAN2, ISD::FTAN, ISD::FEXP, ISD::FLOG,
-        ISD::FLOG2, ISD::FLOG10, ISD::FPOW, ISD::FREM})
-    setOperationAction(Opcode, MVT::f32, Custom);
+        ISD::FLOG2, ISD::FLOG10, ISD::FPOW, ISD::FREM, ISD::FSQRT,
+        ISD::FTRUNC, ISD::FFLOOR, ISD::FCEIL, ISD::FROUND, ISD::FMINNUM,
+        ISD::FMAXNUM})
+    setOperationAction(Opcode, MVT::f32, LibCall);
+  setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
+  setOperationAction(ISD::FCOPYSIGN, MVT::f32, Expand);
   for (unsigned Opcode : {ISD::STRICT_FADD, ISD::STRICT_FSUB, ISD::STRICT_FMUL,
                           ISD::STRICT_FDIV, ISD::STRICT_FSQRT})
     setOperationAction(Opcode, MVT::f32, Expand);
@@ -1953,55 +1972,32 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerSelectCC(Op, DAG);
   case ISD::SETCC:
     return LowerSetCC(Op, DAG);
-  case ISD::FSIN:
-  case ISD::FCOS:
-  case ISD::FATAN2:
-  case ISD::FTAN:
-  case ISD::FEXP:
-  case ISD::FLOG:
-  case ISD::FLOG2:
-  case ISD::FLOG10:
-  case ISD::FPOW:
-  case ISD::FREM: {
-    Intrinsic::ID ID;
-    switch (Op.getOpcode()) {
-    case ISD::FSIN:
-      ID = Intrinsic::avm_sinf;
-      break;
-    case ISD::FCOS:
-      ID = Intrinsic::avm_cosf;
-      break;
-    case ISD::FATAN2:
-      ID = Intrinsic::avm_atan2f;
-      break;
-    case ISD::FTAN:
-      ID = Intrinsic::avm_tanf;
-      break;
-    case ISD::FEXP:
-      ID = Intrinsic::avm_expf;
-      break;
-    case ISD::FLOG:
-      ID = Intrinsic::avm_logf;
-      break;
-    case ISD::FLOG2:
-      ID = Intrinsic::avm_log2f;
-      break;
-    case ISD::FLOG10:
-      ID = Intrinsic::avm_log10f;
-      break;
-    case ISD::FPOW:
-      ID = Intrinsic::avm_powf;
-      break;
-    case ISD::FREM:
-      ID = Intrinsic::avm_fmodf;
-      break;
-    default:
-      llvm_unreachable("unexpected AVM math service");
+  case ISD::INTRINSIC_WO_CHAIN: {
+    const char *Name;
+    switch (cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue()) {
+    case Intrinsic::avm_sinf: Name = "sinf"; break;
+    case Intrinsic::avm_cosf: Name = "cosf"; break;
+    case Intrinsic::avm_atan2f: Name = "atan2f"; break;
+    case Intrinsic::avm_tanf: Name = "tanf"; break;
+    case Intrinsic::avm_expf: Name = "expf"; break;
+    case Intrinsic::avm_logf: Name = "logf"; break;
+    case Intrinsic::avm_log2f: Name = "log2f"; break;
+    case Intrinsic::avm_log10f: Name = "log10f"; break;
+    case Intrinsic::avm_powf: Name = "powf"; break;
+    case Intrinsic::avm_hypotf: Name = "hypotf"; break;
+    case Intrinsic::avm_fmodf: Name = "fmodf"; break;
+    default: return Op;
     }
-    SmallVector<SDValue, 3> Ops = {
-        DAG.getTargetConstant(ID, SDLoc(Op), MVT::i16)};
-    Ops.append(Op->op_begin(), Op->op_end());
-    return DAG.getNode(ISD::INTRINSIC_WO_CHAIN, SDLoc(Op), MVT::f32, Ops);
+    ArgListTy Args;
+    for (unsigned I = 1; I != Op.getNumOperands(); ++I)
+      Args.emplace_back(Op.getOperand(I), Type::getFloatTy(*DAG.getContext()));
+    SDValue Callee = DAG.getExternalSymbol(Name, getPointerTy(DAG.getDataLayout()));
+    CallLoweringInfo CLI(DAG);
+    CLI.setDebugLoc(SDLoc(Op))
+        .setChain(DAG.getEntryNode())
+        .setLibCallee(CallingConv::C, Type::getFloatTy(*DAG.getContext()), Callee,
+                      std::move(Args));
+    return LowerCallTo(CLI).first;
   }
   default:
     break;
