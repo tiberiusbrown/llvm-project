@@ -1624,8 +1624,98 @@ SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
   return SDValue();
 }
 
+static SDValue lowerI32ConstantMultiply(SDValue Op, SelectionDAG &DAG) {
+  SDValue Value = Op.getOperand(0);
+  const auto *Constant = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+  if (!Constant) {
+    Constant = dyn_cast<ConstantSDNode>(Value);
+    Value = Op.getOperand(1);
+  }
+  if (!Constant)
+    return SDValue();
+
+  // Work modulo 2^32, including negative constants and INT32_MIN. Preserve
+  // native narrow products in the DAG combine; this is the fallback before
+  // choosing either of the full-product runtime helpers.
+  int64_t Signed = Constant->getSExtValue();
+  uint64_t Magnitude = Signed < 0 ? -Signed : Signed;
+  if (!Magnitude)
+    return DAG.getConstant(0, SDLoc(Op), MVT::i32);
+  bool IsPower = isPowerOf2_64(Magnitude);
+  bool IsAdd = !IsPower && isPowerOf2_64(Magnitude - 1);
+  if (!IsPower && !IsAdd && !isPowerOf2_64(Magnitude + 1))
+    return SDValue();
+  unsigned Shift = Log2_64(IsPower ? Magnitude
+                                 : IsAdd ? Magnitude - 1 : Magnitude + 1);
+  if (Shift >= 32)
+    return SDValue();
+
+  using AVM::AVMCostKind;
+  auto Cost = AVM::getFixedCycles;
+  bool OptSize = DAG.getMachineFunction().getFunction().hasOptSize();
+  auto WordShiftCost = [&](unsigned Count) {
+    if (!Count)
+      return 0U;
+    return !OptSize && Count <= 3
+               ? Count * Cost(AVMCostKind::AddUpper)
+               : AVM::getShiftCycles(AVMCostKind::Lsl16I, Count);
+  };
+  // Match LowerI32Shift's word shifts, carry merge, and word transfers.
+  // Charge copies conservatively, since allocation may place words outside
+  // the upper registers. Repeated ADD32s often win for small shift counts.
+  unsigned NativeShiftCost = 0;
+  if (Shift && Shift < 16)
+    NativeShiftCost = 2 * WordShiftCost(Shift) +
+                      AVM::getShiftCycles(AVMCostKind::Lsr16I, 16 - Shift) +
+                      Cost(AVMCostKind::OrFull) +
+                      2 * Cost(AVMCostKind::MovFull);
+  else if (Shift >= 16)
+    NativeShiftCost = WordShiftCost(Shift - 16) +
+                      2 * Cost(AVMCostKind::MovFull) +
+                      Cost(AVMCostKind::ClrUpper);
+  unsigned DoubleCost = Shift * Cost(AVMCostKind::Add32);
+  bool UseDoubles = DoubleCost <= NativeShiftCost;
+  unsigned Cycles = std::min(DoubleCost, NativeShiftCost);
+  if (!IsPower)
+    Cycles += Cost(AVMCostKind::Mov32Full) +
+              Cost(IsAdd ? AVMCostKind::Add32 : AVMCostKind::Sub32);
+  // -(2^N - 1) is x - (x << N); the other negative forms need a negation.
+  bool Negate = Signed < 0 && (IsPower || IsAdd);
+  if (Negate)
+    Cycles += 2 * Cost(AVMCostKind::ClrUpper) + Cost(AVMCostKind::Sub32);
+
+  // Use only the call/return overhead as a budget, excluding the helper body
+  // and argument setup. This deliberately limits code growth and live ranges.
+  if (Cycles > Cost(AVMCostKind::Call8) + Cost(AVMCostKind::Ret))
+    return SDValue();
+
+  SDLoc DL(Op);
+  SDValue Scaled = Value;
+  if (UseDoubles) {
+    for (unsigned I = 0; I != Shift; ++I)
+      Scaled = DAG.getNode(ISD::ADD, DL, MVT::i32, Scaled, Scaled);
+  } else {
+    Scaled = DAG.getNode(ISD::SHL, DL, MVT::i32, Value,
+                         DAG.getConstant(Shift, DL, MVT::i16));
+  }
+  if (!IsPower) {
+    if (IsAdd)
+      Scaled = DAG.getNode(ISD::ADD, DL, MVT::i32, Scaled, Value);
+    else if (Signed < 0)
+      Scaled = DAG.getNode(ISD::SUB, DL, MVT::i32, Value, Scaled);
+    else
+      Scaled = DAG.getNode(ISD::SUB, DL, MVT::i32, Scaled, Value);
+  }
+  return Negate ? DAG.getNode(ISD::SUB, DL, MVT::i32,
+                              DAG.getConstant(0, DL, MVT::i32), Scaled)
+                : Scaled;
+}
+
 SDValue AVMTargetLowering::LowerI32Multiply(SDValue Op,
                                          SelectionDAG &DAG) const {
+  if (SDValue Scaled = lowerI32ConstantMultiply(Op, DAG))
+    return Scaled;
+
   SDLoc DL(Op);
   SDValue LHS = Op.getOperand(0), RHS = Op.getOperand(1);
   // Select by the operands' value ranges, including masks and extending

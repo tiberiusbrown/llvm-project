@@ -46,7 +46,12 @@ config.test_source_root = os.path.dirname(__file__)
 config.test_exec_root = os.path.join(config.lld_obj_root, "test")
 
 llvm_config.use_default_substitutions()
-llvm_config.use_lld()
+
+# ELF-only LLD builds do not provide the COFF, Mach-O, or WebAssembly drivers.
+# Permit missing drivers, but still require the ELF linker.
+llvm_config.use_lld(required=False)
+if "ld.lld" not in config.available_features:
+    lit_config.fatal("LLD tests require ld.lld")
 config.substitutions.append(("%llvm_src_root", config.llvm_src_root))
 
 tool_patterns = [
