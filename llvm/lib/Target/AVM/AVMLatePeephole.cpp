@@ -873,8 +873,19 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
       BuildMI(*Bypass, Bypass->end(), DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
           .addCFIIndex(Restore);
     }
-    BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV32_F2), Dest)
-        .addReg(Source);
+    // Pseudo expansion has already run. q2 <-> q3 needs two compact word
+    // moves; the native MOV32 encoding requires at least one of q0/q1.
+    if (AVM::UpperGPR32RegClass.contains(Dest, Source)) {
+      BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV),
+              TRI.getSubReg(Dest, AVM::sub_lo16))
+          .addReg(TRI.getSubReg(Source, AVM::sub_lo16));
+      BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV),
+              TRI.getSubReg(Dest, AVM::sub_hi16))
+          .addReg(TRI.getSubReg(Source, AVM::sub_hi16));
+    } else {
+      BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV32_F2), Dest)
+          .addReg(Source);
+    }
     for (const MachineInstr *MI : Tail)
       Bypass->insert(Bypass->end(), MF.CloneMachineInstr(MI));
     auto Split = OperandCopy ? OperandCopy->getIterator() : Op;

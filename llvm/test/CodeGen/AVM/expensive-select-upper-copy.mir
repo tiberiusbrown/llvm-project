@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole -verify-machineinstrs %s -o %t.mir
+# RUN: FileCheck %s < %t.mir
+# RUN: llc -mtriple=avm -O2 -start-after=avm-late-peephole -filetype=obj %t.mir -o %t.o
+
+# Tangent's allocated reciprocal select can copy between q2 and q3 on the
+# bypass path. MOV32_F2 cannot encode this pair after pseudo expansion.
+--- |
+  target triple = "avm"
+  define float @upper_bypass(float %a, float %b, i16 %condition) { ret float %a }
+...
+---
+name: upper_bypass
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0, $r4r5, $r6r7
+    $r4r5 = FDIV $r4r5, $r6r7
+    TST16 $r0, implicit-def $cc
+    $r4 = CMOV_EQ $r4, $r6, implicit $cc
+    $r5 = CMOV_EQ $r5, $r7, implicit $cc
+    RET implicit-def $sp, implicit $sp, implicit $r4r5
+
+    ; CHECK-LABEL: name: upper_bypass
+    ; CHECK: $r4r5 = FDIV
+    ; CHECK-NOT: MOV32_F2
+    ; CHECK: $r4 = MOV $r6
+    ; CHECK-NEXT: $r5 = MOV $r7
+    ; CHECK-NEXT: RET
+...
