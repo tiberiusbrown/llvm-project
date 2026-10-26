@@ -1,6 +1,7 @@
 //===-- AVMLatePeephole.cpp - Physical-register AVM cleanups ------------===//
 
 #include "AVM.h"
+#include "AVMCostModel.h"
 #include "AVMInstrInfo.h"
 #include "AVMRegisterRange.h"
 #include "AVMSubtarget.h"
@@ -11,6 +12,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/MC/MCDwarf.h"
 #include <array>
 #include <iterator>
 #include <optional>
@@ -692,6 +694,212 @@ static bool selectByBitOne(MachineBasicBlock &MBB, const AVMInstrInfo &TII) {
   return Changed;
 }
 
+// Recover a conditional expensive calculation without changing allocation.
+// Both outcomes must pay less than the original CMOV sequence. In particular,
+// duplicate a bounded return tail rather than adding a merge jump to either
+// outcome. The cheap CMOV and its register assignment otherwise stay intact.
+static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
+                                        const AVMInstrInfo &TII) {
+  MachineFunction &MF = *MBB.getParent();
+  if (MF.getFunction().hasOptSize() ||
+      MF.getFunction().hasFnAttribute(Attribute::StrictFP))
+    return false;
+  const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+  using AVM::AVMCostKind;
+  unsigned BranchTaken = AVM::getBranchCycles(AVMCostKind::BrEq16, true);
+  unsigned BranchNotTaken = AVM::getBranchCycles(AVMCostKind::BrEq16, false);
+  unsigned CopyCycles = AVM::getFixedCycles(AVMCostKind::Mov32Full);
+  unsigned CMovTaken = 2 * AVM::getBranchCycles(AVMCostKind::CmovEq, true);
+  unsigned CMovNotTaken = 2 * AVM::getBranchCycles(AVMCostKind::CmovEq, false);
+
+  // Appending a return tail cannot lengthen any existing branch. Bound the
+  // new branch to the long encoding, whose costs are used above.
+  unsigned FunctionBytes = 0;
+  for (const MachineBasicBlock &BB : MF)
+    for (const MachineInstr &MI : BB)
+      FunctionBytes += TII.getInstSizeInBytes(MI);
+  if (FunctionBytes + 32 >= INT16_MAX || BranchNotTaken >= CMovNotTaken)
+    return false;
+
+  for (auto Op = MBB.begin(); Op != MBB.end(); ++Op) {
+    AVM::AVMCycleRange Cycles;
+    switch (Op->getOpcode()) {
+    case AVM::FADD:
+      Cycles = AVM::getCycleRange(AVMCostKind::FAdd);
+      break;
+    case AVM::FSUB:
+      Cycles = AVM::getCycleRange(AVMCostKind::FSub);
+      break;
+    case AVM::FMUL:
+      Cycles = AVM::getCycleRange(AVMCostKind::FMul);
+      break;
+    case AVM::FDIV:
+      Cycles = AVM::getCycleRange(AVMCostKind::FDiv);
+      break;
+    default:
+      continue; // Other operations need a validated minimum-cycle estimate.
+    }
+    // Use the instruction timing model, not an IR opcode or source-function
+    // name. Currently FDIV is the only native pair operation above this bound.
+    if (Op->isMetaInstruction() || Op->isDebugInstr() ||
+        Op->getNumExplicitDefs() != 1 || Op->mayLoadOrStore() ||
+        Op->isCall() || Op->isTerminator() || Op->isInlineAsm() ||
+        Op->hasUnmodeledSideEffects() || Op->modifiesRegister(AVM::CC, &TRI) ||
+        Cycles.Typical <= 2 * BranchTaken + CopyCycles)
+      continue;
+    Register Dest = Op->getOperand(0).getReg();
+    if (!AVM::GPR32RegClass.contains(Dest))
+      continue;
+    if (BranchTaken + CopyCycles >= Cycles.Minimum + CMovTaken)
+      continue;
+
+    auto Test = std::next(Op);
+    MachineInstr *ConditionLoad = nullptr;
+    if (Test != MBB.end() && isWordStackLoad(*Test)) {
+      ConditionLoad = &*Test;
+      ++Test;
+    }
+    if (Test == MBB.end() ||
+        (Test->getOpcode() != AVM::TST8 && Test->getOpcode() != AVM::TST16) ||
+        Test->readsRegister(Dest, &TRI))
+      continue;
+    auto Low = std::next(Test);
+    auto High = Low == MBB.end() ? MBB.end() : std::next(Low);
+    if (High == MBB.end())
+      continue;
+    unsigned Condition = 0;
+    while (Condition < 6 && Low->getOpcode() != CMovOpcodes[Condition])
+      ++Condition;
+    if (Condition == 6 || High->getOpcode() != Low->getOpcode() ||
+        Low->getOperand(0).getReg() != TRI.getSubReg(Dest, AVM::sub_lo16) ||
+        High->getOperand(0).getReg() != TRI.getSubReg(Dest, AVM::sub_hi16) ||
+        Low->getOperand(1).getReg() != Low->getOperand(0).getReg() ||
+        High->getOperand(1).getReg() != High->getOperand(0).getReg())
+      continue;
+    Register Source = TRI.getMatchingSuperReg(Low->getOperand(2).getReg(),
+                                               AVM::sub_lo16,
+                                               &AVM::GPR32RegClass);
+    if (!Source || High->getOperand(2).getReg() !=
+                       TRI.getSubReg(Source, AVM::sub_hi16) ||
+        TRI.regsOverlap(Source, Dest))
+      continue;
+
+    MachineInstr *OperandCopy = nullptr;
+    Register ConditionReg;
+    if (ConditionLoad) {
+      Register Loaded = ConditionLoad->getOperand(0).getReg();
+      if (TRI.regsOverlap(Source, Loaded) ||
+          Test->getOperand(0).getReg() != Loaded ||
+          ConditionLoad->hasOrderedMemoryRef())
+        continue;
+      if (Op->readsRegister(Loaded, &TRI) ||
+          Op->modifiesRegister(Loaded, &TRI)) {
+        // A stacked condition may reuse the divisor register after FDIV.
+        // Reuse the result's low word before its existing operand copy instead.
+        // This needs no scratch register or spill, and the cost check includes
+        // the more expensive full-register load encoding when necessary.
+        if (Op == MBB.begin() || FunctionBytes + 32 >= 128)
+          continue;
+        auto Copy = std::prev(Op);
+        if (Copy->getOpcode() != AVM::MOV32_F2 ||
+            Copy->getOperand(0).getReg() != Dest ||
+            Copy->getOperand(1).getReg() != Source)
+          continue;
+        unsigned LoadPenalty = AVM::getFixedCycles(AVMCostKind::LdSp16Cold) -
+                               TII.getInstrLatency(nullptr, *ConditionLoad);
+        if (AVM::getBranchCycles(AVMCostKind::BrEq8, false) + LoadPenalty >=
+            CMovNotTaken)
+          continue;
+        OperandCopy = &*Copy;
+        ConditionReg = TRI.getSubReg(Dest, AVM::sub_lo16);
+      }
+    }
+
+    SmallVector<const MachineInstr *, 8> Tail;
+    MachineBasicBlock *BB = &MBB;
+    auto It = std::next(High);
+    unsigned Bytes = 0;
+    unsigned Instructions = 0;
+    bool HasReturn = false;
+    for (unsigned Blocks = 0; Blocks != 2 && !HasReturn; ++Blocks) {
+      for (; It != BB->end(); ++It) {
+        if (It->isDebugInstr())
+          continue;
+        if (It->isCFIInstruction()) {
+          auto Kind = MF.getFrameInstructions()[It->getOperand(0).getCFIIndex()]
+                          .getOperation();
+          if (Kind == MCCFIInstruction::OpRememberState ||
+              Kind == MCCFIInstruction::OpRestoreState)
+            break;
+          Tail.push_back(&*It);
+          continue;
+        }
+        if (It->isMetaInstruction() || It->isCall() || It->isBranch() ||
+            It->isInlineAsm() || It->isNotDuplicable())
+          break;
+        Bytes += TII.getInstSizeInBytes(*It);
+        ++Instructions;
+        Tail.push_back(&*It);
+        HasReturn = It->isReturn();
+        if (HasReturn || Bytes > 16 || Instructions > 8)
+          break;
+      }
+      if (HasReturn || It != BB->end() || BB->succ_size() != 1 ||
+          BB->getNextNode() != *BB->succ_begin())
+        break;
+      BB = *BB->succ_begin();
+      It = BB->begin();
+    }
+    if (!HasReturn || Bytes > 16 || Instructions > 8)
+      continue;
+
+    DebugLoc DL = Op->getDebugLoc();
+    auto *Divide = MF.CreateMachineBasicBlock(MBB.getBasicBlock());
+    auto *Bypass = MF.CreateMachineBasicBlock(MBB.getBasicBlock());
+    MF.insert(std::next(MBB.getIterator()), Divide);
+    MF.push_back(Bypass);
+    // The copied epilogue starts with the unwind state from before the
+    // original epilogue, rather than the state after its final register pop.
+    if (llvm::any_of(Tail, [](const MachineInstr *MI) {
+          return MI->isCFIInstruction();
+        })) {
+      auto *First = const_cast<MachineInstr *>(Tail.front());
+      unsigned Remember = MF.addFrameInst(
+          MCCFIInstruction::createRememberState(nullptr));
+      unsigned Restore = MF.addFrameInst(
+          MCCFIInstruction::createRestoreState(nullptr));
+      BuildMI(*First->getParent(), First, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(Remember);
+      BuildMI(*Bypass, Bypass->end(), DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(Restore);
+    }
+    BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV32_F2), Dest)
+        .addReg(Source);
+    for (const MachineInstr *MI : Tail)
+      Bypass->insert(Bypass->end(), MF.CloneMachineInstr(MI));
+    auto Split = OperandCopy ? OperandCopy->getIterator() : Op;
+    if (ConditionLoad) {
+      if (ConditionReg) {
+        ConditionLoad->setDesc(TII.get(AVM::LDSP16));
+        ConditionLoad->getOperand(0).setReg(ConditionReg);
+        Test->getOperand(0).setReg(ConditionReg);
+      }
+      MBB.splice(Split, &MBB, ConditionLoad->getIterator());
+    }
+    MBB.splice(Split, &MBB, Test);
+    Divide->splice(Divide->end(), &MBB, Split, MBB.end());
+    Low->eraseFromParent();
+    High->eraseFromParent();
+    Divide->transferSuccessorsAndUpdatePHIs(&MBB);
+    MBB.addSuccessor(Divide);
+    MBB.addSuccessor(Bypass);
+    BuildMI(MBB, MBB.end(), DL, TII.get(BranchOpcodes[Condition]))
+        .addMBB(Bypass);
+    return true;
+  }
+  return false;
+}
+
 class AVMLatePeephole final : public MachineFunctionPass {
 public:
   static char ID;
@@ -714,6 +922,27 @@ public:
       Changed |= cleanRegisterAndStackValues(MBB, TII, Ranges);
       Changed |= forwardCompareCopies(MBB, TII);
     }
+    SmallVector<MachineBasicBlock *, 16> Blocks;
+    for (MachineBasicBlock &MBB : MF)
+      Blocks.push_back(&MBB);
+    bool ChangedCFG = false;
+    for (MachineBasicBlock *MBB : Blocks)
+      if (branchAroundExpensiveSelect(*MBB, TII)) {
+        ChangedCFG = true;
+        break; // Bound code growth and the number of copied unwind states.
+      }
+    if (ChangedCFG) {
+      Blocks.clear();
+      for (MachineBasicBlock &MBB : MF) {
+        Blocks.push_back(&MBB);
+        for (MachineInstr &MI : MBB)
+          for (MachineOperand &MO : MI.operands())
+            if (MO.isReg() && MO.isUse())
+              MO.setIsKill(false);
+      }
+      fullyRecomputeLiveIns(Blocks);
+    }
+    Changed |= ChangedCFG;
     return Changed;
   }
 };
