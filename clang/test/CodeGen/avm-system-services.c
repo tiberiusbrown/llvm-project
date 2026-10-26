@@ -98,5 +98,6 @@ float pressure(float x, float y) {
 // ASM-DAG: sys draw_sprite_self_masked
 // ASM-DAG: sys draw_sprite_erase
 // ASM-LABEL: pressure:
-// ASM-DAG: sys sinf
-// ASM-DAG: sys powf
+// Math intrinsics lower to runtime calls using the C ABI.
+// ASM-DAG: call sinf
+// ASM-DAG: call powf
