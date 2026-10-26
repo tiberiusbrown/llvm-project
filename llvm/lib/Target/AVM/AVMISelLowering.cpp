@@ -1098,6 +1098,44 @@ SDValue AVMTargetLowering::LowerSetCC(SDValue Op, SelectionDAG &DAG) const {
   return DAG.getNode(AVMISD::CSET, DL, Op.getValueType(), TargetCC, Glue);
 }
 
+static SDValue getAVMSelect(SDValue True, SDValue False, SDValue CC,
+                            SDValue Glue, const SDLoc &DL, SelectionDAG &DAG) {
+  EVT VT = True.getValueType();
+  if (VT == MVT::i32 || VT == MVT::f32) {
+    auto GetBits = [](SDValue Value, uint32_t &Bits) {
+      if (const auto *C = dyn_cast<ConstantSDNode>(Value)) {
+        Bits = C->getZExtValue();
+        return true;
+      }
+      if (const auto *C = dyn_cast<ConstantFPSDNode>(Value)) {
+        Bits = C->getValueAPF().bitcastToAPInt().getZExtValue();
+        return true;
+      }
+      return false;
+    };
+    uint32_t TrueBits, FalseBits;
+    if (GetBits(True, TrueBits) && GetBits(False, FalseBits) &&
+        ((TrueBits & 0xffff) == (FalseBits & 0xffff) ||
+         (TrueBits >> 16) == (FalseBits >> 16))) {
+      // A wide CMOV keeps two complete register pairs live and selects both
+      // words. Share an identical word and select only the differing word.
+      // Use the exact representation for f32, including signed zeros and NaNs.
+      SDValue Words[2];
+      for (unsigned I = 0; I != 2; ++I) {
+        SDValue T = DAG.getConstant((TrueBits >> (16 * I)) & 0xffff, DL,
+                                    MVT::i16);
+        SDValue F = DAG.getConstant((FalseBits >> (16 * I)) & 0xffff, DL,
+                                    MVT::i16);
+        Words[I] = T == F ? T : DAG.getNode(AVMISD::CMOV, DL, MVT::i16, T, F,
+                                           CC, Glue);
+      }
+      SDValue Pair = DAG.getNode(ISD::BUILD_PAIR, DL, MVT::i32, Words);
+      return VT == MVT::f32 ? DAG.getNode(ISD::BITCAST, DL, VT, Pair) : Pair;
+    }
+  }
+  return DAG.getNode(AVMISD::CMOV, DL, VT, True, False, CC, Glue);
+}
+
 SDValue AVMTargetLowering::LowerSelectCC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
@@ -1108,15 +1146,15 @@ SDValue AVMTargetLowering::LowerSelectCC(SDValue Op, SelectionDAG &DAG) const {
     SDValue Glue;
     if (getAVMDirectFloatCompare(CompareLHS, CompareRHS, CC, DL, DAG, TargetCC,
                                  Glue))
-      return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(2),
-                         Op.getOperand(3), TargetCC, Glue);
+      return getAVMSelect(Op.getOperand(2), Op.getOperand(3), TargetCC, Glue,
+                           DL, DAG);
     CompareLHS = getAVMFloatSetCC(CompareLHS, CompareRHS, CC, DL, DAG);
     CompareRHS = DAG.getConstant(0, DL, MVT::i16);
     CC = ISD::SETNE;
   }
   auto [TargetCC, Glue] = getAVMCompare(CompareLHS, CompareRHS, CC, DL, DAG);
-  return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(2),
-                     Op.getOperand(3), TargetCC, Glue);
+  return getAVMSelect(Op.getOperand(2), Op.getOperand(3), TargetCC, Glue, DL,
+                       DAG);
 }
 
 SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
@@ -1142,8 +1180,8 @@ SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
     std::tie(TargetCC, Glue) = getAVMCompare(
         Cond, DAG.getConstant(0, DL, Cond.getValueType()), ISD::SETNE, DL, DAG);
   }
-  return DAG.getNode(AVMISD::CMOV, DL, Op.getValueType(), Op.getOperand(1),
-                     Op.getOperand(2), TargetCC, Glue);
+  return getAVMSelect(Op.getOperand(1), Op.getOperand(2), TargetCC, Glue, DL,
+                       DAG);
 }
 
 SDValue AVMTargetLowering::LowerISFPClass(SDValue Op, SelectionDAG &DAG) const {
