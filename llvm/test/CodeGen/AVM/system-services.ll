@@ -89,7 +89,7 @@ define float @math_services(float %x, float %y) {
 ; CHECK:       {{call|jmp}} log10f
 ; CHECK:       {{call|jmp}} powf
 ; CHECK:       {{call|jmp}} hypotf
-; CHECK:       {{call|jmp}} fmodf
+; CHECK:       fmod{{$}}
   %sin = call float @llvm.avm.sinf(float %x)
   %cos = call float @llvm.avm.cosf(float %sin)
   %atan = call float @llvm.avm.atan2f(float %cos, float %y)
@@ -196,7 +196,7 @@ define void @global_sprite_object_mmo() {
 ; MIR-O2:    {{CALL|TCRETURN}}{{.*}}log10f
 ; MIR-O2:    {{CALL|TCRETURN}}{{.*}}powf
 ; MIR-O2:    {{CALL|TCRETURN}}{{.*}}hypotf
-; MIR-O2:    {{CALL|TCRETURN}}{{.*}}fmodf
+; MIR-O2:    FMOD_PSEUDO
 ; MIR-LABEL: name: display_and_sprite_services
 ; MIR-O0:    SYS_DISPLAY_PSEUDO {{(killed )?}}{{%[0-9]+}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-O2:    [[X:%[0-9]+]]:r4only = COPY

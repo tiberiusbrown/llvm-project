@@ -115,4 +115,7 @@ BUILTIN(__avm_strlen, "UicC*", "nA")
 BUILTIN(__avm_strncpy, "c*c*cC*Ui", "nA")
 BUILTIN(__avm_strncat, "c*c*cC*Ui", "nA")
 
+// Internal nearest pi/2 reduction; quadrant is an explicit second result.
+BUILTIN(__builtin_avm_rempio2, "ffi*", "n")
+
 #undef BUILTIN

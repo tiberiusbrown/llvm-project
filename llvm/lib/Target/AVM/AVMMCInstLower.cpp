@@ -25,6 +25,14 @@ void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
 
   OutMI.setOpcode(MI->getOpcode());
   switch (MI->getOpcode()) {
+  case AVM::FSQRT: OutMI.setOpcode(AVM::FSQRT_MC); return;
+  case AVM::FTRUNC: OutMI.setOpcode(AVM::FTRUNC_MC); return;
+  case AVM::FFLOOR: OutMI.setOpcode(AVM::FFLOOR_MC); return;
+  case AVM::FCEIL: OutMI.setOpcode(AVM::FCEIL_MC); return;
+  case AVM::FROUND: OutMI.setOpcode(AVM::FROUND_MC); return;
+  case AVM::FMOD: OutMI.setOpcode(AVM::FMOD_MC); return;
+  case AVM::FREMPIO2: OutMI.setOpcode(AVM::FREMPIO2_MC); return;
+  case AVM::FMA: OutMI.setOpcode(AVM::FMA_MC); return;
   case AVM::FADD: OutMI.setOpcode(AVM::FADD_MC); return;
   case AVM::FSUB: OutMI.setOpcode(AVM::FSUB_MC); return;
   case AVM::FMUL: OutMI.setOpcode(AVM::FMUL_MC); return;

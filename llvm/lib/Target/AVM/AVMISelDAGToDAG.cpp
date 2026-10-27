@@ -683,6 +683,24 @@ private:
     case ISD::FABS:
       Opcode = AVM::FABS_PSEUDO;
       break;
+    case ISD::FTRUNC:
+      Opcode = AVM::FTRUNC_PSEUDO;
+      break;
+    case ISD::FFLOOR:
+      Opcode = AVM::FFLOOR_PSEUDO;
+      break;
+    case ISD::FCEIL:
+      Opcode = AVM::FCEIL_PSEUDO;
+      break;
+    case ISD::FROUND:
+      Opcode = AVM::FROUND_PSEUDO;
+      break;
+    case ISD::FREM:
+      Opcode = AVM::FMOD_PSEUDO;
+      break;
+    case ISD::FMA:
+      Opcode = AVM::FMA_PSEUDO;
+      break;
     case ISD::FSQRT:
       Opcode = AVM::FSQRT_PSEUDO;
       break;
@@ -1486,6 +1504,13 @@ private:
   }
 
   bool selectAVMIntrinsic(SDNode *Node) {
+    if (Node->getOpcode() == ISD::INTRINSIC_WO_CHAIN &&
+        cast<ConstantSDNode>(Node->getOperand(0))->getZExtValue() == Intrinsic::avm_rempio2) {
+      SmallVector<SDValue, 1> Ops{Node->getOperand(1)};
+      CurDAG->SelectNodeTo(Node, AVM::FREMPIO2_PSEUDO, Node->getVTList(), Ops);
+      return true;
+    }
+
     unsigned IDOperand = Node->getOpcode() == ISD::INTRINSIC_WO_CHAIN ? 0 : 1;
     const auto *IDNode = dyn_cast<ConstantSDNode>(Node->getOperand(IDOperand));
     if (!IDNode)
@@ -1934,6 +1959,12 @@ private:
     case ISD::FMAXNUM:
     case ISD::FNEG:
     case ISD::FABS:
+    case ISD::FTRUNC:
+    case ISD::FFLOOR:
+    case ISD::FCEIL:
+    case ISD::FROUND:
+    case ISD::FREM:
+    case ISD::FMA:
     case ISD::FSQRT:
     case ISD::SINT_TO_FP:
     case ISD::UINT_TO_FP:

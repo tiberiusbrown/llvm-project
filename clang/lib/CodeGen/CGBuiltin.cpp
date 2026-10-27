@@ -212,6 +212,14 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
   switch (Arch) {
   case llvm::Triple::avm:
     switch (BuiltinID) {
+    case AVM::BI__builtin_avm_rempio2: {
+      Value *X = CGF->EmitScalarExpr(E->getArg(0));
+      Address Q = CGF->EmitPointerWithAlignment(E->getArg(1));
+      auto *Fn = CGF->CGM.getIntrinsic(Intrinsic::avm_rempio2);
+      Value *Pair = CGF->Builder.CreateCall(Fn, {X});
+      CGF->Builder.CreateStore(CGF->Builder.CreateExtractValue(Pair, 1), Q);
+      return CGF->Builder.CreateExtractValue(Pair, 0);
+    }
     case AVM::BI__builtin_avm_stack_dispatch: {
       Value *Fn = CGF->EmitScalarExpr(E->getArg(0));
       Expr::EvalResult Result;

@@ -647,12 +647,12 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
 
   for (unsigned Opcode :
-       {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FNEG, ISD::FABS})
+       {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FNEG, ISD::FABS, ISD::FSQRT, ISD::FTRUNC, ISD::FFLOOR,
+        ISD::FCEIL, ISD::FROUND, ISD::FREM, ISD::FMA})
     setOperationAction(Opcode, MVT::f32, Legal);
   for (unsigned Opcode :
        {ISD::FSIN, ISD::FCOS, ISD::FATAN2, ISD::FTAN, ISD::FEXP, ISD::FLOG,
-        ISD::FLOG2, ISD::FLOG10, ISD::FPOW, ISD::FREM, ISD::FSQRT,
-        ISD::FTRUNC, ISD::FFLOOR, ISD::FCEIL, ISD::FROUND, ISD::FMINNUM,
+        ISD::FLOG2, ISD::FLOG10, ISD::FPOW, ISD::FMINNUM,
         ISD::FMAXNUM})
     setOperationAction(Opcode, MVT::f32, LibCall);
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
@@ -2072,7 +2072,8 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     case Intrinsic::avm_log10f: Name = "log10f"; break;
     case Intrinsic::avm_powf: Name = "powf"; break;
     case Intrinsic::avm_hypotf: Name = "hypotf"; break;
-    case Intrinsic::avm_fmodf: Name = "fmodf"; break;
+    case Intrinsic::avm_fmodf:
+      return DAG.getNode(ISD::FREM, SDLoc(Op), MVT::f32, Op.getOperand(1), Op.getOperand(2));
     default: return Op;
     }
     ArgListTy Args;

@@ -19,6 +19,14 @@ let SchedModel = AVMInterpreterModel in {
   }
 
 // Generated from the checked-in instruction calibration; see AVMCycleCosts.def.
+  def AVMW629 : AVMWrite<629>;
+  def AVMW377 : AVMWrite<377>;
+  def AVMW382 : AVMWrite<382>;
+  def AVMW383 : AVMWrite<383>;
+  def AVMW390 : AVMWrite<390>;
+  def AVMW189 : AVMWrite<189>;
+  def AVMW225 : AVMWrite<225>;
+  def AVMW464 : AVMWrite<464>;
   def AVMW17 : AVMWrite<17>;
   def AVMW18 : AVMWrite<18>;
   def AVMW19 : AVMWrite<19>;
@@ -150,6 +158,15 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW338], (instrs LDP24_POST)>;
   def : InstRW<[AVMW352], (instrs LDP32_POST)>;
   def : InstRW<[AVMW529], (instrs FDIV, FDIV_MC)>;
+  def : InstRW<[AVMW629], (instrs FSQRT, FSQRT_MC)>;
+  def : InstRW<[AVMW377], (instrs FTRUNC, FTRUNC_MC)>;
+  def : InstRW<[AVMW382], (instrs FFLOOR, FFLOOR_MC)>;
+  def : InstRW<[AVMW383], (instrs FCEIL, FCEIL_MC)>;
+  def : InstRW<[AVMW390], (instrs FROUND, FROUND_MC)>;
+  def : InstRW<[AVMW189], (instrs FMOD, FMOD_MC)>;
+  def : InstRW<[AVMW225], (instrs FREMPIO2, FREMPIO2_MC)>;
+  def : InstRW<[AVMW464], (instrs FMA, FMA_MC)>;
+
 
 }
 

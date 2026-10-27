@@ -721,7 +721,17 @@ def FMIN_PSEUDO : AVMBinary32Pseudo;
 def FMAX_PSEUDO : AVMBinary32Pseudo;
 def FNEG_PSEUDO : AVMUnary32Pseudo;
 def FABS_PSEUDO : AVMUnary32Pseudo;
-def FSQRT_PSEUDO : AVMUnary32Pseudo;
+class AVMFFUnaryPseudo : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> {
+  let Constraints = "$dst = $src";
+}
+def FSQRT_PSEUDO : AVMFFUnaryPseudo;
+def FTRUNC_PSEUDO : AVMFFUnaryPseudo;
+def FFLOOR_PSEUDO : AVMFFUnaryPseudo;
+def FCEIL_PSEUDO : AVMFFUnaryPseudo;
+def FROUND_PSEUDO : AVMFFUnaryPseudo;
+def FMOD_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src1, Q3Only:$src2)> { let Constraints = "$dst = $src1"; }
+def FREMPIO2_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst, R6Only:$quadrant), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FMA_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$a, Q3Only:$b, Q0Only:$c)> { let Constraints = "$dst = $a"; }
 def S16TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins R4Only:$src)>;
 def U16TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins R4Only:$src)>;
 def S32TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
@@ -1414,6 +1424,14 @@ def FADD : AVMFFBinaryInst<"fadd">;
 def FSUB : AVMFFBinaryInst<"fsub">;
 def FMUL : AVMFFBinaryInst<"fmul">;
 def FDIV : AVMFFBinaryInst<"fdiv">;
+def FSQRT : AVMFFFixedInst<"fsqrt", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FTRUNC : AVMFFFixedInst<"ftrunc", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FFLOOR : AVMFFFixedInst<"ffloor", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FCEIL : AVMFFFixedInst<"fceil", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FROUND : AVMFFFixedInst<"fround", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FMOD : AVMFFBinaryInst<"fmod"> { }
+def FREMPIO2 : AVMFFFixedInst<"frempio2", (outs Q2Only:$dst, R6Only:$quadrant), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FMA : AVMFFFixedInst<"fma", (outs Q2Only:$dst), (ins Q2Only:$a, Q3Only:$b, Q0Only:$c)> { let Constraints = "$dst = $a"; }
 def FNEG : AVMFFUnaryInst<"fneg $dst">;
 def FABS : AVMFFUnaryInst<"fabs $dst">;
 def S16TOF : AVMFFFixedInst<"s16tof", (outs Q2Only:$dst), (ins R4Only:$src)>;
@@ -1439,6 +1457,14 @@ def FADD_MC : AVMFFMCInst<"fadd", [R4R5, R6R7], [R4R5]>;
 def FSUB_MC : AVMFFMCInst<"fsub", [R4R5, R6R7], [R4R5]>;
 def FMUL_MC : AVMFFMCInst<"fmul", [R4R5, R6R7], [R4R5]>;
 def FDIV_MC : AVMFFMCInst<"fdiv", [R4R5, R6R7], [R4R5]>;
+def FSQRT_MC : AVMFFMCInst<"fsqrt", [R4R5], [R4R5]> { }
+def FTRUNC_MC : AVMFFMCInst<"ftrunc", [R4R5], [R4R5]> { }
+def FFLOOR_MC : AVMFFMCInst<"ffloor", [R4R5], [R4R5]> { }
+def FCEIL_MC : AVMFFMCInst<"fceil", [R4R5], [R4R5]> { }
+def FROUND_MC : AVMFFMCInst<"fround", [R4R5], [R4R5]> { }
+def FMOD_MC : AVMFFMCInst<"fmod", [R4R5, R6R7], [R4R5]> { }
+def FREMPIO2_MC : AVMFFMCInst<"frempio2", [R4R5], [R4R5, R6]> { }
+def FMA_MC : AVMFFMCInst<"fma", [R4R5, R6R7, R0R1], [R4R5]> { }
 def S16TOF_MC : AVMFFMCInst<"s16tof", [R4], [R4R5]>;
 def U16TOF_MC : AVMFFMCInst<"u16tof", [R4], [R4R5]>;
 def FTOS16_MC : AVMFFMCInst<"ftos16", [R4R5], [R4]>;

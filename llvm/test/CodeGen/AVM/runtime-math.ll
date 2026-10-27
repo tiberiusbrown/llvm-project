@@ -7,35 +7,35 @@ declare float @llvm.round.f32(float)
 
 define float @trunc_value(float %x) {
 ; CHECK-LABEL: trunc_value:
-; CHECK: {{call|jmp}} truncf
+; CHECK: ftrunc{{$}}
   %r = call float @llvm.trunc.f32(float %x)
   ret float %r
 }
 
 define float @floor_value(float %x) {
 ; CHECK-LABEL: floor_value:
-; CHECK: {{call|jmp}} floorf
+; CHECK: ffloor{{$}}
   %r = call float @llvm.floor.f32(float %x)
   ret float %r
 }
 
 define float @ceil_value(float %x) {
 ; CHECK-LABEL: ceil_value:
-; CHECK: {{call|jmp}} ceilf
+; CHECK: fceil{{$}}
   %r = call float @llvm.ceil.f32(float %x)
   ret float %r
 }
 
 define float @round_value(float %x) {
 ; CHECK-LABEL: round_value:
-; CHECK: {{call|jmp}} roundf
+; CHECK: fround{{$}}
   %r = call float @llvm.round.f32(float %x)
   ret float %r
 }
 
 define float @remainder(float %x, float %y) {
 ; CHECK-LABEL: remainder:
-; CHECK: {{call|jmp}} fmodf
+; CHECK: fmod{{$}}
   %r = frem float %x, %y
   ret float %r
 }

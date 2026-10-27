@@ -15,6 +15,22 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::MOV: return {"mov", 0};
   case AVM::MOV32:
   case AVM::MOV32_F2: return {"mov32", 0};
+  case AVM::FSQRT_MC:
+  case AVM::FSQRT: return {"fsqrt", 0};
+  case AVM::FTRUNC_MC:
+  case AVM::FTRUNC: return {"ftrunc", 0};
+  case AVM::FFLOOR_MC:
+  case AVM::FFLOOR: return {"ffloor", 0};
+  case AVM::FCEIL_MC:
+  case AVM::FCEIL: return {"fceil", 0};
+  case AVM::FROUND_MC:
+  case AVM::FROUND: return {"fround", 0};
+  case AVM::FMOD_MC:
+  case AVM::FMOD: return {"fmod", 0};
+  case AVM::FREMPIO2_MC:
+  case AVM::FREMPIO2: return {"frempio2", 0};
+  case AVM::FMA_MC:
+  case AVM::FMA: return {"fma", 0};
   case AVM::FPOLY: return {"fpoly", 0};
   case AVM::FADD_MC:
   case AVM::FADD: return {"fadd", 0};
@@ -328,6 +344,22 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::FCMP:
   case AVM::FCLASS_MC:
   case AVM::FCLASS:
+  case AVM::FSQRT_MC:
+  case AVM::FSQRT:
+  case AVM::FTRUNC_MC:
+  case AVM::FTRUNC:
+  case AVM::FFLOOR_MC:
+  case AVM::FFLOOR:
+  case AVM::FCEIL_MC:
+  case AVM::FCEIL:
+  case AVM::FROUND_MC:
+  case AVM::FROUND:
+  case AVM::FMOD_MC:
+  case AVM::FMOD:
+  case AVM::FREMPIO2_MC:
+  case AVM::FREMPIO2:
+  case AVM::FMA_MC:
+  case AVM::FMA:
     break;
   case AVM::MOV32:
   case AVM::MOV32_F2:

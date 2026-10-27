@@ -122,19 +122,19 @@ public:
     };
     switch (ICA.getID()) {
     case Intrinsic::sqrt:
-      return RuntimeMathCost(5800);
+      return FloatIntrinsicCost(AVM::AVMCostKind::FSqrt, AVM::FSQRT);
     case Intrinsic::minnum:
       return RuntimeMathCost(2000);
     case Intrinsic::maxnum:
       return RuntimeMathCost(2000);
     case Intrinsic::trunc:
-      return RuntimeMathCost(2000);
+      return FloatIntrinsicCost(AVM::AVMCostKind::FTrunc, AVM::FTRUNC);
     case Intrinsic::floor:
-      return RuntimeMathCost(2600);
+      return FloatIntrinsicCost(AVM::AVMCostKind::FFloor, AVM::FFLOOR);
     case Intrinsic::ceil:
-      return RuntimeMathCost(2500);
+      return FloatIntrinsicCost(AVM::AVMCostKind::FCeil, AVM::FCEIL);
     case Intrinsic::round:
-      return RuntimeMathCost(2300);
+      return FloatIntrinsicCost(AVM::AVMCostKind::FRound, AVM::FROUND);
     case Intrinsic::sin:
     case Intrinsic::avm_sinf:
       return RuntimeMathCost(11700);
@@ -163,7 +163,12 @@ public:
     case Intrinsic::avm_powf:
       return RuntimeMathCost(17900);
     case Intrinsic::avm_hypotf: return RuntimeMathCost(8900);
-    case Intrinsic::avm_fmodf: return RuntimeMathCost(4400);
+    case Intrinsic::avm_fmodf:
+      return FloatIntrinsicCost(AVM::AVMCostKind::FMod, AVM::FMOD);
+    case Intrinsic::fma:
+      return FloatIntrinsicCost(AVM::AVMCostKind::FMA, AVM::FMA);
+    case Intrinsic::avm_rempio2:
+      return FloatIntrinsicCost(AVM::AVMCostKind::FRemPio2, AVM::FREMPIO2);
     default: break;
     }
 
@@ -232,7 +237,7 @@ public:
         case ISD::FDIV:
           return encodedBytes(AVM::FDIV);
         case ISD::FREM:
-          return encodedBytes(AVM::CALLF);
+          return encodedBytes(AVM::FMOD);
         case ISD::FNEG:
           return encodedBytes(AVM::FNEG);
         default:
@@ -319,7 +324,7 @@ public:
       case ISD::FDIV:
         return Normalized(AVM::getCycleRange(AVMCostKind::FDiv).Typical);
       case ISD::FREM:
-        return Normalized(4400);
+        return Normalized(AVM::getCycleRange(AVMCostKind::FMod).Typical);
       case ISD::FNEG:
         return Normalized(AVM::getFixedCycles(AVMCostKind::FNeg));
       default:

@@ -463,7 +463,7 @@ public:
         return Success;
       }
       Size = 2;
-      if (Secondary >= 0x17)
+      if (Secondary >= 0x1f)
         return Fail;
       if (Secondary >= 4 && Secondary < 12) {
         MI.setOpcode(Secondary < 8 ? AVM::FNEG : AVM::FABS);
@@ -471,6 +471,14 @@ public:
         return Success;
       }
       switch (Secondary) {
+      case 0x17: MI.setOpcode(AVM::FSQRT_MC); break;
+      case 0x18: MI.setOpcode(AVM::FTRUNC_MC); break;
+      case 0x19: MI.setOpcode(AVM::FFLOOR_MC); break;
+      case 0x1a: MI.setOpcode(AVM::FCEIL_MC); break;
+      case 0x1b: MI.setOpcode(AVM::FROUND_MC); break;
+      case 0x1c: MI.setOpcode(AVM::FMOD_MC); break;
+      case 0x1d: MI.setOpcode(AVM::FREMPIO2_MC); break;
+      case 0x1e: MI.setOpcode(AVM::FMA_MC); break;
       case 0x00: MI.setOpcode(AVM::FADD_MC); break;
       case 0x01: MI.setOpcode(AVM::FSUB_MC); break;
       case 0x02: MI.setOpcode(AVM::FMUL_MC); break;

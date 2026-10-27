@@ -121,26 +121,26 @@ define void @wide_float_and_program_costs(i32 %a, i32 %b, float %x, float %y,
 
 define void @remaining_float_costs(float %x, float %y) {
 ; CHECK-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %neg = fneg float %x
-; CHECK:       Cost Model: Found an estimated cost of 259 for instruction: %rem = frem float %x, %y
-; CHECK:       Cost Model: Found an estimated cost of 341 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
+; CHECK:       Cost Model: Found an estimated cost of 11 for instruction: %rem = frem float %x, %y
+; CHECK:       Cost Model: Found an estimated cost of 37 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
 ; CHECK:       Cost Model: Found an estimated cost of 2 for instruction: %abs = call{{.*}} float @llvm.fabs.f32
 ; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %min = call{{.*}} float @llvm.minnum.f32
 ; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
-; CHECK:       Cost Model: Found an estimated cost of 118 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
-; CHECK:       Cost Model: Found an estimated cost of 153 for instruction: %floor = call{{.*}} float @llvm.floor.f32
-; CHECK:       Cost Model: Found an estimated cost of 147 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
-; CHECK:       Cost Model: Found an estimated cost of 135 for instruction: %round = call{{.*}} float @llvm.round.f32
+; CHECK:       Cost Model: Found an estimated cost of 22 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
+; CHECK:       Cost Model: Found an estimated cost of 22 for instruction: %floor = call{{.*}} float @llvm.floor.f32
+; CHECK:       Cost Model: Found an estimated cost of 23 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
+; CHECK:       Cost Model: Found an estimated cost of 23 for instruction: %round = call{{.*}} float @llvm.round.f32
 ; CHECK:       Cost Model: Found an estimated cost of 6 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
 ; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %neg = fneg float %x
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %rem = frem float %x, %y
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %rem = frem float %x, %y
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %abs = call{{.*}} float @llvm.fabs.f32
 ; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %min = call{{.*}} float @llvm.minnum.f32
 ; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %max = call{{.*}} float @llvm.maxnum.f32
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %floor = call{{.*}} float @llvm.floor.f32
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
-; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %round = call{{.*}} float @llvm.round.f32
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %trunc = call{{.*}} float @llvm.trunc.f32
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %floor = call{{.*}} float @llvm.floor.f32
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
+; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %round = call{{.*}} float @llvm.round.f32
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
   %neg = fneg float %x
   %rem = frem float %x, %y
@@ -192,7 +192,7 @@ define void @service_costs(i8 %c, float %x, float %y) {
 ; CHECK:       Cost Model: Found an estimated cost of 418 for instruction: %log10 = call{{.*}} float @llvm.avm.log10f
 ; CHECK:       Cost Model: Found an estimated cost of 1053 for instruction: %pow = call{{.*}} float @llvm.avm.powf
 ; CHECK:       Cost Model: Found an estimated cost of 524 for instruction: %hypot = call{{.*}} float @llvm.avm.hypotf
-; CHECK:       Cost Model: Found an estimated cost of 259 for instruction: %fmod = call{{.*}} float @llvm.avm.fmodf
+; CHECK:       Cost Model: Found an estimated cost of 11 for instruction: %fmod = call{{.*}} float @llvm.avm.fmodf
 ; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: call{{.*}} void @llvm.avm.debug.putc
 ; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %sin = call{{.*}} float @llvm.avm.sinf
 ; SIZE:       Cost Model: Found an estimated cost of 4 for instruction: %pow = call{{.*}} float @llvm.avm.powf
@@ -245,5 +245,17 @@ define void @normalization_and_misc_costs(ptr addrspace(1) %left,
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %swap = call{{.*}} i16 @llvm.bswap.i16
   %cmp = icmp ult ptr addrspace(1) %left, %right
   %swap = call i16 @llvm.bswap.i16(i16 %word)
+  ret void
+}
+
+declare float @llvm.fma.f32(float, float, float)
+declare {float, i16} @llvm.avm.rempio2(float)
+define void @native_accelerator_costs(float %a, float %b, float %c) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 27 for instruction: %fma_native = call{{.*}} float @llvm.fma.f32
+; CHECK: Cost Model: Found an estimated cost of 13 for instruction: %reduce_native = call{{.*}} { float, i16 } @llvm.avm.rempio2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %fma_native = call{{.*}} float @llvm.fma.f32
+; SIZE: Cost Model: Found an estimated cost of 2 for instruction: %reduce_native = call{{.*}} { float, i16 } @llvm.avm.rempio2
+  %fma_native = call float @llvm.fma.f32(float %a, float %b, float %c)
+  %reduce_native = call {float, i16} @llvm.avm.rempio2(float %a)
   ret void
 }

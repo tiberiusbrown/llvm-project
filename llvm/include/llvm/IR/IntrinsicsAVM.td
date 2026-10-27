@@ -8,6 +8,8 @@
 def llvm_avm_progptr_ty : LLVMQualPointerType<1>;
 
 let TargetPrefix = "avm" in {
+  def int_avm_rempio2 : Intrinsic<[llvm_float_ty, llvm_i16_ty], [llvm_float_ty],
+      [IntrNoMem, IntrSpeculatable, IntrWillReturn]>;
   def int_avm_debug_putc : Intrinsic<[], [llvm_i8_ty],
       [IntrNoMem, IntrHasSideEffects, IntrWillReturn, IntrNoCallback,
        IntrNoFree]>;

@@ -36,6 +36,14 @@ public:
       for (auto I = MBB.begin(); I != MBB.end(); ++I) {
         MachineInstr &MI = *I;
         switch (MI.getOpcode()) {
+        case AVM::FSQRT_PSEUDO:
+        case AVM::FTRUNC_PSEUDO:
+        case AVM::FFLOOR_PSEUDO:
+        case AVM::FCEIL_PSEUDO:
+        case AVM::FROUND_PSEUDO:
+        case AVM::FMOD_PSEUDO:
+        case AVM::FREMPIO2_PSEUDO:
+        case AVM::FMA_PSEUDO:
         case AVM::FADD_PSEUDO: case AVM::FSUB_PSEUDO:
         case AVM::FMUL_PSEUDO: case AVM::FDIV_PSEUDO:
         case AVM::S16TOF_PSEUDO: case AVM::U16TOF_PSEUDO:
@@ -58,7 +66,7 @@ public:
         // Singleton classes in the descriptor specify the physical operands.
         // Insert uses first, then the ordinary (not early-clobber) result def.
         // This exposes partial aliases to allocation, including FCMP's r6/q3.
-        for (unsigned N = 1; N < MI.getNumExplicitOperands(); ++N) {
+        for (unsigned N = MI.getNumExplicitDefs(); N < MI.getNumExplicitOperands(); ++N) {
           MachineOperand &MO = MI.getOperand(N);
           const TargetRegisterClass *RC = TII.getRegClass(MI.getDesc(), N);
           Register Fixed = RC->getRegister(0);
@@ -66,13 +74,15 @@ public:
               .addReg(MO.getReg(), 0, MO.getSubReg());
           MO.setReg(Fixed); MO.setSubReg(0); MO.setIsKill(false);
         }
-        MachineOperand &Def = MI.getOperand(0);
-        Register Result = Def.getReg();
-        const TargetRegisterClass *RC = TII.getRegClass(MI.getDesc(), 0);
-        Register Fixed = RC->getRegister(0);
-        Def.setReg(Fixed); Def.setSubReg(0); Def.setIsDead(false);
-        BuildMI(MBB, std::next(I), MI.getDebugLoc(), TII.get(TargetOpcode::COPY), Result)
-            .addReg(Fixed);
+        for (unsigned N = 0; N < MI.getNumExplicitDefs(); ++N) {
+          MachineOperand &Def = MI.getOperand(N);
+          Register Result = Def.getReg();
+          const TargetRegisterClass *RC = TII.getRegClass(MI.getDesc(), N);
+          Register Fixed = RC->getRegister(0);
+          Def.setReg(Fixed); Def.setSubReg(0); Def.setIsDead(false);
+          BuildMI(MBB, std::next(I), MI.getDebugLoc(), TII.get(TargetOpcode::COPY), Result)
+              .addReg(Fixed);
+        }
         Changed = true;
       }
     }

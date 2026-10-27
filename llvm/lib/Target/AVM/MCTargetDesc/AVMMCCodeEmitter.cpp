@@ -1047,6 +1047,14 @@ public:
       }
       return;
     }
+    case AVM::FSQRT_MC: emit8(Out, 0xff); emit8(Out, 0x17); return;
+    case AVM::FTRUNC_MC: emit8(Out, 0xff); emit8(Out, 0x18); return;
+    case AVM::FFLOOR_MC: emit8(Out, 0xff); emit8(Out, 0x19); return;
+    case AVM::FCEIL_MC: emit8(Out, 0xff); emit8(Out, 0x1a); return;
+    case AVM::FROUND_MC: emit8(Out, 0xff); emit8(Out, 0x1b); return;
+    case AVM::FMOD_MC: emit8(Out, 0xff); emit8(Out, 0x1c); return;
+    case AVM::FREMPIO2_MC: emit8(Out, 0xff); emit8(Out, 0x1d); return;
+    case AVM::FMA_MC: emit8(Out, 0xff); emit8(Out, 0x1e); return;
     case AVM::FADD_MC: emit8(Out, 0xff); emit8(Out, 0x00); return;
     case AVM::FSUB_MC: emit8(Out, 0xff); emit8(Out, 0x01); return;
     case AVM::FMUL_MC: emit8(Out, 0xff); emit8(Out, 0x02); return;

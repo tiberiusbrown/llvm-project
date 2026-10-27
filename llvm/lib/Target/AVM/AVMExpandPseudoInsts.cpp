@@ -920,7 +920,28 @@ public:
           NewOpcode = AVM::FABS;
           break;
         case AVM::FSQRT_PSEUDO:
-          report_fatal_error("retired AVM FSQRT instruction");
+          NewOpcode = AVM::FSQRT;
+          break;
+        case AVM::FTRUNC_PSEUDO:
+          NewOpcode = AVM::FTRUNC;
+          break;
+        case AVM::FFLOOR_PSEUDO:
+          NewOpcode = AVM::FFLOOR;
+          break;
+        case AVM::FCEIL_PSEUDO:
+          NewOpcode = AVM::FCEIL;
+          break;
+        case AVM::FROUND_PSEUDO:
+          NewOpcode = AVM::FROUND;
+          break;
+        case AVM::FMOD_PSEUDO:
+          NewOpcode = AVM::FMOD;
+          break;
+        case AVM::FREMPIO2_PSEUDO:
+          NewOpcode = AVM::FREMPIO2;
+          break;
+        case AVM::FMA_PSEUDO:
+          NewOpcode = AVM::FMA;
           break;
         case AVM::S16TOF_PSEUDO:
           NewOpcode = AVM::S16TOF;

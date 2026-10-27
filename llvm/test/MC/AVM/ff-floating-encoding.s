@@ -49,3 +49,19 @@ fcmp
 # CHECK: fcmp {{.*}}encoding: [0xff,0x14]
 fclass
 # CHECK: fclass {{.*}}encoding: [0xff,0x15]
+fsqrt
+# CHECK: fsqrt {{.*}}encoding: [0xff,0x17]
+ftrunc
+# CHECK: ftrunc {{.*}}encoding: [0xff,0x18]
+ffloor
+# CHECK: ffloor {{.*}}encoding: [0xff,0x19]
+fceil
+# CHECK: fceil {{.*}}encoding: [0xff,0x1a]
+fround
+# CHECK: fround {{.*}}encoding: [0xff,0x1b]
+fmod
+# CHECK: fmod {{.*}}encoding: [0xff,0x1c]
+frempio2
+# CHECK: frempio2 {{.*}}encoding: [0xff,0x1d]
+fma
+# CHECK: fma {{.*}}encoding: [0xff,0x1e]

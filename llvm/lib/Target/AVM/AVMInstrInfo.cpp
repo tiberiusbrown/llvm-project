@@ -701,6 +701,13 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::FMAX_PSEUDO:
   case AVM::FNEG_PSEUDO:
   case AVM::FABS_PSEUDO:
+  case AVM::FTRUNC_PSEUDO:
+  case AVM::FFLOOR_PSEUDO:
+  case AVM::FCEIL_PSEUDO:
+  case AVM::FROUND_PSEUDO:
+  case AVM::FMOD_PSEUDO:
+  case AVM::FREMPIO2_PSEUDO:
+  case AVM::FMA_PSEUDO:
   case AVM::FSQRT_PSEUDO:
   case AVM::S16TOF_PSEUDO:
   case AVM::U16TOF_PSEUDO:
@@ -884,6 +891,21 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Fixed(AVMCostKind::Ldp24PostInc);
   case AVM::PLOAD32_POST_PSEUDO:
     return Fixed(AVMCostKind::Ldp32PostInc);
+  case AVM::FSQRT: return Typical(AVMCostKind::FSqrt);
+  case AVM::FTRUNC_PSEUDO:
+  case AVM::FTRUNC: return Typical(AVMCostKind::FTrunc);
+  case AVM::FFLOOR_PSEUDO:
+  case AVM::FFLOOR: return Typical(AVMCostKind::FFloor);
+  case AVM::FCEIL_PSEUDO:
+  case AVM::FCEIL: return Typical(AVMCostKind::FCeil);
+  case AVM::FROUND_PSEUDO:
+  case AVM::FROUND: return Typical(AVMCostKind::FRound);
+  case AVM::FMOD_PSEUDO:
+  case AVM::FMOD: return Typical(AVMCostKind::FMod);
+  case AVM::FREMPIO2_PSEUDO:
+  case AVM::FREMPIO2: return Typical(AVMCostKind::FRemPio2);
+  case AVM::FMA_PSEUDO:
+  case AVM::FMA: return Typical(AVMCostKind::FMA);
   case AVM::FADD_PSEUDO:
     return Typical(AVMCostKind::FAdd);
   case AVM::FSUB_PSEUDO:

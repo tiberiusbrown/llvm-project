@@ -1323,6 +1323,14 @@ public:
     if (Lower == "mov32")
       return parseFFPairBinary(AVM::MOV32, Name, NameLoc, Operands);
     if (Lower == "fpoly") return parseFPoly(Name, NameLoc, Operands);
+    if (Lower == "fsqrt") return parseFFFixed(AVM::FSQRT_MC, Name, NameLoc, Operands);
+    if (Lower == "ftrunc") return parseFFFixed(AVM::FTRUNC_MC, Name, NameLoc, Operands);
+    if (Lower == "ffloor") return parseFFFixed(AVM::FFLOOR_MC, Name, NameLoc, Operands);
+    if (Lower == "fceil") return parseFFFixed(AVM::FCEIL_MC, Name, NameLoc, Operands);
+    if (Lower == "fround") return parseFFFixed(AVM::FROUND_MC, Name, NameLoc, Operands);
+    if (Lower == "fmod") return parseFFFixed(AVM::FMOD_MC, Name, NameLoc, Operands);
+    if (Lower == "frempio2") return parseFFFixed(AVM::FREMPIO2_MC, Name, NameLoc, Operands);
+    if (Lower == "fma") return parseFFFixed(AVM::FMA_MC, Name, NameLoc, Operands);
     if (Lower == "fadd") return parseFFFixed(AVM::FADD_MC, Name, NameLoc, Operands);
     if (Lower == "fsub") return parseFFFixed(AVM::FSUB_MC, Name, NameLoc, Operands);
     if (Lower == "fmul") return parseFFFixed(AVM::FMUL_MC, Name, NameLoc, Operands);

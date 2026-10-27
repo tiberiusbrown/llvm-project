@@ -164,7 +164,7 @@ define i32 @shared_constant_word(i16 %condition) {
 define float @conditional_remainder(float %a, float %b, i16 %condition) {
 ; CHECK-LABEL: conditional_remainder:
 ; CHECK-NOT:   br{{eq|ne}}
-; CHECK:       call{{.*}}fmodf
+; CHECK:       fmod
 ; CHECK:       cmov
 ; CHECK:       ret
   %c = icmp ne i16 %condition, 0
@@ -178,7 +178,7 @@ declare float @llvm.sqrt.f32(float)
 define float @conditional_helper(float %a, i16 %condition) {
 ; CHECK-LABEL: conditional_helper:
 ; CHECK-NOT:   br{{eq|ne}}
-; CHECK:       call{{.*}}sqrtf
+; CHECK:       fsqrt
 ; CHECK:       cmov
 ; CHECK:       ret
   %c = icmp ne i16 %condition, 0
