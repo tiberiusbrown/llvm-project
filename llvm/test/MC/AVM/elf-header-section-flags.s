@@ -37,7 +37,7 @@ data_object:
 # CHECK: DataEncoding: LittleEndian
 # CHECK: Type: Relocatable
 # CHECK: Machine: 0x4156
-# CHECK: Flags [ (0x1)
+# CHECK: Flags [ (0x2)
 
 # CHECK: Name: .text
 # CHECK: Type: SHT_PROGBITS

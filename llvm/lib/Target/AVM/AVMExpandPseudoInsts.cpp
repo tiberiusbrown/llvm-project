@@ -908,10 +908,10 @@ public:
           NewOpcode = AVM::FDIV;
           break;
         case AVM::FMIN_PSEUDO:
-          NewOpcode = AVM::FMIN;
+          report_fatal_error("retired AVM FMIN instruction");
           break;
         case AVM::FMAX_PSEUDO:
-          NewOpcode = AVM::FMAX;
+          report_fatal_error("retired AVM FMAX instruction");
           break;
         case AVM::FNEG_PSEUDO:
           NewOpcode = AVM::FNEG;
@@ -920,7 +920,7 @@ public:
           NewOpcode = AVM::FABS;
           break;
         case AVM::FSQRT_PSEUDO:
-          NewOpcode = AVM::FSQRT;
+          report_fatal_error("retired AVM FSQRT instruction");
           break;
         case AVM::S16TOF_PSEUDO:
           NewOpcode = AVM::S16TOF;

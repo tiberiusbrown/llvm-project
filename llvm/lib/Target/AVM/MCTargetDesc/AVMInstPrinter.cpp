@@ -16,28 +16,35 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::MOV32:
   case AVM::MOV32_F2: return {"mov32", 0};
   case AVM::FPOLY: return {"fpoly", 0};
+  case AVM::FADD_MC:
   case AVM::FADD: return {"fadd", 0};
+  case AVM::FSUB_MC:
   case AVM::FSUB: return {"fsub", 0};
+  case AVM::FMUL_MC:
   case AVM::FMUL: return {"fmul", 0};
+  case AVM::FDIV_MC:
   case AVM::FDIV: return {"fdiv", 0};
-  case AVM::FMIN: return {"fmin", 0};
-  case AVM::FMAX: return {"fmax", 0};
   case AVM::FNEG: return {"fneg", 0};
   case AVM::FABS: return {"fabs", 0};
-  case AVM::FSQRT: return {"fsqrt", 0};
-  case AVM::FTRUNC: return {"ftrunc", 0};
-  case AVM::FFLOOR: return {"ffloor", 0};
-  case AVM::FCEIL: return {"fceil", 0};
-  case AVM::FROUND: return {"fround", 0};
+  case AVM::S16TOF_MC:
   case AVM::S16TOF: return {"s16tof", 0};
+  case AVM::U16TOF_MC:
   case AVM::U16TOF: return {"u16tof", 0};
+  case AVM::FTOS16_MC:
   case AVM::FTOS16: return {"ftos16", 0};
+  case AVM::FTOU16_MC:
   case AVM::FTOU16: return {"ftou16", 0};
+  case AVM::S32TOF_MC:
   case AVM::S32TOF: return {"s32tof", 0};
+  case AVM::U32TOF_MC:
   case AVM::U32TOF: return {"u32tof", 0};
+  case AVM::FTOS32_MC:
   case AVM::FTOS32: return {"ftos32", 0};
+  case AVM::FTOU32_MC:
   case AVM::FTOU32: return {"ftou32", 0};
+  case AVM::FCMP_MC:
   case AVM::FCMP: return {"fcmp", 0};
+  case AVM::FCLASS_MC:
   case AVM::FCLASS: return {"fclass", 0};
   case AVM::MOV_RR: return {"mov", 0};
   case AVM::CMP_RR: return {"cmp", 0};
@@ -293,43 +300,44 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
         OS << ".0";
     }
     break;
+  case AVM::FADD_MC:
+  case AVM::FADD:
+  case AVM::FSUB_MC:
+  case AVM::FSUB:
+  case AVM::FMUL_MC:
+  case AVM::FMUL:
+  case AVM::FDIV_MC:
+  case AVM::FDIV:
+  case AVM::S16TOF_MC:
+  case AVM::S16TOF:
+  case AVM::U16TOF_MC:
+  case AVM::U16TOF:
+  case AVM::FTOS16_MC:
+  case AVM::FTOS16:
+  case AVM::FTOU16_MC:
+  case AVM::FTOU16:
+  case AVM::S32TOF_MC:
+  case AVM::S32TOF:
+  case AVM::U32TOF_MC:
+  case AVM::U32TOF:
+  case AVM::FTOS32_MC:
+  case AVM::FTOS32:
+  case AVM::FTOU32_MC:
+  case AVM::FTOU32:
+  case AVM::FCMP_MC:
+  case AVM::FCMP:
+  case AVM::FCLASS_MC:
+  case AVM::FCLASS:
+    break;
   case AVM::MOV32:
   case AVM::MOV32_F2:
-  case AVM::FADD:
-  case AVM::FSUB:
-  case AVM::FMUL:
-  case AVM::FDIV:
-  case AVM::FMIN:
-  case AVM::FMAX:
-  case AVM::S16TOF:
-  case AVM::U16TOF:
-  case AVM::FTOS16:
-  case AVM::FTOU16:
-  case AVM::S32TOF:
-  case AVM::U32TOF:
-  case AVM::FTOS32:
-  case AVM::FTOU32:
-  case AVM::FCLASS:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
     OS << ", ";
     printFullReg(MI->getOperand(1).getReg(), OS);
-    break;
-  case AVM::FCMP:
-    OS << '\t';
-    printFullReg(MI->getOperand(0).getReg(), OS);
-    OS << ", ";
-    printFullReg(MI->getOperand(1).getReg(), OS);
-    OS << ", ";
-    printFullReg(MI->getOperand(2).getReg(), OS);
     break;
   case AVM::FNEG:
   case AVM::FABS:
-  case AVM::FSQRT:
-  case AVM::FTRUNC:
-  case AVM::FFLOOR:
-  case AVM::FCEIL:
-  case AVM::FROUND:
     OS << '\t';
     printFullReg(MI->getOperand(0).getReg(), OS);
     break;

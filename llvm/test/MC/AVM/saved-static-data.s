@@ -17,7 +17,7 @@
 .section .data.vars,"aw",@progbits
 .byte 7
 
-# SECTIONS: Flags [ (0x1)
+# SECTIONS: Flags [ (0x2)
 # SECTIONS: Name: .saved
 # SECTIONS: Type: SHT_PROGBITS
 # SECTIONS: Flags [ (0x20000003)

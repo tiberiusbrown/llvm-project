@@ -31,7 +31,7 @@
 
 # HDR: Format: elf32-avm
 # HDR: Arch: avm
-# HDR: Flags [ (0x1)
+# HDR: Flags [ (0x2)
 # HDR: Name: .text
 # HDR: Name: .data
 # DATA: Contents of section .text:

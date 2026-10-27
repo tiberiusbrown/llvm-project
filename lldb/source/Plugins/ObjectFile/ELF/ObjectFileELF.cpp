@@ -603,7 +603,7 @@ size_t ObjectFileELF::GetModuleSpecifications(
       if (header.e_machine == llvm::ELF::EM_AVM &&
           (header.e_ident[EI_CLASS] != ELFCLASS32 ||
            header.e_ident[EI_DATA] != ELFDATA2LSB ||
-           header.e_flags != llvm::ELF::EF_AVM_ABI_V1))
+           header.e_flags != llvm::ELF::EF_AVM_ABI_V2))
         return specs.GetSize();
       if (data_sp) {
         ModuleSpec spec(file);
@@ -3688,7 +3688,7 @@ ArchSpec ObjectFileELF::GetArchitecture() {
   if (m_header.e_machine == llvm::ELF::EM_AVM &&
       (m_header.e_ident[EI_CLASS] != ELFCLASS32 ||
        m_header.e_ident[EI_DATA] != ELFDATA2LSB ||
-       m_header.e_flags != llvm::ELF::EF_AVM_ABI_V1))
+       m_header.e_flags != llvm::ELF::EF_AVM_ABI_V2))
     return ArchSpec();
 
   if (m_section_headers.empty()) {

@@ -24,6 +24,23 @@ void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
   }
 
   OutMI.setOpcode(MI->getOpcode());
+  switch (MI->getOpcode()) {
+  case AVM::FADD: OutMI.setOpcode(AVM::FADD_MC); return;
+  case AVM::FSUB: OutMI.setOpcode(AVM::FSUB_MC); return;
+  case AVM::FMUL: OutMI.setOpcode(AVM::FMUL_MC); return;
+  case AVM::FDIV: OutMI.setOpcode(AVM::FDIV_MC); return;
+  case AVM::S16TOF: OutMI.setOpcode(AVM::S16TOF_MC); return;
+  case AVM::U16TOF: OutMI.setOpcode(AVM::U16TOF_MC); return;
+  case AVM::FTOS16: OutMI.setOpcode(AVM::FTOS16_MC); return;
+  case AVM::FTOU16: OutMI.setOpcode(AVM::FTOU16_MC); return;
+  case AVM::S32TOF: OutMI.setOpcode(AVM::S32TOF_MC); return;
+  case AVM::U32TOF: OutMI.setOpcode(AVM::U32TOF_MC); return;
+  case AVM::FTOS32: OutMI.setOpcode(AVM::FTOS32_MC); return;
+  case AVM::FTOU32: OutMI.setOpcode(AVM::FTOU32_MC); return;
+  case AVM::FCMP: OutMI.setOpcode(AVM::FCMP_MC); return;
+  case AVM::FCLASS: OutMI.setOpcode(AVM::FCLASS_MC); return;
+  default: break;
+  }
 
   for (unsigned I = 0; I != MI->getNumOperands(); ++I) {
     const MachineOperand &MO = MI->getOperand(I);

@@ -186,30 +186,20 @@ class AVMF7PairUnaryInst<string Asm>
 class AVMMov32Inst<string Asm> : AVMInst<Asm, 2, (ins AVMProgramPair:$src)> {
   let OutOperandList = (outs AVMProgramPair:$dst);
 }
+// Fixed operands are explicit machine uses/defs, so allocation sees partial
+// aliases before physical assignment. MC syntax omits all fixed operands.
 class AVMFFBinaryInst<string Asm>
-    : AVMInst<Asm, 2, (ins AVMProgramPair:$src1, AVMProgramPair:$src2)> {
-  let OutOperandList = (outs AVMProgramPair:$dst);
+    : AVMInst<Asm, 2, (ins Q2Only:$src1, Q3Only:$src2)> {
+  let OutOperandList = (outs Q2Only:$dst);
   let Constraints = "$dst = $src1";
 }
 class AVMFFUnaryInst<string Asm> : AVMInst<Asm, 2, (ins AVMProgramPair:$src)> {
   let OutOperandList = (outs AVMProgramPair:$dst);
   let Constraints = "$dst = $src";
 }
-class AVMFFPairScalarInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMGeneralReg:$scalar)> {
-  let OutOperandList = (outs AVMProgramPair:$pair);
-}
-class AVMFFScalarPairInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMProgramPair:$pair)> {
-  let OutOperandList = (outs AVMGeneralReg:$scalar);
-}
-class AVMFFPairPairInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMProgramPair:$src)> {
-  let OutOperandList = (outs AVMProgramPair:$dst);
-}
-class AVMFFCompareInst<string Asm>
-    : AVMInst<Asm, 3, (ins AVMProgramPair:$left, AVMProgramPair:$right)> {
-  let OutOperandList = (outs AVMGeneralReg:$dst);
+class AVMFFFixedInst<string Asm, dag Outs, dag Ins>
+    : AVMInst<Asm, 2, Ins> {
+  let OutOperandList = Outs;
 }
 
 class AVMF7BoolInst<string Asm>
@@ -709,36 +699,39 @@ def XOR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def PROG_ADD_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def BSWAP32_PSEUDO : AVMUnary32Pseudo;
 
-def FADD_PSEUDO : AVMBinary32Pseudo;
-def FSUB_PSEUDO : AVMBinary32Pseudo;
-def FMUL_PSEUDO : AVMBinary32Pseudo;
-def FDIV_PSEUDO : AVMBinary32Pseudo;
+def FADD_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst),
+    (ins Q2Only:$src1, Q3Only:$src2)> {
+  let Constraints = "$dst = $src1";
+  let isCommutable = 1;
+}
+def FSUB_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst),
+    (ins Q2Only:$src1, Q3Only:$src2)> {
+  let Constraints = "$dst = $src1";
+}
+def FMUL_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst),
+    (ins Q2Only:$src1, Q3Only:$src2)> {
+  let Constraints = "$dst = $src1";
+  let isCommutable = 1;
+}
+def FDIV_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst),
+    (ins Q2Only:$src1, Q3Only:$src2)> {
+  let Constraints = "$dst = $src1";
+}
 def FMIN_PSEUDO : AVMBinary32Pseudo;
 def FMAX_PSEUDO : AVMBinary32Pseudo;
 def FNEG_PSEUDO : AVMUnary32Pseudo;
 def FABS_PSEUDO : AVMUnary32Pseudo;
 def FSQRT_PSEUDO : AVMUnary32Pseudo;
-def S16TOF_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
-def U16TOF_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR16:$src)>;
-def S32TOF_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
-def U32TOF_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
-def FTOS16_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
-def FTOU16_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
-def FTOS32_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
-def FTOU32_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR32:$dst), (ins GPR32:$src)>;
-def FCMP_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst),
-                       (ins GPR32:$left, GPR32:$right)>;
-def FCLASS_PSEUDO
-    : AVMPureCodeGenPseudo<(outs GPR16:$dst), (ins GPR32:$src)>;
+def S16TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins R4Only:$src)>;
+def U16TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins R4Only:$src)>;
+def S32TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def U32TOF_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FTOS16_PSEUDO : AVMPureCodeGenPseudo<(outs R4Only:$dst), (ins Q2Only:$src)>;
+def FTOU16_PSEUDO : AVMPureCodeGenPseudo<(outs R4Only:$dst), (ins Q2Only:$src)>;
+def FTOS32_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FTOU32_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FCMP_PSEUDO : AVMPureCodeGenPseudo<(outs R6Only:$dst), (ins Q2Only:$left, Q3Only:$right)>;
+def FCLASS_PSEUDO : AVMPureCodeGenPseudo<(outs R6Only:$dst), (ins Q2Only:$src)>;
 
 // Typed semantic system-service pseudos.  AVMMCInstLower maps these to the
 // corresponding SYS encoding only after physical allocation.  Memory pseudos
@@ -1417,29 +1410,45 @@ def MOV32 : AVMMov32Inst<"mov32 $dst, $src"> {
   let hasNoSchedulingInfo = 1;
 }
 def MOV32_F2 : AVMMov32Inst<"mov32 $dst, $src">;
-def FADD : AVMFFBinaryInst<"fadd $dst, $src2">;
-def FSUB : AVMFFBinaryInst<"fsub $dst, $src2">;
-def FMUL : AVMFFBinaryInst<"fmul $dst, $src2">;
-def FDIV : AVMFFBinaryInst<"fdiv $dst, $src2">;
-def FMIN : AVMFFBinaryInst<"fmin $dst, $src2">;
-def FMAX : AVMFFBinaryInst<"fmax $dst, $src2">;
+def FADD : AVMFFBinaryInst<"fadd">;
+def FSUB : AVMFFBinaryInst<"fsub">;
+def FMUL : AVMFFBinaryInst<"fmul">;
+def FDIV : AVMFFBinaryInst<"fdiv">;
 def FNEG : AVMFFUnaryInst<"fneg $dst">;
 def FABS : AVMFFUnaryInst<"fabs $dst">;
-def FSQRT : AVMFFUnaryInst<"fsqrt $dst">;
-def FTRUNC : AVMFFUnaryInst<"ftrunc $dst">;
-def FFLOOR : AVMFFUnaryInst<"ffloor $dst">;
-def FCEIL : AVMFFUnaryInst<"fceil $dst">;
-def FROUND : AVMFFUnaryInst<"fround $dst">;
-def S16TOF : AVMFFPairScalarInst<"s16tof $pair, $scalar">;
-def U16TOF : AVMFFPairScalarInst<"u16tof $pair, $scalar">;
-def FTOS16 : AVMFFScalarPairInst<"ftos16 $scalar, $pair">;
-def FTOU16 : AVMFFScalarPairInst<"ftou16 $scalar, $pair">;
-def S32TOF : AVMFFPairPairInst<"s32tof $dst, $src">;
-def U32TOF : AVMFFPairPairInst<"u32tof $dst, $src">;
-def FTOS32 : AVMFFPairPairInst<"ftos32 $dst, $src">;
-def FTOU32 : AVMFFPairPairInst<"ftou32 $dst, $src">;
-def FCMP : AVMFFCompareInst<"fcmp $dst, $left, $right">;
-def FCLASS : AVMFFScalarPairInst<"fclass $scalar, $pair">;
+def S16TOF : AVMFFFixedInst<"s16tof", (outs Q2Only:$dst), (ins R4Only:$src)>;
+def U16TOF : AVMFFFixedInst<"u16tof", (outs Q2Only:$dst), (ins R4Only:$src)>;
+def FTOS16 : AVMFFFixedInst<"ftos16", (outs R4Only:$dst), (ins Q2Only:$src)>;
+def FTOU16 : AVMFFFixedInst<"ftou16", (outs R4Only:$dst), (ins Q2Only:$src)>;
+def S32TOF : AVMFFFixedInst<"s32tof", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def U32TOF : AVMFFFixedInst<"u32tof", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FTOS32 : AVMFFFixedInst<"ftos32", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FTOU32 : AVMFFFixedInst<"ftou32", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
+def FCMP : AVMFFFixedInst<"fcmp", (outs R6Only:$dst), (ins Q2Only:$left, Q3Only:$right)>;
+def FCLASS : AVMFFFixedInst<"fclass", (outs R6Only:$dst), (ins Q2Only:$src)>;
+
+// The MC view has no encoded operands. Implicit physical uses/defs let
+// scheduling and analysis tools model the fixed ABI, including partial aliases.
+// Machine instructions retain explicit singleton operands through allocation.
+class AVMFFMCInst<string Asm, list<Register> Inputs, list<Register> Outputs>
+    : AVMInst<Asm, 2> {
+  let Uses = Inputs;
+  let Defs = Outputs;
+}
+def FADD_MC : AVMFFMCInst<"fadd", [R4R5, R6R7], [R4R5]>;
+def FSUB_MC : AVMFFMCInst<"fsub", [R4R5, R6R7], [R4R5]>;
+def FMUL_MC : AVMFFMCInst<"fmul", [R4R5, R6R7], [R4R5]>;
+def FDIV_MC : AVMFFMCInst<"fdiv", [R4R5, R6R7], [R4R5]>;
+def S16TOF_MC : AVMFFMCInst<"s16tof", [R4], [R4R5]>;
+def U16TOF_MC : AVMFFMCInst<"u16tof", [R4], [R4R5]>;
+def FTOS16_MC : AVMFFMCInst<"ftos16", [R4R5], [R4]>;
+def FTOU16_MC : AVMFFMCInst<"ftou16", [R4R5], [R4]>;
+def S32TOF_MC : AVMFFMCInst<"s32tof", [R4R5], [R4R5]>;
+def U32TOF_MC : AVMFFMCInst<"u32tof", [R4R5], [R4R5]>;
+def FTOS32_MC : AVMFFMCInst<"ftos32", [R4R5], [R4R5]>;
+def FTOU32_MC : AVMFFMCInst<"ftou32", [R4R5], [R4R5]>;
+def FCMP_MC : AVMFFMCInst<"fcmp", [R4R5, R6R7], [R6]>;
+def FCLASS_MC : AVMFFMCInst<"fclass", [R4R5], [R6]>;
 
 // The count header can be followed by .float/.long data. The disassembler
 // includes those coefficients as variadic operands for lossless round trips.

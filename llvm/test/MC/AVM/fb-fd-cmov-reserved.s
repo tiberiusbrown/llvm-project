@@ -384,4 +384,5 @@
 0xfd 0xfd
 0xfd 0xfe
 0xfd 0xff
-# CHECK-COUNT-344: warning: invalid instruction encoding
+# CHECK-COUNT-342: warning: invalid instruction encoding
+# Invalid FF resynchronization consumes its secondary byte in ABI 2.

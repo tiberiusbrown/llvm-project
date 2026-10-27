@@ -521,7 +521,8 @@ enum {
 
 // Arduboy Virtual Machine specific e_flags.
 enum : unsigned {
-  EF_AVM_ABI_V1 = 0x00000001,
+  EF_AVM_ABI_V1 = 0x00000001, // Retired flexible FF page.
+  EF_AVM_ABI_V2 = 0x00000002, // Fixed-register FF page.
 };
 
 // ELF relocations for the Arduboy Virtual Machine.

@@ -1,5 +1,3 @@
-# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/ff-floating-reserved.txt 2>&1 | FileCheck %s --check-prefix=RESERVED
-# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/ff-floating-badspec.txt 2>&1 | FileCheck %s --check-prefix=BADSPEC
+# RUN: llvm-mc -triple=avm --disassemble < %S/Inputs/ff-floating-reserved.txt 2>&1 | FileCheck %s
 
-# RESERVED-COUNT-118: invalid instruction encoding
-# BADSPEC: invalid instruction encoding
+# CHECK-COUNT-233: invalid instruction encoding

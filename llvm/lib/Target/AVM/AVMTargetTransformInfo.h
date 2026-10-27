@@ -108,8 +108,13 @@ public:
                                 : AVM::getCycleRange(Kind).Typical;
       return normalizedCycles(Cycles);
     };
-    // Guest libm calls include their body cost. Estimates are based on the
-    // compiled math benchmarks; arguments and range reduction change latency.
+    // Guest libm workload budgets, calibrated from bench/cycles_c.txt on
+    // 2026-10-26 (RelWithDebInfo, O2 callers, fixed-register FF ISA).
+    // Each matching math_* workload makes 32 calls. Divide its baseline-adjusted
+    // total by 32, then round up to 100 cycles. These conservative estimates
+    // include loop, input and accumulation overhead, not isolated body latency;
+    // arguments and range reduction change the cost. Min/max retain provisional
+    // estimates because there is no corresponding 32-call workload.
     auto RuntimeMathCost = [&](unsigned Cycles) -> InstructionCost {
       if (CostKind == TTI::TCK_CodeSize)
         return encodedBytes(AVM::CALLF);
@@ -117,7 +122,7 @@ public:
     };
     switch (ICA.getID()) {
     case Intrinsic::sqrt:
-      return RuntimeMathCost(12500);
+      return RuntimeMathCost(5800);
     case Intrinsic::minnum:
       return RuntimeMathCost(2000);
     case Intrinsic::maxnum:
@@ -125,40 +130,40 @@ public:
     case Intrinsic::trunc:
       return RuntimeMathCost(2000);
     case Intrinsic::floor:
-      return RuntimeMathCost(2000);
+      return RuntimeMathCost(2600);
     case Intrinsic::ceil:
-      return RuntimeMathCost(2000);
+      return RuntimeMathCost(2500);
     case Intrinsic::round:
-      return RuntimeMathCost(2000);
+      return RuntimeMathCost(2300);
     case Intrinsic::sin:
     case Intrinsic::avm_sinf:
-      return RuntimeMathCost(9500);
+      return RuntimeMathCost(11700);
     case Intrinsic::cos:
     case Intrinsic::avm_cosf:
-      return RuntimeMathCost(10500);
+      return RuntimeMathCost(11800);
     case Intrinsic::atan2:
     case Intrinsic::avm_atan2f:
-      return RuntimeMathCost(20000);
+      return RuntimeMathCost(8000);
     case Intrinsic::tan:
     case Intrinsic::avm_tanf:
-      return RuntimeMathCost(17000);
+      return RuntimeMathCost(12200);
     case Intrinsic::exp:
     case Intrinsic::avm_expf:
-      return RuntimeMathCost(11000);
+      return RuntimeMathCost(7100);
     case Intrinsic::log:
     case Intrinsic::avm_logf:
-      return RuntimeMathCost(13500);
+      return RuntimeMathCost(7100);
     case Intrinsic::log2:
     case Intrinsic::avm_log2f:
-      return RuntimeMathCost(14500);
+      return RuntimeMathCost(6800);
     case Intrinsic::log10:
     case Intrinsic::avm_log10f:
-      return RuntimeMathCost(17000);
+      return RuntimeMathCost(7100);
     case Intrinsic::pow:
     case Intrinsic::avm_powf:
-      return RuntimeMathCost(45000);
-    case Intrinsic::avm_hypotf: return RuntimeMathCost(19000);
-    case Intrinsic::avm_fmodf: return RuntimeMathCost(3500);
+      return RuntimeMathCost(17900);
+    case Intrinsic::avm_hypotf: return RuntimeMathCost(8900);
+    case Intrinsic::avm_fmodf: return RuntimeMathCost(4400);
     default: break;
     }
 
@@ -314,7 +319,7 @@ public:
       case ISD::FDIV:
         return Normalized(AVM::getCycleRange(AVMCostKind::FDiv).Typical);
       case ISD::FREM:
-        return Normalized(3500);
+        return Normalized(4400);
       case ISD::FNEG:
         return Normalized(AVM::getFixedCycles(AVMCostKind::FNeg));
       default:

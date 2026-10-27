@@ -712,7 +712,7 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::FTOU32_PSEUDO:
   case AVM::FCMP_PSEUDO:
   case AVM::FCLASS_PSEUDO:
-    return 3;
+    return 2;
   case AVM::CMOV32_PSEUDO:
     return 4;
   case AVM::SHL16_SMALL_PSEUDO: {
@@ -1195,20 +1195,6 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Typical(AVMCostKind::FMul);
   case AVM::FDIV:
     return Typical(AVMCostKind::FDiv);
-  case AVM::FMIN:
-    return Typical(AVMCostKind::FMin);
-  case AVM::FMAX:
-    return Typical(AVMCostKind::FMax);
-  case AVM::FSQRT:
-    return Typical(AVMCostKind::FSqrt);
-  case AVM::FTRUNC:
-    return Typical(AVMCostKind::FTrunc);
-  case AVM::FFLOOR:
-    return Typical(AVMCostKind::FFloor);
-  case AVM::FCEIL:
-    return Typical(AVMCostKind::FCeil);
-  case AVM::FROUND:
-    return Typical(AVMCostKind::FRound);
   case AVM::S16TOF:
     return Typical(AVMCostKind::S16ToF);
   case AVM::U16TOF:

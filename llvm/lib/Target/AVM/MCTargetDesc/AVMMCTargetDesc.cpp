@@ -106,7 +106,7 @@ class AVMObjectTargetStreamer final : public MCTargetStreamer {
 public:
   explicit AVMObjectTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {
     static_cast<MCELFStreamer &>(S).getWriter().setELFHeaderEFlags(
-        ELF::EF_AVM_ABI_V1);
+        ELF::EF_AVM_ABI_V2);
   }
 };
 

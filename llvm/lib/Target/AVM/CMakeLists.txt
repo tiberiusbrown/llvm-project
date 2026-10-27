@@ -27,6 +27,7 @@ add_llvm_target(AVMCodeGen
   AVMCostModel.cpp
   AVMExpandSystemServices.cpp
   AVMExpandPseudoInsts.cpp
+  AVMFixedFloatRegs.cpp
   AVMFinalControlFlow.cpp
   AVMFrameLowering.cpp
   AVMISelDAGToDAG.cpp

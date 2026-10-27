@@ -22,7 +22,7 @@ text_symbol:
 .progptr text_symbol
 
 # CHECK: Arch: avm
-# CHECK: Flags [ (0x1)
+# CHECK: Flags [ (0x2)
 # CHECK: Name: .text
 # CHECK: Flags [ (0x10000006)
 # CHECK:   SHF_ALLOC

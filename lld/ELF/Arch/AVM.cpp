@@ -41,13 +41,12 @@ public:
       }
       uint32_t flags =
           cast<ObjFile<ELF32LE>>(file)->getObj().getHeader().e_flags;
-      // Existing AVM MC objects predate the ABI flag. Treat zero as the
-      // legacy spelling of ABI v1 while rejecting every other ABI value.
-      if (flags != 0 && flags != EF_AVM_ABI_V1)
+      // Reject all older objects: their FF bytes have incompatible meanings.
+      if (flags != EF_AVM_ABI_V2)
         ErrAlways(ctx) << file << ": incompatible AVM ABI flags: 0x"
                        << utohexstr(flags);
     }
-    return EF_AVM_ABI_V1;
+    return EF_AVM_ABI_V2;
   }
 
   unsigned getRelocSize(RelType type) const override {

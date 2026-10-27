@@ -613,19 +613,6 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
     emit8(Out, (*DHI << 2) | *SHI);
   }
 
-  void emitFFPairBinary(const MCInst &MI, SmallVectorImpl<char> &Out,
-                        unsigned Base) const {
-    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
-        !MI.getOperand(1).isReg())
-      return error(MI, "expected two pair operands q0-q3");
-    const auto D = programPairIndex(MI.getOperand(0).getReg());
-    const auto S = programPairIndex(MI.getOperand(1).getReg());
-    if (!D || !S)
-      return error(MI, "expected pair operands q0-q3");
-    emit8(Out, 0xff);
-    emit8(Out, Base | (*D << 2) | *S);
-  }
-
   void emitFFPairUnary(const MCInst &MI, SmallVectorImpl<char> &Out,
                        unsigned Base) const {
     if (MI.getNumOperands() != 1 || !MI.getOperand(0).isReg())
@@ -635,55 +622,6 @@ class AVMMCCodeEmitter final : public MCCodeEmitter {
       return error(MI, "expected pair operand q0-q3");
     emit8(Out, 0xff);
     emit8(Out, Base | *D);
-  }
-
-  void emitFFPairScalar(const MCInst &MI, SmallVectorImpl<char> &Out,
-                        unsigned Secondary) const {
-    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
-        !MI.getOperand(1).isReg())
-      return error(MI, "expected pair and scalar operands");
-    const auto Q = programPairIndex(MI.getOperand(0).getReg());
-    const auto R = stackRegIndex(MI.getOperand(1).getReg());
-    if (!Q || !R)
-      return error(MI, "expected pair q0-q3 and scalar r0-r7");
-    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*R << 4) | *Q);
-  }
-
-  void emitFFScalarPair(const MCInst &MI, SmallVectorImpl<char> &Out,
-                        unsigned Secondary) const {
-    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
-        !MI.getOperand(1).isReg())
-      return error(MI, "expected scalar and pair operands");
-    const auto R = stackRegIndex(MI.getOperand(0).getReg());
-    const auto Q = programPairIndex(MI.getOperand(1).getReg());
-    if (!R || !Q)
-      return error(MI, "expected scalar r0-r7 and pair q0-q3");
-    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*R << 4) | *Q);
-  }
-
-  void emitFFPairPair(const MCInst &MI, SmallVectorImpl<char> &Out,
-                      unsigned Secondary) const {
-    if (MI.getNumOperands() != 2 || !MI.getOperand(0).isReg() ||
-        !MI.getOperand(1).isReg())
-      return error(MI, "expected two pair operands q0-q3");
-    const auto D = programPairIndex(MI.getOperand(0).getReg());
-    const auto S = programPairIndex(MI.getOperand(1).getReg());
-    if (!D || !S)
-      return error(MI, "expected pair operands q0-q3");
-    emit8(Out, 0xff); emit8(Out, Secondary); emit8(Out, (*D << 2) | *S);
-  }
-
-  void emitFCmp(const MCInst &MI, SmallVectorImpl<char> &Out) const {
-    if (MI.getNumOperands() != 3 || !MI.getOperand(0).isReg() ||
-        !MI.getOperand(1).isReg() || !MI.getOperand(2).isReg())
-      return error(MI, "expected scalar and two pair operands");
-    const auto R = stackRegIndex(MI.getOperand(0).getReg());
-    const auto L = programPairIndex(MI.getOperand(1).getReg());
-    const auto S = programPairIndex(MI.getOperand(2).getReg());
-    if (!R || !L || !S)
-      return error(MI, "expected scalar r0-r7 and pair operands q0-q3");
-    emit8(Out, 0xff); emit8(Out, 0xc8);
-    emit8(Out, (*R << 4) | (*L << 2) | *S);
   }
 
   void emitStackReg(const MCInst &MI, SmallVectorImpl<char> &Out,
@@ -1098,7 +1036,7 @@ public:
           (MI.getNumOperands() != 1 && MI.getNumOperands() != Count + 1))
         return error(MI, "invalid fpoly coefficient count");
       emit8(Out, 0xff);
-      emit8(Out, 0xca);
+      emit8(Out, 0x16);
       emit8(Out, Count);
       for (unsigned I = 1; I < MI.getNumOperands(); ++I) {
         const int64_t Bits = MI.getOperand(I).getImm();
@@ -1109,29 +1047,22 @@ public:
       }
       return;
     }
-    case AVM::FADD: emitFFPairBinary(MI, Out, 0x00); return;
-    case AVM::FSUB: emitFFPairBinary(MI, Out, 0x10); return;
-    case AVM::FMUL: emitFFPairBinary(MI, Out, 0x20); return;
-    case AVM::FDIV: emitFFPairBinary(MI, Out, 0x30); return;
-    case AVM::FMIN: emitFFPairBinary(MI, Out, 0x40); return;
-    case AVM::FMAX: emitFFPairBinary(MI, Out, 0x50); return;
-    case AVM::FNEG: emitFFPairUnary(MI, Out, 0x60); return;
-    case AVM::FABS: emitFFPairUnary(MI, Out, 0x64); return;
-    case AVM::FSQRT: emitFFPairUnary(MI, Out, 0x68); return;
-    case AVM::FTRUNC: emitFFPairUnary(MI, Out, 0x6c); return;
-    case AVM::FFLOOR: emitFFPairUnary(MI, Out, 0x70); return;
-    case AVM::FCEIL: emitFFPairUnary(MI, Out, 0x74); return;
-    case AVM::FROUND: emitFFPairUnary(MI, Out, 0x78); return;
-    case AVM::S16TOF: emitFFPairScalar(MI, Out, 0xc0); return;
-    case AVM::U16TOF: emitFFPairScalar(MI, Out, 0xc1); return;
-    case AVM::FTOS16: emitFFScalarPair(MI, Out, 0xc2); return;
-    case AVM::FTOU16: emitFFScalarPair(MI, Out, 0xc3); return;
-    case AVM::S32TOF: emitFFPairPair(MI, Out, 0xc4); return;
-    case AVM::U32TOF: emitFFPairPair(MI, Out, 0xc5); return;
-    case AVM::FTOS32: emitFFPairPair(MI, Out, 0xc6); return;
-    case AVM::FTOU32: emitFFPairPair(MI, Out, 0xc7); return;
-    case AVM::FCMP: emitFCmp(MI, Out); return;
-    case AVM::FCLASS: emitFFScalarPair(MI, Out, 0xc9); return;
+    case AVM::FADD_MC: emit8(Out, 0xff); emit8(Out, 0x00); return;
+    case AVM::FSUB_MC: emit8(Out, 0xff); emit8(Out, 0x01); return;
+    case AVM::FMUL_MC: emit8(Out, 0xff); emit8(Out, 0x02); return;
+    case AVM::FDIV_MC: emit8(Out, 0xff); emit8(Out, 0x03); return;
+    case AVM::S16TOF_MC: emit8(Out, 0xff); emit8(Out, 0x0c); return;
+    case AVM::U16TOF_MC: emit8(Out, 0xff); emit8(Out, 0x0d); return;
+    case AVM::FTOS16_MC: emit8(Out, 0xff); emit8(Out, 0x0e); return;
+    case AVM::FTOU16_MC: emit8(Out, 0xff); emit8(Out, 0x0f); return;
+    case AVM::S32TOF_MC: emit8(Out, 0xff); emit8(Out, 0x10); return;
+    case AVM::U32TOF_MC: emit8(Out, 0xff); emit8(Out, 0x11); return;
+    case AVM::FTOS32_MC: emit8(Out, 0xff); emit8(Out, 0x12); return;
+    case AVM::FTOU32_MC: emit8(Out, 0xff); emit8(Out, 0x13); return;
+    case AVM::FCMP_MC: emit8(Out, 0xff); emit8(Out, 0x14); return;
+    case AVM::FCLASS_MC: emit8(Out, 0xff); emit8(Out, 0x15); return;
+    case AVM::FNEG: emitFFPairUnary(MI, Out, 0x04); return;
+    case AVM::FABS: emitFFPairUnary(MI, Out, 0x08); return;
     case AVM::MOV_RR: emitFullMove(MI, Out); return;
     case AVM::CMP_RR: emitFullCompare(MI, Out); return;
     case AVM::ADD_RR: emitFullArithmetic(MI, Out, 0x00); return;

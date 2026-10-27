@@ -747,13 +747,22 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
         Op->hasUnmodeledSideEffects() || Op->modifiesRegister(AVM::CC, &TRI) ||
         Cycles.Typical <= 2 * BranchTaken + CopyCycles)
       continue;
-    Register Dest = Op->getOperand(0).getReg();
+    Register NativeDest = Op->getOperand(0).getReg();
+    Register Dest = NativeDest;
     if (!AVM::GPR32RegClass.contains(Dest))
       continue;
     if (BranchTaken + CopyCycles >= Cycles.Minimum + CMovTaken)
       continue;
 
     auto Test = std::next(Op);
+    // Fixed q2 results may be copied to the selected value's allocated pair
+    // before a condition reload reuses q2. Keep that copy on the divide path.
+    if (Test != MBB.end() && Test->getOpcode() == AVM::MOV32_F2 &&
+        Test->getOperand(1).getReg() == NativeDest &&
+        AVM::GPR32RegClass.contains(Test->getOperand(0).getReg())) {
+      Dest = Test->getOperand(0).getReg();
+      ++Test;
+    }
     MachineInstr *ConditionLoad = nullptr;
     if (Test != MBB.end() && isWordStackLoad(*Test)) {
       ConditionLoad = &*Test;
@@ -785,6 +794,7 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
       continue;
 
     MachineInstr *OperandCopy = nullptr;
+    bool BypassKeepsInput = false;
     Register ConditionReg;
     if (ConditionLoad) {
       Register Loaded = ConditionLoad->getOperand(0).getReg();
@@ -801,9 +811,18 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
         if (Op == MBB.begin() || FunctionBytes + 32 >= 128)
           continue;
         auto Copy = std::prev(Op);
-        if (Copy->getOpcode() != AVM::MOV32_F2 ||
-            Copy->getOperand(0).getReg() != Dest ||
-            Copy->getOperand(1).getReg() != Source)
+        if (Copy->getOpcode() != AVM::MOV32_F2)
+          continue;
+        bool Setup = Copy->getOperand(0).getReg() == NativeDest &&
+                     Copy->getOperand(1).getReg() == Source;
+        // Fixed FF allocation preserves a live q2 input by copying it OUT
+        // before the operation. Its saved pair can hold the condition until
+        // the test, then the existing copy restores that pair before branching.
+        // Keep the copy on both paths: later selects may still read it. The
+        // bypass retains the original input in q2 without clobbering operands.
+        BypassKeepsInput = Copy->getOperand(0).getReg() == Source &&
+                           Copy->getOperand(1).getReg() == NativeDest;
+        if (!Setup && !BypassKeepsInput)
           continue;
         unsigned LoadPenalty = AVM::getFixedCycles(AVMCostKind::LdSp16Cold) -
                                TII.getInstrLatency(nullptr, *ConditionLoad);
@@ -811,7 +830,8 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
             CMovNotTaken)
           continue;
         OperandCopy = &*Copy;
-        ConditionReg = TRI.getSubReg(Dest, AVM::sub_lo16);
+        ConditionReg = TRI.getSubReg(BypassKeepsInput ? Source : NativeDest,
+                                      AVM::sub_lo16);
       }
     }
 
@@ -838,7 +858,22 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
             It->isInlineAsm() || It->isNotDuplicable())
           break;
         Bytes += TII.getInstSizeInBytes(*It);
-        ++Instructions;
+        // A fixed q2/q3 operand copy expands into two compact word MOVs.
+        // Count that pair as one copy for the existing bounded return tail;
+        // the byte bound still applies to every emitted instruction.
+        bool SecondHalf = false;
+        if (It->getOpcode() == AVM::MOV && !Tail.empty() &&
+            Tail.back()->getOpcode() == AVM::MOV) {
+          const MachineInstr &Lo = *Tail.back();
+          Register D = TRI.getMatchingSuperReg(Lo.getOperand(0).getReg(),
+                                               AVM::sub_lo16, &AVM::GPR32RegClass);
+          Register S = TRI.getMatchingSuperReg(Lo.getOperand(1).getReg(),
+                                               AVM::sub_lo16, &AVM::GPR32RegClass);
+          SecondHalf = D && S &&
+              It->getOperand(0).getReg() == TRI.getSubReg(D, AVM::sub_hi16) &&
+              It->getOperand(1).getReg() == TRI.getSubReg(S, AVM::sub_hi16);
+        }
+        Instructions += !SecondHalf;
         Tail.push_back(&*It);
         HasReturn = It->isReturn();
         if (HasReturn || Bytes > 16 || Instructions > 8)
@@ -875,29 +910,33 @@ static bool branchAroundExpensiveSelect(MachineBasicBlock &MBB,
     }
     // Pseudo expansion has already run. q2 <-> q3 needs two compact word
     // moves; the native MOV32 encoding requires at least one of q0/q1.
-    if (AVM::UpperGPR32RegClass.contains(Dest, Source)) {
+    Register BypassSource = BypassKeepsInput ? NativeDest : Source;
+    if (Dest == BypassSource) {
+      // q2 still holds the complete original input.
+    } else if (AVM::UpperGPR32RegClass.contains(Dest, BypassSource)) {
       BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV),
               TRI.getSubReg(Dest, AVM::sub_lo16))
-          .addReg(TRI.getSubReg(Source, AVM::sub_lo16));
+          .addReg(TRI.getSubReg(BypassSource, AVM::sub_lo16));
       BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV),
               TRI.getSubReg(Dest, AVM::sub_hi16))
-          .addReg(TRI.getSubReg(Source, AVM::sub_hi16));
+          .addReg(TRI.getSubReg(BypassSource, AVM::sub_hi16));
     } else {
       BuildMI(*Bypass, Bypass->end(), DL, TII.get(AVM::MOV32_F2), Dest)
-          .addReg(Source);
+          .addReg(BypassSource);
     }
     for (const MachineInstr *MI : Tail)
       Bypass->insert(Bypass->end(), MF.CloneMachineInstr(MI));
-    auto Split = OperandCopy ? OperandCopy->getIterator() : Op;
+    auto Setup = OperandCopy ? OperandCopy->getIterator() : Op;
+    auto Split = BypassKeepsInput ? Op : Setup;
     if (ConditionLoad) {
       if (ConditionReg) {
         ConditionLoad->setDesc(TII.get(AVM::LDSP16));
         ConditionLoad->getOperand(0).setReg(ConditionReg);
         Test->getOperand(0).setReg(ConditionReg);
       }
-      MBB.splice(Split, &MBB, ConditionLoad->getIterator());
+      MBB.splice(Setup, &MBB, ConditionLoad->getIterator());
     }
-    MBB.splice(Split, &MBB, Test);
+    MBB.splice(Setup, &MBB, Test);
     Divide->splice(Divide->end(), &MBB, Split, MBB.end());
     Low->eraseFromParent();
     High->eraseFromParent();

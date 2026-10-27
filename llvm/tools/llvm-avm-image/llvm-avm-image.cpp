@@ -236,7 +236,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     return bad(Twine("'") + InputName + "' must be ELFCLASS32 and ELFDATA2LSB");
   if (H.e_type != ELF::ET_EXEC || H.e_version != ELF::EV_CURRENT)
     return bad(Twine("'") + InputName + "' must be a linked AVM ET_EXEC");
-  if (H.e_machine != 0x4156 || H.e_flags != 1)
+  if (H.e_machine != 0x4156 || H.e_flags != ELF::EF_AVM_ABI_V2)
     return bad(Twine("'") + InputName + "' has unsupported AVM ELF identity");
   Expected<uint32_t> PhNum = ELF.getPhNum();
   if (!PhNum)
@@ -371,7 +371,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
   Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
-  Image[4] = 1;
+  Image[4] = 2;
   write24(Image, 5, H.e_entry);
   write16le(Image.data() + 8, DataSize);
   write16le(Image.data() + 10, SaveSize);

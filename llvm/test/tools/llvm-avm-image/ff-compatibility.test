@@ -1,0 +1,23 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/input.s -o %t/new.o
+# RUN: ld.lld %t/new.o -o %t/new.elf
+# RUN: %python %t/old.py %t/new.o %t/old.o 1
+# RUN: not ld.lld %t/old.o -o %t/old.elf 2>&1 | FileCheck %s --check-prefix=LINK
+# RUN: %python %t/old.py %t/new.o %t/unversioned.o 0
+# RUN: not ld.lld %t/unversioned.o -o %t/unversioned.elf 2>&1 | FileCheck %s --check-prefix=LINK
+# RUN: %python %t/old.py %t/new.elf %t/old.elf 1
+# RUN: not llvm-avm-image %t/old.elf -o %t/old.bin 2>&1 | FileCheck %s --check-prefix=IMAGE
+# LINK: incompatible AVM ABI flags
+# IMAGE: unsupported AVM ELF identity
+#--- input.s
+.text
+.globl _start
+_start:
+  fadd
+  sys debug_break
+#--- old.py
+import sys
+from pathlib import Path
+data = bytearray(Path(sys.argv[1]).read_bytes())
+data[36:40] = int(sys.argv[3]).to_bytes(4, "little")
+Path(sys.argv[2]).write_bytes(data)

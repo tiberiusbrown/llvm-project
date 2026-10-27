@@ -1,0 +1,4 @@
+# The CodeGen suite does not discover .s files.
+# RUN: llvm-mca -mtriple=avm -mcpu=avm1 -mattr=+v1 -iterations=1 \
+# RUN:   -all-views=0 -summary-view -instruction-info < %S/schedule-model.s \
+# RUN:   | FileCheck %S/schedule-model.s
