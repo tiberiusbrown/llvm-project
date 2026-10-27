@@ -681,6 +681,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF,
                           ISD::CTTZ, ISD::CTTZ_ZERO_UNDEF})
     setOperationAction(Opcode, MVT::i16, Expand);
+  // i32 is also a legal register type without native leading-zero counts.
+  // The generic CTLZ expansion introduces CTPOP, so expand that as well.
+  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF})
+    setOperationAction(Opcode, MVT::i32, Expand);
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
