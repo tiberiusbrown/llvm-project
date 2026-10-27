@@ -20,6 +20,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
@@ -202,6 +203,22 @@ public:
     for (const StackCall &C : StackCalls)
       emitStackCall(C.Call, C.Bytes, C.Tail, C.Targets);
     const MachineFrameInfo &Frame = MF->getFrameInfo();
+    // The raw CRT entry runs at StackTop, without a caller return record. Its
+    // finalized frame provides a phase word without any extra static RAM or a
+    // global pointer to stack storage. Ordinary frame metadata counts it.
+    for (int FI = Frame.getObjectIndexBegin(); FI < Frame.getObjectIndexEnd(); ++FI) {
+      if (Frame.isDeadObjectIndex(FI))
+        continue;
+      const AllocaInst *AI = Frame.getObjectAllocation(FI);
+      if (!AI || !AI->getMetadata("avm.termination.phase"))
+        continue;
+      assert(MF->getName() == "_start" && "termination context outside raw entry");
+      MCSymbol *Phase = OutContext.getOrCreateSymbol("__avm_crt_termination_phase");
+      OutStreamer->emitSymbolAttribute(Phase, MCSA_Global);
+      OutStreamer->emitSymbolAttribute(Phase, MCSA_Hidden);
+      OutStreamer->emitAssignment(Phase, MCConstantExpr::create(
+          AVM::StackTop + Frame.getObjectOffset(FI), OutContext));
+    }
     OutStreamer->pushSection();
     // One group per registration: header (2), candidates (0), or unknown (1).
     // Link-order metadata follows the registering code through GC and -r.

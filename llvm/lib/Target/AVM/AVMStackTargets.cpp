@@ -483,7 +483,7 @@ public:
         auto *CB = dyn_cast<CallBase>(&I);
         if (!CB)
           continue;
-        auto *Direct = dyn_cast<Function>(CB->getCalledOperand()->stripPointerCasts());
+        auto *Direct = dyn_cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases());
         if (Direct && Direct->hasExternalWeakLinkage() &&
             !CB->getMetadata("avm.stack.dispatch")) {
           // Only a proven non-null control-flow edge permits skipping a weak
@@ -508,7 +508,16 @@ public:
             }
           }
         }
-        if (Direct && Direct->getName() == "__avm_register_local_dtor") {
+        Function *Registration = Direct;
+        if (!Registration && Converged) {
+          Pointers Callees = Analysis.targets(CB->getCalledOperand());
+          if (!Callees.Unknown && Callees.Locations.empty() &&
+              Callees.Functions.size() == 1)
+            Registration = Callees.Functions.front();
+        }
+        if (Registration &&
+            (Registration->getName() == "__avm_register_local_dtor" ||
+             Registration->getName() == "atexit")) {
           Pointers P = Converged && CB->arg_size()
                            ? Analysis.targets(CB->getArgOperand(0))
                            : Pointers::unknown();

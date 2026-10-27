@@ -1441,6 +1441,10 @@ static void readConfigs(Ctx &ctx, opt::InputArgList &args) {
   ctx.arg.fortranCommon =
       args.hasFlag(OPT_fortran_common, OPT_no_fortran_common, false);
   ctx.arg.gcSections = args.hasFlag(OPT_gc_sections, OPT_no_gc_sections, false);
+  int64_t atexitCapacity = args::getInteger(args, OPT_avm_atexit_capacity, 32);
+  if (atexitCapacity < 1 || atexitCapacity > 255)
+    error("--avm-atexit-capacity: expected an integer from 1 to 255");
+  ctx.arg.avmAtexitCapacity = std::clamp<int64_t>(atexitCapacity, 1, 255);
   ctx.arg.avmPrintStackUsage = args.hasArg(OPT_avm_print_stack_usage);
   ctx.arg.avmPrintStackGaps = args.hasArg(OPT_avm_print_stack_gaps);
   int64_t stackGapLimit = args::getInteger(args, OPT_avm_stack_gap_limit, 10);

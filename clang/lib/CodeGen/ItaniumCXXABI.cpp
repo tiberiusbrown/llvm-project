@@ -3195,7 +3195,8 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
     // The weak hook costs no RAM in programs without local static destructors.
     // When present, it counts completed nonlocal constructions so the local
     // table entries can be drained at the matching point during teardown.
-    llvm::FunctionType *HookTy = llvm::FunctionType::get(CGM.VoidTy, false);
+    llvm::FunctionType *HookTy =
+        llvm::FunctionType::get(CGM.VoidTy, {Stub->getType()}, false);
     llvm::FunctionCallee Hook = CGM.CreateRuntimeFunction(
         HookTy, "__avm_note_global_ctor");
     cast<llvm::Function>(Hook.getCallee())
@@ -3205,7 +3206,7 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
     CGF.Builder.CreateCondBr(CGF.Builder.CreateIsNotNull(Hook.getCallee()),
                              RunHook, Continue);
     CGF.EmitBlock(RunHook);
-    CGF.EmitNounwindRuntimeCall(Hook);
+    CGF.EmitNounwindRuntimeCall(Hook, {Stub});
     CGF.EmitBlock(Continue);
     return;
   }

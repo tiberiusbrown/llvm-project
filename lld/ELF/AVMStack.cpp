@@ -577,10 +577,18 @@ public:
     for (InputSectionBase *sec : ctx.inputSections)
       if (sec->isLive() && sec->name == ".avm.stackcalls")
         readCalls(*sec);
+    DenseSet<Address> registrationFunctions;
+    for (StringRef name : {StringRef("__avm_register_local_dtor"), StringRef("atexit")})
+      if (Symbol *sym = ctx.symtab->find(name)) {
+        Address a = address(*sym);
+        if (a.first)
+          registrationFunctions.insert(a);
+      }
     for (const Node &n : nodes) {
       unsigned count = 0;
       for (const Edge &e : n.edges)
-        if (e.target != None && nodes[e.target].name == "__avm_register_local_dtor")
+        if (e.target != None &&
+            registrationFunctions.contains(nodes[e.target].address))
           ++count;
       if (count > registrations.lookup(n.address))
         localTargets.complete = false;

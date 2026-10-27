@@ -261,17 +261,23 @@ llvm::Constant *CodeGenFunction::createAtExitStub(const VarDecl &VD,
   // after this object before calling its destructor.
   if (CGM.getTarget().getTriple().getArch() == llvm::Triple::avm &&
       !VD.isStaticLocal()) {
-    llvm::FunctionType *HookTy = llvm::FunctionType::get(CGM.VoidTy, false);
+    llvm::FunctionType *HookTy =
+        llvm::FunctionType::get(CGM.IntTy, {fn->getType()}, false);
     llvm::FunctionCallee Hook = CGM.CreateRuntimeFunction(
         HookTy, "__avm_before_global_dtor");
     cast<llvm::Function>(Hook.getCallee())
         ->setLinkage(llvm::GlobalValue::ExternalWeakLinkage);
     llvm::BasicBlock *RunHook = CGF.createBasicBlock("avm.run.local.dtors");
     llvm::BasicBlock *CallDtor = CGF.createBasicBlock("avm.call.global.dtor");
+    llvm::BasicBlock *SkipDtor = CGF.createBasicBlock("avm.skip.global.dtor");
     CGF.Builder.CreateCondBr(CGF.Builder.CreateIsNotNull(Hook.getCallee()),
                              RunHook, CallDtor);
     CGF.EmitBlock(RunHook);
-    CGF.EmitNounwindRuntimeCall(Hook);
+    llvm::Value *Constructed = CGF.EmitNounwindRuntimeCall(Hook, {fn});
+    CGF.Builder.CreateCondBr(CGF.Builder.CreateIsNotNull(Constructed),
+                             CallDtor, SkipDtor);
+    CGF.EmitBlock(SkipDtor);
+    CGF.EmitBranchThroughCleanup(CGF.ReturnBlock);
     CGF.EmitBlock(CallDtor);
   }
 

@@ -9,6 +9,7 @@
 
 namespace llvm::AVM {
 inline constexpr uint64_t StackLimit = 256;
+inline constexpr uint64_t StackTop = 0xA00;
 inline constexpr uint64_t ReturnAddressSize = 3;
 
 // .avm.stackcalls consists of 9-byte records, with no padding:

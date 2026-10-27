@@ -365,6 +365,7 @@ struct Config {
   bool avmPrintStackUsage;
   bool avmPrintStackGaps;
   uint64_t avmStackGapLimit;
+  uint16_t avmAtexitCapacity;
   std::optional<uint64_t> randomizeSectionPadding;
   bool rejectMismatch;
   bool relax;

@@ -18,6 +18,14 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   switch (BuiltinID) {
   default:
     return false;
+  case AVM::BI__builtin_avm_termination_context: {
+    const auto *FD = getCurFunctionDecl();
+    if (!FD || !FD->getIdentifier() || FD->getName() != "_start") {
+      Diag(TheCall->getExprLoc(), diag::err_avm_termination_context);
+      return true;
+    }
+    return false;
+  }
   case AVM::BI__builtin_avm_stack_dispatch: {
     if (checkArgCount(TheCall, 2))
       return true;

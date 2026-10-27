@@ -181,8 +181,11 @@ void LinkerScript::createAVMDefaultLayout() {
     OutputSection &osec = desc->osec;
     osec.addrExpr = std::move(addr);
     auto *isd = make<InputSectionDescription>("*");
-    for (StringRef pattern : patterns)
+    for (StringRef pattern : patterns) {
       isd->sectionPatterns.push_back({{}, StringMatcher(pattern)});
+      if (name == ".init_array" || name == ".fini_array")
+        isd->sectionPatterns.back().sortOuter = SortSectionPolicy::Priority;
+    }
     osec.commands.push_back(isd);
     sectionCommands.push_back(desc);
     return &osec;
@@ -196,6 +199,8 @@ void LinkerScript::createAVMDefaultLayout() {
   OutputSection *data = add(
       ".data", {".data.avm_local_dtor_slot.*"},
       [saved] { return ExprValue(0x100 + saved->size); });
+  // Linker-defined bounds may retain an empty data section without inputs.
+  data->flags = SHF_ALLOC | SHF_WRITE | SHF_AVM_DATASPACE;
   auto slotBound = [&](StringRef name) {
     auto *cmd = make<SymbolAssignment>(
         name, [this] { return ExprValue(getDot()); },
@@ -207,6 +212,68 @@ void LinkerScript::createAVMDefaultLayout() {
   data->commands.insert(data->commands.begin(),
                         slotBound("__avm_local_dtor_slots_start"));
   data->commands.push_back(slotBound("__avm_local_dtor_slots_end"));
+  // Size the optional registry only after LTO and section GC. Weak CRT hooks
+  // never extract its archive members. Function pointers remain three bytes;
+  // mixed C++ entries add a two-byte construction phase and registration tag.
+  auto liveDefinition = [&](StringRef name) {
+    auto *sym = dyn_cast_or_null<Defined>(ctx.symtab->find(name));
+    auto *sec = sym ? dyn_cast_or_null<InputSectionBase>(sym->section) : nullptr;
+    return sec && sec->isLive();
+  };
+  bool atexit = liveDefinition("atexit");
+  bool registry = liveDefinition("__avm_run_local_dtors");
+  bool mixed = false;
+  uint64_t finiCount = 0;
+  for (InputSectionBase *sec : ctx.inputSections) {
+    if (!sec->isLive())
+      continue;
+    mixed |= sec->name.starts_with(".data.avm_local_dtor_slot.");
+    if (sec->name == ".fini_array" || sec->name.starts_with(".fini_array."))
+      finiCount += sec->getSize() / 3;
+  }
+  bool localSlots = mixed;
+  mixed |= finiCount != 0;
+  if (registry && finiCount > 32767)
+    Err(ctx) << "AVM termination supports at most 32767 fini-array entries";
+  auto constant = [&](StringRef name, uint64_t value) {
+    auto *cmd = make<SymbolAssignment>(
+        name, [value] { return ExprValue(value); },
+        ctx.scriptSymOrderCounter++, "<AVM termination layout>");
+    cmd->provide = true;
+    cmd->hidden = true;
+    data->commands.push_back(cmd);
+  };
+  auto reserve = [&](uint64_t size) {
+    if (!size)
+      return;
+    data->flags |= SHF_ALLOC | SHF_WRITE | SHF_AVM_DATASPACE;
+    data->commands.push_back(make<SymbolAssignment>(
+        ".", [this, size] { return ExprValue(getDot() + size); },
+        ctx.scriptSymOrderCounter++, "<AVM termination layout>"));
+  };
+  constant("__avm_atexit_capacity", ctx.arg.avmAtexitCapacity);
+  constant("__avm_termination_entry_size", mixed ? 5 : 3);
+  data->commands.push_back(slotBound("__avm_atexit_slots_start"));
+  reserve(atexit ? ctx.arg.avmAtexitCapacity * (mixed ? 5 : 3) : 0);
+  data->commands.push_back(slotBound("__avm_termination_slots_end"));
+  data->commands.push_back(slotBound("__avm_termination_next"));
+  reserve(registry && mixed && (atexit || localSlots) ? 2 : 0);
+  auto *stackPhase = dyn_cast_or_null<Defined>(
+      ctx.symtab->find("__avm_crt_termination_phase"));
+  if (stackPhase && !stackPhase->section) {
+    constant("__avm_termination_phase", stackPhase->value);
+  } else {
+    // Custom/older raw entry objects can still supply static tracking storage.
+    data->commands.push_back(slotBound("__avm_termination_phase"));
+    reserve(registry && mixed ? 2 : 0);
+  }
+  // The count must not be an input definition: a weak read from a registry
+  // extracted by a dead registration would otherwise keep it alive under GC.
+  if (atexit)
+    data->commands.push_back(slotBound("__avm_atexit_count"));
+  else
+    constant("__avm_atexit_count", 0);
+  reserve(atexit ? 1 : 0);
   auto *ordinaryData = make<InputSectionDescription>("*");
   for (StringRef pattern : {StringRef(".data"), StringRef(".data.*")})
     ordinaryData->sectionPatterns.push_back({{}, StringMatcher(pattern)});
@@ -218,8 +285,8 @@ void LinkerScript::createAVMDefaultLayout() {
         text->addralign));
   };
   add(".rodata", {".rodata", ".rodata.*"}, {});
-  add(".init_array", {".init_array", ".init_array.*"}, {});
-  add(".fini_array", {".fini_array", ".fini_array.*"}, {});
+  add(".init_array", {".init_array.*", ".init_array"}, {});
+  add(".fini_array", {".fini_array.*", ".fini_array"}, {});
 }
 
 // Expands the memory region by the specified size.
@@ -1452,8 +1519,10 @@ void LinkerScript::adjustOutputSections() {
     // We do not want to keep any special flags for output section
     // in case it is empty.
     if (isEmpty) {
-      sec->flags =
-          flags & ((sec->nonAlloc ? 0 : (uint64_t)SHF_ALLOC) | SHF_WRITE);
+      sec->flags = isAVMDefaultLayout && sec->name == ".data"
+                       ? SHF_ALLOC | SHF_WRITE | SHF_AVM_DATASPACE
+                       : flags & ((sec->nonAlloc ? 0 : (uint64_t)SHF_ALLOC) |
+                                  SHF_WRITE);
       sec->sortRank = getSectionRank(ctx, *sec);
     }
 

@@ -220,6 +220,16 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
       CGF->Builder.CreateStore(CGF->Builder.CreateExtractValue(Pair, 1), Q);
       return CGF->Builder.CreateExtractValue(Pair, 0);
     }
+    case AVM::BI__builtin_avm_termination_context: {
+      auto *Phase = CGF->CreateTempAlloca(CGF->Int16Ty, "avm.termination.phase");
+      Phase->setAlignment(llvm::Align(1));
+      Phase->setMetadata("avm.termination.phase",
+                         llvm::MDNode::get(CGF->getLLVMContext(), {}));
+      // Volatile initialization preserves the frame object through LTO. Do not
+      // end its lifetime: the optional registry accesses it until shutdown.
+      return CGF->Builder.CreateStore(llvm::ConstantInt::get(CGF->Int16Ty, 0),
+                                      Address(Phase, CGF->Int16Ty, CharUnits::One()), true);
+    }
     case AVM::BI__builtin_avm_stack_dispatch: {
       Value *Fn = CGF->EmitScalarExpr(E->getArg(0));
       Expr::EvalResult Result;
