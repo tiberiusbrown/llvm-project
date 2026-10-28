@@ -51,6 +51,21 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
       return true;
 
     Expr *Arg = TheCall->getArg(0)->IgnoreParenImpCasts();
+    // Function-name identifiers carry their spelling as a StringLiteral.
+    // Normalize them here so flash storage and constant evaluation use the
+    // same path as explicit literals, without first emitting a RAM array.
+    if (auto *Name = dyn_cast<PredefinedExpr>(Arg)) {
+      if (Name->isTypeDependent())
+        return false;
+      if (auto *Literal = Name->getFunctionName();
+          Literal && Literal->getKind() == StringLiteralKind::Ordinary) {
+        auto Converted = DefaultFunctionArrayLvalueConversion(Literal);
+        if (Converted.isInvalid())
+          return true;
+        TheCall->setArg(0, Converted.get());
+        return false;
+      }
+    }
     if (const auto *Literal = dyn_cast<StringLiteral>(Arg);
         Literal && Literal->getKind() == StringLiteralKind::Ordinary)
       return false;

@@ -6771,8 +6771,10 @@ AVM flash strings
 On the AVM target, ``__builtin_avm_flash_string`` places an ordinary narrow
 string literal in read-only program memory and returns a
 ``const char __attribute__((address_space(1))) *``.  Its sole argument must be
-an ordinary narrow string literal; variables, conditional expressions, and
-prefixed string literals are rejected.
+an ordinary narrow string literal or a narrow predefined function-name
+identifier such as ``__func__``. Function names are placed directly in program
+memory without allocating a data-space copy. Variables, conditional
+expressions, and prefixed string literals are rejected.
 
 The result is a constant address expression and can be used in C static-storage
 initializers and in C++ ``constexpr`` and ``constinit`` pointer initializers.

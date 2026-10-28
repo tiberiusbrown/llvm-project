@@ -13,9 +13,17 @@ constexpr int select(const char *) { return 2; }
 static_assert(select(__builtin_avm_flash_string("overload")) == 1);
 
 void valid() {
+  static constexpr flash_ptr name = __builtin_avm_flash_string(__func__);
+  (void)name;
   static constexpr flash_ptr local = __builtin_avm_flash_string("local");
   (void)local;
 }
+
+template<class T> flash_ptr function_name() {
+  static constexpr flash_ptr name = __builtin_avm_flash_string(__func__);
+  return name;
+}
+template flash_ptr function_name<int>();
 
 void invalid(const char *variable, bool condition) {
   __builtin_avm_flash_string(variable); // expected-error {{argument to '__builtin_avm_flash_string' must be an ordinary narrow string literal}}

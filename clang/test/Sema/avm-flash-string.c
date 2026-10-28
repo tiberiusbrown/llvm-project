@@ -11,6 +11,8 @@ _Static_assert(_Generic(__builtin_avm_flash_string("x"), flash_ptr : 1,
                "exact flash pointer type");
 
 void valid(void) {
+  static flash_ptr name = __builtin_avm_flash_string(__func__);
+  (void)name;
   static flash_ptr local = __builtin_avm_flash_string("local");
   static struct holder local_aggregate = {
       __builtin_avm_flash_string("local aggregate")};
