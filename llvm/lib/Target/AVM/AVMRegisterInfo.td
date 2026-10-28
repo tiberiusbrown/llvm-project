@@ -37,6 +37,14 @@ def SP : AVMReg<8, "sp">, DwarfRegNum<[8]>;
 def PC : AVMReg<9, "pc">, DwarfRegNum<[9]>;
 def CC : AVMReg<10, "cc">, DwarfRegNum<[10]>;
 
+// Generic stacksave/stackrestore expansion creates physical SP copies. The
+// DAG scheduler needs a class for these dependencies, but must never allocate
+// SP or try to break a dependency by copying it to another SP register.
+def SPReg : RegisterClass<"AVM", [i16], 8, (add SP)> {
+  let isAllocatable = 0;
+  let CopyCost = -1;
+}
+
 // Allocation order favors the compact upper-register encodings.  GPR8 names
 // the low byte of the same physical registers; it does not create byte
 // registers with independent allocation or storage.

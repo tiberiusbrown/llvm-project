@@ -106,3 +106,20 @@ define ptr addrspace(1) @frame_pointer24(ptr addrspace(1) %x) #0 {
 }
 
 attributes #0 = { "frame-pointer"="all" }
+
+; The incoming stack argument must remain relative to r3 after SP moves.
+define i16 @dynamic_incoming(i16 %n, i16 %b, i16 %c, i16 %d,
+                             i16 %e, i16 %f) {
+; CHECK-LABEL: dynamic_incoming:
+; CHECK: push16 r3
+; CHECK: getsp r3
+; CHECK: setsp
+; CHECK: call take
+; CHECK: ld16
+; CHECK: setsp r3
+; CHECK: pop16 r3
+; CHECK: ret
+  %a = alloca i16, i16 %n, align 1
+  call void @take(ptr %a)
+  ret i16 %f
+}

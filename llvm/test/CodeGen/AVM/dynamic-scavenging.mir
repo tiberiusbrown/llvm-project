@@ -1,0 +1,24 @@
+# RUN: llc -mtriple=avm -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+
+# Every allocatable GPR is live at the fixed-frame store after SP has moved.
+# Address materialization must spill a register through the emergency slot.
+---
+name: dynamic_scavenge
+tracksRegLiveness: true
+stack:
+  - { id: 0, size: 180, alignment: 1 }
+  - { id: 1, type: variable-sized, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r0, $r1, $r2, $r4, $r5, $r6, $r7
+    ; CHECK-LABEL: name: dynamic_scavenge
+    ; CHECK: $r3 = frame-setup GETSP
+    ; CHECK: SETSP $r7
+    ; CHECK: DPST16 $r3, 180, {{.*}}$r
+    ; CHECK: DPLD16 $r3, 180
+    ; CHECK: frame-destroy SETSP $r3
+    SETSP $r7, implicit-def $sp
+    STACK_STORE16_PSEUDO %stack.0, 0, $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r0, implicit $r1, implicit $r2, implicit $r4, implicit $r5, implicit $r6, implicit $r7
+...
+

@@ -174,7 +174,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
   const AVMFrameLowering &TFI = *STI.getFrameLowering();
   int FrameIndex = Old.getOperand(FIOperandNum).getIndex();
   bool IsScavengingSlot = RS && RS->isScavengingFrameIndex(FrameIndex);
-  Register Base = TFI.hasFP(MF) && !IsScavengingSlot ? AVM::R3 : AVM::SP;
+  Register Base = TFI.hasFP(MF) ? AVM::R3 : AVM::SP;
   int64_t Offset = MFI.getObjectOffset(FrameIndex) + MFI.getStackSize();
   Offset += Old.getOperand(FIOperandNum + 1).getImm();
   if (Base == AVM::SP)
@@ -210,6 +210,26 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     RS->setRegUsed(Scratch);
     return Scratch;
   };
+
+  // The emergency spill must use the stable frame base too: SP can point
+  // below any number of dynamic objects (or outgoing arguments). Address it
+  // directly so spilling a scavenged register never needs another register.
+  // This two-byte slot is within the fixed frame, and a valid AVM fixed
+  // frame is at most StackLimit bytes.
+  if (IsScavengingSlot && Base == AVM::R3) {
+    assert(isUInt<8>(Offset) && "AVM emergency spill is out of reach");
+    assert((Opcode == AVM::STACK_LOAD16_PSEUDO ||
+            Opcode == AVM::STACK_STORE16_PSEUDO) &&
+           "unexpected AVM emergency spill type");
+    if (Opcode == AVM::STACK_LOAD16_PSEUDO)
+      BuildDisplacedLoad(AVM::DPLD16, Old.getOperand(0).getReg(), Base, Offset);
+    else
+      BuildDisplacedStore(AVM::DPST16, Base, Offset,
+                          Old.getOperand(2).getReg(), 0,
+                          getKillRegState(Old.getOperand(2).isKill()));
+    Old.eraseFromParent();
+    return true;
+  }
 
   if (Opcode == AVM::FRAMEADDR_PSEUDO) {
     Register Dest = Old.getOperand(0).getReg();
