@@ -278,6 +278,7 @@ void LinkerScript::createAVMDefaultLayout() {
   for (StringRef pattern : {StringRef(".data"), StringRef(".data.*")})
     ordinaryData->sectionPatterns.push_back({{}, StringMatcher(pattern)});
   data->commands.push_back(ordinaryData);
+  data->commands.push_back(slotBound("__avm_heap_start"));
   OutputSection *text = add(".text", {".text", ".text.*"}, {});
   text->addrExpr = [saved, data, text] {
     return ExprValue(alignToPowerOf2(
