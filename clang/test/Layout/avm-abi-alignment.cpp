@@ -11,6 +11,11 @@ static_assert(alignof(double) == 1, "double ABI alignment");
 static_assert(alignof(long double) == 1, "long double ABI alignment");
 static_assert(alignof(void *) == 1, "data-pointer ABI alignment");
 
+static_assert(sizeof(wchar_t) == 1, "wchar_t ABI size");
+static_assert(alignof(wchar_t) == 1, "wchar_t ABI alignment");
+static_assert(sizeof(char16_t) == 2, "char16_t ABI size");
+static_assert(sizeof(char32_t) == 4, "char32_t ABI size");
+
 struct S {
   char a;
   long long b;

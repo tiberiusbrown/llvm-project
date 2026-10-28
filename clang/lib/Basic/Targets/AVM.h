@@ -36,7 +36,7 @@ public:
     SizeType = UnsignedInt;
     PtrDiffType = SignedInt;
     IntPtrType = SignedInt;
-    WCharType = UnsignedInt;
+    WCharType = UnsignedChar;
     WIntType = SignedInt;
     Char16Type = UnsignedInt;
     Char32Type = UnsignedLong;

@@ -17,7 +17,10 @@
 // CHECK-DAG: #define __SIZEOF_POINTER__ 2
 // CHECK-DAG: #define __SIZEOF_SIZE_T__ 2
 // CHECK-DAG: #define __SIZEOF_PTRDIFF_T__ 2
-// CHECK-DAG: #define __SIZEOF_WCHAR_T__ 2
+// CHECK-DAG: #define __SIZEOF_WCHAR_T__ 1
 // CHECK-DAG: #define __SIZE_TYPE__ unsigned int
 // CHECK-DAG: #define __PTRDIFF_TYPE__ int
-// CHECK-DAG: #define __WCHAR_TYPE__ unsigned int
+// CHECK-DAG: #define __WCHAR_TYPE__ unsigned char
+// CHECK-DAG: #define __WCHAR_MAX__ 255
+// CHECK-DAG: #define __WCHAR_UNSIGNED__ 1
+// CHECK-DAG: #define __WINT_TYPE__ int
