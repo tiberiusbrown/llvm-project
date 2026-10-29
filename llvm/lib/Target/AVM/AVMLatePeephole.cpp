@@ -6,6 +6,7 @@
 #include "AVMRegisterRange.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -152,6 +153,22 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
   std::array<WordValue, 8> Values;
   for (WordValue &V : Values)
     V = Fresh();
+  // Prefer the original holder over copies, without oscillating between
+  // equivalent registers. A clobber resets both the value and its copy order.
+  std::array<unsigned, 8> CopyOrder = {};
+  unsigned NextCopy = 0;
+  struct OperandRewrite {
+    unsigned Operand;
+    Register Original;
+    unsigned Copy;
+  };
+  struct InstructionRewrites {
+    unsigned Bytes, Cycles;
+    SmallVector<OperandRewrite, 2> Operands;
+  };
+  DenseMap<MachineInstr *, InstructionRewrites> Rewrites;
+  DenseMap<MachineInstr *, unsigned> CopyNumbers;
+  DenseSet<unsigned> RemovedCopies;
   DenseMap<int64_t, WordValue> Stack;
   unsigned ChangedRegisters = 0;
   auto ChangedReg = [&](Register R) {
@@ -175,8 +192,10 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
     // They emit no code, but must still invalidate facts about their defs.
     if (MI.isMetaInstruction()) {
       for (unsigned I = 0; I != 8; ++I)
-        if (MI.modifiesRegister(Words[I], &TRI))
+        if (MI.modifiesRegister(Words[I], &TRI)) {
           Values[I] = Fresh();
+          CopyOrder[I] = 0;
+        }
       if (MI.modifiesRegister(AVM::SP, &TRI) || MI.mayStore() ||
           MI.hasUnmodeledSideEffects())
         Stack.clear();
@@ -186,7 +205,98 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
       Stack.clear();
       for (WordValue &V : Values)
         V = Fresh();
+      CopyOrder.fill(0);
       continue;
+    }
+    // Wide stack-store expansion can leave a whole-pair liveness use on
+    // each word store. The encoding reads only its explicit source word.
+    // Drop these extra aliases so forwarding that word can kill its copy;
+    // the other word store still carries its own explicit source use.
+    if (isWordStackStore(MI)) {
+      Register Source = MI.getOperand(1).getReg();
+      for (unsigned Op = MI.getNumOperands(); Op-- > MI.getNumExplicitOperands();) {
+        const MachineOperand &MO = MI.getOperand(Op);
+        if (MO.isReg() && MO.isUse() && MO.isImplicit() &&
+            AVM::GPR32RegClass.contains(MO.getReg()) &&
+            TRI.regsOverlap(MO.getReg(), Source)) {
+          ChangedReg(MO.getReg());
+          MI.removeOperand(Op);
+          Changed = true;
+        }
+      }
+    }
+    // Respect encoding constraints: compact instructions exclude lower registers
+    // from compact instructions, and tied/implicit operands cannot move.
+    // Even an encodable substitution must not increase interpreter latency.
+    bool WordCopy = MI.getOpcode() == AVM::MOV || MI.getOpcode() == AVM::MOV_RR;
+    // Service pseudos still have fixed interpreter ABI operands even when
+    // their descriptor uses general register classes. Leave those untouched.
+    if (!MI.isPseudo() && !MI.isCall() && !MI.isInlineAsm() &&
+        !MI.hasUnmodeledSideEffects()) {
+      for (unsigned Op = 0; Op != MI.getNumExplicitOperands(); ++Op) {
+        MachineOperand &MO = MI.getOperand(Op);
+        if (!MO.isReg() || !MO.isUse() || MO.isImplicit() || MO.isUndef() ||
+            MO.getSubReg() || MO.isTied())
+          continue;
+        unsigned From = Index(MO.getReg());
+        if (From == 8 || !CopyOrder[From])
+          continue;
+        const TargetRegisterClass *RC = TII.getRegClass(MI.getDesc(), Op);
+        if (!RC)
+          continue;
+        unsigned Best = From;
+        for (unsigned I = 0; I != 8; ++I)
+          if (CopyOrder[I] < CopyOrder[Best] && Values[From].equals(Values[I]) &&
+              RC->contains(Words[I]) &&
+              llvm::none_of(MI.operands(), [&](const MachineOperand &Def) {
+                return Def.isReg() && Def.isDef() && Def.isEarlyClobber() &&
+                       TRI.regsOverlap(Def.getReg(), Words[I]);
+              }))
+            Best = I;
+        if (Best == From)
+          continue;
+        unsigned Bytes = TII.getInstSizeInBytes(MI);
+        unsigned Cycles = TII.getInstrLatency(nullptr, MI);
+        unsigned OldOpcode = MI.getOpcode();
+        MO.setReg(Words[Best]);
+        // The F1/F2/F5 pair encodings require at least one lower register.
+        // If forwarding makes both operands upper, use the compact opcode.
+        // Do the same for full bitwise operations when they become compact.
+        bool Upper = llvm::all_of(
+            MI.explicit_operands(), [](const MachineOperand &O) {
+              return !O.isReg() || AVM::UpperGPR16RegClass.contains(O.getReg());
+            });
+        if (Upper) {
+          unsigned Compact = 0;
+          switch (OldOpcode) {
+          case AVM::MOV_RR: Compact = AVM::MOV; break;
+          case AVM::ADD_RR: Compact = AVM::ADD; break;
+          case AVM::SUB_RR: Compact = AVM::SUB; break;
+          case AVM::CMP_RR: Compact = AVM::CMP; break;
+          case AVM::AND_RR: Compact = AVM::AND; break;
+          case AVM::OR_RR: Compact = AVM::OR; break;
+          case AVM::XOR_RR: Compact = AVM::XOR; break;
+          default: break;
+          }
+          if (Compact)
+            MI.setDesc(TII.get(Compact));
+        }
+        if (TII.getInstSizeInBytes(MI) > Bytes ||
+            TII.getInstrLatency(nullptr, MI) > Cycles) {
+          MO.setReg(Words[From]);
+          MI.setDesc(TII.get(OldOpcode));
+          continue;
+        }
+        auto [Entry, Inserted] = Rewrites.try_emplace(&MI);
+        if (Inserted) {
+          Entry->second.Bytes = Bytes;
+          Entry->second.Cycles = Cycles;
+        }
+        Entry->second.Operands.push_back({Op, Words[From], CopyOrder[From]});
+        ChangedReg(Words[From]);
+        ChangedReg(Words[Best]);
+        Changed = true;
+      }
     }
     SmallVector<std::pair<unsigned, WordValue>, 2> Results;
     bool Remove = false;
@@ -312,6 +422,8 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
                   .add(MI.getOperand(0))
                   .addReg(Words[I]);
               ChangedReg(Words[I]);
+              // This new value is not derived from an older copy to Reg.
+              CopyOrder[Reg] = 0;
               Remove = true;
               break;
             }
@@ -353,18 +465,81 @@ static bool cleanRegisterAndStackValues(MachineBasicBlock &MBB,
             return MO.isRegMask();
           });
       for (unsigned I = 0; I != 8; ++I)
-        if (UnknownClobbers || MI.modifiesRegister(Words[I], &TRI))
+        if (UnknownClobbers || MI.modifiesRegister(Words[I], &TRI)) {
           Values[I] = Fresh();
+          CopyOrder[I] = 0;
+        }
     }
-    for (const auto &[I, V] : Results)
+    for (const auto &[I, V] : Results) {
       Values[I] = V;
+      if (!Remove) {
+        CopyOrder[I] = WordCopy ? ++NextCopy : 0;
+        if (WordCopy)
+          CopyNumbers[&MI] = CopyOrder[I];
+      }
+    }
     if (Remove) {
       for (const MachineOperand &MO : MI.operands())
         if (MO.isReg() && MO.getReg())
           ChangedReg(MO.getReg());
+      Rewrites.erase(&MI);
       MI.eraseFromParent();
       Changed = true;
     }
+  }
+  // Delete only plain word copies. LivePhysRegs accounts for pair aliases,
+  // implicit uses, regmasks and successor live-ins. Without tracked liveness,
+  // require an actual overwrite in this block rather than assuming dead exits.
+  LivePhysRegs Live(TRI);
+  Live.addLiveOuts(MBB);
+  unsigned Overwritten = 0;
+  bool TracksLiveness = MBB.getParent()->getProperties().hasProperty(
+      MachineFunctionProperties::Property::TracksLiveness);
+  for (auto It = MBB.end(); It != MBB.begin();) {
+    MachineInstr &MI = *--It;
+    if (MI.isDebugInstr())
+      continue;
+    bool Barrier = MI.isBundled() || MI.hasUnmodeledSideEffects();
+    unsigned D = MI.getNumOperands() && MI.getOperand(0).isReg()
+                     ? Index(MI.getOperand(0).getReg()) : 8;
+    if (!Barrier && D != 8 && MI.getNumOperands() == 2 &&
+        (MI.getOpcode() == AVM::MOV || MI.getOpcode() == AVM::MOV_RR) &&
+        !Live.contains(Words[D]) &&
+        (TracksLiveness || (Overwritten & (1u << D)))) {
+      ChangedReg(Words[D]);
+      ChangedReg(MI.getOperand(1).getReg());
+      auto Copy = CopyNumbers.find(&MI);
+      if (Copy != CopyNumbers.end())
+        RemovedCopies.insert(Copy->second);
+      Rewrites.erase(&MI);
+      auto Erase = MI.getIterator();
+      // Leave It pointing after the erased instruction for the next --It.
+      It = std::next(Erase);
+      MI.eraseFromParent();
+      Changed = true;
+      continue;
+    }
+    Live.stepBackward(MI);
+    if (Barrier) {
+      Overwritten = 0;
+      for (MCPhysReg R : Words)
+        Live.addReg(R);
+    } else {
+      for (unsigned I = 0; I != 8; ++I)
+        if (MI.modifiesRegister(Words[I], &TRI))
+          Overwritten |= 1u << I;
+    }
+  }
+  // Equivalent operands alone save nothing if their copy must remain (for
+  // example, for a later tied or implicit pair use). Retain such rewrites only
+  // when the instruction becomes smaller/faster or the originating copy dies.
+  for (auto &[MI, Edits] : Rewrites) {
+    if (TII.getInstSizeInBytes(*MI) < Edits.Bytes ||
+        TII.getInstrLatency(nullptr, *MI) < Edits.Cycles)
+      continue;
+    for (const OperandRewrite &Edit : llvm::reverse(Edits.Operands))
+      if (!RemovedCopies.contains(Edit.Copy))
+        MI->getOperand(Edit.Operand).setReg(Edit.Original);
   }
   // Reusing a physical value can extend a lifetime past an old kill or dead
   // marker. Allocation is finished; clear only flags for affected registers.

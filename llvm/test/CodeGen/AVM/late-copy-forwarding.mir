@@ -1,0 +1,434 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole -verify-machineinstrs %s -o - | FileCheck %s
+
+---
+name: sinf_mask
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: sinf_mask
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = LDI16 32767
+    ; CHECK-NEXT: $r7 = AND $r7, $r5
+    ; CHECK-NEXT: $r6 = LDI16 32640
+    liveins: $r5
+    $r6 = MOV killed $r5
+    $r7 = LDI16 32767
+    $r7 = AND $r7, killed $r6
+    $r6 = LDI16 32640
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: multiple_uses
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: multiple_uses
+    ; CHECK-NOT: MOV
+    ; CHECK: $r4 = AND $r4, $r5
+    ; CHECK-NEXT: $r7 = OR $r7, $r5
+    liveins: $r4, $r5, $r7
+    $r6 = MOV $r5
+    $r4 = AND $r4, $r6
+    $r7 = OR $r7, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: source_clobber
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: source_clobber
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: $r4 = AND $r4, $r6
+    ; CHECK: $r5 = LDI8 9
+    ; CHECK-NEXT: $r7 = OR $r7, $r6
+    liveins: $r4, $r5, $r7
+    $r6 = MOV $r5
+    $r4 = AND $r4, $r6
+    $r5 = LDI8 9
+    $r7 = OR $r7, $r6
+    $r6 = LDI8 8
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: destination_clobber
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: destination_clobber
+    ; CHECK-NOT: MOV
+    ; CHECK: $r6 = LDI8 9
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    liveins: $r5, $r7
+    $r6 = MOV $r5
+    $r6 = LDI8 9
+    $r7 = AND $r7, $r6
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: pair_source_clobber
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: pair_source_clobber
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: $r4r5 = MOV32_F2 $r0r1
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    liveins: $r0r1, $r4r5, $r7
+    $r6 = MOV $r5
+    $r4r5 = MOV32_F2 $r0r1
+    $r7 = AND $r7, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: pair_destination_use
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: pair_destination_use
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: $r0r1 = MOV32_F2 $r6r7
+    liveins: $r0r1, $r5, $r7
+    $r6 = MOV $r5
+    $r0r1 = MOV32_F2 $r6r7
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: pair_destination_overwrite
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: pair_destination_overwrite
+    ; CHECK-NOT: $r6 = MOV
+    ; CHECK: $r6r7 = MOV32_F2 $r0r1
+    liveins: $r0r1, $r5
+    $r6 = MOV $r5
+    $r6r7 = MOV32_F2 $r0r1
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: tied_use
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: tied_use
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: $r6 = AND $r6, $r7
+    liveins: $r5, $r7
+    $r6 = MOV $r5
+    $r6 = AND $r6, $r7
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_keeps_upper
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: compact_keeps_upper
+    ; CHECK: $r6 = MOV_RR $r0
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    liveins: $r0, $r7
+    $r6 = MOV_RR $r0
+    $r7 = AND $r7, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: full_encoding
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: full_encoding
+    ; CHECK-NOT: MOV
+    ; CHECK: $r1 = AND_RR $r1, $r0
+    liveins: $r0, $r1
+    $r6 = MOV_RR killed $r0
+    $r1 = AND_RR $r1, killed $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: implicit_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: implicit_use
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: RET {{.*}}implicit $r6
+    liveins: $r5
+    $r6 = MOV $r5
+    RET implicit-def dead $sp, implicit $sp, implicit $r6
+...
+---
+name: live_out
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: live_out
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    ; CHECK: bb.1:
+    ; CHECK: liveins: $r6
+    successors: %bb.1
+    liveins: $r5, $r7
+    $r6 = MOV $r5
+    $r7 = AND $r7, $r6
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r6
+    RET implicit-def dead $sp, implicit $sp, implicit $r6
+...
+---
+name: pair_live_out
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: pair_live_out
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK: liveins: $r6r7
+    successors: %bb.1
+    liveins: $r5, $r7
+    $r6 = MOV $r5
+    RELAX_JMP %bb.1
+
+  bb.1:
+    liveins: $r6r7
+    RET implicit-def dead $sp, implicit $sp, implicit $r6r7
+...
+---
+name: dead_exit
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: dead_exit
+    ; CHECK-NOT: MOV
+    ; CHECK: RET
+    liveins: $r5
+    $r6 = MOV $r5
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: undef_source
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: undef_source
+    ; CHECK: $r6 = MOV undef $r5
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    liveins: $r7
+    $r6 = MOV undef $r5
+    $r7 = AND $r7, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: early_clobber
+body: |
+  bb.0:
+    liveins: $r5
+    ; CHECK-LABEL: name: early_clobber
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: early-clobber $r5 = ADD $r5, $r6
+    $r6 = MOV $r5
+    early-clobber $r5 = ADD $r5, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: unmodeled_clobber
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: unmodeled_clobber
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: INLINEASM
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    $r6 = MOV $r5
+    INLINEASM &"", 25
+    $r7 = AND $r7, $r6
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: regmask_clobber
+body: |
+  bb.0:
+    liveins: $r4, $r7, $sp
+    ; CHECK-LABEL: name: regmask_clobber
+    ; CHECK: $r0 = MOV_RR $r4
+    ; CHECK-NEXT: RELAX_CALL
+    ; CHECK-NEXT: $r7 = AND_RR $r7, $r0
+    $r0 = MOV_RR $r4
+    RELAX_CALL &callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit $sp
+    $r7 = AND_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: repair_dead_donor
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: repair_dead_donor
+    ; CHECK: $r5 = LDI8 42
+    ; CHECK-NOT: MOV
+    ; CHECK-NEXT: $r7 = LDI16 32767
+    ; CHECK-NEXT: $r7 = AND $r7, $r5
+    ; CHECK-NEXT: RET {{.*}}implicit $r7
+    dead $r5 = LDI8 42
+    $r5 = LDI8 42
+    $r6 = MOV $r5
+    $r7 = LDI16 32767
+    $r7 = AND $r7, killed $r6
+    RET implicit-def dead $sp, implicit $sp, implicit $r7
+...
+---
+name: compact_add
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_add
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = ADD $r7, $r5
+    $r0 = MOV_RR $r5
+    $r7 = ADD_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_sub
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_sub
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = SUB $r7, $r5
+    $r0 = MOV_RR $r5
+    $r7 = SUB_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_and
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_and
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = AND $r7, $r5
+    $r0 = MOV_RR $r5
+    $r7 = AND_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_or
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_or
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = OR $r7, $r5
+    $r0 = MOV_RR $r5
+    $r7 = OR_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_xor
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_xor
+    ; CHECK-NOT: MOV
+    ; CHECK: $r7 = XOR $r7, $r5
+    $r0 = MOV_RR $r5
+    $r7 = XOR_RR $r7, $r0
+    $r0 = COLDLDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: compact_move_chain
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r5
+    ; CHECK-LABEL: name: compact_move_chain
+    ; CHECK-NOT: MOV_RR
+    ; CHECK: $r6 = MOV $r5
+    ; CHECK-NEXT: RET {{.*}}implicit $r6
+    $r0 = MOV_RR killed $r5
+    $r6 = MOV_RR killed $r0
+    RET implicit-def dead $sp, implicit $sp, implicit $r6
+...
+---
+name: compact_compare
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: compact_compare
+    ; CHECK-NOT: MOV
+    ; CHECK: CMP $r5, $r7, implicit-def $cc
+    $r0 = MOV_RR $r5
+    $r6 = LDI8 9
+    CMP_RR $r0, $r7, implicit-def $cc
+    $r0 = COLDLDI8 8
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: fixed_service_operands
+body: |
+  bb.0:
+    liveins: $r0, $r1, $r6
+    ; CHECK-LABEL: name: fixed_service_operands
+    ; CHECK: $r4 = MOV_RR $r0
+    ; CHECK-NEXT: $r5 = MOV_RR $r1
+    ; CHECK-NEXT: $r4 = SYS_MEMCPY_PSEUDO $r4, $r5, $r6
+    $r4 = MOV_RR $r0
+    $r5 = MOV_RR $r1
+    $r4 = SYS_MEMCPY_PSEUDO $r4, $r5, $r6
+    RET implicit-def dead $sp, implicit $sp, implicit $r4
+...
+---
+name: keep_copy_for_implicit_pair
+body: |
+  bb.0:
+    liveins: $r5, $r7
+    ; CHECK-LABEL: name: keep_copy_for_implicit_pair
+    ; CHECK: $r4 = MOV $r5
+    ; CHECK-NEXT: $r7 = AND $r7, $r4, implicit $r4r5
+    $r4 = MOV $r5
+    $r7 = AND $r7, $r4, implicit $r4r5
+    $r4 = LDI8 9
+    $r6 = LDI8 8
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: forward_wide_stack_store_word
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r5, $r6, $sp
+    ; CHECK-LABEL: name: forward_wide_stack_store_word
+    ; CHECK-NOT: MOV
+    ; CHECK: STSP16_COMPACT 10, $r6, implicit $sp
+    ; CHECK-NEXT: STSP16_COMPACT 12, $r5, implicit $sp
+    ; CHECK-NEXT: $r6 = LDI8 9
+    $r4 = MOV $r6
+    STSP16_COMPACT 10, $r4, implicit $sp, implicit $r4r5
+    STSP16_COMPACT 12, $r5, implicit $sp, implicit $r4r5
+    $r6 = LDI8 9
+    RET implicit-def dead $sp, implicit $sp
+...
+---
+name: stack_replacement_copy_origin
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 20, size: 2, alignment: 1 }
+body: |
+  bb.0:
+    liveins: $r4, $r5, $r7, $sp
+    ; CHECK-LABEL: name: stack_replacement_copy_origin
+    ; CHECK: STSP16 20, $r4, implicit $sp
+    ; CHECK-NEXT: $r6 = MOV $r4
+    ; CHECK-NEXT: $r7 = AND $r7, $r6
+    ; CHECK-NEXT: RET {{.*}}implicit $r6, implicit $r7
+    STSP16 20, killed $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
+    $r6 = MOV $r5
+    $r6 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
+    $r7 = AND $r7, $r6
+    RET implicit-def dead $sp, implicit $sp, implicit $r6, implicit $r7
+...

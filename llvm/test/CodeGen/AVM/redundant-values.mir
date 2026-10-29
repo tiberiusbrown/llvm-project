@@ -46,7 +46,7 @@ body: |
     $r0 = MOV_RR killed $r5
     $r6 = LDI16 1234
     $r0 = ZEXT8 $r0
-    RET implicit-def dead $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp, implicit $r0
 ...
 ---
 name: program_pointer_high_word
@@ -78,7 +78,7 @@ body: |
     early-clobber $r4r5, $r6r7 = LDP24_POST $r6r7
     $r0 = MOV_RR $r5
     $r0 = ZEXT8 $r0
-    RET implicit-def dead $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp, implicit $r0
 ...
 ---
 name: keep_wide_program_load
@@ -164,7 +164,7 @@ body: |
     $r6 = LDI16 515
     $r0 = MOV_RR $r6
     $r0 = COLDLDI16 515
-    RET implicit-def dead $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp, implicit $r0
 ...
 ---
 name: pair_copy_round_trip
@@ -251,7 +251,7 @@ body: |
     $r0 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
     $r4 = LDSP16 20, implicit $sp :: (load (s16) from %stack.0, align 1)
     STSP16 20, $r0, implicit $sp :: (store (s16) into %stack.0, align 1)
-    RET implicit-def dead $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp, implicit $r0
 ...
 ---
 name: byte_facts_through_stack
@@ -432,7 +432,7 @@ body: |
     dead $r4 = LDI8 7
     $r4 = LDI8 7
     $r5 = MOV $r4
-    RET implicit-def dead $sp, implicit $sp
+    RET implicit-def dead $sp, implicit $sp, implicit $r5
 ...
 ---
 name: keep_stack_across_call

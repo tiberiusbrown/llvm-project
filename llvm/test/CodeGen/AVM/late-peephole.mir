@@ -98,7 +98,7 @@ body: |
     liveins: $r4, $sp
     ; CHECK-LABEL: name: remove_reload_with_successor_reader
     ; CHECK: STSP16 26, $r4, implicit $sp
-    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK-NOT: MOV
     ; CHECK-NEXT: RELAX_JMP %bb.1
     STSP16 26, killed $r4, implicit $sp :: (store (s16) into %stack.0, align 1)
     $r4 = LDSP16 26, implicit $sp :: (load (s16) from %stack.0, align 1)
