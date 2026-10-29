@@ -77,3 +77,6 @@ sys get_system_height
 sys get_system_display_type
 # CHECK: sys get_system_display_type{{.*}}encoding: [0xd7,0x3c]
 # DIS: sys get_system_display_type
+
+sys debug_printfv
+# CHECK: sys debug_printfv{{.*}}encoding: [0xd7,0x3d]

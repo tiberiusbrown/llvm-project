@@ -1361,3 +1361,21 @@ Before considering the service complete, verify all of the following:
 - [ ] The MC encoding and disassembly use the expected ID and name.
 - [ ] The dedicated cost, when present, is tested.
 - [ ] Focused compiler tests and end-to-end runtime tests pass.
+
+## RAM debug formatting (`0x3D`)
+
+`debug_printfv` maps `llvm.avm.debug.printfv(ptr, ptr) -> i16` to
+`SYS_DEBUG_PRINTFV_PSEUDO`. The AS0 format is preserved in `r6`, the packed
+AS0 argument cursor is preserved in `r2`, and the signed result replaces
+`r4`. Other registers, CC and SP are preserved by the interpreter. Selection
+and machine expansion use the shared service mapping; there is no separate
+intrinsic selection switch or ordinary call register mask.
+
+The descriptor models explicit AS0 reads, indirect AS0/AS1 argument reads,
+and indirect AS0 writes through `%n`. Both debug formatting pseudos have
+`hasSideEffects`, `mayLoad`, and `mayStore`. Overall intrinsic memory effects
+remain conservative. Output must remain ordered with other output and aliasing
+memory accesses. The RAM builtin pairs (`__builtin_avm_debug_printf` /
+`__avm_debug_printf`, `__builtin_avm_debug_printfv` / `__avm_debug_printfv`)
+use existing byte-aligned variadic packing. This variable-cost formatter uses
+`AVM_NO_COST`, like the existing program-format service `0x37`.

@@ -248,6 +248,23 @@ static constexpr AVMServiceMemoryAccessInfo VsnprintfPMemory[] = {
      MS::AfterPointer, 0, 0},
 };
 
+static constexpr AVMServiceInputInfo DebugPrintfVInputs[] = {
+    {0, VK::I16, AVM::R6, PP::None, true},
+    {1, VK::I16, AVM::R2, PP::None, true},
+};
+static constexpr AVMServiceMemoryAccessInfo DebugPrintfVMemory[] = {
+    {MB::LogicalArgument, 0, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::LogicalArgument, 1, "", 0, MachineMemOperand::MOLoad, MS::AfterPointer,
+     0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOStore,
+     MS::AfterPointer, 0, 0},
+};
+
 static constexpr AVMServiceInputInfo DebugPrintfVPInputs[] = {
     {0, VK::ProgramPointer, AVM::R6R7, PP::IgnorePadding, true},
     {1, VK::I16, AVM::R2, PP::None, true},
@@ -260,6 +277,8 @@ static constexpr AVMServiceMemoryAccessInfo DebugPrintfVPMemory[] = {
     {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOLoad,
      MS::AfterPointer, 0, 0},
     {MB::UnknownAddressSpace, 0, "", 1, MachineMemOperand::MOLoad,
+     MS::AfterPointer, 0, 0},
+    {MB::UnknownAddressSpace, 0, "", 0, MachineMemOperand::MOStore,
      MS::AfterPointer, 0, 0},
 };
 
@@ -522,6 +541,8 @@ SERVICE(SYS_VSNPRINTF_PSEUDO, VsnprintfInputs, TiedR4Output,
         VsnprintfMemory);
 SERVICE(SYS_VSNPRINTF_P_PSEUDO, VsnprintfPInputs, TiedR4Output,
         VsnprintfPMemory);
+SERVICE(SYS_DEBUG_PRINTFV_PSEUDO, DebugPrintfVInputs, R4Output,
+        DebugPrintfVMemory);
 SERVICE(SYS_DEBUG_PRINTFV_P_PSEUDO, DebugPrintfVPInputs, R4Output,
         DebugPrintfVPMemory);
 SERVICE(SYS_SET_TEXT_FONT_PSEUDO, SetTextFontInputs, {}, SetTextFontMemory);

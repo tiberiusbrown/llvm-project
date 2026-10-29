@@ -188,6 +188,10 @@ AVM_SYS_DEF(0x3c, get_system_display_type, AVM_SYS_PSEUDO,
             SYS_GET_SYSTEM_DISPLAY_TYPE_PSEUDO, AVM_SYS_INTRINSIC,
             avm_get_system_display_type, AVM_NO_COST, AVM_NO_COST)
 
+AVM_SYS_DEF(0x3d, debug_printfv, AVM_SYS_PSEUDO,
+            SYS_DEBUG_PRINTFV_PSEUDO, AVM_SYS_INTRINSIC,
+            avm_debug_printfv, AVM_NO_COST, AVM_NO_COST)
+
 #ifdef AVM_SYS_DEF
 #undef AVM_SYS_DEF
 #endif

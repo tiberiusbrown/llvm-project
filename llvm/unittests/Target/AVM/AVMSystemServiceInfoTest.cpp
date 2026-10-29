@@ -25,6 +25,14 @@ TEST(AVMSystemServiceInfoTest, EveryCurrentServiceDescriptor) {
   using PP = AVMServicePointerPolicy;
   using MF = MachineMemOperand;
   const std::vector<ExpectedService> Expected = {
+      {AVM::SYS_DEBUG_PRINTFV_PSEUDO, 0x3d, {AVM::R6, AVM::R2},
+       {AVM::R4}, {-1}, {PP::None, PP::None},
+       {MF::MOLoad, MF::MOLoad, MF::MOLoad, MF::MOLoad, MF::MOStore},
+       {0, 0, 0, 1, 0}},
+      {AVM::SYS_DEBUG_PRINTFV_P_PSEUDO, 0x37, {AVM::R6R7, AVM::R2},
+       {AVM::R4}, {-1}, {PP::IgnorePadding, PP::None},
+       {MF::MOLoad, MF::MOLoad, MF::MOLoad, MF::MOLoad, MF::MOStore},
+       {1, 0, 0, 1, 0}},
       {AVM::SYS_DEBUG_PUTC_PSEUDO, 0x00, {AVM::R4}, {}, {}, {PP::None}, {}, {}},
       {AVM::SYS_DEBUG_BREAK_PSEUDO, 0x01, {}, {}, {}, {}, {}, {}},
       {AVM::SYS_MILLIS_PSEUDO, 0x02, {}, {AVM::R4}, {-1}, {}, {}, {}},

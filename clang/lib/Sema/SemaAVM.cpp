@@ -75,6 +75,8 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
     return true;
   }
 
+  case AVM::BI__builtin_avm_debug_printf:
+  case AVM::BI__avm_debug_printf:
   case AVM::BI__builtin_avm_debug_printf_p:
   case AVM::BI__avm_debug_printf_P:
   case AVM::BI__builtin_avm_snprintf:
@@ -87,7 +89,9 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   case AVM::BI__avm_draw_textf_P: {
     bool Invalid = false;
     unsigned FirstVariadicArg = 3;
-    if (BuiltinID == AVM::BI__builtin_avm_debug_printf_p ||
+    if (BuiltinID == AVM::BI__builtin_avm_debug_printf ||
+        BuiltinID == AVM::BI__avm_debug_printf ||
+        BuiltinID == AVM::BI__builtin_avm_debug_printf_p ||
         BuiltinID == AVM::BI__avm_debug_printf_P)
       FirstVariadicArg = 1;
 
@@ -104,9 +108,18 @@ bool Sema::CheckAVMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
           << I + 1 << Ty << Arg->getSourceRange();
       Invalid = true;
     }
+    if (!Invalid && (BuiltinID == AVM::BI__builtin_avm_debug_printf ||
+                     BuiltinID == AVM::BI__avm_debug_printf)) {
+      DataSourceArg = 0;
+      break;
+    }
     return Invalid;
   }
 
+  case AVM::BI__builtin_avm_debug_printfv:
+  case AVM::BI__avm_debug_printfv:
+    DataSourceArg = 0;
+    break;
   case AVM::BI__avm_memcmp:
   case AVM::BI__avm_strcmp:
   case AVM::BI__avm_strncpy:

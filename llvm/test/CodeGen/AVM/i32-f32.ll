@@ -299,7 +299,8 @@ define i1 @float_ule(float %a, float %b) {
 
 define float @strict_float_add(float %a, float %b) strictfp {
 ; CHECK-LABEL: strict_float_add:
-; CHECK:       jmp __addsf3
+; The fixed nearest-even environment uses the existing native FP instructions.
+; CHECK:       fadd
   %result = call float @llvm.experimental.constrained.fadd.f32(
       float %a, float %b, metadata !"round.dynamic",
       metadata !"fpexcept.strict")
@@ -308,10 +309,10 @@ define float @strict_float_add(float %a, float %b) strictfp {
 
 define float @strict_float_arithmetic(float %a, float %b) strictfp {
 ; CHECK-LABEL: strict_float_arithmetic:
-; CHECK:       call __subsf3
-; CHECK:       call __mulsf3
-; CHECK:       call __divsf3
-; CHECK:       call sqrtf
+; CHECK:       fsub
+; CHECK:       fmul
+; CHECK:       fdiv
+; CHECK:       fsqrt
   %sub = call float @llvm.experimental.constrained.fsub.f32(
       float %a, float %b, metadata !"round.dynamic",
       metadata !"fpexcept.strict")
@@ -328,8 +329,9 @@ define float @strict_float_arithmetic(float %a, float %b) strictfp {
 
 define float @strict_integer_to_float(i32 %s, i32 %u) strictfp {
 ; CHECK-LABEL: strict_integer_to_float:
-; CHECK:       call __floatsisf
-; CHECK:       call __floatsisf
+; CHECK-DAG:   s32tof
+; CHECK-DAG:   u32tof
+; CHECK:       fadd
   %sf = call float @llvm.experimental.constrained.sitofp.f32.i32(
       i32 %s, metadata !"round.dynamic", metadata !"fpexcept.strict")
   %uf = call float @llvm.experimental.constrained.uitofp.f32.i32(
@@ -342,8 +344,9 @@ define float @strict_integer_to_float(i32 %s, i32 %u) strictfp {
 
 define i32 @strict_float_to_integer(float %value) strictfp {
 ; CHECK-LABEL: strict_float_to_integer:
-; CHECK:       call __fixsfsi
-; CHECK:       call __fixunssfsi
+; CHECK-DAG:   ftos32
+; CHECK-DAG:   ftou32
+; CHECK:       add32
   %s = call i32 @llvm.experimental.constrained.fptosi.i32.f32(
       float %value, metadata !"fpexcept.strict")
   %u = call i32 @llvm.experimental.constrained.fptoui.i32.f32(

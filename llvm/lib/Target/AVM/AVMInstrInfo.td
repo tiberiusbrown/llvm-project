@@ -1018,11 +1018,20 @@ def SYS_VSNPRINTF_P_PSEUDO
   let mayStore = 1;
 }
 
+def SYS_DEBUG_PRINTFV_PSEUDO
+    : AVMSystemServicePseudo<(outs GPR16:$result),
+                             (ins GPR16:$format, GPR16:$ap)> {
+  let hasSideEffects = 1;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
 def SYS_DEBUG_PRINTFV_P_PSEUDO
     : AVMSystemServicePseudo<(outs GPR16:$result),
                              (ins ProgPtrGPR32:$format, GPR16:$ap)> {
   let hasSideEffects = 1;
   let mayLoad = 1;
+  let mayStore = 1;
 }
 
 def SYS_SET_TEXT_FONT_PSEUDO

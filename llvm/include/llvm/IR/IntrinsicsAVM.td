@@ -256,6 +256,12 @@ let TargetPrefix = "avm" in {
 
   // Like the other formatted-output services, the packed va_list can contain
   // pointers to AS0 and AS1 strings that are not explicit intrinsic operands.
+  def int_avm_debug_printfv :
+      Intrinsic<[llvm_i16_ty], [llvm_ptr_ty, llvm_ptr_ty],
+                [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
+                 NoCapture<ArgIndex<0>>, NoCapture<ArgIndex<1>>,
+                 ReadOnly<ArgIndex<0>>, ReadOnly<ArgIndex<1>>]>;
+
   def int_avm_debug_printfv_p :
       Intrinsic<[llvm_i16_ty], [llvm_avm_progptr_ty, llvm_ptr_ty],
                 [IntrHasSideEffects, IntrWillReturn, IntrNoCallback, IntrNoFree,
