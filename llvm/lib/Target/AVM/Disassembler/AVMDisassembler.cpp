@@ -440,7 +440,7 @@ public:
         return Fail;
       }
       const uint8_t Secondary = Bytes[1];
-      if (Secondary == 0x16) {
+      if (Secondary == 0x15) {
         if (Bytes.size() < 3 || !Bytes[2]) {
           Size = Bytes.size() < 3 ? 2 : 3;
           return Fail;
@@ -463,7 +463,7 @@ public:
         return Success;
       }
       Size = 2;
-      if (Secondary >= 0x1f)
+      if (Secondary >= 0x1e)
         return Fail;
       if (Secondary >= 4 && Secondary < 12) {
         MI.setOpcode(Secondary < 8 ? AVM::FNEG : AVM::FABS);
@@ -471,14 +471,14 @@ public:
         return Success;
       }
       switch (Secondary) {
-      case 0x17: MI.setOpcode(AVM::FSQRT_MC); break;
-      case 0x18: MI.setOpcode(AVM::FTRUNC_MC); break;
-      case 0x19: MI.setOpcode(AVM::FFLOOR_MC); break;
-      case 0x1a: MI.setOpcode(AVM::FCEIL_MC); break;
-      case 0x1b: MI.setOpcode(AVM::FROUND_MC); break;
-      case 0x1c: MI.setOpcode(AVM::FMOD_MC); break;
-      case 0x1d: MI.setOpcode(AVM::FREMPIO2_MC); break;
-      case 0x1e: MI.setOpcode(AVM::FMA_MC); break;
+      case 0x16: MI.setOpcode(AVM::FSQRT_MC); break;
+      case 0x17: MI.setOpcode(AVM::FTRUNC_MC); break;
+      case 0x18: MI.setOpcode(AVM::FFLOOR_MC); break;
+      case 0x19: MI.setOpcode(AVM::FCEIL_MC); break;
+      case 0x1a: MI.setOpcode(AVM::FROUND_MC); break;
+      case 0x1b: MI.setOpcode(AVM::FMOD_MC); break;
+      case 0x1c: MI.setOpcode(AVM::FREMPIO2_MC); break;
+      case 0x1d: MI.setOpcode(AVM::FMA_MC); break;
       case 0x00: MI.setOpcode(AVM::FADD_MC); break;
       case 0x01: MI.setOpcode(AVM::FSUB_MC); break;
       case 0x02: MI.setOpcode(AVM::FMUL_MC); break;
@@ -492,7 +492,6 @@ public:
       case 0x12: MI.setOpcode(AVM::FTOS32_MC); break;
       case 0x13: MI.setOpcode(AVM::FTOU32_MC); break;
       case 0x14: MI.setOpcode(AVM::FCMP_MC); break;
-      case 0x15: MI.setOpcode(AVM::FCLASS_MC); break;
       default: llvm_unreachable("FF range checked above");
       }
       return Success;

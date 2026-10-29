@@ -22,7 +22,6 @@ define float @live_arithmetic(float %a, float %b) {
 define float @live_cmp_class(float %a, float %b) {
 ; CHECK-LABEL: live_cmp_class:
 ; CHECK-DAG: fcmp{{$}}
-; CHECK-DAG: fclass{{$}}
   %cmp = fcmp ult float %a, %b
   %class = call i1 @llvm.is.fpclass.f32(float %a, i32 256)
   %choose = xor i1 %cmp, %class

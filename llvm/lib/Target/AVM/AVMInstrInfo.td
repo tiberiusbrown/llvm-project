@@ -741,7 +741,6 @@ def FTOU16_PSEUDO : AVMPureCodeGenPseudo<(outs R4Only:$dst), (ins Q2Only:$src)>;
 def FTOS32_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
 def FTOU32_PSEUDO : AVMPureCodeGenPseudo<(outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
 def FCMP_PSEUDO : AVMPureCodeGenPseudo<(outs R6Only:$dst), (ins Q2Only:$left, Q3Only:$right)>;
-def FCLASS_PSEUDO : AVMPureCodeGenPseudo<(outs R6Only:$dst), (ins Q2Only:$src)>;
 
 // Typed semantic system-service pseudos.  AVMMCInstLower maps these to the
 // corresponding SYS encoding only after physical allocation.  Memory pseudos
@@ -1090,6 +1089,7 @@ def SHL16_SMALL_PSEUDO
 }
 def LSR16_1_PSEUDO : AVMUnary16Pseudo;
 def ASR16_1_PSEUDO : AVMUnary16Pseudo;
+def BOOL16_PSEUDO : AVMUnary16Pseudo;
 def LSL16I_PSEUDO : AVMUpperUnary16ImmPseudo;
 def LSR16I_PSEUDO : AVMUpperUnary16ImmPseudo;
 def ASR16I_PSEUDO : AVMUpperUnary16ImmPseudo;
@@ -1443,7 +1443,6 @@ def U32TOF : AVMFFFixedInst<"u32tof", (outs Q2Only:$dst), (ins Q2Only:$src)> { l
 def FTOS32 : AVMFFFixedInst<"ftos32", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
 def FTOU32 : AVMFFFixedInst<"ftou32", (outs Q2Only:$dst), (ins Q2Only:$src)> { let Constraints = "$dst = $src"; }
 def FCMP : AVMFFFixedInst<"fcmp", (outs R6Only:$dst), (ins Q2Only:$left, Q3Only:$right)>;
-def FCLASS : AVMFFFixedInst<"fclass", (outs R6Only:$dst), (ins Q2Only:$src)>;
 
 // The MC view has no encoded operands. Implicit physical uses/defs let
 // scheduling and analysis tools model the fixed ABI, including partial aliases.
@@ -1474,7 +1473,6 @@ def U32TOF_MC : AVMFFMCInst<"u32tof", [R4R5], [R4R5]>;
 def FTOS32_MC : AVMFFMCInst<"ftos32", [R4R5], [R4R5]>;
 def FTOU32_MC : AVMFFMCInst<"ftou32", [R4R5], [R4R5]>;
 def FCMP_MC : AVMFFMCInst<"fcmp", [R4R5, R6R7], [R6]>;
-def FCLASS_MC : AVMFFMCInst<"fclass", [R4R5], [R6]>;
 
 // The count header can be followed by .float/.long data. The disassembler
 // includes those coefficients as variadic operands for lossless round trips.

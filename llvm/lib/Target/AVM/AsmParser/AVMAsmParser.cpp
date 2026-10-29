@@ -1344,7 +1344,6 @@ public:
     if (Lower == "ftos32") return parseFFFixed(AVM::FTOS32_MC, Name, NameLoc, Operands);
     if (Lower == "ftou32") return parseFFFixed(AVM::FTOU32_MC, Name, NameLoc, Operands);
     if (Lower == "fcmp") return parseFFFixed(AVM::FCMP_MC, Name, NameLoc, Operands);
-    if (Lower == "fclass") return parseFFFixed(AVM::FCLASS_MC, Name, NameLoc, Operands);
     if (Lower == "fneg") return parseFFPairUnary(AVM::FNEG, Name, NameLoc, Operands);
     if (Lower == "fabs") return parseFFPairUnary(AVM::FABS, Name, NameLoc, Operands);
     if (Lower == "zext8")

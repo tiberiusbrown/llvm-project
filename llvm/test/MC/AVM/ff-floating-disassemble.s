@@ -21,7 +21,7 @@
 # CHECK: ftos32{{[ \t]*}}{{$}}
 # CHECK: ftou32{{[ \t]*}}{{$}}
 # CHECK: fcmp{{[ \t]*}}{{$}}
-# CHECK: fclass{{[ \t]*}}{{$}}
+# CHECK: fpoly 1, 1.0
 # CHECK: fsqrt{{[ \t]*}}{{$}}
 # CHECK: ftrunc{{[ \t]*}}{{$}}
 # CHECK: ffloor{{[ \t]*}}{{$}}

@@ -1036,7 +1036,7 @@ public:
           (MI.getNumOperands() != 1 && MI.getNumOperands() != Count + 1))
         return error(MI, "invalid fpoly coefficient count");
       emit8(Out, 0xff);
-      emit8(Out, 0x16);
+      emit8(Out, 0x15);
       emit8(Out, Count);
       for (unsigned I = 1; I < MI.getNumOperands(); ++I) {
         const int64_t Bits = MI.getOperand(I).getImm();
@@ -1047,14 +1047,14 @@ public:
       }
       return;
     }
-    case AVM::FSQRT_MC: emit8(Out, 0xff); emit8(Out, 0x17); return;
-    case AVM::FTRUNC_MC: emit8(Out, 0xff); emit8(Out, 0x18); return;
-    case AVM::FFLOOR_MC: emit8(Out, 0xff); emit8(Out, 0x19); return;
-    case AVM::FCEIL_MC: emit8(Out, 0xff); emit8(Out, 0x1a); return;
-    case AVM::FROUND_MC: emit8(Out, 0xff); emit8(Out, 0x1b); return;
-    case AVM::FMOD_MC: emit8(Out, 0xff); emit8(Out, 0x1c); return;
-    case AVM::FREMPIO2_MC: emit8(Out, 0xff); emit8(Out, 0x1d); return;
-    case AVM::FMA_MC: emit8(Out, 0xff); emit8(Out, 0x1e); return;
+    case AVM::FSQRT_MC: emit8(Out, 0xff); emit8(Out, 0x16); return;
+    case AVM::FTRUNC_MC: emit8(Out, 0xff); emit8(Out, 0x17); return;
+    case AVM::FFLOOR_MC: emit8(Out, 0xff); emit8(Out, 0x18); return;
+    case AVM::FCEIL_MC: emit8(Out, 0xff); emit8(Out, 0x19); return;
+    case AVM::FROUND_MC: emit8(Out, 0xff); emit8(Out, 0x1a); return;
+    case AVM::FMOD_MC: emit8(Out, 0xff); emit8(Out, 0x1b); return;
+    case AVM::FREMPIO2_MC: emit8(Out, 0xff); emit8(Out, 0x1c); return;
+    case AVM::FMA_MC: emit8(Out, 0xff); emit8(Out, 0x1d); return;
     case AVM::FADD_MC: emit8(Out, 0xff); emit8(Out, 0x00); return;
     case AVM::FSUB_MC: emit8(Out, 0xff); emit8(Out, 0x01); return;
     case AVM::FMUL_MC: emit8(Out, 0xff); emit8(Out, 0x02); return;
@@ -1068,7 +1068,6 @@ public:
     case AVM::FTOS32_MC: emit8(Out, 0xff); emit8(Out, 0x12); return;
     case AVM::FTOU32_MC: emit8(Out, 0xff); emit8(Out, 0x13); return;
     case AVM::FCMP_MC: emit8(Out, 0xff); emit8(Out, 0x14); return;
-    case AVM::FCLASS_MC: emit8(Out, 0xff); emit8(Out, 0x15); return;
     case AVM::FNEG: emitFFPairUnary(MI, Out, 0x04); return;
     case AVM::FABS: emitFFPairUnary(MI, Out, 0x08); return;
     case AVM::MOV_RR: emitFullMove(MI, Out); return;

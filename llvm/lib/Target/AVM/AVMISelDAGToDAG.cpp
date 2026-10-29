@@ -731,8 +731,7 @@ private:
   }
 
   bool selectFloatUtility(SDNode *Node) {
-    unsigned Opcode = Node->getOpcode() == AVMISD::FCMP ? AVM::FCMP_PSEUDO
-                                                        : AVM::FCLASS_PSEUDO;
+    unsigned Opcode = AVM::FCMP_PSEUDO;
     SmallVector<SDValue, 2> Ops(Node->op_begin(), Node->op_end());
     CurDAG->SelectNodeTo(Node, Opcode, MVT::i16, Ops);
     return true;
@@ -1846,7 +1845,6 @@ private:
       selectCall(Node);
       return;
     case AVMISD::FCMP:
-    case AVMISD::FCLASS:
       selectFloatUtility(Node);
       return;
     case AVMISD::CMOV:
@@ -1857,6 +1855,10 @@ private:
     case AVMISD::TST8:
     case AVMISD::TST16:
       selectAVMCompare(Node);
+      return;
+    case AVMISD::BOOL:
+      CurDAG->SelectNodeTo(Node, AVM::BOOL16_PSEUDO, MVT::i16,
+                           Node->getOperand(0));
       return;
     case AVMISD::CSET:
       selectAVMCSet(Node);

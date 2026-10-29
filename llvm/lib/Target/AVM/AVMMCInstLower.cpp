@@ -46,7 +46,6 @@ void AVMMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
   case AVM::FTOS32: OutMI.setOpcode(AVM::FTOS32_MC); return;
   case AVM::FTOU32: OutMI.setOpcode(AVM::FTOU32_MC); return;
   case AVM::FCMP: OutMI.setOpcode(AVM::FCMP_MC); return;
-  case AVM::FCLASS: OutMI.setOpcode(AVM::FCLASS_MC); return;
   default: break;
   }
 

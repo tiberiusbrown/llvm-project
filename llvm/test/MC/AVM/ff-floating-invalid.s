@@ -17,8 +17,6 @@ s32tof r0, q0
 fcmp r6, q2, q3
 fcmp r0, r1, q2
 fcmp r0, q1
-fclass r6, q2
-fclass r0, r1
 fsqrt q2
 ftrunc q2
 ffloor q2
@@ -27,4 +25,4 @@ fround q2
 fmod q2
 frempio2 q2
 fma q2
-# CHECK-COUNT-27: error:
+# CHECK-COUNT-25: error:

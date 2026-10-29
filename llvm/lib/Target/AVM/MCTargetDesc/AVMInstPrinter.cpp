@@ -60,8 +60,6 @@ AVMInstPrinter::getMnemonic(const MCInst &MI) const {
   case AVM::FTOU32: return {"ftou32", 0};
   case AVM::FCMP_MC:
   case AVM::FCMP: return {"fcmp", 0};
-  case AVM::FCLASS_MC:
-  case AVM::FCLASS: return {"fclass", 0};
   case AVM::MOV_RR: return {"mov", 0};
   case AVM::CMP_RR: return {"cmp", 0};
   case AVM::ADD_RR: return {"add", 0};
@@ -342,8 +340,6 @@ void AVMInstPrinter::printInst(const MCInst *MI, uint64_t, StringRef Annot,
   case AVM::FTOU32:
   case AVM::FCMP_MC:
   case AVM::FCMP:
-  case AVM::FCLASS_MC:
-  case AVM::FCLASS:
   case AVM::FSQRT_MC:
   case AVM::FSQRT:
   case AVM::FTRUNC_MC:

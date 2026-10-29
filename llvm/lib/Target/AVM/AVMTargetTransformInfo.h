@@ -172,12 +172,22 @@ public:
     default: break;
     }
 
+    if (ICA.getID() == Intrinsic::is_fpclass) {
+      // High-word exponent test: LDI16, AND, CMP, CSET. Other masks may
+      // additionally test fraction/sign bits; do not price this as one opcode.
+      if (CostKind == TTI::TCK_CodeSize)
+        return 7;
+      using AVM::AVMCostKind;
+      return normalizedCycles(AVM::getFixedCycles(AVMCostKind::Ldi16Upper) +
+                              AVM::getFixedCycles(AVMCostKind::AndUpper) +
+                              AVM::getFixedCycles(AVMCostKind::CmpUpper) +
+                              AVM::getFixedCycles(AVMCostKind::CSetNe));
+    }
+
     switch (ICA.getID()) {
     case Intrinsic::fabs:
       return FloatIntrinsicCost(AVM::AVMCostKind::FAbs, AVM::FABS,
                                 /*IsFixed=*/true);
-    case Intrinsic::is_fpclass:
-      return FloatIntrinsicCost(AVM::AVMCostKind::FClass, AVM::FCLASS);
     default:
       break;
     }

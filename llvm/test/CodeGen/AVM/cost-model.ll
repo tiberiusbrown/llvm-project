@@ -130,7 +130,7 @@ define void @remaining_float_costs(float %x, float %y) {
 ; CHECK:       Cost Model: Found an estimated cost of 22 for instruction: %floor = call{{.*}} float @llvm.floor.f32
 ; CHECK:       Cost Model: Found an estimated cost of 23 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
 ; CHECK:       Cost Model: Found an estimated cost of 23 for instruction: %round = call{{.*}} float @llvm.round.f32
-; CHECK:       Cost Model: Found an estimated cost of 6 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
+; CHECK:       Cost Model: Found an estimated cost of 8 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
 ; SIZE-LABEL: Cost Model: Found an estimated cost of 2 for instruction: %neg = fneg float %x
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %rem = frem float %x, %y
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %sqrt = call{{.*}} float @llvm.sqrt.f32
@@ -141,7 +141,7 @@ define void @remaining_float_costs(float %x, float %y) {
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %floor = call{{.*}} float @llvm.floor.f32
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %ceil = call{{.*}} float @llvm.ceil.f32
 ; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %round = call{{.*}} float @llvm.round.f32
-; SIZE:       Cost Model: Found an estimated cost of 2 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
+; SIZE:       Cost Model: Found an estimated cost of 7 for instruction: %class = call{{.*}} i1 @llvm.is.fpclass.f32
   %neg = fneg float %x
   %rem = frem float %x, %y
   %sqrt = call float @llvm.sqrt.f32(float %x)

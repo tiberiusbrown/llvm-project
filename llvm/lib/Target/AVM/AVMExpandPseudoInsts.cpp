@@ -524,6 +524,9 @@ public:
           NewOpcode = IsUpper(MI.getOperand(0).getReg()) ? AVM::CMPIS8
                                                          : AVM::COLDCMPIS8;
           break;
+        case AVM::BOOL16_PSEUDO:
+          NewOpcode = AVM::BOOL;
+          break;
         case AVM::TST8_PSEUDO:
           NewOpcode = AVM::TST8;
           break;
@@ -969,9 +972,6 @@ public:
           break;
         case AVM::FCMP_PSEUDO:
           NewOpcode = AVM::FCMP;
-          break;
-        case AVM::FCLASS_PSEUDO:
-          NewOpcode = AVM::FCLASS;
           break;
         case AVM::OUT_STORE8_PSEUDO: {
           bool Compact = IsUpper(MI.getOperand(1).getReg()) &&

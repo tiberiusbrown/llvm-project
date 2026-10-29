@@ -50,7 +50,7 @@ public:
         case AVM::FTOS16_PSEUDO: case AVM::FTOU16_PSEUDO:
         case AVM::S32TOF_PSEUDO: case AVM::U32TOF_PSEUDO:
         case AVM::FTOS32_PSEUDO: case AVM::FTOU32_PSEUDO:
-        case AVM::FCMP_PSEUDO: case AVM::FCLASS_PSEUDO:
+        case AVM::FCMP_PSEUDO:
           break;
         default: continue;
         }

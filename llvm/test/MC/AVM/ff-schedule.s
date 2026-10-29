@@ -16,7 +16,6 @@ u32tof
 ftos32
 ftou32
 fcmp
-fclass
 fneg q2
 fabs q3
 
@@ -34,6 +33,5 @@ fabs q3
 # CHECK-NEXT: 1      115   115.00                      ftos32
 # CHECK-NEXT: 1      105   105.00                      ftou32
 # CHECK-NEXT: 1      83    83.00                       fcmp
-# CHECK-NEXT: 1      110   110.00                      fclass
 # CHECK-NEXT: 1      38    38.00                       fneg q2
 # CHECK-NEXT: 1      38    38.00                       fabs q3

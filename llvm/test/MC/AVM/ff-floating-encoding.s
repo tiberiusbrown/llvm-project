@@ -47,21 +47,21 @@ ftou32
 # CHECK: ftou32 {{.*}}encoding: [0xff,0x13]
 fcmp
 # CHECK: fcmp {{.*}}encoding: [0xff,0x14]
-fclass
-# CHECK: fclass {{.*}}encoding: [0xff,0x15]
+fpoly 1, 1.0
+# CHECK: fpoly 1, 1.0 {{.*}}encoding: [0xff,0x15,0x01,0x00,0x00,0x80,0x3f]
 fsqrt
-# CHECK: fsqrt {{.*}}encoding: [0xff,0x17]
+# CHECK: fsqrt {{.*}}encoding: [0xff,0x16]
 ftrunc
-# CHECK: ftrunc {{.*}}encoding: [0xff,0x18]
+# CHECK: ftrunc {{.*}}encoding: [0xff,0x17]
 ffloor
-# CHECK: ffloor {{.*}}encoding: [0xff,0x19]
+# CHECK: ffloor {{.*}}encoding: [0xff,0x18]
 fceil
-# CHECK: fceil {{.*}}encoding: [0xff,0x1a]
+# CHECK: fceil {{.*}}encoding: [0xff,0x19]
 fround
-# CHECK: fround {{.*}}encoding: [0xff,0x1b]
+# CHECK: fround {{.*}}encoding: [0xff,0x1a]
 fmod
-# CHECK: fmod {{.*}}encoding: [0xff,0x1c]
+# CHECK: fmod {{.*}}encoding: [0xff,0x1b]
 frempio2
-# CHECK: frempio2 {{.*}}encoding: [0xff,0x1d]
+# CHECK: frempio2 {{.*}}encoding: [0xff,0x1c]
 fma
-# CHECK: fma {{.*}}encoding: [0xff,0x1e]
+# CHECK: fma {{.*}}encoding: [0xff,0x1d]

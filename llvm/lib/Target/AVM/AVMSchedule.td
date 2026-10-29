@@ -59,7 +59,6 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW83 : AVMWrite<83>;
   def AVMW102 : AVMWrite<102>;
   def AVMW105 : AVMWrite<105>;
-  def AVMW110 : AVMWrite<110>;
   def AVMW112 : AVMWrite<112>;
   def AVMW114 : AVMWrite<114>;
   def AVMW115 : AVMWrite<115>;
@@ -132,7 +131,6 @@ let SchedModel = AVMInterpreterModel in {
   def : InstRW<[AVMW83], (instrs CMP32, FCMP, FCMP_MC)>;
   def : InstRW<[AVMW102], (instrs FTOU16, FTOU16_MC)>;
   def : InstRW<[AVMW105], (instrs FTOU32, FTOU32_MC)>;
-  def : InstRW<[AVMW110], (instrs FCLASS, FCLASS_MC)>;
   def : InstRW<[AVMW112], (instrs FTOS16, FTOS16_MC)>;
   def : InstRW<[AVMW114], (instrs JMPP, RET)>;
   def : InstRW<[AVMW115], (instrs FTOS32, FTOS32_MC)>;

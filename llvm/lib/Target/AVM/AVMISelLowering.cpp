@@ -20,6 +20,13 @@
 
 using namespace llvm;
 
+static SDValue getI32Word(SDValue Value, unsigned Index, const SDLoc &DL,
+                         SelectionDAG &DAG);
+static SDValue lowerFPClass(SDValue Value, unsigned Mask, const SDLoc &DL,
+                            SelectionDAG &DAG);
+static SDValue lowerClassCompare(SDValue LHS, SDValue RHS, ISD::CondCode CC,
+                                 const SDLoc &DL, SelectionDAG &DAG);
+
 bool AVMTargetLowering::decomposeMulByConstant(LLVMContext &, EVT VT,
                                                SDValue C) const {
   if (VT != MVT::i16)
@@ -256,13 +263,96 @@ static SDValue getCompareWord(SDValue Value, const SDLoc &DL,
   return DAG.getNode(ISD::TRUNCATE, DL, MVT::i16, Value);
 }
 
+// Keep classification word narrowing tied to binary32 representations. In
+// particular, changing the comparison shape of i64 helper words can increase
+// branch/register costs even when an isolated word comparison is cheaper.
+static bool isFloatRepresentation(SDValue V, unsigned Depth = 0) {
+  if (V.getOpcode() == ISD::BITCAST &&
+      V.getOperand(0).getValueType() == MVT::f32)
+    return true;
+  if (Depth == 6)
+    return false;
+  if (ISD::isBitwiseLogicOp(V.getOpcode()) || V.getOpcode() == ISD::SHL ||
+      V.getOpcode() == ISD::SRL || V.getOpcode() == ISD::SRA ||
+      V.getOpcode() == ISD::ZERO_EXTEND || V.getOpcode() == ISD::ANY_EXTEND ||
+      V.getOpcode() == ISD::TRUNCATE || V.getOpcode() == ISD::EXTRACT_ELEMENT)
+    for (SDValue Input : V->ops())
+      if (isFloatRepresentation(Input, Depth + 1))
+        return true;
+  return false;
+}
+
 static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
                                                  ISD::CondCode CC,
                                                  const SDLoc &DL,
                                                  SelectionDAG &DAG) {
   AVMCC::CondCode TargetCond = canonicalizeCondCode(CC, LHS, RHS);
 
+  // Classification predicates are already native compares. A branch/select
+  // needs their flags, not a materialized CSET followed by another TST. Peel
+  // the promoted i1 mask as well, but only when the old glue user will die.
+  SDValue Bool = LHS;
+  if (Bool.getOpcode() == ISD::AND &&
+      isa<ConstantSDNode>(Bool.getOperand(1)) &&
+      Bool.getConstantOperandVal(1) == 1)
+    Bool = Bool.getOperand(0);
+  if (Bool.getOpcode() == AVMISD::CSET &&
+      (LHS.use_empty() || LHS.hasOneUse()) &&
+      (Bool.use_empty() || Bool.hasOneUse()) && isa<ConstantSDNode>(RHS) &&
+      cast<ConstantSDNode>(RHS)->isZero() &&
+      (TargetCond == AVMCC::EQ || TargetCond == AVMCC::NE)) {
+    unsigned Predicate = Bool.getConstantOperandVal(0);
+    if (TargetCond == AVMCC::EQ)
+      Predicate ^= 1;
+    return {DAG.getTargetConstant(Predicate, DL, MVT::i16), Bool.getOperand(1)};
+  }
+
   if (LHS.getValueType() == MVT::i32) {
+    // Sign tests introduced by high-word extraction (for example sqrtf's
+    // negative-input guard) depend only on the high word, even when the low
+    // word is unknown. Do not materialize a pair or issue CMP32 for them.
+    bool FloatRepresentation = isFloatRepresentation(LHS) ||
+                               isFloatRepresentation(RHS);
+    SDValue SignValue;
+    bool Negative = false;
+    const auto *LC = dyn_cast<ConstantSDNode>(LHS);
+    const auto *RC = dyn_cast<ConstantSDNode>(RHS);
+    if ((TargetCond == AVMCC::SLT || TargetCond == AVMCC::SGE) && RC &&
+        RC->isZero()) {
+      SignValue = LHS;
+      Negative = TargetCond == AVMCC::SLT;
+    } else if ((TargetCond == AVMCC::SLT || TargetCond == AVMCC::SGE) && LC &&
+               LC->getSExtValue() == -1) {
+      // Branch polarity/canonicalization also produces -1 < X or -1 >= X.
+      SignValue = RHS;
+      Negative = TargetCond == AVMCC::SGE;
+    } else if ((TargetCond == AVMCC::ULT || TargetCond == AVMCC::UGE) && RC &&
+               RC->getZExtValue() == 0x80000000) {
+      SignValue = LHS;
+      Negative = TargetCond == AVMCC::UGE;
+    } else if ((TargetCond == AVMCC::ULT || TargetCond == AVMCC::UGE) && LC &&
+               LC->getZExtValue() == 0x7fffffff) {
+      SignValue = RHS;
+      Negative = TargetCond == AVMCC::ULT;
+    }
+    if (FloatRepresentation && SignValue)
+      return getAVMCompare(getI32Word(SignValue, 1, DL, DAG),
+                           DAG.getConstant(0, DL, MVT::i16),
+                           Negative ? ISD::SETLT : ISD::SETGE, DL, DAG);
+    // InstCombine widens high-word inequalities to aligned i32 boundaries.
+    // X < K:0000 and K:ffff < X depend only on the high word, as do their
+    // complementary >= predicates. This also covers signed word boundaries.
+    bool Ordered = TargetCond != AVMCC::EQ && TargetCond != AVMCC::NE;
+    if (FloatRepresentation && Ordered &&
+        ((RC && !(RC->getZExtValue() & 0xffff)) ||
+                    (LC && (LC->getZExtValue() & 0xffff) == 0xffff))) {
+      ISD::CondCode WordCC = TargetCond == AVMCC::SLT ? ISD::SETLT
+                            : TargetCond == AVMCC::SGE ? ISD::SETGE
+                            : TargetCond == AVMCC::ULT ? ISD::SETULT
+                                                      : ISD::SETUGE;
+      return getAVMCompare(getI32Word(LHS, 1, DL, DAG),
+                           getI32Word(RHS, 1, DL, DAG), WordCC, DL, DAG);
+    }
     // Aggregate fields can retain their promoted i32 type after masking.
     // Discard a common constant high word, or redundant sign extension,
     // before choosing the native word compare and its immediate form.
@@ -270,6 +360,13 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
     KnownBits Right = DAG.computeKnownBits(RHS);
     APInt HighMask = APInt::getHighBitsSet(32, 16);
     APInt CommonBits = (Left.Zero & Right.Zero) | (Left.One & Right.One);
+    APInt LowMask = APInt::getLowBitsSet(32, 16);
+    if (FloatRepresentation && (CommonBits & LowMask) == LowMask) {
+      LHS = getI32Word(LHS, 1, DL, DAG);
+      RHS = getI32Word(RHS, 1, DL, DAG);
+      SDValue Glue = DAG.getNode(AVMISD::CMP, DL, MVT::Glue, LHS, RHS);
+      return {DAG.getTargetConstant(TargetCond, DL, MVT::i16), Glue};
+    }
     bool SameHighWord = (CommonBits & HighMask) == HighMask;
     bool SignExtended = DAG.ComputeNumSignBits(LHS) >= 17 &&
                         DAG.ComputeNumSignBits(RHS) >= 17;
@@ -363,6 +460,11 @@ static std::pair<SDValue, SDValue> getAVMCompare(SDValue LHS, SDValue RHS,
 static bool getAVMDirectFloatCompare(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                                      const SDLoc &DL, SelectionDAG &DAG,
                                      SDValue &TargetCC, SDValue &Glue) {
+  if (SDValue P = lowerClassCompare(LHS, RHS, CC, DL, DAG)) {
+    std::tie(TargetCC, Glue) = getAVMCompare(
+        P, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL, DAG);
+    return true;
+  }
   int16_t Value;
   ISD::CondCode IntCC;
 
@@ -440,6 +542,8 @@ static SDValue getAVMCSet(SDValue LHS, SDValue RHS, ISD::CondCode CC,
 
 static SDValue getAVMFloatSetCC(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                                 const SDLoc &DL, SelectionDAG &DAG) {
+  if (SDValue P = lowerClassCompare(LHS, RHS, CC, DL, DAG))
+    return P;
   SDValue Result = DAG.getNode(AVMISD::FCMP, DL, MVT::i16, LHS, RHS);
   auto Compare = [&](int16_t Value, ISD::CondCode IntCC) {
     return getAVMCSet(
@@ -773,10 +877,10 @@ const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "AVMISD::CMPI";
   if (Opcode == AVMISD::CSET)
     return "AVMISD::CSET";
+  if (Opcode == AVMISD::BOOL)
+    return "AVMISD::BOOL";
   if (Opcode == AVMISD::FCMP)
     return "AVMISD::FCMP";
-  if (Opcode == AVMISD::FCLASS)
-    return "AVMISD::FCLASS";
   if (Opcode == AVMISD::LOAD24)
     return "AVMISD::LOAD24";
   if (Opcode == AVMISD::NORMALIZE_PROGPTR)
@@ -1189,13 +1293,162 @@ SDValue AVMTargetLowering::LowerSelect(SDValue Op, SelectionDAG &DAG) const {
 }
 
 SDValue AVMTargetLowering::LowerISFPClass(SDValue Op, SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  SDValue Class = DAG.getNode(AVMISD::FCLASS, DL, MVT::i16, Op.getOperand(0));
-  uint64_t Mask = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
-  SDValue Selected = DAG.getNode(ISD::AND, DL, MVT::i16, Class,
-                                 DAG.getConstant(Mask, DL, MVT::i16));
-  return getAVMCSet(Selected, DAG.getConstant(0, DL, MVT::i16), ISD::SETNE, DL,
-                    DAG);
+  return lowerFPClass(Op.getOperand(0), Op.getConstantOperandVal(1), SDLoc(Op),
+                      DAG);
+}
+
+static SDValue lowerFPClass(SDValue Value, unsigned Mask, const SDLoc &DL,
+                            SelectionDAG &DAG) {
+  Mask &= 0x3ff;
+  auto C = [&](unsigned V) { return DAG.getConstant(V, DL, MVT::i16); };
+  if (!Mask || Mask == 0x3ff)
+    return C(Mask != 0);
+
+  SDValue Bits = DAG.getNode(ISD::BITCAST, DL, MVT::i32, Value);
+  SDValue Hi = getI32Word(Bits, 1, DL, DAG);
+  auto Bin = [&](unsigned Opcode, SDValue A, SDValue B) {
+    return DAG.getNode(Opcode, DL, MVT::i16, A, B);
+  };
+  auto And = [&](SDValue A, SDValue B) { return Bin(ISD::AND, A, B); };
+  auto Or = [&](SDValue A, SDValue B) { return Bin(ISD::OR, A, B); };
+  auto Test = [&](SDValue A, unsigned B, ISD::CondCode CC) {
+    // Target compares keep DAGCombine from recognizing these integer tests as
+    // floating classification again. All arithmetic below is native i16.
+    return getAVMCSet(A, C(B), CC, DL, DAG);
+  };
+  auto Not = [&](SDValue P) {
+    if (P.getOpcode() == AVMISD::CSET && P.use_empty())
+      return DAG.getNode(AVMISD::CSET, DL, MVT::i16,
+                         DAG.getTargetConstant(P.getConstantOperandVal(0) ^ 1,
+                                                DL, MVT::i16),
+                         P.getOperand(1));
+    return Bin(ISD::XOR, P, C(1));
+  };
+  SDValue Exp = And(Hi, C(0x7f80));
+  if (Mask == 0x1f8 || Mask == 0x207)
+    return Test(Exp, 0x7f80, Mask == 0x1f8 ? ISD::SETNE : ISD::SETEQ);
+  auto Normal = [&] {
+    // One unsigned interval excludes both exponent endpoints.
+    return Test(Bin(ISD::SUB, Exp, C(0x80)), 0x7f00, ISD::SETULT);
+  };
+  if (Mask == 0x108)
+    return Normal();
+  if (Mask == 0x2f7)
+    return Not(Normal());
+  if (Mask == 0xf0)
+    return Test(Exp, 0, ISD::SETEQ);
+  if (Mask == 0x30 || Mask == 0xc0)
+    return Test(And(Hi, C(0xff80)), Mask == 0x30 ? 0x8000 : 0,
+                ISD::SETEQ);
+  if (llvm::popcount(Mask) > 5)
+    return Not(lowerFPClass(Value, Mask ^ 0x3ff, DL, DAG));
+
+  // Share sign-independent category tests, adding a sign test only when the
+  // mask selects one sign. Low-word extraction is lazy: finite, normal, and
+  // quiet-NaN tests never reference it. A taken native branch costs 132
+  // cycles. An eager low-word OR costs 17; even NaN's low-word test plus
+  // merge costs only 55 with native BOOL, so branching around it is slower.
+  SDValue ShiftedHigh;
+  auto AbsHigh = [&] {
+    if (!ShiftedHigh)
+      // Drop the sign with native doubling, cheaper than materializing
+      // 0x7fff and ANDing it. The low bit is now free.
+      ShiftedHigh = Bin(ISD::SHL, Hi, C(1));
+    return ShiftedHigh;
+  };
+  auto Lo = [&] { return getI32Word(Bits, 0, DL, DAG); };
+  auto Nonzero = [&](SDValue V) {
+    KnownBits Known = DAG.computeKnownBits(V);
+    if (Known.Zero.isAllOnes())
+      return C(0);
+    if (!Known.One.isZero())
+      return C(1);
+    // Existing native BOOL costs 38 cycles, versus 80 for TST16 + CSET.
+    return DAG.getNode(AVMISD::BOOL, DL, MVT::i16, V);
+  };
+  SDValue Result = C(0);
+  auto Add = [&](SDValue P) { Result = Or(Result, P); };
+  if (Mask & 3) {
+    SDValue P;
+    if ((Mask & 3) == 2) {
+      // The quiet bit itself proves a nonzero fraction.
+      P = Test(And(Hi, C(0x7fc0)), 0x7fc0, ISD::SETEQ);
+    } else {
+      // Fold all low fraction bits into the vacant low bit of the shifted
+      // high word, then compare unsigned against infinity. Normal values need
+      // no separate exponent predicate and no fraction-mask temporary.
+      P = Test(Or(AbsHigh(), Nonzero(Lo())), 0xff00, ISD::SETUGT);
+      if ((Mask & 3) == 1)
+        P = And(P, Test(And(Hi, C(0x40)), 0, ISD::SETEQ));
+    }
+    Add(P);
+  }
+  if (Mask & 0x204) {
+    unsigned Signs = Mask & 0x204;
+    SDValue H = Signs == 0x204 ? AbsHigh() : Hi;
+    unsigned Limit = Signs == 0x204 ? 0xff00 : Signs == 4 ? 0xff80 : 0x7f80;
+    // One zero test, including the sign directly for a single infinity.
+    Add(Test(Or(Bin(ISD::XOR, H, C(Limit)),
+                Lo()), 0, ISD::SETEQ));
+  }
+  if (Mask & 0x108) {
+    unsigned Signs = Mask & 0x108;
+    if (Signs == 0x108)
+      Add(Normal());
+    else
+      // Normal high words occupy a contiguous interval for each sign. The
+      // interval includes every fraction, so no fraction or sign test is needed.
+      Add(Test(Bin(ISD::SUB, Hi, C(Signs == 8 ? 0x8080 : 0x80)),
+               0x7f00, ISD::SETULT));
+  }
+  if (Mask & 0x090) {
+    unsigned Signs = Mask & 0x090;
+    SDValue H = Signs == 0x90 ? AbsHigh() : Hi;
+    if (Signs == 0x10)
+      H = Bin(ISD::XOR, H, C(0x8000));
+    Add(And(Test(H, Signs == 0x90 ? 0x100 : 0x80, ISD::SETULT),
+            Nonzero(Or(AbsHigh(), Lo()))));
+  }
+  if (Mask & 0x060) {
+    unsigned Signs = Mask & 0x60;
+    SDValue H = Signs == 0x60 ? AbsHigh() : Hi;
+    if (Signs == 0x20)
+      H = Bin(ISD::XOR, H, C(0x8000));
+    Add(Test(Or(H, Lo()), 0, ISD::SETEQ));
+  }
+  return Result;
+}
+
+static SDValue lowerClassCompare(SDValue LHS, SDValue RHS, ISD::CondCode CC,
+                                 const SDLoc &DL, SelectionDAG &DAG) {
+  if (isa<ConstantFPSDNode>(LHS)) {
+    std::swap(LHS, RHS);
+    CC = ISD::getSetCCSwappedOperands(CC);
+  }
+  const auto *C = dyn_cast<ConstantFPSDNode>(RHS);
+  bool Self = LHS == RHS;
+  if (!Self && (!C || C->getValueAPF().isNaN()))
+    return SDValue();
+  if (CC == ISD::SETUO || CC == ISD::SETO)
+    return lowerFPClass(LHS, CC == ISD::SETUO ? 3 : 1020, DL, DAG);
+  unsigned EqualMask;
+  if (Self)
+    EqualMask = 1020;
+  else if (C->isZero())
+    EqualMask = 96;
+  else if (C->getValueAPF().isInfinity())
+    EqualMask = C->isNegative() ? 4 : 512;
+  else
+    return SDValue();
+  unsigned Mask;
+  switch (CC) {
+  case ISD::SETEQ: case ISD::SETOEQ: Mask = EqualMask; break;
+  case ISD::SETUEQ: Mask = EqualMask | 3; break;
+  case ISD::SETNE: case ISD::SETUNE: Mask = 1023 ^ EqualMask; break;
+  case ISD::SETONE: Mask = 1020 ^ EqualMask; break;
+  default: return SDValue();
+  }
+  return lowerFPClass(LHS, Mask, DL, DAG);
 }
 
 SDValue AVMTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
@@ -1547,6 +1800,10 @@ void AVMTargetLowering::computeKnownBitsForTargetNode(
     const SelectionDAG &DAG, unsigned Depth) const {
   KnownBits Count = KnownBits::makeConstant(APInt(32, 16));
   switch (Op.getOpcode()) {
+  case AVMISD::BOOL:
+    Known.resetAll();
+    Known.Zero.setBitsFrom(1);
+    return;
   case AVMISD::BUILD_HI16:
     Known = DAG.computeKnownBits(Op.getOperand(0), Depth + 1).zext(32);
     Known = KnownBits::shl(Known, Count);
@@ -1571,6 +1828,33 @@ void AVMTargetLowering::computeKnownBitsForTargetNode(
 
 SDValue AVMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
+  if (N->getOpcode() == AVMISD::BR_CC || N->getOpcode() == AVMISD::CMOV ||
+      N->getOpcode() == AVMISD::CSET) {
+    // Operand legalization can expose classification's CSET only after the
+    // branch/select was lowered. Recover its native flags here as well.
+    unsigned GlueIndex = N->getNumOperands() - 1, CCIndex = GlueIndex - 1;
+    SDValue Glue = N->getOperand(GlueIndex);
+    unsigned CC = N->getConstantOperandVal(CCIndex);
+    if ((CC == AVMCC::EQ || CC == AVMCC::NE) && Glue.hasOneUse() &&
+        (Glue.getOpcode() == AVMISD::TST8 ||
+         Glue.getOpcode() == AVMISD::TST16)) {
+      SDValue Bool = Glue.getOperand(0), Masked = Bool;
+      if (Bool.getOpcode() == ISD::AND &&
+          isa<ConstantSDNode>(Bool.getOperand(1)) &&
+          Bool.getConstantOperandVal(1) == 1)
+        Bool = Bool.getOperand(0);
+      if (Bool.getOpcode() == AVMISD::CSET && Bool.hasOneUse() &&
+          Masked.hasOneUse()) {
+        unsigned Predicate = Bool.getConstantOperandVal(0);
+        if (CC == AVMCC::EQ)
+          Predicate ^= 1;
+        SmallVector<SDValue, 5> Ops(N->op_begin(), N->op_end());
+        Ops[CCIndex] = DCI.DAG.getTargetConstant(Predicate, SDLoc(N), MVT::i16);
+        Ops[GlueIndex] = Bool.getOperand(1);
+        return DCI.DAG.getNode(N->getOpcode(), SDLoc(N), N->getVTList(), Ops);
+      }
+    }
+  }
   if (N->getOpcode() == ISD::UMIN && N->getValueType(0) == MVT::i32) {
     SDValue Sum = N->getOperand(0), Limit = N->getOperand(1);
     if (isa<ConstantSDNode>(Sum))

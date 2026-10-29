@@ -620,6 +620,8 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::OR16_PSEUDO:
   case AVM::XOR16_PSEUDO:
     return CompactBinary();
+  case AVM::BOOL16_PSEUDO:
+    return get(AVM::BOOL).getSize();
   case AVM::SEXT8_PSEUDO:
   case AVM::ZEXT8_PSEUDO:
   case AVM::INC16_PSEUDO:
@@ -718,7 +720,6 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::FTOS32_PSEUDO:
   case AVM::FTOU32_PSEUDO:
   case AVM::FCMP_PSEUDO:
-  case AVM::FCLASS_PSEUDO:
     return 2;
   case AVM::CMOV32_PSEUDO:
     return 4;
@@ -772,6 +773,8 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   };
 
   switch (MI.getOpcode()) {
+  case AVM::BOOL16_PSEUDO:
+    return Fixed(AVMCostKind::Bool);
   case AVM::COPY16_PSEUDO:
     return MoveLatency(MI.getOperand(0).getReg(), MI.getOperand(1).getReg());
   case AVM::COPY32_PSEUDO: {
@@ -942,8 +945,6 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Typical(AVMCostKind::FToU32);
   case AVM::FCMP_PSEUDO:
     return Typical(AVMCostKind::FCmp);
-  case AVM::FCLASS_PSEUDO:
-    return Typical(AVMCostKind::FClass);
   case AVM::MOV:
     return Fixed(AVMCostKind::MovUpper);
   case AVM::MOV_RR:
@@ -1235,8 +1236,6 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
     return Typical(AVMCostKind::FToU32);
   case AVM::FCMP:
     return Typical(AVMCostKind::FCmp);
-  case AVM::FCLASS:
-    return Typical(AVMCostKind::FClass);
   case AVM::CMOV_EQ:
     return NotTaken(AVMCostKind::CmovEq);
   case AVM::CMOV_NE:
