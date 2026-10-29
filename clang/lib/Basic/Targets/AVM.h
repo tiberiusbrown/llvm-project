@@ -15,6 +15,8 @@ class LLVM_LIBRARY_VISIBILITY AVMTargetInfo final : public TargetInfo {
 public:
   AVMTargetInfo(const llvm::Triple &Triple, const TargetOptions &)
       : TargetInfo(Triple) {
+    // The invariant C99 environment supports FENV_ACCESS without FP state.
+    HasStrictFP = true;
     TLSSupported = false;
     PointerWidth = 16;
     PointerAlign = 8;

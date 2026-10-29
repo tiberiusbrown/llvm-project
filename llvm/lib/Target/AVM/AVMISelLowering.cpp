@@ -763,17 +763,19 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FCOPYSIGN, MVT::f32, Expand);
   for (unsigned Opcode : {ISD::STRICT_FADD, ISD::STRICT_FSUB, ISD::STRICT_FMUL,
                           ISD::STRICT_FDIV, ISD::STRICT_FSQRT})
-    setOperationAction(Opcode, MVT::f32, Expand);
+    setOperationAction(Opcode, MVT::f32, Custom);
   for (MVT VT : {MVT::i16, MVT::i32}) {
     setOperationAction(ISD::SINT_TO_FP, VT, Legal);
     setOperationAction(ISD::UINT_TO_FP, VT, Legal);
+    setOperationAction(ISD::STRICT_SINT_TO_FP, VT, Custom);
+    setOperationAction(ISD::STRICT_UINT_TO_FP, VT, Custom);
     setOperationAction(ISD::FP_TO_SINT, VT, Legal);
     setOperationAction(ISD::FP_TO_UINT, VT, Legal);
-    setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Expand);
-    setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Expand);
+    setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Custom);
+    setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Custom);
   }
-  setOperationAction(ISD::STRICT_SINT_TO_FP, MVT::f32, Expand);
-  setOperationAction(ISD::STRICT_UINT_TO_FP, MVT::f32, Expand);
+  setOperationAction(ISD::STRICT_FSETCC, MVT::f32, Custom);
+  setOperationAction(ISD::STRICT_FSETCCS, MVT::f32, Custom);
   setOperationAction(ISD::IS_FPCLASS, MVT::f32, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i16, Custom);
   setOperationAction(ISD::ADDRSPACECAST, MVT::i32, Custom);
@@ -2261,6 +2263,39 @@ void AVMTargetLowering::ReplaceNodeResults(
 
 SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
+  case ISD::STRICT_FADD:
+  case ISD::STRICT_FSUB:
+  case ISD::STRICT_FMUL:
+  case ISD::STRICT_FDIV:
+  case ISD::STRICT_FSQRT:
+  case ISD::STRICT_SINT_TO_FP:
+  case ISD::STRICT_UINT_TO_FP:
+  case ISD::STRICT_FP_TO_SINT:
+  case ISD::STRICT_FP_TO_UINT:
+  case ISD::STRICT_FSETCC:
+  case ISD::STRICT_FSETCCS: {
+    // AVM supports only nearest-even rounding and no observable exceptions.
+    // Dynamic rounding is therefore nearest-even too. Preserve the incoming
+    // chain while using the same instructions as ordinary FP operations.
+    unsigned Opcode;
+    switch (Op.getOpcode()) {
+    case ISD::STRICT_FADD: Opcode = ISD::FADD; break;
+    case ISD::STRICT_FSUB: Opcode = ISD::FSUB; break;
+    case ISD::STRICT_FMUL: Opcode = ISD::FMUL; break;
+    case ISD::STRICT_FDIV: Opcode = ISD::FDIV; break;
+    case ISD::STRICT_FSQRT: Opcode = ISD::FSQRT; break;
+    case ISD::STRICT_SINT_TO_FP: Opcode = ISD::SINT_TO_FP; break;
+    case ISD::STRICT_UINT_TO_FP: Opcode = ISD::UINT_TO_FP; break;
+    case ISD::STRICT_FP_TO_SINT: Opcode = ISD::FP_TO_SINT; break;
+    case ISD::STRICT_FP_TO_UINT: Opcode = ISD::FP_TO_UINT; break;
+    default: Opcode = ISD::SETCC; break;
+    }
+    SmallVector<SDValue, 3> Operands;
+    for (unsigned I = 1; I < Op.getNumOperands(); ++I)
+      Operands.push_back(Op.getOperand(I));
+    SDValue Result = DAG.getNode(Opcode, SDLoc(Op), Op.getValueType(), Operands);
+    return DAG.getMergeValues({Result, Op.getOperand(0)}, SDLoc(Op));
+  }
   case ISD::UADDSAT: {
     SDLoc DL(Op);
     SDValue LHS = Op.getOperand(0), RHS = Op.getOperand(1);
