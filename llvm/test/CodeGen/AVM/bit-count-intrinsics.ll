@@ -7,6 +7,8 @@ declare i16 @llvm.ctlz.i16(i16, i1)
 declare i16 @llvm.cttz.i16(i16, i1)
 declare i32 @llvm.ctpop.i32(i32)
 declare i32 @llvm.ctlz.i32(i32, i1)
+declare i64 @llvm.ctlz.i64(i64, i1)
+declare i64 @llvm.cttz.i64(i64, i1)
 
 define i16 @popcount(i16 %x) {
 ; CHECK-LABEL: popcount:
@@ -58,7 +60,6 @@ define i32 @popcount32(i32 %x) {
 define i32 @leading_zeros32(i32 %x) {
 ; CHECK-LABEL: leading_zeros32:
 ; CHECK-NOT:   call
-; CHECK:       lsr32
 ; CHECK:       ret
   %count = call i32 @llvm.ctlz.i32(i32 %x, i1 true)
   ret i32 %count
@@ -69,4 +70,20 @@ define i32 @leading_zeros32_defined(i32 %x) {
 ; CHECK:       ret
   %count = call i32 @llvm.ctlz.i32(i32 %x, i1 false)
   ret i32 %count
+}
+
+define i64 @leading_zeros64(i64 %x) {
+; CHECK-LABEL: leading_zeros64:
+; CHECK-NOT:   __avm_udivdi3
+; CHECK:       ret
+  %count = call i64 @llvm.ctlz.i64(i64 %x, i1 true)
+  ret i64 %count
+}
+
+define i64 @trailing_zeros64(i64 %x) {
+; CHECK-LABEL: trailing_zeros64:
+; CHECK-NOT:   __avm_udivdi3
+; CHECK:       ret
+  %count = call i64 @llvm.cttz.i64(i64 %x, i1 true)
+  ret i64 %count
 }

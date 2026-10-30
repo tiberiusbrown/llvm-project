@@ -45,13 +45,23 @@ void AVM::AddClangSystemIncludeArgs(const ArgList &Args,
   SmallString<128> Include(computeSysRoot());
   llvm::sys::path::append(Include, "include");
   addSystemInclude(Args, CC1Args, Include);
-  // AVM ships only Clang's target-independent builtin headers, not a hosted
-  // C++ standard library. Keep its resource include directory after the
-  // sysroot so AVM wrappers such as <cstddef> take precedence over Clang's.
+  // Keep Clang's target-independent builtin headers after the SDK system
+  // headers so target-specific wrappers take precedence.
   SmallString<128> Resource(getDriver().ResourceDir);
   llvm::sys::path::append(Resource, "include");
-  if (llvm::sys::fs::exists(Resource))
+  if (!Args.hasArg(options::OPT_nobuiltininc) &&
+      llvm::sys::fs::exists(Resource))
     addSystemInclude(Args, CC1Args, Resource);
+}
+
+void AVM::AddClangCXXStdlibIncludeArgs(const ArgList &Args,
+                                       ArgStringList &CC1Args) const {
+  if (Args.hasArg(options::OPT_nostdinc, options::OPT_nostdlibinc,
+                  options::OPT_nostdincxx))
+    return;
+  SmallString<128> Include(computeSysRoot());
+  llvm::sys::path::append(Include, "include", "c++", "v1");
+  addSystemInclude(Args, CC1Args, Include);
 }
 
 void AVM::addClangTargetOptions(const ArgList &, ArgStringList &CC1Args,

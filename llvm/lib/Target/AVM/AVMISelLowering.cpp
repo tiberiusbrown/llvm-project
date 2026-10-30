@@ -787,10 +787,18 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF,
                           ISD::CTTZ, ISD::CTTZ_ZERO_UNDEF})
     setOperationAction(Opcode, MVT::i16, Expand);
-  // i32 is also a legal register type without native leading-zero counts.
+  // i32 is also a legal register type without native bit-count instructions.
   // The generic CTLZ expansion introduces CTPOP, so expand that as well.
-  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF})
+  for (unsigned Opcode : {ISD::CTPOP})
     setOperationAction(Opcode, MVT::i32, Expand);
+  setOperationAction(ISD::CTLZ, MVT::i32, Custom);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i32, Custom);
+  setOperationAction(ISD::CTTZ, MVT::i32, Custom);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i32, Custom);
+  setOperationAction(ISD::CTTZ, MVT::i64, Custom);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i64, Custom);
+  setOperationAction(ISD::CTLZ, MVT::i64, Custom);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i64, Custom);
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
@@ -2220,6 +2228,37 @@ SDValue AVMTargetLowering::LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const {
 
 void AVMTargetLowering::ReplaceNodeResults(
     SDNode *N, SmallVectorImpl<SDValue> &Results, SelectionDAG &DAG) const {
+  if (N->getOpcode() == ISD::CTTZ ||
+      N->getOpcode() == ISD::CTTZ_ZERO_UNDEF ||
+      N->getOpcode() == ISD::CTLZ ||
+      N->getOpcode() == ISD::CTLZ_ZERO_UNDEF) {
+    SDLoc DL(N);
+    bool IsTrailing = N->getOpcode() == ISD::CTTZ ||
+                      N->getOpcode() == ISD::CTTZ_ZERO_UNDEF;
+    SDValue Value = N->getOperand(0);
+    SDValue Low = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, Value,
+                              DAG.getConstant(0, DL, MVT::i32));
+    SDValue High = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, Value,
+                               DAG.getConstant(1, DL, MVT::i32));
+    unsigned CountOpcode = IsTrailing ? ISD::CTTZ : ISD::CTLZ;
+    SDValue LowCount = DAG.getNode(CountOpcode, DL, MVT::i32, Low);
+    SDValue HighCount = DAG.getNode(CountOpcode, DL, MVT::i32, High);
+    SDValue HighIsZero = DAG.getSetCC(
+        DL, MVT::i1, High, DAG.getConstant(0, DL, MVT::i32), ISD::SETEQ);
+    SDValue LowIsZero = DAG.getSetCC(
+        DL, MVT::i1, Low, DAG.getConstant(0, DL, MVT::i32), ISD::SETEQ);
+    SDValue AddWord = IsTrailing ? HighCount : LowCount;
+    SDValue CountWithWord = DAG.getNode(
+        ISD::ADD, DL, MVT::i32, AddWord,
+        DAG.getConstant(32, DL, MVT::i32));
+    SDValue UseOtherWord = IsTrailing ? LowIsZero : HighIsZero;
+    SDValue PrimaryCount = IsTrailing ? LowCount : HighCount;
+    SDValue Count = DAG.getNode(ISD::SELECT, DL, MVT::i32, UseOtherWord,
+                                CountWithWord, PrimaryCount);
+    Results.push_back(DAG.getZExtOrTrunc(Count, DL, MVT::i64));
+    return;
+  }
+
   assert((N->getOpcode() == ISD::UDIVREM ||
           N->getOpcode() == ISD::SDIVREM) &&
          N->getValueType(0) == MVT::i64 && "unexpected custom legalization");
@@ -2309,6 +2348,38 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::EXTRACT_ELEMENT:
     return getI32Word(Op.getOperand(0), Op.getConstantOperandVal(1), SDLoc(Op),
                        DAG);
+  case ISD::CTTZ:
+  case ISD::CTTZ_ZERO_UNDEF: {
+    SDLoc DL(Op);
+    SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
+    SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
+    SDValue LowCount = DAG.getNode(ISD::CTTZ, DL, MVT::i16, Low);
+    SDValue HighCount = DAG.getNode(ISD::CTTZ, DL, MVT::i16, High);
+    SDValue HighCountPlusWord = DAG.getNode(
+        ISD::ADD, DL, MVT::i16, HighCount,
+        DAG.getConstant(16, DL, MVT::i16));
+    SDValue LowIsZero = DAG.getSetCC(
+        DL, MVT::i1, Low, DAG.getConstant(0, DL, MVT::i16), ISD::SETEQ);
+    SDValue Count = DAG.getNode(ISD::SELECT, DL, MVT::i16, LowIsZero,
+                                HighCountPlusWord, LowCount);
+    return DAG.getNode(ISD::ZERO_EXTEND, DL, Op.getValueType(), Count);
+  }
+  case ISD::CTLZ:
+  case ISD::CTLZ_ZERO_UNDEF: {
+    SDLoc DL(Op);
+    SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
+    SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
+    SDValue LowCount = DAG.getNode(ISD::CTLZ, DL, MVT::i16, Low);
+    SDValue HighCount = DAG.getNode(ISD::CTLZ, DL, MVT::i16, High);
+    SDValue LowCountPlusWord = DAG.getNode(
+        ISD::ADD, DL, MVT::i16, LowCount,
+        DAG.getConstant(16, DL, MVT::i16));
+    SDValue HighIsZero = DAG.getSetCC(
+        DL, MVT::i1, High, DAG.getConstant(0, DL, MVT::i16), ISD::SETEQ);
+    SDValue Count = DAG.getNode(ISD::SELECT, DL, MVT::i16, HighIsZero,
+                                LowCountPlusWord, HighCount);
+    return DAG.getNode(ISD::ZERO_EXTEND, DL, Op.getValueType(), Count);
+  }
   case ISD::INTRINSIC_VOID: {
     const auto *ID = cast<ConstantSDNode>(Op.getOperand(1));
     SDLoc DL(Op);
