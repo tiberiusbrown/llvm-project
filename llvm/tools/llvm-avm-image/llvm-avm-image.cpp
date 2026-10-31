@@ -71,12 +71,22 @@ constexpr uint32_t AVMDataSpace = 0x20000000;
 constexpr uint8_t RuntimeVersion = 4;
 constexpr uint32_t CrashInfoOffset = 0x0f;
 // AVD1 layout constants, shared with the guest reader in runtime/lib.
-constexpr uint32_t CrashHeaderSize = 24;
+constexpr uint32_t CrashHeaderSize = 12;
+constexpr uint32_t CrashSectionCount = 5;
+constexpr uint32_t CrashDirectoryEntrySize = 7;
+constexpr uint32_t CrashPayloadStart =
+    CrashHeaderSize + CrashSectionCount * CrashDirectoryEntrySize;
 constexpr uint32_t CrashFunctionSize = 9;
-constexpr uint32_t CrashLineSize = 12;
+constexpr uint32_t CrashFileSize = 3;
+constexpr uint32_t CrashCheckpointSize = 12;
+constexpr uint32_t CrashCheckpointInterval = 64;
 constexpr uint32_t CrashMaxRecords = 0xffff;
-constexpr size_t CrashMaxNameBytes = 80;
+constexpr size_t CrashMaxNameBytes = 39;
 constexpr size_t CrashMaxFileBytes = 48;
+// Opcodes 0x00-0x7f are one-byte combined transitions and need no constant.
+constexpr uint8_t CrashOpSetMapping = 0x80;
+constexpr uint8_t CrashOpLargeDelta = 0x81;
+constexpr uint8_t CrashOpUnmapped = 0x82;
 
 static void append16(SmallVectorImpl<uint8_t> &Out, uint16_t Value) {
   Out.push_back(Value);
@@ -315,8 +325,59 @@ static std::string sanitizeCrashText(StringRef Text) {
   return Out;
 }
 
+// Returns Name without its trailing parameter list and cv/ref qualifiers. A name
+// that does not end in a balanced parameter list is returned unchanged.
+static StringRef stripSignature(StringRef Name) {
+  StringRef Base = Name;
+  for (bool Trimmed = true; Trimmed;) {
+    Trimmed = false;
+    for (StringRef Qualifier : {" const", " volatile", " &&", " &"}) {
+      if (Base.ends_with(Qualifier)) {
+        Base = Base.drop_back(Qualifier.size());
+        Trimmed = true;
+      }
+    }
+  }
+  if (!Base.ends_with(")"))
+    return Name;
+  unsigned Depth = 0;
+  for (size_t I = Base.size(); I-- > 0;) {
+    if (Base[I] == ')') {
+      ++Depth;
+    } else if (Base[I] == '(' && --Depth == 0) {
+      return I ? Base.take_front(I) : Name;
+    }
+  }
+  return Name;
+}
+
+// Replaces each outermost template argument list with "<...>". Names with an
+// operator token keep their brackets, so operator names are never altered.
+static std::string elideTemplateArgs(StringRef Name) {
+  if (Name.contains("operator"))
+    return Name.str();
+  std::string Out;
+  unsigned Depth = 0;
+  for (char C : Name) {
+    if (C == '<') {
+      if (Depth++ == 0)
+        Out += "<...>";
+    } else if (C == '>' && Depth) {
+      --Depth;
+    } else if (Depth == 0) {
+      Out.push_back(C);
+    }
+  }
+  return Out;
+}
+
+// Displays a demangled name without its parameter list. Template arguments are
+// elided only when the qualified name would not fit the guest buffer.
 static std::string crashName(StringRef RawName) {
-  std::string Name = sanitizeCrashText(demangle(RawName));
+  std::string Demangled = demangle(RawName);
+  std::string Name = sanitizeCrashText(stripSignature(Demangled));
+  if (Name.size() > CrashMaxNameBytes)
+    Name = elideTemplateArgs(Name);
   if (Name.size() > CrashMaxNameBytes)
     Name.resize(CrashMaxNameBytes);
   return Name;
@@ -512,55 +573,245 @@ static void append24Value(SmallVectorImpl<uint8_t> &Out, uint64_t Value) {
   Out.push_back(Value >> 16);
 }
 
-// Encodes the AVD1 block in the order header, function table, line table,
-// string table. Strings are deduplicated in record order.
+// Deduplicates NUL-terminated strings. Offsets are relative to the pool start.
+class CrashStringPool {
+public:
+  uint32_t intern(StringRef Text) {
+    auto [It, Inserted] = Offsets.try_emplace(Text, Bytes.size());
+    if (Inserted) {
+      llvm::append_range(Bytes, Text.bytes());
+      Bytes.push_back(0);
+    }
+    return It->getValue();
+  }
+  ArrayRef<uint8_t> bytes() const { return Bytes; }
+
+private:
+  SmallVector<uint8_t, 0> Bytes;
+  StringMap<uint32_t> Offsets;
+};
+
+// A source state change. The state applies from PC up to the next transition.
+// Unmapped transitions carry zero File and Line.
+struct SourceTransition {
+  uint32_t PC;
+  bool Mapped;
+  uint16_t File;
+  uint32_t Line;
+};
+
+// The state decoding restarts from at a sparse checkpoint.
+struct SourceCheckpoint {
+  uint32_t PC;
+  uint32_t StreamOffset;
+  uint16_t File;
+  uint32_t Line;
+  bool Mapped;
+};
+
+static bool sameSourceState(const SourceTransition &A,
+                            const SourceTransition &B) {
+  if (A.Mapped != B.Mapped)
+    return false;
+  return !A.Mapped || (A.File == B.File && A.Line == B.Line);
+}
+
+// Keeps the transition list canonical: one state per PC, and no transition that
+// repeats the state before it. The initial state is unmapped at PC zero.
+static void appendSourceTransition(SmallVectorImpl<SourceTransition> &Out,
+                                   SourceTransition T) {
+  if (!Out.empty() && Out.back().PC == T.PC)
+    Out.pop_back();
+  if (Out.empty() ? !T.Mapped : sameSourceState(Out.back(), T))
+    return;
+  Out.push_back(T);
+}
+
+// Converts canonical source ranges into transitions. Adjacent ranges run on
+// without an unmapped transition, and each gap is marked at its start. File
+// IDs follow first occurrence in the range order.
+static Error buildSourceTransitions(ArrayRef<CodeRange> Lines,
+                                    SmallVectorImpl<StringRef> &Files,
+                                    SmallVectorImpl<SourceTransition> &Out) {
+  StringMap<uint16_t> FileIds;
+  for (size_t I = 0; I < Lines.size(); ++I) {
+    const CodeRange &R = Lines[I];
+    auto [It, Inserted] = FileIds.try_emplace(R.Text, Files.size());
+    if (Inserted) {
+      if (Files.size() >= CrashMaxRecords)
+        return bad("crash metadata exceeds 65535 source filenames");
+      Files.push_back(R.Text);
+    }
+    appendSourceTransition(Out, {R.Start, true, It->getValue(), R.Line});
+    bool GapFollows = I + 1 == Lines.size() || Lines[I + 1].Start != R.End;
+    if (GapFollows && R.End <= MaxProgramAddress)
+      appendSourceTransition(Out, {R.End, false, 0, 0});
+  }
+  return Error::success();
+}
+
+// Appends the shortest unsigned LEB128 encoding of Value.
+static void appendULEB128(SmallVectorImpl<uint8_t> &Out, uint32_t Value) {
+  do {
+    uint8_t Byte = Value & 0x7f;
+    Value >>= 7;
+    if (Value)
+      Byte |= 0x80;
+    Out.push_back(Byte);
+  } while (Value);
+}
+
+// Maps a signed value to an unsigned one, so small magnitudes stay small.
+static uint32_t zigzagEncode(int32_t Value) {
+  return (uint32_t(Value) << 1) ^ (Value < 0 ? ~0u : 0u);
+}
+
+// Encodes transitions as opcodes. Offsets receives the start of each opcode,
+// relative to the first opcode. The encoder prefers the one-byte form whenever
+// the file is unchanged and both deltas fit it.
+static Error encodeSourceStream(ArrayRef<SourceTransition> Transitions,
+                                SmallVectorImpl<uint8_t> &Stream,
+                                SmallVectorImpl<uint32_t> &Offsets) {
+  uint32_t PC = 0;
+  uint32_t Line = 0;
+  uint16_t File = 0;
+  bool Mapped = false;
+  for (const SourceTransition &T : Transitions) {
+    if (T.PC <= PC)
+      return bad("source transitions do not strictly increase");
+    uint32_t PCDelta = T.PC - PC;
+    Offsets.push_back(Stream.size());
+    if (!T.Mapped) {
+      Stream.push_back(CrashOpUnmapped);
+      appendULEB128(Stream, PCDelta);
+    } else if (!Mapped || T.File != File) {
+      Stream.push_back(CrashOpSetMapping);
+      appendULEB128(Stream, PCDelta);
+      appendULEB128(Stream, T.File);
+      appendULEB128(Stream, T.Line);
+    } else {
+      int32_t LineDelta = int32_t(T.Line) - int32_t(Line);
+      if (PCDelta <= 16 && LineDelta >= -4 && LineDelta <= 3) {
+        Stream.push_back(uint8_t((uint32_t(LineDelta + 4) << 4) | (PCDelta - 1)));
+      } else {
+        Stream.push_back(CrashOpLargeDelta);
+        appendULEB128(Stream, PCDelta);
+        appendULEB128(Stream, zigzagEncode(LineDelta));
+      }
+    }
+    PC = T.PC;
+    Mapped = T.Mapped;
+    File = T.File;
+    Line = T.Line;
+  }
+  return Error::success();
+}
+
+// Captures the state after every 64th transition, plus the initial state. Each
+// checkpoint records the offset of the opcode that follows it.
+static SmallVector<SourceCheckpoint, 0>
+buildSourceCheckpoints(ArrayRef<SourceTransition> Transitions,
+                       ArrayRef<uint32_t> Offsets, uint32_t StreamBytes) {
+  SmallVector<SourceCheckpoint, 0> Checkpoints;
+  Checkpoints.push_back({0, 0, 0, 0, false});
+  for (size_t Count = CrashCheckpointInterval; Count <= Transitions.size();
+       Count += CrashCheckpointInterval) {
+    const SourceTransition &T = Transitions[Count - 1];
+    uint32_t Next = Count < Transitions.size() ? Offsets[Count] : StreamBytes;
+    Checkpoints.push_back({T.PC, Next, T.File, T.Line, T.Mapped});
+  }
+  return Checkpoints;
+}
+
+// Encodes the AVD1 block: a 12-byte header, a five-entry section directory, and
+// the sections in directory order. Each section size is exact, with no padding.
 static Expected<SmallVector<uint8_t, 0>>
 encodeCrashInfo(ArrayRef<CodeRange> Functions, ArrayRef<CodeRange> Lines) {
-  if (Functions.size() > CrashMaxRecords || Lines.size() > CrashMaxRecords)
-    return bad("crash metadata exceeds 65535 function or source-line records");
-  uint64_t FunctionTable = CrashHeaderSize;
-  uint64_t LineTable = FunctionTable + Functions.size() * CrashFunctionSize;
-  uint64_t StringTable = LineTable + Lines.size() * CrashLineSize;
+  if (Functions.size() > CrashMaxRecords)
+    return bad("crash metadata exceeds 65535 function records");
 
-  SmallVector<uint8_t, 0> Strings;
-  StringMap<uint64_t> StringOffsets;
-  auto intern = [&](StringRef Text) -> uint64_t {
-    auto [It, Inserted] = StringOffsets.try_emplace(Text, Strings.size());
-    if (Inserted) {
-      llvm::append_range(Strings, Text.bytes());
-      Strings.push_back(0);
-    }
-    return StringTable + It->getValue();
+  // Function names are interned first, then filenames in first-occurrence order.
+  CrashStringPool Strings;
+  SmallVector<uint32_t, 0> NameOffsets;
+  for (const CodeRange &F : Functions)
+    NameOffsets.push_back(Strings.intern(F.Text));
+
+  SmallVector<StringRef, 0> Files;
+  SmallVector<SourceTransition, 0> Transitions;
+  if (Error E = buildSourceTransitions(Lines, Files, Transitions))
+    return std::move(E);
+  SmallVector<uint32_t, 0> FileOffsets;
+  for (StringRef File : Files)
+    FileOffsets.push_back(Strings.intern(File));
+
+  SmallVector<uint8_t, 0> Stream;
+  SmallVector<uint32_t, 0> Offsets;
+  if (Error E = encodeSourceStream(Transitions, Stream, Offsets))
+    return std::move(E);
+  if (Transitions.size() > 0xffffff)
+    return bad("crash metadata exceeds 2^24 source transitions");
+  SmallVector<SourceCheckpoint, 0> Checkpoints =
+      buildSourceCheckpoints(Transitions, Offsets, Stream.size());
+  if (Checkpoints.size() > CrashMaxRecords)
+    return bad("crash metadata exceeds 65535 checkpoints");
+
+  uint64_t SectionSizes[CrashSectionCount] = {
+      2 + Functions.size() * CrashFunctionSize,
+      2 + Files.size() * CrashFileSize,
+      2 + Checkpoints.size() * CrashCheckpointSize,
+      3 + Stream.size(),
+      Strings.bytes().size(),
   };
+  uint64_t Size = CrashPayloadStart;
+  for (uint64_t SectionSize : SectionSizes)
+    Size += SectionSize;
+  if (Size > 0xffffff)
+    return bad("crash metadata exceeds the 24-bit AVD1 size field");
 
   SmallVector<uint8_t, 0> Out;
   Out.append({'A', 'V', 'D', '1'});
-  append24Value(Out, 0); // Total size, written after the tables.
-  Out.push_back(0);      // Flags.
+  append24Value(Out, Size);
+  Out.push_back(CrashSectionCount); // Section count.
+  Out.push_back(0);                 // Flags.
+  Out.append({0, 0, 0});            // Reserved.
+
+  uint64_t SectionOffset = CrashPayloadStart;
+  for (uint8_t Type = 1; Type <= CrashSectionCount; ++Type) {
+    Out.push_back(Type);
+    append24Value(Out, SectionOffset);
+    append24Value(Out, SectionSizes[Type - 1]);
+    SectionOffset += SectionSizes[Type - 1];
+  }
+
+  // Type 1: function index.
   append16(Out, Functions.size());
-  append16(Out, Lines.size());
-  append24Value(Out, FunctionTable);
-  append24Value(Out, LineTable);
-  append24Value(Out, StringTable);
-  append24Value(Out, 0); // Reserved.
-
-  for (const CodeRange &F : Functions) {
-    append24Value(Out, F.Start);
-    append24Value(Out, F.End);
-    append24Value(Out, intern(F.Text));
-  }
-  for (const CodeRange &L : Lines) {
-    append24Value(Out, L.Start);
-    append24Value(Out, L.End);
-    append24Value(Out, intern(L.Text));
-    append24Value(Out, L.Line);
+  for (size_t I = 0; I < Functions.size(); ++I) {
+    append24Value(Out, Functions[I].Start);
+    append24Value(Out, Functions[I].End);
+    append24Value(Out, NameOffsets[I]);
   }
 
-  uint64_t Size = StringTable + Strings.size();
-  if (Size > 0xffffff)
-    return bad("crash metadata exceeds the 24-bit AVD1 size field");
-  llvm::append_range(Out, Strings);
-  write24(Out, 4, static_cast<uint32_t>(Size));
+  // Type 2: filename index.
+  append16(Out, Files.size());
+  for (uint32_t Offset : FileOffsets)
+    append24Value(Out, Offset);
+
+  // Type 3: source checkpoints.
+  append16(Out, Checkpoints.size());
+  for (const SourceCheckpoint &C : Checkpoints) {
+    append24Value(Out, C.PC);
+    append24Value(Out, C.StreamOffset);
+    append16(Out, C.File);
+    append24Value(Out, C.Line);
+    Out.push_back(C.Mapped);
+  }
+
+  // Type 4: source transition stream.
+  append24Value(Out, Transitions.size());
+  llvm::append_range(Out, Stream);
+
+  // Type 5: string pool.
+  llvm::append_range(Out, Strings.bytes());
   return Out;
 }
 
@@ -574,11 +825,15 @@ static void warnCrashInfo(StringRef InputName, StringRef What, Error E) {
       << '\n';
 }
 
-// Returns an empty block when no usable function or source-line data remains.
+// Returns an empty block when no usable function or source-line data remains,
+// or when the block cannot fit in Room bytes. If the complete block does not
+// fit, the source lines are dropped and the function records are kept if they
+// fit alone.
 static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
                                               const ELFFile<ELF32LE> &ELF,
                                               ArrayRef<ELF32LE::Shdr> Sections,
-                                              StringRef InputName) {
+                                              StringRef InputName,
+                                              uint64_t Room) {
   SmallVector<CodeRange, 0> Functions, Lines;
   if (Expected<SmallVector<CodeRange, 0>> Found =
           collectFunctions(ELF, Sections, InputName))
@@ -591,12 +846,25 @@ static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
     warnCrashInfo(InputName, "source lines", Found.takeError());
   if (Functions.empty() && Lines.empty())
     return {};
+
   Expected<SmallVector<uint8_t, 0>> Block = encodeCrashInfo(Functions, Lines);
-  if (!Block) {
-    warnCrashInfo(InputName, "crash metadata", Block.takeError());
+  if (Block && Block->size() <= Room)
+    return std::move(*Block);
+  Error Reason = Block ? bad("it does not fit in the Version 1 flat image")
+                       : Block.takeError();
+  if (Lines.empty() || Functions.empty()) {
+    warnCrashInfo(InputName, "crash metadata", std::move(Reason));
     return {};
   }
-  return std::move(*Block);
+
+  warnCrashInfo(InputName, "source lines", std::move(Reason));
+  Block = encodeCrashInfo(Functions, {});
+  if (Block && Block->size() <= Room)
+    return std::move(*Block);
+  warnCrashInfo(InputName, "crash metadata",
+                Block ? bad("it does not fit in the Version 1 flat image")
+                      : Block.takeError());
+  return {};
 }
 
 static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
@@ -749,23 +1017,17 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   // Crash metadata is included by default and follows the payload at a 4-byte
   // boundary. It is derived from the final ELF, so its addresses already
   // include relaxation. --no-crash-info skips the inspection entirely.
+  uint64_t CrashStart = alignTo(uint64_t(PayloadEnd), 4);
+  uint64_t Room = CrashStart <= MaxPayloadEnd ? MaxPayloadEnd - CrashStart : 0;
   SmallVector<uint8_t, 0> CrashBlock;
   if (!NoCrashInfo)
-    CrashBlock = buildCrashInfo(*ELFObj, ELF, *SectionsOrErr, InputName);
-  uint64_t CrashStart = 0;
+    CrashBlock =
+        buildCrashInfo(*ELFObj, ELF, *SectionsOrErr, InputName, Room);
   uint64_t FinalPayloadEnd = PayloadEnd;
-  if (!CrashBlock.empty()) {
-    uint64_t Start = alignTo(uint64_t(PayloadEnd), 4);
-    uint64_t End = Start + CrashBlock.size();
-    if (Start > MaxProgramAddress || End > MaxPayloadEnd) {
-      warnCrashInfo(InputName, "crash metadata",
-                    bad("it does not fit in the Version 1 flat image"));
-      CrashBlock.clear();
-    } else {
-      CrashStart = Start;
-      FinalPayloadEnd = End;
-    }
-  }
+  if (!CrashBlock.empty())
+    FinalPayloadEnd = CrashStart + CrashBlock.size();
+  else
+    CrashStart = 0;
 
   Expected<uint32_t> FileSize =
       finalFileSize(static_cast<uint32_t>(FinalPayloadEnd));

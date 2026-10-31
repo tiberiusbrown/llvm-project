@@ -13,6 +13,10 @@ assert struct.unpack_from("<H", image, 10)[0] == save_size
 assert image[0x12:252] == bytes(0xfc - 0x12)
 crash_info = image[0x0f] | image[0x10] << 8 | image[0x11] << 16
 assert crash_info == 0 or image[crash_info:crash_info + 4] == b"AVD1"
+if crash_info:
+    # The AVD1 header is 12 bytes with a five-entry section directory.
+    assert image[crash_info + 7] == 5, "AVD1 section count is not five"
+    assert image[crash_info + 8:crash_info + 12] == bytes(4), "AVD1 flags are nonzero"
 assert struct.unpack_from("<I", image, 252)[0] == binascii.crc32(image[:252])
 changed = bytearray(image[:252])
 changed[4] ^= 1

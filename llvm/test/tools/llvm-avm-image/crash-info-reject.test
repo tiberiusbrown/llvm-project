@@ -1,0 +1,69 @@
+# Malformed AVD1 blocks. Each corruption of a valid image changes one field, and
+# the inspector must refuse the block and name the field it cannot accept. The
+# guest decoder applies the same rules, so it returns no metadata for these.
+
+# RUN: split-file %s %t
+# RUN: %python %S/Inputs/gen-line-rows.py deltas 0x1000 %t/deltas.s %t/deltas.checks
+# RUN: %python %S/Inputs/gen-line-rows.py gaps 0x1000 %t/gaps.s %t/gaps.checks
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c128.s %t/c128.checks 128
+# RUN: llvm-mc -triple=avm -filetype=obj %t/deltas.s -o %t/deltas.o
+# RUN: ld.lld -T %t/layout.ld %t/deltas.o -o %t/deltas.elf
+# RUN: llvm-avm-image %t/deltas.elf -o %t/deltas.bin
+# RUN: llvm-mc -triple=avm -filetype=obj %t/gaps.s -o %t/gaps.o
+# RUN: ld.lld -T %t/layout.ld %t/gaps.o -o %t/gaps.elf
+# RUN: llvm-avm-image %t/gaps.elf -o %t/gaps.bin
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c128.s -o %t/c128.o
+# RUN: ld.lld -T %t/layout.ld %t/c128.o -o %t/c128.elf
+# RUN: llvm-avm-image %t/c128.elf -o %t/c128.bin
+
+# RUN: %python %S/Inputs/mutate-crash.py magic %t/deltas.bin %t/magic.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/magic.bin 2>&1 | FileCheck %s --check-prefix=MAGIC
+# MAGIC: dump-crash: crashInfo does not name an AVD1 block
+
+# RUN: %python %S/Inputs/mutate-crash.py flags %t/deltas.bin %t/flags.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/flags.bin 2>&1 | FileCheck %s --check-prefix=FLAGS
+# FLAGS: dump-crash: nonzero AVD1 flags
+
+# RUN: %python %S/Inputs/mutate-crash.py section-order %t/deltas.bin %t/order.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/order.bin 2>&1 | FileCheck %s --check-prefix=ORDER
+# ORDER: dump-crash: section 1 has the wrong type
+
+# RUN: %python %S/Inputs/mutate-crash.py section-offset %t/deltas.bin %t/offset.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/offset.bin 2>&1 | FileCheck %s --check-prefix=OFFSET
+# OFFSET: dump-crash: filename index is not consecutive
+
+# RUN: %python %S/Inputs/mutate-crash.py unknown-opcode %t/deltas.bin %t/opcode.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/opcode.bin 2>&1 | FileCheck %s --check-prefix=OPCODE
+# OPCODE: dump-crash: unknown opcode 0x83
+
+# RUN: %python %S/Inputs/mutate-crash.py zero-pc-delta %t/gaps.bin %t/zero.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/zero.bin 2>&1 | FileCheck %s --check-prefix=ZERO
+# ZERO: dump-crash: zero PC delta
+
+# RUN: %python %S/Inputs/mutate-crash.py overlong-uleb %t/deltas.bin %t/overlong.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/overlong.bin 2>&1 | FileCheck %s --check-prefix=OVERLONG
+# OVERLONG: dump-crash: ULEB128 operand is overlong
+
+# RUN: %python %S/Inputs/mutate-crash.py long-uleb %t/deltas.bin %t/long.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/long.bin 2>&1 | FileCheck %s --check-prefix=LONG
+# LONG: dump-crash: ULEB128 operand exceeds four bytes
+
+# RUN: %python %S/Inputs/mutate-crash.py invalid-file %t/deltas.bin %t/file.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/file.bin 2>&1 | FileCheck %s --check-prefix=FILE
+# FILE: dump-crash: file index 127 is outside the filename index
+
+# RUN: %python %S/Inputs/mutate-crash.py checkpoint-offset %t/c128.bin %t/cpoff.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/cpoff.bin 2>&1 | FileCheck %s --check-prefix=CPOFF
+# CPOFF: dump-crash: checkpoints disagree with the sequential source decode
+
+# RUN: %python %S/Inputs/mutate-crash.py checkpoint-count %t/c128.bin %t/cpcount.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/cpcount.bin 2>&1 | FileCheck %s --check-prefix=CPCOUNT
+# CPCOUNT: dump-crash: checkpoint section size does not match its count
+
+# RUN: %python %S/Inputs/mutate-crash.py truncated %t/deltas.bin %t/truncated.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/truncated.bin 2>&1 | FileCheck %s --check-prefix=TRUNC
+# TRUNC: dump-crash: missing AVM tail
+
+#--- layout.ld
+ENTRY(_start)
+SECTIONS { .text 0x1000 : { *(.text) } }

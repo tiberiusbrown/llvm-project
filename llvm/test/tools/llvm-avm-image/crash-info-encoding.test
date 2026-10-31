@@ -1,0 +1,115 @@
+# Source-transition encoding at its boundaries. Inputs/gen-line-rows.py writes
+# assembly whose rows sit at exact addresses, together with the records, the
+# boundary lookups, and the summary counts that the packed image must report.
+# Those expectations come from the generator's own model of the intervals, so
+# they are not read back from the packer.
+
+# RUN: split-file %s %t
+
+# One-byte combined, large same-file, and file-change transitions, including PC
+# deltas of 1, 16, 17, 127, 128, and 129, and the largest line numbers.
+# RUN: %python %S/Inputs/gen-line-rows.py deltas 0x1000 %t/deltas.s %t/deltas.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/deltas.s -o %t/deltas.o
+# RUN: ld.lld -T %t/layout.ld %t/deltas.o -o %t/deltas.elf
+# RUN: llvm-avm-image %t/deltas.elf -o %t/deltas.bin
+# RUN: %python %S/Inputs/check-image.py %t/deltas.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py --records %t/deltas.bin | FileCheck %t/deltas.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/deltas.bin | FileCheck %t/deltas.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/deltas.bin | FileCheck %t/deltas.checks.summary
+
+# Line deltas of -5, -4, -1, +1, +3, +4, +1000, and -1000, a file change at
+# equal line, and the largest DWARF line number.
+# RUN: %python %S/Inputs/gen-line-rows.py lines 0x1000 %t/lines.s %t/lines.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/lines.s -o %t/lines.o
+# RUN: ld.lld -T %t/layout.ld %t/lines.o -o %t/lines.elf
+# RUN: llvm-avm-image %t/lines.elf -o %t/lines.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/lines.bin | FileCheck %t/lines.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/lines.bin | FileCheck %t/lines.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/lines.bin | FileCheck %t/lines.checks.summary
+
+# Unmapped gaps from line-0 rows: before the first row, between runs, and at the
+# end of the sequence. Gaps never inherit the neighbouring mapping.
+# RUN: %python %S/Inputs/gen-line-rows.py gaps 0x1000 %t/gaps.s %t/gaps.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/gaps.s -o %t/gaps.o
+# RUN: ld.lld -T %t/layout.ld %t/gaps.o -o %t/gaps.elf
+# RUN: llvm-avm-image %t/gaps.elf -o %t/gaps.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/gaps.bin | FileCheck %t/gaps.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/gaps.bin | FileCheck %t/gaps.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/gaps.bin | FileCheck %t/gaps.checks.summary
+
+# Every file change is an absolute mapping, and equal neighbours coalesce.
+# RUN: %python %S/Inputs/gen-line-rows.py files 0x1000 %t/files.s %t/files.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/files.s -o %t/files.o
+# RUN: ld.lld -T %t/layout.ld %t/files.o -o %t/files.elf
+# RUN: llvm-avm-image %t/files.elf -o %t/files.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/files.bin | FileCheck %t/files.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/files.bin | FileCheck %t/files.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/files.bin | FileCheck %t/files.checks.summary
+
+# The same deltas above 0xFFFF keep all 24 address bits.
+# RUN: %python %S/Inputs/gen-line-rows.py deltas 0x10100 %t/high.s %t/high.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/high.s -o %t/high.o
+# RUN: ld.lld -T %t/high.ld %t/high.o -o %t/high.elf
+# RUN: llvm-avm-image %t/high.elf -o %t/high.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/high.bin | FileCheck %t/high.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/high.bin | FileCheck %t/high.checks.probes
+
+# The largest line number, next to a small one in the same file.
+# RUN: %python %S/Inputs/gen-line-rows.py limits 0x1000 %t/limits.s %t/limits.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/limits.s -o %t/limits.o
+# RUN: ld.lld -T %t/layout.ld %t/limits.o -o %t/limits.elf
+# RUN: llvm-avm-image %t/limits.elf -o %t/limits.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/limits.bin | FileCheck %t/limits.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/limits.bin | FileCheck %t/limits.checks.probes
+
+# Checkpoint boundaries. The initial checkpoint is always present. A stream of
+# 63 transitions adds none, 64 and 65 add one after transition 64, and 127 and
+# 128 add one after transition 64. Only 128 transitions reach a second checkpoint,
+# after transition 128, which is the last transition of the stream.
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c63.s %t/c63.checks 63
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c63.s -o %t/c63.o
+# RUN: ld.lld -T %t/layout.ld %t/c63.o -o %t/c63.elf
+# RUN: llvm-avm-image %t/c63.elf -o %t/c63.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/c63.bin | FileCheck %t/c63.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c63.bin | FileCheck %t/c63.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/c63.bin | FileCheck %t/c63.checks.summary
+
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c64.s %t/c64.checks 64
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c64.s -o %t/c64.o
+# RUN: ld.lld -T %t/layout.ld %t/c64.o -o %t/c64.elf
+# RUN: llvm-avm-image %t/c64.elf -o %t/c64.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/c64.bin | FileCheck %t/c64.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c64.bin | FileCheck %t/c64.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/c64.bin | FileCheck %t/c64.checks.summary
+
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c65.s %t/c65.checks 65
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c65.s -o %t/c65.o
+# RUN: ld.lld -T %t/layout.ld %t/c65.o -o %t/c65.elf
+# RUN: llvm-avm-image %t/c65.elf -o %t/c65.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/c65.bin | FileCheck %t/c65.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c65.bin | FileCheck %t/c65.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/c65.bin | FileCheck %t/c65.checks.summary
+
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c127.s %t/c127.checks 127
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c127.s -o %t/c127.o
+# RUN: ld.lld -T %t/layout.ld %t/c127.o -o %t/c127.elf
+# RUN: llvm-avm-image %t/c127.elf -o %t/c127.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/c127.bin | FileCheck %t/c127.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c127.bin | FileCheck %t/c127.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/c127.bin | FileCheck %t/c127.checks.summary
+
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c128.s %t/c128.checks 128
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c128.s -o %t/c128.o
+# RUN: ld.lld -T %t/layout.ld %t/c128.o -o %t/c128.elf
+# RUN: llvm-avm-image %t/c128.elf -o %t/c128.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/c128.bin | FileCheck %t/c128.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c128.bin | FileCheck %t/c128.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/c128.bin | FileCheck %t/c128.checks.summary
+
+#--- layout.ld
+ENTRY(_start)
+SECTIONS { .text 0x1000 : { *(.text) } }
+
+#--- high.ld
+ENTRY(_start)
+SECTIONS { .text 0x10100 : { *(.text) } }

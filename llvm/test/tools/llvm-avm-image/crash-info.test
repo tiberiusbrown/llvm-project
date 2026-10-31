@@ -5,19 +5,19 @@
 # --no-crash-info: crashInfo stays zero and no AVD1 block is emitted.
 # RUN: llvm-avm-image --no-crash-info %t/functions.elf -o %t/disabled.bin
 # RUN: %python %S/Inputs/check-image.py %t/disabled.bin 0 0
-# RUN: %python %S/Inputs/dump-crash.py %t/disabled.bin | FileCheck %s --check-prefix=NONE
+# RUN: %python %S/Inputs/dump-crash.py --records %t/disabled.bin | FileCheck %s --check-prefix=NONE
 # NONE: crash: none
 
 # Default packaging without DWARF: function names only, with no line records.
 # The unsized _start ends at the next function start, the C++ name is
-# demangled, and the long name is cut to 80 bytes.
+# demangled without its parameter list, and the long name is cut to 39 bytes.
 # RUN: llvm-avm-image %t/functions.elf -o %t/functions.bin
 # RUN: %python %S/Inputs/check-image.py %t/functions.bin 0 0
-# RUN: %python %S/Inputs/dump-crash.py %t/functions.bin | FileCheck %s --check-prefix=FUNCS
+# RUN: %python %S/Inputs/dump-crash.py --records %t/functions.bin | FileCheck %s --check-prefix=FUNCS
 # FUNCS:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 3 lines 0
 # FUNCS-NEXT: FN 0x001000-0x001003 _start
-# FUNCS-NEXT: FN 0x001003-0x001004 foo::bar()
-# FUNCS-NEXT: FN 0x001004-0x001005 long_{{(abcdefghij){7}abcde}}
+# FUNCS-NEXT: FN 0x001003-0x001004 foo::bar
+# FUNCS-NEXT: FN 0x001004-0x001005 long_abcdefghijabcdefghijabcdefghijabcd
 
 # Function and source-line metadata from -g assembly. The call on line 6 is
 # relaxed from its maximal encoding, so the ldi on line 7 and the ret on line 8
@@ -26,7 +26,7 @@
 # RUN: ld.lld -T %t/layout.ld %t/relax.o -o %t/relax.elf
 # RUN: llvm-avm-image %t/relax.elf -o %t/relax.bin
 # RUN: %python %S/Inputs/check-image.py %t/relax.bin 0 0
-# RUN: %python %S/Inputs/dump-crash.py %t/relax.bin | FileCheck %s --check-prefix=LINES
+# RUN: %python %S/Inputs/dump-crash.py --records %t/relax.bin | FileCheck %s --check-prefix=LINES
 # LINES:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 2 lines 5
 # LINES-NEXT: FN 0x001000-0x001007 _start
 # LINES-NEXT: FN 0x001007-0x001008 callee
@@ -41,14 +41,14 @@
 # RUN: llvm-mc -triple=avm -filetype=obj -g %t/very_long_crash_metadata_source_file_name_for_limit_check.s -o %t/long.o
 # RUN: ld.lld -T %t/layout.ld %t/long.o -o %t/long.elf
 # RUN: llvm-avm-image %t/long.elf -o %t/long.bin
-# RUN: %python %S/Inputs/dump-crash.py %t/long.bin | FileCheck %s --check-prefix=LONGFILE
+# RUN: %python %S/Inputs/dump-crash.py --records %t/long.bin | FileCheck %s --check-prefix=LONGFILE
 # LONGFILE: LN 0x001000-0x001001 very_long_crash_metadata_source_file_name_for_.s:5
 
 # Discarded sections leave no records behind.
 # RUN: llvm-mc -triple=avm -filetype=obj -g %t/gc.s -o %t/gc.o
 # RUN: ld.lld --gc-sections -T %t/layout.ld %t/gc.o -o %t/gc.elf
 # RUN: llvm-avm-image %t/gc.elf -o %t/gc.bin
-# RUN: %python %S/Inputs/dump-crash.py %t/gc.bin | FileCheck %s --check-prefix=GC
+# RUN: %python %S/Inputs/dump-crash.py --records %t/gc.bin | FileCheck %s --check-prefix=GC
 # GC:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 1 lines 1
 # GC-NEXT: FN 0x001000-0x001001 _start
 # GC-NEXT: LN 0x001000-0x001001 gc.s:5
@@ -57,9 +57,9 @@
 # Addresses above 0xFFFF keep all 24 bits.
 # RUN: ld.lld -T %t/high.ld %t/functions.o -o %t/high.elf
 # RUN: llvm-avm-image %t/high.elf -o %t/high.bin
-# RUN: %python %S/Inputs/dump-crash.py %t/high.bin | FileCheck %s --check-prefix=HIGH
+# RUN: %python %S/Inputs/dump-crash.py --records %t/high.bin | FileCheck %s --check-prefix=HIGH
 # HIGH:      FN 0x010100-0x010103 _start
-# HIGH-NEXT: FN 0x010103-0x010104 foo::bar()
+# HIGH-NEXT: FN 0x010103-0x010104 foo::bar
 
 # Metadata that would push the payload past the flat-image limit is omitted
 # with a warning. The image still packs and matches the --no-crash-info image.
@@ -68,7 +68,7 @@
 # RUN: llvm-avm-image --no-crash-info %t/full.elf -o %t/full-plain.bin
 # RUN: llvm-avm-image %t/full.elf -o %t/full.bin 2>&1 | FileCheck %s --check-prefix=FULL
 # RUN: %python %S/Inputs/check-image.py %t/full.bin 0 0
-# RUN: %python %S/Inputs/dump-crash.py %t/full.bin | FileCheck %s --check-prefix=NONE
+# RUN: %python %S/Inputs/dump-crash.py --records %t/full.bin | FileCheck %s --check-prefix=NONE
 # RUN: cmp %t/full.bin %t/full-plain.bin
 # FULL: warning: {{.*}}full.elf: crash metadata omitted: it does not fit in the Version 1 flat image
 
@@ -78,7 +78,7 @@
 # RUN: ld.lld -T %t/layout.ld %t/broken.o -o %t/broken.elf
 # RUN: %python %S/Inputs/corrupt-debug-line.py %t/broken.elf %t/corrupt.elf
 # RUN: llvm-avm-image %t/corrupt.elf -o %t/corrupt.bin 2>&1 | FileCheck %s --check-prefix=BROKEN
-# RUN: %python %S/Inputs/dump-crash.py %t/corrupt.bin | FileCheck %s --check-prefix=BROKENDUMP
+# RUN: %python %S/Inputs/dump-crash.py --records %t/corrupt.bin | FileCheck %s --check-prefix=BROKENDUMP
 # BROKEN: warning: {{.*}}corrupt.elf: source lines omitted
 # BROKENDUMP:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 2 lines 0
 # BROKENDUMP-NEXT: FN 0x001000-0x001007 _start
