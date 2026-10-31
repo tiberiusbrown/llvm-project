@@ -6,6 +6,8 @@
 # RUN: %python %S/Inputs/gen-line-rows.py deltas 0x1000 %t/deltas.s %t/deltas.checks
 # RUN: %python %S/Inputs/gen-line-rows.py gaps 0x1000 %t/gaps.s %t/gaps.checks
 # RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c128.s %t/c128.checks 128
+# RUN: %python %S/Inputs/gen-line-rows.py limits 0x1000 %t/limits.s %t/limits.checks
+# RUN: %python %S/Inputs/gen-line-rows.py alternate 0x1000 %t/alt.s %t/alt.checks 66
 # RUN: llvm-mc -triple=avm -filetype=obj %t/deltas.s -o %t/deltas.o
 # RUN: ld.lld -T %t/layout.ld %t/deltas.o -o %t/deltas.elf
 # RUN: llvm-avm-image %t/deltas.elf -o %t/deltas.bin
@@ -15,6 +17,12 @@
 # RUN: llvm-mc -triple=avm -filetype=obj %t/c128.s -o %t/c128.o
 # RUN: ld.lld -T %t/layout.ld %t/c128.o -o %t/c128.elf
 # RUN: llvm-avm-image %t/c128.elf -o %t/c128.bin
+# RUN: llvm-mc -triple=avm -filetype=obj %t/limits.s -o %t/limits.o
+# RUN: ld.lld -T %t/layout.ld %t/limits.o -o %t/limits.elf
+# RUN: llvm-avm-image %t/limits.elf -o %t/limits.bin
+# RUN: llvm-mc -triple=avm -filetype=obj %t/alt.s -o %t/alt.o
+# RUN: ld.lld -T %t/layout.ld %t/alt.o -o %t/alt.elf
+# RUN: llvm-avm-image %t/alt.elf -o %t/alt.bin
 
 # RUN: %python %S/Inputs/mutate-crash.py magic %t/deltas.bin %t/magic.bin
 # RUN: not %python %S/Inputs/dump-crash.py %t/magic.bin 2>&1 | FileCheck %s --check-prefix=MAGIC
@@ -32,13 +40,19 @@
 # RUN: not %python %S/Inputs/dump-crash.py %t/offset.bin 2>&1 | FileCheck %s --check-prefix=OFFSET
 # OFFSET: dump-crash: filename index is not consecutive
 
-# RUN: %python %S/Inputs/mutate-crash.py unknown-opcode %t/deltas.bin %t/opcode.bin
-# RUN: not %python %S/Inputs/dump-crash.py %t/opcode.bin 2>&1 | FileCheck %s --check-prefix=OPCODE
-# OPCODE: dump-crash: unknown opcode 0x83
+# Every opcode is valid, so a truncated operand is the rejection. The last opcode
+# of each stream is replaced by a form that needs an operand the stream lacks.
+# RUN: %python %S/Inputs/mutate-crash.py truncated-short-large %t/deltas.bin %t/short.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/short.bin 2>&1 | FileCheck %s --check-prefix=SHORT
+# SHORT: dump-crash: ULEB128 operand is unterminated
 
-# RUN: %python %S/Inputs/mutate-crash.py zero-pc-delta %t/gaps.bin %t/zero.bin
-# RUN: not %python %S/Inputs/dump-crash.py %t/zero.bin 2>&1 | FileCheck %s --check-prefix=ZERO
-# ZERO: dump-crash: zero PC delta
+# RUN: %python %S/Inputs/mutate-crash.py truncated-extended-unmapped %t/gaps.bin %t/unmapped.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/unmapped.bin 2>&1 | FileCheck %s --check-prefix=UNMAPPED
+# UNMAPPED: dump-crash: ULEB128 operand is unterminated
+
+# RUN: %python %S/Inputs/mutate-crash.py initial-same-file %t/deltas.bin %t/initial.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/initial.bin 2>&1 | FileCheck %s --check-prefix=INITIAL
+# INITIAL: dump-crash: combined transition before any source line
 
 # RUN: %python %S/Inputs/mutate-crash.py overlong-uleb %t/deltas.bin %t/overlong.bin
 # RUN: not %python %S/Inputs/dump-crash.py %t/overlong.bin 2>&1 | FileCheck %s --check-prefix=OVERLONG
@@ -48,9 +62,28 @@
 # RUN: not %python %S/Inputs/dump-crash.py %t/long.bin 2>&1 | FileCheck %s --check-prefix=LONG
 # LONG: dump-crash: ULEB128 operand exceeds four bytes
 
+# A line of 0 from an absolute mapping is below 1, and a line above 0xFFFFFF
+# overflows the 24-bit line field.
+# RUN: %python %S/Inputs/mutate-crash.py line-underflow %t/deltas.bin %t/underflow.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/underflow.bin 2>&1 | FileCheck %s --check-prefix=UNDERFLOW
+# UNDERFLOW: dump-crash: line 0 is outside 1..0xFFFFFF
+
+# RUN: %python %S/Inputs/mutate-crash.py line-overflow %t/limits.bin %t/overflow.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/overflow.bin 2>&1 | FileCheck %s --check-prefix=OVERFLOW
+# OVERFLOW: dump-crash: line 16777216 is outside 1..0xFFFFFF
+
+# RUN: %python %S/Inputs/mutate-crash.py zero-pc-delta %t/deltas.bin %t/zero.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/zero.bin 2>&1 | FileCheck %s --check-prefix=ZERO
+# ZERO: dump-crash: zero PC delta
+
 # RUN: %python %S/Inputs/mutate-crash.py invalid-file %t/deltas.bin %t/file.bin
 # RUN: not %python %S/Inputs/dump-crash.py %t/file.bin 2>&1 | FileCheck %s --check-prefix=FILE
 # FILE: dump-crash: file index 127 is outside the filename index
+
+# Checkpoint 1 sits in a gap, and its retained line is wrong.
+# RUN: %python %S/Inputs/mutate-crash.py checkpoint-state %t/alt.bin %t/cpstate.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/cpstate.bin 2>&1 | FileCheck %s --check-prefix=CPSTATE
+# CPSTATE: dump-crash: checkpoints disagree with the sequential source decode
 
 # RUN: %python %S/Inputs/mutate-crash.py checkpoint-offset %t/c128.bin %t/cpoff.bin
 # RUN: not %python %S/Inputs/dump-crash.py %t/cpoff.bin 2>&1 | FileCheck %s --check-prefix=CPOFF

@@ -4,12 +4,12 @@
 # gap, and the intervals below are a hand model of the packer's rules.
 #
 # Usage: gen-line-rows.py CASE BASE ASM CHECKS [COUNT]
-#   CASE    deltas | lines | gaps | files | limits | count
+#   CASE    deltas | lines | gaps | files | limits | opcodes | count | alternate
 #   BASE    program address the .text section is linked at (decimal or 0x)
 #   ASM     output assembly
 #   CHECKS  output prefix. Writes CHECKS (records), CHECKS.probes (boundary
 #           lookups), and CHECKS.summary (transition and checkpoint counts).
-#   COUNT   for the count case, the number of source transitions to produce
+#   COUNT   for the count and alternate cases, the number of transitions to produce
 import sys
 
 FILES = {1: "a.c", 2: "b.h"}
@@ -40,6 +40,54 @@ def rows_for(case, count):
                 (5, 1, 2), (6, 2, 3)]
     if case == "limits":
         return [(0, 1, 1), (2, 1, 0xffffff), (4, 1, 1)]
+    if case == "opcodes":
+        # Each row is one transition. The base is 0x100 and every offset below is
+        # relative to it. The comments give the opcode each transition must emit,
+        # with file 1 as ID 0 and file 2 as ID 1.
+        return [
+            (0, 1, 100),     # 80 80 02 00 64: first mapping, absolute.
+            (1, 1, 101),     # 50: PC 1, line +1.
+            (2, 1, 97),      # 00: PC 1, line -4.
+            (3, 1, 100),     # 70: PC 1, line +3.
+            (4, 1, 95),      # 83 09: PC 1, line -5.
+            (5, 1, 99),      # 83 08: PC 1, line +4.
+            (21, 1, 90),     # 92 11: PC 16, line -9.
+            (37, 1, 91),     # 5F: PC 16, line +1.
+            (38, 1, 80),     # 83 15: PC 1, line -11.
+            (39, 1, 79),     # 30: PC 1, line -1.
+            (56, 1, 75),     # 81 11 07: PC 17, line -4.
+            (57, 1, 0),      # 93: unmapped, PC 1.
+            (58, 1, 75),     # 40: resume same line, PC 1.
+            (59, 1, 0),      # 93: unmapped, PC 1.
+            (60, 1, 76),     # 50: resume at line +1.
+            (169, 1, 0),     # FF: unmapped, PC 109.
+            (170, 1, 77),    # 50: resume at line +1.
+            (280, 1, 0),     # 82 6E: unmapped, PC 110.
+            (281, 1, 77),    # 40: resume at the retained line.
+            (282, 1, 1077),  # 83 D0 0F: PC 1, line +1000.
+            (283, 1, 77),    # 83 CF 0F: PC 1, line -1000.
+            (316, 2, 128),   # 80 21 01 80 01: file change, line 128.
+            (317, 1, 0),     # 93: final unmapped region.
+        ]
+    if case == "resume":
+        # Gaps of one and several rows, and resumptions on the same line, one
+        # line up and down, in the same file and in another file.
+        return [(0, 1, 20),   # 80 80 02 00 14: first mapping, absolute.
+                (2, 1, 0),    # 94: unmapped gap, PC 2.
+                (3, 1, 20),   # 40: same line across the gap.
+                (4, 1, 0),    # 93: unmapped, PC 1.
+                (5, 1, 21),   # 50: line +1 across the gap.
+                (6, 1, 0),    # 93: unmapped, PC 1.
+                (7, 1, 20),   # 30: line -1 across the gap.
+                (8, 1, 0),    # 93: unmapped, the first of two gap rows.
+                (9, 1, 0),    # no transition: the gap continues.
+                (10, 2, 20),  # 80 02 01 14: file change, absolute.
+                (11, 1, 0)]   # 93: final unmapped region.
+    if case == "alternate":
+        # Every mapped row is followed by a gap row, so every checkpoint after an
+        # even count lies in a gap. COUNT must be even.
+        return [row for k in range(count // 2)
+                for row in ((4 * k, 1, 10 + k), (4 * k + 2, 1, 0))]
     if case == "count":
         # COUNT - 1 contiguous rows with distinct lines. The unmapped transition
         # after the last row makes COUNT transitions in all.
@@ -129,7 +177,7 @@ def main(argv):
     count = int(argv[4]) if len(argv) > 4 else 0
     base = int(base_text, 0)
     rows = rows_for(case, count)
-    end = rows[-1][0] + 1
+    end = rows[-1][0] + 1 if rows else 1
     found = intervals(rows, end)
     write_asm(asm_path, rows, end)
     write_checks(prefix, base, found, transition_count(found))

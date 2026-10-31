@@ -1,0 +1,98 @@
+# String-pool records are a canonical ULEB128 length, the characters, and a NUL,
+# and a reference names the length prefix. Lengths of 127 and 128 and 255 and 256
+# show the one-byte and two-byte prefixes. A function and a source file with the
+# same name share one record.
+
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/names.s -o %t/names.o
+# RUN: ld.lld -T %t/layout.ld %t/names.o -o %t/names.elf
+# RUN: llvm-avm-image %t/names.elf -o %t/names.bin
+# RUN: %python %S/Inputs/check-image.py %t/names.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py --strings %t/names.bin | FileCheck %s --check-prefix=PREFIX
+# PREFIX:      string 0x0000 prefix=7F
+# PREFIX-NEXT: string 0x0081 prefix=80 01
+# PREFIX-NEXT: string 0x0104 prefix=FF 01
+# PREFIX-NEXT: string 0x0206 prefix=80 02
+# PREFIX-NEXT: string 0x0309 prefix=01
+# PREFIX-NEXT: string 0x030c prefix=06
+# PREFIX-NOT:  string
+
+# RUN: llvm-mc -triple=avm -filetype=obj -g %t/main -o %t/main.o
+# RUN: ld.lld -T %t/main.ld %t/main.o -o %t/main.elf
+# RUN: llvm-avm-image %t/main.elf -o %t/main.bin
+# RUN: %python %S/Inputs/dump-crash.py --strings %t/main.bin | FileCheck %s --check-prefix=SHARED
+# SHARED:     string 0x0000 prefix=04 main
+# SHARED-NOT: string
+# RUN: %python %S/Inputs/dump-crash.py --records %t/main.bin | FileCheck %s --check-prefix=SHAREDREC
+# SHAREDREC:      FN 0x001000-0x001001 main
+# SHAREDREC-NEXT: LN 0x001000-0x001001 main:{{[0-9]+}}
+
+# Each pool violation is rejected. A two-byte prefix ending in zero is overlong,
+# and the last record claims more characters than the pool holds.
+# RUN: %python %S/Inputs/mutate-crash.py string-overlong %t/names.bin %t/overlong.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/overlong.bin 2>&1 | FileCheck %s --check-prefix=OVERLONG
+# OVERLONG: dump-crash: string length prefix is overlong
+
+# RUN: %python %S/Inputs/mutate-crash.py string-overflow %t/names.bin %t/overflow.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/overflow.bin 2>&1 | FileCheck %s --check-prefix=OVERFLOW
+# OVERFLOW: dump-crash: string runs past the string pool
+
+# RUN: %python %S/Inputs/mutate-crash.py string-missing-nul %t/names.bin %t/nonul.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/nonul.bin 2>&1 | FileCheck %s --check-prefix=NONUL
+# NONUL: dump-crash: string is not NUL terminated
+
+# RUN: %python %S/Inputs/mutate-crash.py string-interior-nul %t/names.bin %t/interior.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/interior.bin 2>&1 | FileCheck %s --check-prefix=INTERIOR
+# INTERIOR: dump-crash: nonprintable string in the string pool
+
+# A reference that is not the start of a record, or that lies past the pool, is
+# rejected.
+# RUN: %python %S/Inputs/mutate-crash.py string-offset %t/names.bin %t/offset.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/offset.bin 2>&1 | FileCheck %s --check-prefix=REFOFF
+# REFOFF: dump-crash: string offset is not a string in the pool
+
+# RUN: %python %S/Inputs/mutate-crash.py string-outside %t/names.bin %t/outside.bin
+# RUN: not %python %S/Inputs/dump-crash.py %t/outside.bin 2>&1 | FileCheck %s --check-prefix=REFOUT
+# REFOUT: dump-crash: string offset is not a string in the pool
+
+#--- layout.ld
+ENTRY(_start)
+SECTIONS { .text 0x1000 : { *(.text) } }
+
+#--- main.ld
+ENTRY(main)
+SECTIONS { .text 0x1000 : { *(.text) } }
+
+#--- main
+.text
+.globl main
+.type main,@function
+main:
+  ret
+
+#--- names.s
+.text
+.globl aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+.type aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,@function
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:
+  ret
+.globl bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+.type bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,@function
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:
+  ret
+.globl ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+.type ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc,@function
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc:
+  ret
+.globl dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+.type dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd,@function
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd:
+  ret
+.globl z
+.type z,@function
+z:
+  ret
+.globl _start
+.type _start,@function
+_start:
+  ret

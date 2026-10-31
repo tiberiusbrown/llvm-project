@@ -81,12 +81,17 @@ constexpr uint32_t CrashFileSize = 3;
 constexpr uint32_t CrashCheckpointSize = 12;
 constexpr uint32_t CrashCheckpointInterval = 64;
 constexpr uint32_t CrashMaxRecords = 0xffff;
-constexpr size_t CrashMaxNameBytes = 39;
 constexpr size_t CrashMaxFileBytes = 48;
 // Opcodes 0x00-0x7f are one-byte combined transitions and need no constant.
 constexpr uint8_t CrashOpSetMapping = 0x80;
 constexpr uint8_t CrashOpLargeDelta = 0x81;
 constexpr uint8_t CrashOpUnmapped = 0x82;
+// 0x82 + PC delta (1-16) encodes a mapped same-file transition with a large
+// line delta. 0x92 + PC delta (1-109) encodes an unmapped transition.
+constexpr uint8_t CrashOpShortLargeBase = 0x82;
+constexpr uint32_t CrashOpShortLargeMaxPC = 16;
+constexpr uint8_t CrashOpShortUnmappedBase = 0x92;
+constexpr uint32_t CrashOpShortUnmappedMaxPC = 109;
 
 static void append16(SmallVectorImpl<uint8_t> &Out, uint16_t Value) {
   Out.push_back(Value);
@@ -325,62 +330,10 @@ static std::string sanitizeCrashText(StringRef Text) {
   return Out;
 }
 
-// Returns Name without its trailing parameter list and cv/ref qualifiers. A name
-// that does not end in a balanced parameter list is returned unchanged.
-static StringRef stripSignature(StringRef Name) {
-  StringRef Base = Name;
-  for (bool Trimmed = true; Trimmed;) {
-    Trimmed = false;
-    for (StringRef Qualifier : {" const", " volatile", " &&", " &"}) {
-      if (Base.ends_with(Qualifier)) {
-        Base = Base.drop_back(Qualifier.size());
-        Trimmed = true;
-      }
-    }
-  }
-  if (!Base.ends_with(")"))
-    return Name;
-  unsigned Depth = 0;
-  for (size_t I = Base.size(); I-- > 0;) {
-    if (Base[I] == ')') {
-      ++Depth;
-    } else if (Base[I] == '(' && --Depth == 0) {
-      return I ? Base.take_front(I) : Name;
-    }
-  }
-  return Name;
-}
-
-// Replaces each outermost template argument list with "<...>". Names with an
-// operator token keep their brackets, so operator names are never altered.
-static std::string elideTemplateArgs(StringRef Name) {
-  if (Name.contains("operator"))
-    return Name.str();
-  std::string Out;
-  unsigned Depth = 0;
-  for (char C : Name) {
-    if (C == '<') {
-      if (Depth++ == 0)
-        Out += "<...>";
-    } else if (C == '>' && Depth) {
-      --Depth;
-    } else if (Depth == 0) {
-      Out.push_back(C);
-    }
-  }
-  return Out;
-}
-
-// Displays a demangled name without its parameter list. Template arguments are
-// elided only when the qualified name would not fit the guest buffer.
+// Demangles a function name in full. The guest font draws printable ASCII only,
+// so every other byte becomes '?'. Names are never shortened or elided.
 static std::string crashName(StringRef RawName) {
-  std::string Demangled = demangle(RawName);
-  std::string Name = sanitizeCrashText(stripSignature(Demangled));
-  if (Name.size() > CrashMaxNameBytes)
-    Name = elideTemplateArgs(Name);
-  if (Name.size() > CrashMaxNameBytes)
-    Name.resize(CrashMaxNameBytes);
-  return Name;
+  return sanitizeCrashText(demangle(RawName));
 }
 
 // Shortens a basename to the limit while keeping its extension.
@@ -457,10 +410,13 @@ collectFunctions(const ELFFile<ELF32LE> &ELF,
                            .take_until([](char C) { return C == '\0'; });
       if (Name.empty())
         continue;
+      std::string Demangled = crashName(Name);
+      if (Demangled.empty())
+        continue;
       Candidates.push_back({Sym.st_value, static_cast<uint32_t>(SectionEnd),
                             Sym.st_size, Sym.getBinding() != ELF::STB_LOCAL,
                             Name.starts_with(".L") || Name.starts_with("$"),
-                            crashName(Name)});
+                            Demangled});
     }
   }
 
@@ -541,6 +497,8 @@ collectLines(const ObjectFile &Obj, ArrayRef<ELF32LE::Shdr> Sections) {
         if (Row.Line > 0xffffff)
           return bad("source line exceeds the 24-bit AVD1 line field");
         std::string File = crashFileName(Path);
+        if (File.empty())
+          continue;
         for (const ELF32LE::Shdr &Sec : Sections) {
           if (!isCodeSection(Sec))
             continue;
@@ -573,12 +531,27 @@ static void append24Value(SmallVectorImpl<uint8_t> &Out, uint64_t Value) {
   Out.push_back(Value >> 16);
 }
 
-// Deduplicates NUL-terminated strings. Offsets are relative to the pool start.
+// Appends the shortest unsigned LEB128 encoding of Value.
+static void appendULEB128(SmallVectorImpl<uint8_t> &Out, uint32_t Value) {
+  do {
+    uint8_t Byte = Value & 0x7f;
+    Value >>= 7;
+    if (Value)
+      Byte |= 0x80;
+    Out.push_back(Byte);
+  } while (Value);
+}
+
+// Deduplicates strings. Each record is a canonical ULEB128 byte length, the
+// characters, and a NUL terminator. A reference names the length prefix, so the
+// guest can validate a record from its bounded prefix without scanning it.
+// Offsets are relative to the pool start.
 class CrashStringPool {
 public:
   uint32_t intern(StringRef Text) {
     auto [It, Inserted] = Offsets.try_emplace(Text, Bytes.size());
     if (Inserted) {
+      appendULEB128(Bytes, Text.size());
       llvm::append_range(Bytes, Text.bytes());
       Bytes.push_back(0);
     }
@@ -592,7 +565,8 @@ private:
 };
 
 // A source state change. The state applies from PC up to the next transition.
-// Unmapped transitions carry zero File and Line.
+// An unmapped transition retains the File and Line of the interval before it,
+// so the next mapping in the same file can resume without an absolute line.
 struct SourceTransition {
   uint32_t PC;
   bool Mapped;
@@ -645,20 +619,9 @@ static Error buildSourceTransitions(ArrayRef<CodeRange> Lines,
     appendSourceTransition(Out, {R.Start, true, It->getValue(), R.Line});
     bool GapFollows = I + 1 == Lines.size() || Lines[I + 1].Start != R.End;
     if (GapFollows && R.End <= MaxProgramAddress)
-      appendSourceTransition(Out, {R.End, false, 0, 0});
+      appendSourceTransition(Out, {R.End, false, It->getValue(), R.Line});
   }
   return Error::success();
-}
-
-// Appends the shortest unsigned LEB128 encoding of Value.
-static void appendULEB128(SmallVectorImpl<uint8_t> &Out, uint32_t Value) {
-  do {
-    uint8_t Byte = Value & 0x7f;
-    Value >>= 7;
-    if (Value)
-      Byte |= 0x80;
-    Out.push_back(Byte);
-  } while (Value);
 }
 
 // Maps a signed value to an unsigned one, so small magnitudes stay small.
@@ -667,24 +630,27 @@ static uint32_t zigzagEncode(int32_t Value) {
 }
 
 // Encodes transitions as opcodes. Offsets receives the start of each opcode,
-// relative to the first opcode. The encoder prefers the one-byte form whenever
-// the file is unchanged and both deltas fit it.
+// relative to the first opcode. File and Line track the last mapped state, which
+// an unmapped transition keeps, so a same-file mapping can resume from it.
 static Error encodeSourceStream(ArrayRef<SourceTransition> Transitions,
                                 SmallVectorImpl<uint8_t> &Stream,
                                 SmallVectorImpl<uint32_t> &Offsets) {
   uint32_t PC = 0;
   uint32_t Line = 0;
   uint16_t File = 0;
-  bool Mapped = false;
   for (const SourceTransition &T : Transitions) {
     if (T.PC <= PC)
       return bad("source transitions do not strictly increase");
     uint32_t PCDelta = T.PC - PC;
     Offsets.push_back(Stream.size());
     if (!T.Mapped) {
-      Stream.push_back(CrashOpUnmapped);
-      appendULEB128(Stream, PCDelta);
-    } else if (!Mapped || T.File != File) {
+      if (PCDelta <= CrashOpShortUnmappedMaxPC) {
+        Stream.push_back(CrashOpShortUnmappedBase + PCDelta);
+      } else {
+        Stream.push_back(CrashOpUnmapped);
+        appendULEB128(Stream, PCDelta);
+      }
+    } else if (Line == 0 || T.File != File) {
       Stream.push_back(CrashOpSetMapping);
       appendULEB128(Stream, PCDelta);
       appendULEB128(Stream, T.File);
@@ -693,6 +659,9 @@ static Error encodeSourceStream(ArrayRef<SourceTransition> Transitions,
       int32_t LineDelta = int32_t(T.Line) - int32_t(Line);
       if (PCDelta <= 16 && LineDelta >= -4 && LineDelta <= 3) {
         Stream.push_back(uint8_t((uint32_t(LineDelta + 4) << 4) | (PCDelta - 1)));
+      } else if (PCDelta <= CrashOpShortLargeMaxPC) {
+        Stream.push_back(CrashOpShortLargeBase + PCDelta);
+        appendULEB128(Stream, zigzagEncode(LineDelta));
       } else {
         Stream.push_back(CrashOpLargeDelta);
         appendULEB128(Stream, PCDelta);
@@ -700,9 +669,10 @@ static Error encodeSourceStream(ArrayRef<SourceTransition> Transitions,
       }
     }
     PC = T.PC;
-    Mapped = T.Mapped;
-    File = T.File;
-    Line = T.Line;
+    if (T.Mapped) {
+      File = T.File;
+      Line = T.Line;
+    }
   }
   return Error::success();
 }

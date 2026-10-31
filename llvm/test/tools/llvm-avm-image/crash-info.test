@@ -9,15 +9,23 @@
 # NONE: crash: none
 
 # Default packaging without DWARF: function names only, with no line records.
-# The unsized _start ends at the next function start, the C++ name is
-# demangled without its parameter list, and the long name is cut to 39 bytes.
+# The unsized _start ends at the next function start. The C++ name keeps its
+# parameter list, and the long name is stored in full.
 # RUN: llvm-avm-image %t/functions.elf -o %t/functions.bin
 # RUN: %python %S/Inputs/check-image.py %t/functions.bin 0 0
 # RUN: %python %S/Inputs/dump-crash.py --records %t/functions.bin | FileCheck %s --check-prefix=FUNCS
+# A block with functions and no source lines holds zero transitions, so it has
+# checkpoint 0 alone.
+# RUN: %python %S/Inputs/dump-crash.py --checkpoints %t/functions.bin | FileCheck %s --check-prefix=CP0
+# CP0: checkpoint 0 pc=0x000000 offset=0 unmapped file=0 line=0
+# CP0-NOT: checkpoint 1
+# RUN: %python %S/Inputs/dump-crash.py %t/functions.bin | FileCheck %s --check-prefix=ZERO
+# ZERO: Source transitions: 0
+# ZERO-NEXT: Checkpoints: 1
 # FUNCS:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 3 lines 0
 # FUNCS-NEXT: FN 0x001000-0x001003 _start
-# FUNCS-NEXT: FN 0x001003-0x001004 foo::bar
-# FUNCS-NEXT: FN 0x001004-0x001005 long_abcdefghijabcdefghijabcdefghijabcd
+# FUNCS-NEXT: FN 0x001003-0x001004 foo::bar(){{$}}
+# FUNCS-NEXT: FN 0x001004-0x001005 long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij{{$}}
 
 # Function and source-line metadata from -g assembly. The call on line 6 is
 # relaxed from its maximal encoding, so the ldi on line 7 and the ret on line 8
@@ -59,7 +67,7 @@
 # RUN: llvm-avm-image %t/high.elf -o %t/high.bin
 # RUN: %python %S/Inputs/dump-crash.py --records %t/high.bin | FileCheck %s --check-prefix=HIGH
 # HIGH:      FN 0x010100-0x010103 _start
-# HIGH-NEXT: FN 0x010103-0x010104 foo::bar
+# HIGH-NEXT: FN 0x010103-0x010104 foo::bar(){{$}}
 
 # Metadata that would push the payload past the flat-image limit is omitted
 # with a warning. The image still packs and matches the --no-crash-info image.

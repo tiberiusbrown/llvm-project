@@ -106,6 +106,102 @@
 # RUN: %python %S/Inputs/dump-crash.py --boundaries %t/c128.bin | FileCheck %t/c128.checks.probes
 # RUN: %python %S/Inputs/dump-crash.py %t/c128.bin | FileCheck %t/c128.checks.summary
 
+# Emitted opcodes. Each transition's bytes are asserted, not only its decoded
+# state. Base 0x100 puts the first absolute mapping at PC 0x100. The comments in
+# gen-line-rows.py name the opcode of every row.
+# RUN: %python %S/Inputs/gen-line-rows.py opcodes 0x100 %t/opcodes.s %t/opcodes.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/opcodes.s -o %t/opcodes.o
+# RUN: ld.lld -T %t/base100.ld %t/opcodes.o -o %t/opcodes.elf
+# RUN: llvm-avm-image %t/opcodes.elf -o %t/opcodes.bin
+# RUN: %python %S/Inputs/check-image.py %t/opcodes.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py --records %t/opcodes.bin | FileCheck %t/opcodes.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/opcodes.bin | FileCheck %t/opcodes.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/opcodes.bin | FileCheck %t/opcodes.checks.summary
+# RUN: %python %S/Inputs/dump-crash.py --transitions %t/opcodes.bin | FileCheck %s --check-prefix=OPCODES
+# OPCODES: transition 0 pc=0x000100 bytes=80 80 02 00 64 mapped a.c:100
+# OPCODES-NEXT: transition 1 pc=0x000101 bytes=50 mapped a.c:101
+# OPCODES-NEXT: transition 2 pc=0x000102 bytes=00 mapped a.c:97
+# OPCODES-NEXT: transition 3 pc=0x000103 bytes=70 mapped a.c:100
+# OPCODES-NEXT: transition 4 pc=0x000104 bytes=83 09 mapped a.c:95
+# OPCODES-NEXT: transition 5 pc=0x000105 bytes=83 08 mapped a.c:99
+# OPCODES-NEXT: transition 6 pc=0x000115 bytes=92 11 mapped a.c:90
+# OPCODES-NEXT: transition 7 pc=0x000125 bytes=5F mapped a.c:91
+# OPCODES-NEXT: transition 8 pc=0x000126 bytes=83 15 mapped a.c:80
+# OPCODES-NEXT: transition 9 pc=0x000127 bytes=30 mapped a.c:79
+# OPCODES-NEXT: transition 10 pc=0x000138 bytes=81 11 07 mapped a.c:75
+# OPCODES-NEXT: transition 11 pc=0x000139 bytes=93 unmapped
+# OPCODES-NEXT: transition 12 pc=0x00013a bytes=40 mapped a.c:75
+# OPCODES-NEXT: transition 13 pc=0x00013b bytes=93 unmapped
+# OPCODES-NEXT: transition 14 pc=0x00013c bytes=50 mapped a.c:76
+# OPCODES-NEXT: transition 15 pc=0x0001a9 bytes=FF unmapped
+# OPCODES-NEXT: transition 16 pc=0x0001aa bytes=50 mapped a.c:77
+# OPCODES-NEXT: transition 17 pc=0x000218 bytes=82 6E unmapped
+# OPCODES-NEXT: transition 18 pc=0x000219 bytes=40 mapped a.c:77
+# OPCODES-NEXT: transition 19 pc=0x00021a bytes=83 D0 0F mapped a.c:1077
+# OPCODES-NEXT: transition 20 pc=0x00021b bytes=83 CF 0F mapped a.c:77
+# OPCODES-NEXT: transition 21 pc=0x00023c bytes=80 21 01 80 01 mapped b.h:128
+# OPCODES-NEXT: transition 22 pc=0x00023d bytes=93 unmapped
+
+# Emitted operands at the ULEB128 boundaries. PC advances of 17, 127, 128, and 129
+# need the extended same-file opcode, and 127 is the largest one-byte operand.
+# RUN: %python %S/Inputs/dump-crash.py --transitions %t/deltas.bin | FileCheck %s --check-prefix=DELTAS
+# DELTAS:      transition 3 pc=0x001022 bytes=81 11 02 mapped a.c:13
+# DELTAS-NEXT: transition 4 pc=0x0010a1 bytes=81 7F 02 mapped a.c:14
+# DELTAS-NEXT: transition 5 pc=0x001121 bytes=81 80 01 02 mapped a.c:15
+# DELTAS-NEXT: transition 6 pc=0x0011a2 bytes=81 81 01 02 mapped a.c:16
+
+# Gap retention. A resumption keeps the retained line, a file change is absolute,
+# and consecutive gap rows make one unmapped transition.
+# RUN: %python %S/Inputs/gen-line-rows.py resume 0x100 %t/resume.s %t/resume.checks
+# RUN: llvm-mc -triple=avm -filetype=obj %t/resume.s -o %t/resume.o
+# RUN: ld.lld -T %t/base100.ld %t/resume.o -o %t/resume.elf
+# RUN: llvm-avm-image %t/resume.elf -o %t/resume.bin
+# RUN: %python %S/Inputs/dump-crash.py --records %t/resume.bin | FileCheck %t/resume.checks
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/resume.bin | FileCheck %t/resume.checks.probes
+# RUN: %python %S/Inputs/dump-crash.py %t/resume.bin | FileCheck %t/resume.checks.summary
+# RUN: %python %S/Inputs/dump-crash.py --transitions %t/resume.bin | FileCheck %s --check-prefix=RESUME
+# RESUME: transition 0 pc=0x000100 bytes=80 80 02 00 14 mapped a.c:20
+# RESUME-NEXT: transition 1 pc=0x000102 bytes=94 unmapped
+# RESUME-NEXT: transition 2 pc=0x000103 bytes=40 mapped a.c:20
+# RESUME-NEXT: transition 3 pc=0x000104 bytes=93 unmapped
+# RESUME-NEXT: transition 4 pc=0x000105 bytes=50 mapped a.c:21
+# RESUME-NEXT: transition 5 pc=0x000106 bytes=93 unmapped
+# RESUME-NEXT: transition 6 pc=0x000107 bytes=30 mapped a.c:20
+# RESUME-NEXT: transition 7 pc=0x000108 bytes=93 unmapped
+# RESUME-NEXT: transition 8 pc=0x00010a bytes=80 02 01 14 mapped b.h:20
+# RESUME-NEXT: transition 9 pc=0x00010b bytes=93 unmapped
+
+# Zero and extra checkpoint counts. A block without transitions has checkpoint 0
+# alone, and 129 transitions add a checkpoint after transition 128.
+# RUN: %python %S/Inputs/gen-line-rows.py count 0x1000 %t/c129.s %t/c129.checks 129
+# RUN: llvm-mc -triple=avm -filetype=obj %t/c129.s -o %t/c129.o
+# RUN: ld.lld -T %t/layout.ld %t/c129.o -o %t/c129.elf
+# RUN: llvm-avm-image %t/c129.elf -o %t/c129.bin
+# RUN: %python %S/Inputs/dump-crash.py %t/c129.bin | FileCheck %t/c129.checks.summary
+# RUN: %python %S/Inputs/dump-crash.py --checkpoints %t/c129.bin | FileCheck %s --check-prefix=CP129
+
+# Gap at a checkpoint boundary. Transition 63 (0-based) is an unmapped gap state,
+# so checkpoint 1 restores that gap with its retained file and line.
+# RUN: %python %S/Inputs/gen-line-rows.py alternate 0x1000 %t/alt.s %t/alt.checks 66
+# RUN: llvm-mc -triple=avm -filetype=obj %t/alt.s -o %t/alt.o
+# RUN: ld.lld -T %t/layout.ld %t/alt.o -o %t/alt.elf
+# RUN: llvm-avm-image %t/alt.elf -o %t/alt.bin
+# RUN: %python %S/Inputs/dump-crash.py %t/alt.bin | FileCheck %t/alt.checks.summary
+# RUN: %python %S/Inputs/dump-crash.py --checkpoints %t/alt.bin | FileCheck %s --check-prefix=GAPCP
+# RUN: %python %S/Inputs/dump-crash.py --transitions %t/alt.bin | FileCheck %s --check-prefix=ALT
+# RUN: %python %S/Inputs/dump-crash.py --boundaries %t/alt.bin | FileCheck %t/alt.checks.probes
+
+# CP129: checkpoint 0 pc=0x000000 offset=0 unmapped file=0 line=0
+# CP129-NEXT: checkpoint 1 pc=
+# CP129-NEXT: checkpoint 2 pc=
+# GAPCP: checkpoint 1 pc=0x00107e offset=68 unmapped file=0 line=41
+# ALT: transition 63 pc=0x00107e bytes=94 unmapped
+# ALT-NEXT: transition 64 pc=0x001080 bytes=51 mapped a.c:42
+
+#--- base100.ld
+ENTRY(_start)
+SECTIONS { .text 0x100 : { *(.text) } }
+
 #--- layout.ld
 ENTRY(_start)
 SECTIONS { .text 0x1000 : { *(.text) } }
