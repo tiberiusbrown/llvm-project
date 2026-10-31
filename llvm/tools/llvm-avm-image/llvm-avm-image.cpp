@@ -2,7 +2,11 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CRC.h"
@@ -49,6 +53,9 @@ static cl::opt<std::string> Genre(
 static cl::opt<std::string> Version(
     "game-version", cl::init("1.0"), cl::value_desc("text"),
     cl::desc("Version for .arduboy metadata"));
+static cl::opt<bool> NoCrashInfo(
+    "no-crash-info",
+    cl::desc("Omit the compact AVD1 crash metadata and leave crashInfo zero"));
 
 namespace {
 constexpr uint32_t HeaderSize = 0x100;
@@ -61,6 +68,15 @@ constexpr uint32_t MaxFlashSize = 0x1000000;
 constexpr uint32_t DevelopmentSaveSize = 0x1000;
 constexpr uint32_t AVMProgSpace = 0x10000000;
 constexpr uint32_t AVMDataSpace = 0x20000000;
+constexpr uint8_t RuntimeVersion = 4;
+constexpr uint32_t CrashInfoOffset = 0x0f;
+// AVD1 layout constants, shared with the guest reader in runtime/lib.
+constexpr uint32_t CrashHeaderSize = 24;
+constexpr uint32_t CrashFunctionSize = 9;
+constexpr uint32_t CrashLineSize = 12;
+constexpr uint32_t CrashMaxRecords = 0xffff;
+constexpr size_t CrashMaxNameBytes = 80;
+constexpr size_t CrashMaxFileBytes = 48;
 
 static void append16(SmallVectorImpl<uint8_t> &Out, uint16_t Value) {
   Out.push_back(Value);
@@ -268,6 +284,321 @@ static Expected<ArrayRef<uint8_t>> contents(const ELFFile<ELF32LE> &ELF,
   return *Bytes;
 }
 
+// One half-open program-space range in the AVD1 tables. Text is a function
+// name for function ranges and a source basename for line ranges.
+struct CodeRange {
+  uint32_t Start;
+  uint32_t End;
+  std::string Text;
+  uint32_t Line;
+};
+
+struct SymbolCandidate {
+  uint32_t Start;
+  uint32_t SectionEnd;
+  uint32_t Size;
+  bool Global;
+  bool Synthetic;
+  std::string Name;
+};
+
+static bool isCodeSection(const ELF32LE::Shdr &Sec) {
+  return (Sec.sh_flags & ELF::SHF_ALLOC) && (Sec.sh_flags & AVMProgSpace) &&
+         (Sec.sh_flags & ELF::SHF_EXECINSTR);
+}
+
+// The guest font draws printable ASCII only, so every other byte becomes '?'.
+static std::string sanitizeCrashText(StringRef Text) {
+  std::string Out;
+  for (unsigned char C : Text)
+    Out.push_back(C >= 0x20 && C < 0x7f ? C : '?');
+  return Out;
+}
+
+static std::string crashName(StringRef RawName) {
+  std::string Name = sanitizeCrashText(demangle(RawName));
+  if (Name.size() > CrashMaxNameBytes)
+    Name.resize(CrashMaxNameBytes);
+  return Name;
+}
+
+// Shortens a basename to the limit while keeping its extension.
+static std::string crashFileName(StringRef Path) {
+  std::string Name = sanitizeCrashText(sys::path::filename(Path));
+  if (Name.size() <= CrashMaxFileBytes)
+    return Name;
+  StringRef Ext = sys::path::extension(Name);
+  if (Ext.size() >= CrashMaxFileBytes)
+    return Name.substr(0, CrashMaxFileBytes);
+  return Name.substr(0, CrashMaxFileBytes - Ext.size()) + Ext.str();
+}
+
+// Resolves overlaps in a range list sorted by start. A later start is
+// authoritative, so an earlier range that reaches past it is truncated there.
+// Empty results are dropped, which also removes exact duplicates.
+static void clipOverlaps(SmallVectorImpl<CodeRange> &Ranges) {
+  SmallVector<CodeRange, 0> Out;
+  for (CodeRange &R : Ranges) {
+    while (!Out.empty() && Out.back().End > R.Start) {
+      Out.back().End = R.Start;
+      if (Out.back().End <= Out.back().Start)
+        Out.pop_back();
+    }
+    if (R.End > R.Start)
+      Out.push_back(std::move(R));
+  }
+  Ranges = std::move(Out);
+}
+
+// Joins neighbours that share a source location. Input must be clipped.
+static void coalesceLines(SmallVectorImpl<CodeRange> &Ranges) {
+  SmallVector<CodeRange, 0> Out;
+  for (CodeRange &R : Ranges) {
+    if (!Out.empty() && Out.back().End == R.Start &&
+        Out.back().Line == R.Line && Out.back().Text == R.Text) {
+      Out.back().End = R.End;
+      continue;
+    }
+    Out.push_back(std::move(R));
+  }
+  Ranges = std::move(Out);
+}
+
+// Function ranges come from final STT_FUNC symbols. A nonzero size is clamped
+// to its section. An unsized function ends at the next function start in its
+// section, or at the section end.
+static Expected<SmallVector<CodeRange, 0>>
+collectFunctions(const ELFFile<ELF32LE> &ELF,
+                 ArrayRef<ELF32LE::Shdr> Sections, StringRef InputName) {
+  SmallVector<SymbolCandidate, 0> Candidates;
+  for (const ELF32LE::Shdr &SymSec : Sections) {
+    if (SymSec.sh_type != ELF::SHT_SYMTAB)
+      continue;
+    Expected<ArrayRef<ELF32LE::Sym>> Symbols =
+        ELF.getSectionContentsAsArray<ELF32LE::Sym>(SymSec);
+    if (!Symbols)
+      return Symbols.takeError();
+    Expected<StringRef> Strtab = ELF.getStringTableForSymtab(SymSec);
+    if (!Strtab)
+      return Strtab.takeError();
+    for (const ELF32LE::Sym &Sym : *Symbols) {
+      if (Sym.getType() != ELF::STT_FUNC || Sym.st_shndx == ELF::SHN_UNDEF ||
+          Sym.st_shndx >= Sections.size())
+        continue;
+      const ELF32LE::Shdr &Sec = Sections[Sym.st_shndx];
+      uint64_t SectionEnd = uint64_t(Sec.sh_addr) + Sec.sh_size;
+      if (!isCodeSection(Sec) || Sym.st_value < Sec.sh_addr ||
+          Sym.st_value >= SectionEnd)
+        continue;
+      if (Sym.st_name >= Strtab->size())
+        return bad(Twine("'") + InputName + "' has an invalid symbol name");
+      StringRef Name = StringRef(*Strtab).drop_front(Sym.st_name)
+                           .take_until([](char C) { return C == '\0'; });
+      if (Name.empty())
+        continue;
+      Candidates.push_back({Sym.st_value, static_cast<uint32_t>(SectionEnd),
+                            Sym.st_size, Sym.getBinding() != ELF::STB_LOCAL,
+                            Name.starts_with(".L") || Name.starts_with("$"),
+                            crashName(Name)});
+    }
+  }
+
+  // Aliases at one start compete. Sized, externally visible, nonsynthetic
+  // names win, and the name breaks any remaining tie.
+  llvm::sort(Candidates, [](const SymbolCandidate &A, const SymbolCandidate &B) {
+    if (A.Start != B.Start)
+      return A.Start < B.Start;
+    if ((A.Size != 0) != (B.Size != 0))
+      return A.Size != 0;
+    if (A.Global != B.Global)
+      return A.Global;
+    if (A.Synthetic != B.Synthetic)
+      return !A.Synthetic;
+    return A.Name < B.Name;
+  });
+
+  SmallVector<CodeRange, 0> Ranges;
+  SmallVector<SymbolCandidate, 0> Canonical;
+  for (SymbolCandidate &C : Candidates)
+    if (Canonical.empty() || Canonical.back().Start != C.Start)
+      Canonical.push_back(std::move(C));
+
+  for (size_t I = 0; I < Canonical.size(); ++I) {
+    const SymbolCandidate &C = Canonical[I];
+    uint64_t End = C.SectionEnd;
+    if (C.Size != 0)
+      End = std::min<uint64_t>(uint64_t(C.Start) + C.Size, C.SectionEnd);
+    else if (I + 1 < Canonical.size() && Canonical[I + 1].Start < C.SectionEnd)
+      End = Canonical[I + 1].Start;
+    if (End <= C.Start)
+      continue;
+    if (End > MaxProgramAddress)
+      return bad(Twine("function '") + C.Name +
+                 "' ends beyond the 24-bit program address space");
+    Ranges.push_back({C.Start, static_cast<uint32_t>(End), C.Name, 0});
+  }
+  clipOverlaps(Ranges);
+  return Ranges;
+}
+
+// Line ranges come from the final DWARF line tables. Each ordinary row runs to
+// the next row's address, and an end_sequence row closes its sequence without
+// creating a location. Only executable program space keeps its ranges.
+static Expected<SmallVector<CodeRange, 0>>
+collectLines(const ObjectFile &Obj, ArrayRef<ELF32LE::Shdr> Sections) {
+  std::unique_ptr<DWARFContext> Ctx = DWARFContext::create(Obj);
+  SmallVector<CodeRange, 0> Ranges;
+  auto Warn = [](Error E) {
+    WithColor::warning(errs(), "llvm-avm-image") << toString(std::move(E))
+                                                  << '\n';
+  };
+  for (const std::unique_ptr<DWARFUnit> &Unit : Ctx->compile_units()) {
+    Expected<const DWARFDebugLine::LineTable *> Table =
+        Ctx->getLineTableForUnit(Unit.get(), Warn);
+    if (!Table)
+      return Table.takeError();
+    if (!*Table)
+      continue;
+    const DWARFDebugLine::LineTable &LT = **Table;
+    for (const DWARFDebugLine::Sequence &Seq : LT.Sequences) {
+      if (Seq.Empty || Seq.FirstRowIndex >= Seq.LastRowIndex ||
+          Seq.LastRowIndex > LT.Rows.size())
+        continue;
+      for (unsigned I = Seq.FirstRowIndex; I + 1 < Seq.LastRowIndex; ++I) {
+        const DWARFDebugLine::Row &Row = LT.Rows[I];
+        if (Row.EndSequence || Row.Line == 0)
+          continue;
+        uint64_t Start = Row.Address.Address;
+        uint64_t End = LT.Rows[I + 1].Address.Address;
+        if (End <= Start)
+          continue;
+        std::string Path;
+        if (!LT.getFileNameByIndex(
+                Row.File, "",
+                DILineInfoSpecifier::FileLineInfoKind::BaseNameOnly, Path))
+          continue;
+        if (Row.Line > 0xffffff)
+          return bad("source line exceeds the 24-bit AVD1 line field");
+        std::string File = crashFileName(Path);
+        for (const ELF32LE::Shdr &Sec : Sections) {
+          if (!isCodeSection(Sec))
+            continue;
+          uint64_t SectionEnd = uint64_t(Sec.sh_addr) + Sec.sh_size;
+          uint64_t S = std::max<uint64_t>(Start, Sec.sh_addr);
+          uint64_t E = std::min<uint64_t>(End, SectionEnd);
+          if (S >= E)
+            continue;
+          if (E > MaxProgramAddress)
+            return bad("source line range ends beyond the 24-bit program "
+                       "address space");
+          Ranges.push_back({static_cast<uint32_t>(S), static_cast<uint32_t>(E),
+                            File, Row.Line});
+        }
+      }
+    }
+  }
+  llvm::sort(Ranges, [](const CodeRange &A, const CodeRange &B) {
+    return std::tie(A.Start, A.End, A.Text, A.Line) <
+           std::tie(B.Start, B.End, B.Text, B.Line);
+  });
+  clipOverlaps(Ranges);
+  coalesceLines(Ranges);
+  return Ranges;
+}
+
+static void append24Value(SmallVectorImpl<uint8_t> &Out, uint64_t Value) {
+  Out.push_back(Value);
+  Out.push_back(Value >> 8);
+  Out.push_back(Value >> 16);
+}
+
+// Encodes the AVD1 block in the order header, function table, line table,
+// string table. Strings are deduplicated in record order.
+static Expected<SmallVector<uint8_t, 0>>
+encodeCrashInfo(ArrayRef<CodeRange> Functions, ArrayRef<CodeRange> Lines) {
+  if (Functions.size() > CrashMaxRecords || Lines.size() > CrashMaxRecords)
+    return bad("crash metadata exceeds 65535 function or source-line records");
+  uint64_t FunctionTable = CrashHeaderSize;
+  uint64_t LineTable = FunctionTable + Functions.size() * CrashFunctionSize;
+  uint64_t StringTable = LineTable + Lines.size() * CrashLineSize;
+
+  SmallVector<uint8_t, 0> Strings;
+  StringMap<uint64_t> StringOffsets;
+  auto intern = [&](StringRef Text) -> uint64_t {
+    auto [It, Inserted] = StringOffsets.try_emplace(Text, Strings.size());
+    if (Inserted) {
+      llvm::append_range(Strings, Text.bytes());
+      Strings.push_back(0);
+    }
+    return StringTable + It->getValue();
+  };
+
+  SmallVector<uint8_t, 0> Out;
+  Out.append({'A', 'V', 'D', '1'});
+  append24Value(Out, 0); // Total size, written after the tables.
+  Out.push_back(0);      // Flags.
+  append16(Out, Functions.size());
+  append16(Out, Lines.size());
+  append24Value(Out, FunctionTable);
+  append24Value(Out, LineTable);
+  append24Value(Out, StringTable);
+  append24Value(Out, 0); // Reserved.
+
+  for (const CodeRange &F : Functions) {
+    append24Value(Out, F.Start);
+    append24Value(Out, F.End);
+    append24Value(Out, intern(F.Text));
+  }
+  for (const CodeRange &L : Lines) {
+    append24Value(Out, L.Start);
+    append24Value(Out, L.End);
+    append24Value(Out, intern(L.Text));
+    append24Value(Out, L.Line);
+  }
+
+  uint64_t Size = StringTable + Strings.size();
+  if (Size > 0xffffff)
+    return bad("crash metadata exceeds the 24-bit AVD1 size field");
+  llvm::append_range(Out, Strings);
+  write24(Out, 4, static_cast<uint32_t>(Size));
+  return Out;
+}
+
+// Crash metadata is best effort. A failure is reported and the image is packed
+// without that part, so the image still packs as it did before the metadata
+// existed. Function names do not depend on DWARF, and source lines are kept
+// only when the DWARF line tables are usable.
+static void warnCrashInfo(StringRef InputName, StringRef What, Error E) {
+  WithColor::warning(errs(), "llvm-avm-image")
+      << InputName << ": " << What << " omitted: " << toString(std::move(E))
+      << '\n';
+}
+
+// Returns an empty block when no usable function or source-line data remains.
+static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
+                                              const ELFFile<ELF32LE> &ELF,
+                                              ArrayRef<ELF32LE::Shdr> Sections,
+                                              StringRef InputName) {
+  SmallVector<CodeRange, 0> Functions, Lines;
+  if (Expected<SmallVector<CodeRange, 0>> Found =
+          collectFunctions(ELF, Sections, InputName))
+    Functions = std::move(*Found);
+  else
+    warnCrashInfo(InputName, "function names", Found.takeError());
+  if (Expected<SmallVector<CodeRange, 0>> Found = collectLines(Obj, Sections))
+    Lines = std::move(*Found);
+  else
+    warnCrashInfo(InputName, "source lines", Found.takeError());
+  if (Functions.empty() && Lines.empty())
+    return {};
+  Expected<SmallVector<uint8_t, 0>> Block = encodeCrashInfo(Functions, Lines);
+  if (!Block) {
+    warnCrashInfo(InputName, "crash metadata", Block.takeError());
+    return {};
+  }
+  return std::move(*Block);
+}
+
 static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   Expected<OwningBinary<ObjectFile>> Binary = ObjectFile::createObjectFile(Input);
   if (!Binary)
@@ -415,7 +746,29 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   if (!TrapEntry)
     return TrapEntry.takeError();
 
-  Expected<uint32_t> FileSize = finalFileSize(PayloadEnd);
+  // Crash metadata is included by default and follows the payload at a 4-byte
+  // boundary. It is derived from the final ELF, so its addresses already
+  // include relaxation. --no-crash-info skips the inspection entirely.
+  SmallVector<uint8_t, 0> CrashBlock;
+  if (!NoCrashInfo)
+    CrashBlock = buildCrashInfo(*ELFObj, ELF, *SectionsOrErr, InputName);
+  uint64_t CrashStart = 0;
+  uint64_t FinalPayloadEnd = PayloadEnd;
+  if (!CrashBlock.empty()) {
+    uint64_t Start = alignTo(uint64_t(PayloadEnd), 4);
+    uint64_t End = Start + CrashBlock.size();
+    if (Start > MaxProgramAddress || End > MaxPayloadEnd) {
+      warnCrashInfo(InputName, "crash metadata",
+                    bad("it does not fit in the Version 1 flat image"));
+      CrashBlock.clear();
+    } else {
+      CrashStart = Start;
+      FinalPayloadEnd = End;
+    }
+  }
+
+  Expected<uint32_t> FileSize =
+      finalFileSize(static_cast<uint32_t>(FinalPayloadEnd));
   if (!FileSize)
     return FileSize.takeError();
   bool Arduboy = StringRef(Output).ends_with_insensitive(".arduboy");
@@ -425,15 +778,19 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
   Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
-  Image[4] = 3;
+  Image[4] = RuntimeVersion;
   write24(Image, 5, H.e_entry);
   write16le(Image.data() + 8, DataSize);
   write16le(Image.data() + 10, SaveSize);
   write24(Image, 0x0c, *TrapEntry);
+  // Zero means the image has no crash metadata. The reserved bytes stay zero.
+  write24(Image, CrashInfoOffset, static_cast<uint32_t>(CrashStart));
   llvm::copy(*SavedBytes, Image.begin() + HeaderSize);
   llvm::copy(*DataBytes, Image.begin() + HeaderSize + SaveSize);
   for (const PayloadSection &S : Program)
     llvm::copy(S.Contents, Image.begin() + S.Address);
+  if (!CrashBlock.empty())
+    llvm::copy(CrashBlock, Image.begin() + CrashStart);
   size_t Tail = Image.size() - 8;
   Image[Tail] = 0x41; Image[Tail + 1] = 0x56;
   Image[Tail + 2] = 0x54; Image[Tail + 3] = 0x01;

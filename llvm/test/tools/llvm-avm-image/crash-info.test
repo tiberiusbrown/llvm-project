@@ -1,0 +1,208 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/functions.s -o %t/functions.o
+# RUN: ld.lld -T %t/layout.ld %t/functions.o -o %t/functions.elf
+
+# --no-crash-info: crashInfo stays zero and no AVD1 block is emitted.
+# RUN: llvm-avm-image --no-crash-info %t/functions.elf -o %t/disabled.bin
+# RUN: %python %S/Inputs/check-image.py %t/disabled.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py %t/disabled.bin | FileCheck %s --check-prefix=NONE
+# NONE: crash: none
+
+# Default packaging without DWARF: function names only, with no line records.
+# The unsized _start ends at the next function start, the C++ name is
+# demangled, and the long name is cut to 80 bytes.
+# RUN: llvm-avm-image %t/functions.elf -o %t/functions.bin
+# RUN: %python %S/Inputs/check-image.py %t/functions.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py %t/functions.bin | FileCheck %s --check-prefix=FUNCS
+# FUNCS:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 3 lines 0
+# FUNCS-NEXT: FN 0x001000-0x001003 _start
+# FUNCS-NEXT: FN 0x001003-0x001004 foo::bar()
+# FUNCS-NEXT: FN 0x001004-0x001005 long_{{(abcdefghij){7}abcde}}
+
+# Function and source-line metadata from -g assembly. The call on line 6 is
+# relaxed from its maximal encoding, so the ldi on line 7 and the ret on line 8
+# move down. The line table must follow the relaxed code.
+# RUN: llvm-mc -triple=avm -filetype=obj -g %t/relax.s -o %t/relax.o
+# RUN: ld.lld -T %t/layout.ld %t/relax.o -o %t/relax.elf
+# RUN: llvm-avm-image %t/relax.elf -o %t/relax.bin
+# RUN: %python %S/Inputs/check-image.py %t/relax.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py %t/relax.bin | FileCheck %s --check-prefix=LINES
+# LINES:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 2 lines 5
+# LINES-NEXT: FN 0x001000-0x001007 _start
+# LINES-NEXT: FN 0x001007-0x001008 callee
+# LINES-NEXT: LN 0x001000-0x001002 relax.s:5
+# LINES-NEXT: LN 0x001002-0x001004 relax.s:6
+# LINES-NEXT: LN 0x001004-0x001006 relax.s:7
+# LINES-NEXT: LN 0x001006-0x001007 relax.s:8
+# LINES-NEXT: LN 0x001007-0x001008 relax.s:13
+
+# Source filenames keep only the basename and preserve the extension when the
+# name is shortened to 48 bytes.
+# RUN: llvm-mc -triple=avm -filetype=obj -g %t/very_long_crash_metadata_source_file_name_for_limit_check.s -o %t/long.o
+# RUN: ld.lld -T %t/layout.ld %t/long.o -o %t/long.elf
+# RUN: llvm-avm-image %t/long.elf -o %t/long.bin
+# RUN: %python %S/Inputs/dump-crash.py %t/long.bin | FileCheck %s --check-prefix=LONGFILE
+# LONGFILE: LN 0x001000-0x001001 very_long_crash_metadata_source_file_name_for_.s:5
+
+# Discarded sections leave no records behind.
+# RUN: llvm-mc -triple=avm -filetype=obj -g %t/gc.s -o %t/gc.o
+# RUN: ld.lld --gc-sections -T %t/layout.ld %t/gc.o -o %t/gc.elf
+# RUN: llvm-avm-image %t/gc.elf -o %t/gc.bin
+# RUN: %python %S/Inputs/dump-crash.py %t/gc.bin | FileCheck %s --check-prefix=GC
+# GC:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 1 lines 1
+# GC-NEXT: FN 0x001000-0x001001 _start
+# GC-NEXT: LN 0x001000-0x001001 gc.s:5
+# GC-NOT:  dead
+
+# Addresses above 0xFFFF keep all 24 bits.
+# RUN: ld.lld -T %t/high.ld %t/functions.o -o %t/high.elf
+# RUN: llvm-avm-image %t/high.elf -o %t/high.bin
+# RUN: %python %S/Inputs/dump-crash.py %t/high.bin | FileCheck %s --check-prefix=HIGH
+# HIGH:      FN 0x010100-0x010103 _start
+# HIGH-NEXT: FN 0x010103-0x010104 foo::bar()
+
+# Metadata that would push the payload past the flat-image limit is omitted
+# with a warning. The image still packs and matches the --no-crash-info image.
+# RUN: llvm-mc -triple=avm -filetype=obj %t/full.s -o %t/full.o
+# RUN: ld.lld -T %t/full.ld %t/full.o -o %t/full.elf
+# RUN: llvm-avm-image --no-crash-info %t/full.elf -o %t/full-plain.bin
+# RUN: llvm-avm-image %t/full.elf -o %t/full.bin 2>&1 | FileCheck %s --check-prefix=FULL
+# RUN: %python %S/Inputs/check-image.py %t/full.bin 0 0
+# RUN: %python %S/Inputs/dump-crash.py %t/full.bin | FileCheck %s --check-prefix=NONE
+# RUN: cmp %t/full.bin %t/full-plain.bin
+# FULL: warning: {{.*}}full.elf: crash metadata omitted: it does not fit in the Version 1 flat image
+
+# A linked ELF whose .debug_line cannot be parsed keeps its function names and
+# drops only the source lines, with a warning.
+# RUN: llvm-mc -triple=avm -filetype=obj -g %t/relax.s -o %t/broken.o
+# RUN: ld.lld -T %t/layout.ld %t/broken.o -o %t/broken.elf
+# RUN: %python %S/Inputs/corrupt-debug-line.py %t/broken.elf %t/corrupt.elf
+# RUN: llvm-avm-image %t/corrupt.elf -o %t/corrupt.bin 2>&1 | FileCheck %s --check-prefix=BROKEN
+# RUN: %python %S/Inputs/dump-crash.py %t/corrupt.bin | FileCheck %s --check-prefix=BROKENDUMP
+# BROKEN: warning: {{.*}}corrupt.elf: source lines omitted
+# BROKENDUMP:      crash: {{0x[0-9a-f]+}} size {{[0-9]+}} functions 2 lines 0
+# BROKENDUMP-NEXT: FN 0x001000-0x001007 _start
+
+#--- functions.s
+.text
+.globl _start
+.type _start,@function
+_start:
+  mov r0, r0
+  ret
+.globl _ZN3foo3barEv
+.type _ZN3foo3barEv,@function
+_ZN3foo3barEv:
+  ret
+.size _ZN3foo3barEv, .-_ZN3foo3barEv
+.globl long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij
+.type long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij,@function
+long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij:
+  ret
+.size long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij, .-long_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij
+
+#--- layout.ld
+ENTRY(_start)
+SECTIONS { .text 0x1000 : { *(.text) } }
+
+#--- high.ld
+ENTRY(_start)
+SECTIONS { .text 0x10100 : { *(.text) } }
+
+#--- relax.s
+.text
+.globl _start
+.type _start,@function
+_start:
+  mov r0, r0
+  call callee
+  ldi8 r4, 2
+  ret
+.size _start, .-_start
+.globl callee
+.type callee,@function
+callee:
+  ret
+.size callee, .-callee
+
+#--- very_long_crash_metadata_source_file_name_for_limit_check.s
+.text
+.globl _start
+.type _start,@function
+_start:
+  ret
+
+#--- gc.s
+.text
+.globl _start
+.type _start,@function
+_start:
+  ret
+.section .text.dead,"ax",@progbits
+.globl dead
+.type dead,@function
+dead:
+  ret
+
+#--- full.ld
+ENTRY(_start)
+SECTIONS { .text 0xFFFC00 : { *(.text) } }
+
+#--- full.s
+.text
+.globl _start
+.type _start,@function
+_start:
+  .space 0x200
+  ret
+.size _start, .-_start
+.globl crash_metadata_function_00
+.type crash_metadata_function_00,@function
+crash_metadata_function_00:
+  ret
+.size crash_metadata_function_00, .-crash_metadata_function_00
+.globl crash_metadata_function_01
+.type crash_metadata_function_01,@function
+crash_metadata_function_01:
+  ret
+.size crash_metadata_function_01, .-crash_metadata_function_01
+.globl crash_metadata_function_02
+.type crash_metadata_function_02,@function
+crash_metadata_function_02:
+  ret
+.size crash_metadata_function_02, .-crash_metadata_function_02
+.globl crash_metadata_function_03
+.type crash_metadata_function_03,@function
+crash_metadata_function_03:
+  ret
+.size crash_metadata_function_03, .-crash_metadata_function_03
+.globl crash_metadata_function_04
+.type crash_metadata_function_04,@function
+crash_metadata_function_04:
+  ret
+.size crash_metadata_function_04, .-crash_metadata_function_04
+.globl crash_metadata_function_05
+.type crash_metadata_function_05,@function
+crash_metadata_function_05:
+  ret
+.size crash_metadata_function_05, .-crash_metadata_function_05
+.globl crash_metadata_function_06
+.type crash_metadata_function_06,@function
+crash_metadata_function_06:
+  ret
+.size crash_metadata_function_06, .-crash_metadata_function_06
+.globl crash_metadata_function_07
+.type crash_metadata_function_07,@function
+crash_metadata_function_07:
+  ret
+.size crash_metadata_function_07, .-crash_metadata_function_07
+.globl crash_metadata_function_08
+.type crash_metadata_function_08,@function
+crash_metadata_function_08:
+  ret
+.size crash_metadata_function_08, .-crash_metadata_function_08
+.globl crash_metadata_function_09
+.type crash_metadata_function_09,@function
+crash_metadata_function_09:
+  ret
+.size crash_metadata_function_09, .-crash_metadata_function_09
