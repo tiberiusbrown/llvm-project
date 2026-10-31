@@ -72,6 +72,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/ThreadPool.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <memory>
 #include <mutex>
@@ -3500,10 +3501,23 @@ Status Target::Launch(ProcessLaunchInfo &launch_info, Stream *stream) {
     launch_info.SetHijackListener(Listener::MakeListener(
         Process::LaunchSynchronousHijackListenerName.data()));
 
+  // An AVM ELF cannot run on the host. Select the AVM process plugin before the
+  // platform can launch it natively, unless the caller named another plugin.
+  // Connected and scripted launches keep their existing selection.
+  llvm::StringRef process_plugin = launch_info.GetProcessPluginName();
+  const bool use_avm_process =
+      state != eStateConnected && !launch_info.IsScriptedProcess() &&
+      (process_plugin == "avm" ||
+       (process_plugin.empty() &&
+        launch_info.GetArchitecture().GetMachine() == llvm::Triple::avm));
+  if (use_avm_process && process_plugin.empty())
+    launch_info.SetProcessPluginName("avm");
+
   // If we're not already connected to the process, and if we have a platform
   // that can launch a process for debugging, go ahead and do that here.
   if (state != eStateConnected && platform_sp &&
-      platform_sp->CanDebugProcess() && !launch_info.IsScriptedProcess()) {
+      platform_sp->CanDebugProcess() && !launch_info.IsScriptedProcess() &&
+      !use_avm_process) {
     LLDB_LOGF(log, "Target::%s asking the platform to debug the process",
               __FUNCTION__);
 
