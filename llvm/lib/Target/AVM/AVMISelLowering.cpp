@@ -730,6 +730,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
   setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
   setLibcallImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
+  setLibcallImpl(RTLIB::SINTTOFP_I64_F32, RTLIB::impl___floatdisf);
+  setLibcallImpl(RTLIB::UINTTOFP_I64_F32, RTLIB::impl___floatundisf);
+  setLibcallImpl(RTLIB::FPTOSINT_F32_I64, RTLIB::impl___fixsfdi);
+  setLibcallImpl(RTLIB::FPTOUINT_F32_I64, RTLIB::impl___fixunssfdi);
   setLibcallImpl(RTLIB::MEMCPY, RTLIB::impl_memcpy);
   setLibcallImpl(RTLIB::MEMSET, RTLIB::impl_memset);
   setLibcallImpl(RTLIB::MEMMOVE, RTLIB::impl_memmove);
@@ -774,6 +778,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Custom);
     setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Custom);
   }
+  setOperationAction(ISD::SINT_TO_FP, MVT::i64, LibCall);
+  setOperationAction(ISD::UINT_TO_FP, MVT::i64, LibCall);
   setOperationAction(ISD::STRICT_FSETCC, MVT::f32, Custom);
   setOperationAction(ISD::STRICT_FSETCCS, MVT::f32, Custom);
   setOperationAction(ISD::IS_FPCLASS, MVT::f32, Custom);
