@@ -7,10 +7,10 @@ expected_pages = int(sys.argv[4]) if len(sys.argv) == 5 else None
 image = open(path, "rb").read()
 assert len(image) % 256 == 0
 assert image[:4] == b"AVM\x01"
-assert image[4] == 2
+assert image[4] == 3
 assert struct.unpack_from("<H", image, 8)[0] == data_size
 assert struct.unpack_from("<H", image, 10)[0] == save_size
-assert image[12:252] == bytes(240)
+assert image[15:252] == bytes(237)
 assert struct.unpack_from("<I", image, 252)[0] == binascii.crc32(image[:252])
 changed = bytearray(image[:252])
 changed[4] ^= 1

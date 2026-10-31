@@ -177,6 +177,56 @@ static Expected<uint32_t> checkedEnd(uint64_t Address, uint64_t Size,
   return static_cast<uint32_t>(Address + Size);
 }
 
+// Returns the final address of the single defined, externally visible
+// __avm_trap_entry symbol, or 0 when the image has no trap handler.
+static Expected<uint32_t>
+findTrapEntry(const ELFFile<ELF32LE> &ELF,
+              ArrayRef<ELF32LE::Shdr> Sections, StringRef InputName) {
+  const char *TrapName = "__avm_trap_entry";
+  uint32_t TrapEntry = 0;
+  bool Found = false;
+  for (const ELF32LE::Shdr &SymSec : Sections) {
+    if (SymSec.sh_type != ELF::SHT_SYMTAB)
+      continue;
+    Expected<ArrayRef<ELF32LE::Sym>> Symbols =
+        ELF.getSectionContentsAsArray<ELF32LE::Sym>(SymSec);
+    if (!Symbols)
+      return Symbols.takeError();
+    Expected<StringRef> Strtab = ELF.getStringTableForSymtab(SymSec);
+    if (!Strtab)
+      return Strtab.takeError();
+    for (const ELF32LE::Sym &Sym : *Symbols) {
+      if (Sym.st_name >= Strtab->size())
+        return bad(Twine("'") + InputName + "' has an invalid symbol name");
+      StringRef Name = StringRef(*Strtab).drop_front(Sym.st_name)
+                           .take_until([](char C) { return C == '\0'; });
+      if (Name != TrapName || Sym.getBinding() == ELF::STB_LOCAL)
+        continue;
+      if (Found)
+        return bad(Twine("multiple definitions of '") + TrapName + "'");
+      Found = true;
+      if (Sym.st_shndx == ELF::SHN_UNDEF || Sym.st_shndx == ELF::SHN_COMMON ||
+          Sym.st_shndx == ELF::SHN_ABS || Sym.st_shndx >= Sections.size())
+        return bad(Twine("'") + TrapName + "' must be a defined code symbol");
+      const ELF32LE::Shdr &Sec = Sections[Sym.st_shndx];
+      if (!(Sec.sh_flags & ELF::SHF_ALLOC) ||
+          !(Sec.sh_flags & AVMProgSpace) ||
+          !(Sec.sh_flags & ELF::SHF_EXECINSTR))
+        return bad(Twine("'") + TrapName +
+                   "' must lie in an executable AVM program-space section");
+      if (Sym.st_value < 0x0100 || Sym.st_value > MaxProgramAddress)
+        return bad(Twine("'") + TrapName +
+                   "' must have a 24-bit address of at least 0x0100");
+      if (Sym.st_value < Sec.sh_addr ||
+          Sym.st_value - Sec.sh_addr >= Sec.sh_size)
+        return bad(Twine("'") + TrapName +
+                   "' lies outside its containing section");
+      TrapEntry = static_cast<uint32_t>(Sym.st_value);
+    }
+  }
+  return TrapEntry;
+}
+
 static Expected<uint32_t> finalFileSize(uint32_t PayloadEnd) {
   if (PayloadEnd > MaxPayloadEnd)
     return bad("AVM payload cannot be represented by a Version 1 flat image");
@@ -361,6 +411,10 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
       !EntryIsLiveCode)
     return bad("ELF entry point is not a byte in an executable AVM program-space section");
 
+  Expected<uint32_t> TrapEntry = findTrapEntry(ELF, *SectionsOrErr, InputName);
+  if (!TrapEntry)
+    return TrapEntry.takeError();
+
   Expected<uint32_t> FileSize = finalFileSize(PayloadEnd);
   if (!FileSize)
     return FileSize.takeError();
@@ -371,10 +425,11 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   SmallVector<uint8_t, 0> Image(*FileSize, 0xff);
   std::fill(Image.begin(), Image.begin() + HeaderSize, 0);
   Image[0] = 0x41; Image[1] = 0x56; Image[2] = 0x4d; Image[3] = 0x01;
-  Image[4] = 2;
+  Image[4] = 3;
   write24(Image, 5, H.e_entry);
   write16le(Image.data() + 8, DataSize);
   write16le(Image.data() + 10, SaveSize);
+  write24(Image, 0x0c, *TrapEntry);
   llvm::copy(*SavedBytes, Image.begin() + HeaderSize);
   llvm::copy(*DataBytes, Image.begin() + HeaderSize + SaveSize);
   for (const PayloadSection &S : Program)

@@ -1,0 +1,61 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/none.s -o %t/none.o
+# RUN: ld.lld %t/none.o -o %t/none.elf
+# RUN: llvm-avm-image %t/none.elf -o %t/none.bin
+# RUN: %python %S/Inputs/check-trap.py %t/none.bin none
+
+# RUN: llvm-mc -triple=avm -filetype=obj %t/trap.s -o %t/trap.o
+# RUN: ld.lld -T %t/trap.ld %t/trap.o -o %t/trap.elf
+# RUN: llvm-avm-image %t/trap.elf -o %t/trap.bin
+# RUN: %python %S/Inputs/check-image.py %t/trap.bin 0 0
+# RUN: %python %S/Inputs/check-trap.py %t/trap.bin 0x1002
+
+# RUN: llvm-mc -triple=avm -filetype=obj %t/data.s -o %t/data.o
+# RUN: ld.lld %t/data.o -o %t/data.elf
+# RUN: not llvm-avm-image %t/data.elf -o %t/data.bin 2>&1 | FileCheck %s --check-prefix=DATA
+
+# RUN: llvm-mc -triple=avm -filetype=obj %t/rodata.s -o %t/rodata.o
+# RUN: ld.lld %t/rodata.o -o %t/rodata.elf
+# RUN: not llvm-avm-image %t/rodata.elf -o %t/rodata.bin 2>&1 | FileCheck %s --check-prefix=RODATA
+
+# DATA: '__avm_trap_entry' must lie in an executable AVM program-space section
+# RODATA: '__avm_trap_entry' must lie in an executable AVM program-space section
+
+#--- none.s
+.text
+.globl _start
+_start:
+  .byte 0
+
+#--- trap.s
+.text
+.globl _start
+_start:
+  .byte 0xaa, 0xbb
+.globl __avm_trap_entry
+__avm_trap_entry:
+  .byte 0xcc
+
+#--- trap.ld
+ENTRY(_start)
+SECTIONS { .text 0x1000 : { *(.text) } }
+
+#--- data.s
+.text
+.globl _start
+_start:
+  .byte 0
+.section .data.runtime,"aw",@progbits
+.globl __avm_trap_entry
+__avm_trap_entry:
+  .byte 0
+
+#--- rodata.s
+.text
+.globl _start
+_start:
+  .byte 0
+.section .rodata.trap,"a",@progbits
+.globl __avm_trap_entry
+__avm_trap_entry:
+  .byte 0
