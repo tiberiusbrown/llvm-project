@@ -841,12 +841,16 @@ static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
   return {};
 }
 
-// The guest unwinder reads AVEH2 through this program-space anchor. The runtime
+// The guest unwinder reads AVEH3 through this program-space anchor. The runtime
 // defines it as three zero bytes, and the packer patches them with the block
 // address. A program without the exception runtime has no anchor and no block.
 static constexpr const char *ExceptionAnchorName = "__avm_eh_metadata_ptr";
 
-// AVEH2 layout constants, shared with runtime/lib/eh_unwind.c.
+// AVEH3 layout constants, shared with runtime/lib/eh_unwind.c.
+constexpr uint32_t EHFunctionHeaderSize = 18;
+constexpr uint32_t EHRowHeaderSize = 5;
+// A row has at most four saved registers, two bytes each.
+constexpr uint32_t EHRowMaxSize = 13;
 constexpr uint32_t EHCallRecordSize = 5;
 constexpr uint32_t EHSiteSize = 10;
 constexpr uint8_t EHFlagR3Base = 0x80;
@@ -1095,7 +1099,36 @@ static Error appendCallRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
   return Error::success();
 }
 
-// Builds AVEH2 from the final ELF. Relaxation has already applied, so every
+// Returns the distance from a function record to the end of Out. The record's
+// offset fields are 24 bits wide, so a larger distance is an error.
+static Expected<uint32_t> recordOffset(const SmallVectorImpl<uint8_t> &Out,
+                                       size_t Record, uint32_t Start) {
+  size_t Offset = Out.size() - Record;
+  if (Offset > 0xffffff)
+    return bad(Twine("function at 0x") + Twine::utohexstr(Start) +
+               " exceeds the 24-bit AVEH3 record offset");
+  return static_cast<uint32_t>(Offset);
+}
+
+// The runtime locates the sites and calls from the two offsets, so the packer
+// checks them before writing. The rows fill the bytes between the header and
+// SitesOffset, and each row has five to thirteen bytes. Sites and calls fill the
+// rest of the record exactly.
+static Error checkRecordOffsets(const ExceptionFunction &Fn, uint32_t SitesOffset,
+                                uint32_t NextOffset) {
+  uint32_t Rows = Fn.Rows.size();
+  if (SitesOffset < EHFunctionHeaderSize + EHRowHeaderSize * Rows ||
+      SitesOffset > EHFunctionHeaderSize + EHRowMaxSize * Rows)
+    return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
+               " has a sites offset outside its rows");
+  uint32_t Body = EHSiteSize * Fn.Sites.size() + EHCallRecordSize * Fn.Calls.size();
+  if (NextOffset < SitesOffset || NextOffset - SitesOffset != Body)
+    return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
+               " has a next-record offset that does not match its sites and calls");
+  return Error::success();
+}
+
+// Builds AVEH3 from the final ELF. Relaxation has already applied, so every
 // address comes from .debug_frame or the relocated exception-record sections.
 static Expected<SmallVector<uint8_t, 0>>
 buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
@@ -1237,9 +1270,9 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
   }
 
   if (Functions.size() > 0xffff)
-    return bad("AVEH2 exceeds 65535 functions");
+    return bad("AVEH3 exceeds 65535 functions");
   SmallVector<uint8_t, 0> Out;
-  for (char C : StringRef("AVEH2"))
+  for (char C : StringRef("AVEH3"))
     Out.push_back(static_cast<uint8_t>(C));
   append16(Out, static_cast<uint16_t>(Functions.size()));
   append24Value(Out, 0); // block size, patched below
@@ -1247,12 +1280,19 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     if (Fn.Rows.size() > 0xffff || Fn.Sites.size() > 0xffff ||
         Fn.Calls.size() > 0xffff)
       return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
-                 " exceeds AVEH2 record limits");
+                 " exceeds AVEH3 record limits");
+    size_t Record = Out.size();
     append24Value(Out, Fn.Start);
     append24Value(Out, Fn.End);
     append16(Out, static_cast<uint16_t>(Fn.Rows.size()));
     append16(Out, static_cast<uint16_t>(Fn.Sites.size()));
     append16(Out, static_cast<uint16_t>(Fn.Calls.size()));
+    // The two offsets are measured from Record. They are patched after the
+    // rows, sites, and calls that they bound are written.
+    size_t SitesOffsetField = Out.size();
+    append24Value(Out, 0);
+    size_t NextOffsetField = Out.size();
+    append24Value(Out, 0);
     for (const ExceptionRow &Row : Fn.Rows) {
       append16(Out, static_cast<uint16_t>(Row.Pc - Fn.Start));
       Out.push_back(Row.Flags);
@@ -1260,6 +1300,9 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
       for (int16_t Slot : Row.Slots)
         append16(Out, static_cast<uint16_t>(Slot));
     }
+    Expected<uint32_t> SitesOffset = recordOffset(Out, Record, Fn.Start);
+    if (!SitesOffset)
+      return SitesOffset.takeError();
     for (const ExceptionSite &Site : Fn.Sites) {
       append24Value(Out, Site.Start);
       append24Value(Out, Site.End);
@@ -1270,9 +1313,16 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
       append24Value(Out, Call.ReturnPc);
       append16(Out, Call.OutgoingBytes);
     }
+    Expected<uint32_t> NextOffset = recordOffset(Out, Record, Fn.Start);
+    if (!NextOffset)
+      return NextOffset.takeError();
+    if (Error E = checkRecordOffsets(Fn, *SitesOffset, *NextOffset))
+      return std::move(E);
+    write24(Out, SitesOffsetField, *SitesOffset);
+    write24(Out, NextOffsetField, *NextOffset);
   }
   if (Out.size() > MaxFlashSize)
-    return bad("AVEH2 metadata exceeds the 24-bit block size");
+    return bad("AVEH3 metadata exceeds the 24-bit block size");
   write24(Out, 7, static_cast<uint32_t>(Out.size()));
   return Out;
 }
@@ -1439,7 +1489,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   else
     CrashStart = 0;
 
-  // AVEH2 follows the crash metadata, and only programs that reference the
+  // AVEH3 follows the crash metadata, and only programs that reference the
   // exception runtime define the anchor. --no-crash-info does not affect it.
   Expected<std::optional<uint32_t>> ExceptionAnchor =
       findExceptionAnchor(ELF, *SectionsOrErr, InputName);
@@ -1456,7 +1506,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     ExceptionBlock = std::move(*Block);
     ExceptionStart = alignTo(FinalPayloadEnd, 4);
     if (ExceptionStart + ExceptionBlock.size() > MaxPayloadEnd)
-      return bad("AVEH2 exception metadata exceeds the flash payload limit");
+      return bad("AVEH3 exception metadata exceeds the flash payload limit");
     FinalPayloadEnd = ExceptionStart + ExceptionBlock.size();
   }
 
