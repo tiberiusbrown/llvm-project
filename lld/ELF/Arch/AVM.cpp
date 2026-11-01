@@ -23,6 +23,9 @@ using namespace lld;
 using namespace lld::elf;
 
 namespace {
+static uint64_t findOriginalSymbolOffset(const RelaxAux &aux,
+                                         const Defined *d);
+
 class AVM final : public TargetInfo {
   mutable DenseMap<const InputSection *, SmallVector<std::pair<uint64_t, uint64_t>, 8>>
       relaxedOffsets;
@@ -74,22 +77,35 @@ public:
 
   bool relaxOnce(int pass) const override;
   void finalizeRelax(int passes) const override;
+  // Translate a debug reference to a defined symbol in a relaxed section. The
+  // original target is the symbol's original offset plus the addend, so bytes
+  // removed before the symbol and before the target are both accounted for.
+  // The symbol value is already relaxed, so the result is relative to it.
   int64_t adjustRelocAddend(const Symbol &sym,
                            int64_t addend) const override {
     const auto *d = dyn_cast<Defined>(&sym);
-    if (!d || !d->isSection() || addend < 0)
+    if (!d || !d->section)
       return addend;
-    const auto *sec = dyn_cast_or_null<InputSection>(d->section);
+    const auto *sec = dyn_cast<InputSection>(d->section);
     auto it = relaxedOffsets.find(sec);
     if (it == relaxedOffsets.end())
       return addend;
+    uint64_t originalSymbol = 0;
+    if (!d->isSection()) {
+      originalSymbol = findOriginalSymbolOffset(*sec->relaxAux, d);
+      if (originalSymbol == UINT64_MAX)
+        return addend;
+    }
+    const int64_t originalTarget = static_cast<int64_t>(originalSymbol) + addend;
+    if (originalTarget < 0)
+      return addend;
     uint64_t removed = 0;
     for (auto [oldEnd, totalRemoved] : it->second) {
-      if (oldEnd > static_cast<uint64_t>(addend))
+      if (oldEnd > static_cast<uint64_t>(originalTarget))
         break;
       removed = totalRemoved;
     }
-    return addend - removed;
+    return originalTarget - removed - static_cast<int64_t>(d->value);
   }
   void adjustDebugFrameRange(const Symbol &sym, int64_t originalBegin,
                              uint8_t *range) const override {

@@ -3332,7 +3332,19 @@ emitRangeList(DwarfDebug &DD, AsmPrinter *Asm, MCSymbol *Sym, const Ranges &R,
   for (const auto &Range : R)
     SectionRanges[&Range.Begin->getSection()].push_back(&Range);
 
+  // AVM link relaxation shortens instructions after assembly. A label
+  // difference from a base is then a constant that no relocation can update,
+  // so emit absolute addresses, which the linker relocates independently. A
+  // DWARF 4 list starts from the CU base address, so reset it to zero first.
   const MCSymbol *CUBase = CU.getBaseAddress();
+  const bool AbsoluteAddresses =
+      Asm->TM.getTargetTriple().getArch() == Triple::avm && !UseDwarf5;
+  if (AbsoluteAddresses && CUBase) {
+    Asm->OutStreamer->emitIntValue(-1, Size);
+    Asm->OutStreamer->AddComment("  base address");
+    Asm->OutStreamer->emitIntValue(0, Size);
+    CUBase = nullptr;
+  }
   bool BaseIsSet = false;
   for (const auto &P : SectionRanges) {
     auto *Base = CUBase;
@@ -3347,7 +3359,7 @@ emitRangeList(DwarfDebug &DD, AsmPrinter *Asm, MCSymbol *Sym, const Ranges &R,
       // low_pc.
       BaseIsSet = false;
       Base = nullptr;
-    } else if (!Base && ShouldUseBaseAddress) {
+    } else if (!Base && ShouldUseBaseAddress && !AbsoluteAddresses) {
       const MCSymbol *Begin = P.second.front()->Begin;
       const MCSymbol *NewBase = DD.getSectionLabel(&Begin->getSection());
       if (!UseDwarf5) {
