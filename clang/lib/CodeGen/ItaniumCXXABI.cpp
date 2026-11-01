@@ -1502,11 +1502,29 @@ static llvm::FunctionCallee getAllocateExceptionFn(CodeGenModule &CGM) {
   return CGM.CreateRuntimeFunction(FTy, "__cxa_allocate_exception");
 }
 
+/// AVM addresses RTTI descriptors, their names, their vtables, and destructors
+/// in program space, which is address space 1. Other targets keep their default
+/// address space.
+static unsigned getRTTIAddressSpace(const CodeGenModule &CGM) {
+  return CGM.getTriple().getArch() == llvm::Triple::avm ? 1 : 0;
+}
+
+/// Returns the pointer type that names an RTTI object or a destructor. Targets
+/// whose RTTI is not in program space keep DefaultTy.
+static llvm::Type *getRTTIPointerType(CodeGenModule &CGM,
+                                      llvm::Type *DefaultTy) {
+  if (unsigned AS = getRTTIAddressSpace(CGM))
+    return llvm::PointerType::get(CGM.getLLVMContext(), AS);
+  return DefaultTy;
+}
+
 static llvm::FunctionCallee getThrowFn(CodeGenModule &CGM) {
   // void __cxa_throw(void *thrown_exception, std::type_info *tinfo,
   //                  void (*dest) (void *));
 
-  llvm::Type *Args[3] = { CGM.Int8PtrTy, CGM.GlobalsInt8PtrTy, CGM.Int8PtrTy };
+  llvm::Type *Args[3] = { CGM.Int8PtrTy,
+                          getRTTIPointerType(CGM, CGM.GlobalsInt8PtrTy),
+                          getRTTIPointerType(CGM, CGM.Int8PtrTy) };
   llvm::FunctionType *FTy =
     llvm::FunctionType::get(CGM.VoidTy, Args, /*isVarArg=*/false);
 
@@ -1547,7 +1565,9 @@ void ItaniumCXXABI::emitThrow(CodeGenFunction &CGF, const CXXThrowExpr *E) {
     Dtor = CGM.getAddrOfCXXStructor(GlobalDecl(DtorD, Dtor_Complete));
     Dtor = CGM.getFunctionPointer(Dtor, DtorTy);
   }
-  if (!Dtor) Dtor = llvm::Constant::getNullValue(CGM.Int8PtrTy);
+  if (!Dtor)
+    Dtor = llvm::Constant::getNullValue(
+        getRTTIPointerType(CGM, CGM.Int8PtrTy));
 
   llvm::Value *args[] = { ExceptionPtr, TypeInfo, Dtor };
   CGF.EmitNoreturnRuntimeCallOrInvoke(getThrowFn(CGM), args);
@@ -3752,7 +3772,8 @@ llvm::GlobalVariable *ItaniumRTTIBuilder::GetAddrOfTypeName(
   auto Align = CGM.getContext().getTypeAlignInChars(CGM.getContext().CharTy);
 
   llvm::GlobalVariable *GV = CGM.CreateOrReplaceCXXRuntimeVariable(
-      Name, Init->getType(), Linkage, Align.getAsAlign());
+      Name, Init->getType(), Linkage, Align.getAsAlign(),
+      getRTTIAddressSpace(CGM));
 
   GV->setInitializer(Init);
 
@@ -3776,7 +3797,9 @@ ItaniumRTTIBuilder::GetAddrOfExternalRTTIDescriptor(QualType Ty) {
 
     GV = new llvm::GlobalVariable(
         CGM.getModule(), CGM.GlobalsInt8PtrTy,
-        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, nullptr, Name);
+        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, nullptr, Name,
+        /*InsertBefore=*/nullptr, llvm::GlobalVariable::NotThreadLocal,
+        getRTTIAddressSpace(CGM));
     const CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
     CGM.setGVProperties(GV, RD);
     // Import the typeinfo symbol when all non-inline virtual methods are
@@ -4177,9 +4200,17 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty,
   // Check if the alias exists. If it doesn't, then get or create the global.
   if (CGM.getItaniumVTableContext().isRelativeLayout())
     VTable = CGM.getModule().getNamedAlias(VTableName);
+  // On AVM the vtable is in program space and its entries are 24-bit pointers.
+  unsigned RTTIAS = getRTTIAddressSpace(CGM);
+  llvm::Type *EntryTy = getRTTIPointerType(CGM, CGM.GlobalsInt8PtrTy);
   if (!VTable) {
-    llvm::Type *Ty = llvm::ArrayType::get(CGM.GlobalsInt8PtrTy, 0);
-    VTable = CGM.getModule().getOrInsertGlobal(VTableName, Ty);
+    llvm::Type *Ty = llvm::ArrayType::get(EntryTy, 0);
+    if (RTTIAS)
+      VTable = CGM.CreateOrReplaceCXXRuntimeVariable(
+          VTableName, Ty, llvm::GlobalValue::ExternalLinkage, llvm::Align(1),
+          RTTIAS);
+    else
+      VTable = CGM.getModule().getOrInsertGlobal(VTableName, Ty);
   }
 
   CGM.setDSOLocal(cast<llvm::GlobalValue>(VTable->stripPointerCasts()));
@@ -4194,6 +4225,14 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty,
     llvm::Constant *Eight = llvm::ConstantInt::get(CGM.Int32Ty, 8);
     VTable =
         llvm::ConstantExpr::getInBoundsGetElementPtr(CGM.Int8Ty, VTable, Eight);
+  } else if (RTTIAS) {
+    // Two 24-bit entries lie before the address point, six bytes in total. The
+    // vtable's length is not known here, so the address calculation is not
+    // inbounds; an inbounds index into a zero-length placeholder would assert
+    // an out-of-bounds access.
+    llvm::Constant *Two = llvm::ConstantInt::get(
+        CGM.getDataLayout().getIndexType(EntryTy), 2);
+    VTable = llvm::ConstantExpr::getGetElementPtr(EntryTy, VTable, Two);
   } else {
     llvm::Constant *Two = llvm::ConstantInt::get(PtrDiffTy, 2);
     VTable = llvm::ConstantExpr::getInBoundsGetElementPtr(CGM.GlobalsInt8PtrTy,
@@ -4281,8 +4320,11 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty) {
     return OldGV;
   }
 
-  // Check if there is already an external RTTI descriptor for this type.
-  if (IsStandardLibraryRTTIDescriptor(Ty) ||
+  // Check if there is already an external RTTI descriptor for this type. AVM has
+  // no standard library that defines the fundamental descriptors, so it emits
+  // them with linkonce_odr linkage like the rest of the program's descriptors.
+  if ((IsStandardLibraryRTTIDescriptor(Ty) &&
+       CGM.getTriple().getArch() != llvm::Triple::avm) ||
       ShouldUseExternalRTTIDescriptor(CGM, Ty))
     return GetAddrOfExternalRTTIDescriptor(Ty);
 
@@ -4325,9 +4367,10 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
   llvm::Module &M = CGM.getModule();
   llvm::GlobalVariable *OldGV = M.getNamedGlobal(Name);
   // int8 is an arbitrary type to be replaced later with replaceInitializer.
-  llvm::GlobalVariable *GV =
-      new llvm::GlobalVariable(M, CGM.Int8Ty, /*isConstant=*/true, Linkage,
-                               /*Initializer=*/nullptr, Name);
+  llvm::GlobalVariable *GV = new llvm::GlobalVariable(
+      M, CGM.Int8Ty, /*isConstant=*/true, Linkage,
+      /*Initializer=*/nullptr, Name, /*InsertBefore=*/nullptr,
+      llvm::GlobalVariable::NotThreadLocal, getRTTIAddressSpace(CGM));
 
   // Add the vtable pointer.
   BuildVTablePointer(cast<Type>(Ty), GV);
