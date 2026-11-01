@@ -542,9 +542,11 @@ void DWARFUnit::SetLoclistsBase(dw_addr_t loclists_base) {
 
 std::unique_ptr<llvm::DWARFLocationTable>
 DWARFUnit::GetLocationTable(const DataExtractor &data) const {
+  // The unit's address size governs its location lists. It can differ from the
+  // object file's, as with AVM's three-byte DWARF addresses in 32-bit ELF.
   llvm::DWARFDataExtractor llvm_data(
       data.GetData(), data.GetByteOrder() == lldb::eByteOrderLittle,
-      data.GetAddressByteSize());
+      GetAddressByteSize());
 
   if (m_is_dwo || GetVersion() >= 5)
     return std::make_unique<llvm::DWARFDebugLoclists>(llvm_data, GetVersion());
@@ -784,7 +786,7 @@ bool DWARFUnit::ParseDWARFLocationList(
     auto buffer_sp =
         std::make_shared<DataBufferHeap>(loc->Expr.data(), loc->Expr.size());
     DWARFExpression expr = DWARFExpression(DataExtractor(
-        buffer_sp, data.GetByteOrder(), data.GetAddressByteSize()));
+        buffer_sp, data.GetByteOrder(), GetAddressByteSize()));
     location_list.AddExpression(loc->Range->LowPC, loc->Range->HighPC, expr);
     return true;
   };
