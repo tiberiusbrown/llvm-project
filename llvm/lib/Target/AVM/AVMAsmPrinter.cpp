@@ -50,6 +50,15 @@ class AVMAsmPrinter final : public AsmPrinter {
     unsigned Targets;
   };
   SmallVector<StackCall, 0> StackCalls;
+  // The return label and outgoing argument bytes of each call in a function
+  // with landing pads. The unwinder releases exactly those bytes when it
+  // resumes a handler, so every call needs its own count.
+  struct EHCall {
+    MCSymbol *ReturnLabel;
+    unsigned Bytes;
+  };
+  SmallVector<EHCall, 0> EHCalls;
+  bool HasLandingPads = false;
 
   MCSection *getStackCallsSection(StringRef Name = ".avm.stackcalls") {
     const auto &Text = cast<MCSectionELF>(*MF->getSection());
@@ -196,12 +205,33 @@ public:
     TargetSet = 0;
     PendingStackCall = false;
     StackCalls.clear();
+    EHCalls.clear();
+    HasLandingPads = !MF->getLandingPads().empty();
     HasOpaqueInlineAsm = false;
+  }
+
+  // Emits one record per function with landing pads: its start, the call count,
+  // then each call's return PC and outgoing argument bytes. The function end is
+  // not yet defined here, so the packer takes it from the function's unwind entry.
+  // The unwinder matches a frame's saved return PC exactly.
+  void emitEHCallRecords() {
+    if (EHCalls.empty())
+      return;
+    OutStreamer->pushSection();
+    OutStreamer->switchSection(getStackCallsSection(".avm.eh_calls"));
+    OutStreamer->emitSymbolValue(getFunctionBegin(), 3);
+    OutStreamer->emitIntValue(EHCalls.size(), 2);
+    for (const EHCall &C : EHCalls) {
+      OutStreamer->emitSymbolValue(C.ReturnLabel, 3);
+      OutStreamer->emitIntValue(C.Bytes, 2);
+    }
+    OutStreamer->popSection();
   }
 
   void emitFunctionBodyEnd() override {
     for (const StackCall &C : StackCalls)
       emitStackCall(C.Call, C.Bytes, C.Tail, C.Targets);
+    emitEHCallRecords();
     const MachineFrameInfo &Frame = MF->getFrameInfo();
     // The raw CRT entry runs at StackTop, without a caller return record. Its
     // finalized frame provides a phase word without any extra static RAM or a
@@ -368,6 +398,7 @@ public:
     bool Tail = PendingStackCall &&
                 (MI->getOpcode() == AVM::RELAX_JMP ||
                  MI->getOpcode() == AVM::JMPP);
+    unsigned const Bytes = OutgoingBytes;
     if (MI->isCall() || Tail) {
       StackCalls.push_back({OutMI, OutgoingBytes, Tail, TargetSet});
       OutgoingBytes = 0;
@@ -375,6 +406,13 @@ public:
       PendingStackCall = false;
     }
     EmitToStreamer(*OutStreamer, OutMI);
+    // A call that returns here resumes at the label. A tail transfer never
+    // returns, so only ordinary calls in functions with landing pads need one.
+    if (MI->isCall() && !Tail && HasLandingPads) {
+      MCSymbol *ReturnLabel = OutContext.createTempSymbol("eh_call");
+      OutStreamer->emitLabel(ReturnLabel);
+      EHCalls.push_back({ReturnLabel, Bytes});
+    }
   }
 
   static char ID;

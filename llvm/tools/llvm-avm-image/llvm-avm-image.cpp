@@ -3,8 +3,11 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/BinaryFormat/AVM.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFDataExtractor.h"
+#include "llvm/DebugInfo/DWARF/DWARFDebugFrame.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -20,6 +23,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/WithColor.h"
 #include <algorithm>
+#include <optional>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -837,6 +841,442 @@ static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
   return {};
 }
 
+// The guest unwinder reads AVEH2 through this program-space anchor. The runtime
+// defines it as three zero bytes, and the packer patches them with the block
+// address. A program without the exception runtime has no anchor and no block.
+static constexpr const char *ExceptionAnchorName = "__avm_eh_metadata_ptr";
+
+// AVEH2 layout constants, shared with runtime/lib/eh_unwind.c.
+constexpr uint32_t EHCallRecordSize = 5;
+constexpr uint32_t EHSiteSize = 10;
+constexpr uint8_t EHFlagR3Base = 0x80;
+constexpr uint8_t EHActionNone = 0;
+constexpr uint8_t EHActionCatchAll = 1;
+constexpr uint8_t EHActionCleanup = 2;
+// Intermediate .avm.eh_sites records: u24 start, u24 end, u16 count, sites.
+constexpr uint32_t EHSitesRecordHeaderSize = 8;
+// Intermediate .avm.eh_calls records: u24 start, u16 count, then call entries.
+constexpr uint32_t EHCallsRecordHeaderSize = 5;
+// DWARF register numbers for the AVM registers used by the unwinder.
+constexpr uint32_t DwarfR3 = 3;
+constexpr uint32_t DwarfSP = 8;
+
+// Returns the address of the defined anchor, or no value when the program does
+// not reference the exception runtime.
+static Expected<std::optional<uint32_t>>
+findExceptionAnchor(const ELFFile<ELF32LE> &ELF,
+                    ArrayRef<ELF32LE::Shdr> Sections, StringRef InputName) {
+  std::optional<uint32_t> Anchor;
+  for (const ELF32LE::Shdr &SymSec : Sections) {
+    if (SymSec.sh_type != ELF::SHT_SYMTAB)
+      continue;
+    Expected<ArrayRef<ELF32LE::Sym>> Symbols =
+        ELF.getSectionContentsAsArray<ELF32LE::Sym>(SymSec);
+    if (!Symbols)
+      return Symbols.takeError();
+    Expected<StringRef> Strtab = ELF.getStringTableForSymtab(SymSec);
+    if (!Strtab)
+      return Strtab.takeError();
+    for (const ELF32LE::Sym &Sym : *Symbols) {
+      if (Sym.st_name >= Strtab->size())
+        return bad(Twine("'") + InputName + "' has an invalid symbol name");
+      StringRef Name = StringRef(*Strtab).drop_front(Sym.st_name)
+                           .take_until([](char C) { return C == '\0'; });
+      if (Name != ExceptionAnchorName)
+        continue;
+      if (Anchor)
+        return bad(Twine("multiple definitions of '") +
+                   ExceptionAnchorName + "'");
+      if (Sym.st_shndx == ELF::SHN_UNDEF || Sym.st_shndx == ELF::SHN_COMMON ||
+          Sym.st_shndx == ELF::SHN_ABS || Sym.st_shndx >= Sections.size())
+        return bad(Twine("'") + ExceptionAnchorName +
+                   "' must be a defined program-space object");
+      const ELF32LE::Shdr &Sec = Sections[Sym.st_shndx];
+      if (!(Sec.sh_flags & ELF::SHF_ALLOC) || !(Sec.sh_flags & AVMProgSpace) ||
+          (Sec.sh_flags & (ELF::SHF_WRITE | ELF::SHF_EXECINSTR)))
+        return bad(Twine("'") + ExceptionAnchorName +
+                   "' must lie in a read-only AVM program-space section");
+      if (Sym.st_size != 3)
+        return bad(Twine("'") + ExceptionAnchorName +
+                   "' must be exactly three bytes");
+      if (Sym.st_value < Sec.sh_addr || Sec.sh_size < 3 ||
+          Sym.st_value - Sec.sh_addr > Sec.sh_size - 3)
+        return bad(Twine("'") + ExceptionAnchorName +
+                   "' lies outside its containing section");
+      if (Sym.st_value < HeaderSize)
+        return bad(Twine("'") + ExceptionAnchorName +
+                   "' overlaps the reserved header range");
+      Anchor = static_cast<uint32_t>(Sym.st_value);
+    }
+  }
+  return Anchor;
+}
+
+struct ExceptionRow {
+  uint32_t Pc;                   // absolute address of the row
+  uint8_t Flags;                 // saved mask in bits 3:0, r3 base in bit 7
+  int16_t CFAOffset;
+  SmallVector<int16_t, 4> Slots; // one per saved register, in r0-r3 order
+};
+
+struct ExceptionSite {
+  uint32_t Start;
+  uint32_t End;
+  uint32_t LandingPad;
+  uint8_t Action;
+};
+
+// One call in a function with landing pads. ReturnPc is the address after the
+// call instruction, which is the saved return PC of the callee's frame.
+struct ExceptionCall {
+  uint32_t ReturnPc;
+  uint16_t OutgoingBytes;
+};
+
+struct ExceptionFunction {
+  uint32_t Start;
+  uint32_t End;
+  SmallVector<ExceptionRow, 8> Rows;
+  SmallVector<ExceptionSite, 4> Sites;
+  SmallVector<ExceptionCall, 4> Calls;
+};
+
+static bool sameRowState(const ExceptionRow &A, const ExceptionRow &B) {
+  return A.Flags == B.Flags && A.CFAOffset == B.CFAOffset && A.Slots == B.Slots;
+}
+
+// Converts the effective CFI rows of one FDE. Only SP- or r3-based CFA rules
+// and saved-register slots for r0-r3 are representable. Anything else is an
+// error, because a silent default would unwind frames incorrectly.
+static Expected<SmallVector<ExceptionRow, 8>>
+decodeUnwindRows(const dwarf::FDE &Fde, uint32_t Start, uint32_t End,
+                 StringRef InputName) {
+  Expected<dwarf::UnwindTable> Table = createUnwindTable(&Fde);
+  if (!Table)
+    return bad(Twine("'") + InputName + "' has unsupported unwind information: " +
+               toString(Table.takeError()));
+
+  SmallVector<ExceptionRow, 8> Rows;
+  for (const dwarf::UnwindRow &Row : *Table) {
+    if (!Row.hasAddress())
+      continue;
+    uint64_t Address = Row.getAddress();
+    if (Address < Start || Address >= End)
+      return bad(Twine("unwind row at 0x") + Twine::utohexstr(Address) +
+                 " lies outside its function");
+    if (Address - Start > 0xffff)
+      return bad(Twine("unwind row offset in function at 0x") +
+                 Twine::utohexstr(Start) + " exceeds 16 bits");
+
+    const dwarf::UnwindLocation &CFA = Row.getCFAValue();
+    if (CFA.getLocation() != dwarf::UnwindLocation::RegPlusOffset ||
+        (CFA.getRegister() != DwarfSP && CFA.getRegister() != DwarfR3))
+      return bad(Twine("unsupported CFA rule at 0x") +
+                 Twine::utohexstr(Address) + " in '" + InputName + "'");
+    int32_t Offset = CFA.getOffset();
+    if (Offset < INT16_MIN || Offset > INT16_MAX)
+      return bad(Twine("CFA offset at 0x") + Twine::utohexstr(Address) +
+                 " exceeds 16 bits");
+
+    ExceptionRow Out;
+    Out.Pc = static_cast<uint32_t>(Address);
+    Out.Flags = CFA.getRegister() == DwarfR3 ? EHFlagR3Base : 0;
+    Out.CFAOffset = static_cast<int16_t>(Offset);
+    for (uint32_t R = 0; R < 4; ++R) {
+      std::optional<dwarf::UnwindLocation> Loc =
+          Row.getRegisterLocations().getRegisterLocation(R);
+      if (!Loc || Loc->getLocation() == dwarf::UnwindLocation::Same ||
+          Loc->getLocation() == dwarf::UnwindLocation::Unspecified)
+        continue;
+      if (Loc->getLocation() != dwarf::UnwindLocation::CFAPlusOffset)
+        return bad(Twine("unsupported saved-register rule for r") + Twine(R) +
+                   " at 0x" + Twine::utohexstr(Address));
+      int32_t Slot = Loc->getOffset();
+      if (Slot < INT16_MIN || Slot > INT16_MAX)
+        return bad(Twine("saved-register offset for r") + Twine(R) +
+                   " exceeds 16 bits");
+      Out.Flags |= static_cast<uint8_t>(1u << R);
+      Out.Slots.push_back(static_cast<int16_t>(Slot));
+    }
+
+    // A later row at the same address replaces the earlier one. Consecutive
+    // rows with the same state need no record.
+    if (!Rows.empty() && Rows.back().Pc == Out.Pc) {
+      Rows.back() = Out;
+      continue;
+    }
+    if (!Rows.empty() && sameRowState(Rows.back(), Out))
+      continue;
+    Rows.push_back(Out);
+  }
+  if (Rows.empty() || Rows.front().Pc != Start)
+    return bad(Twine("'") + InputName + "' has no unwind row at function 0x" +
+               Twine::utohexstr(Start));
+  return Rows;
+}
+
+// Packs one record of .avm.eh_sites. Records are emitted only for functions
+// with landing pads, so a missing record means no handler.
+static Error appendSiteRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
+                               SmallVectorImpl<ExceptionFunction> &Functions) {
+  size_t Offset = 0;
+  while (Offset < Bytes.size()) {
+    if (Bytes.size() - Offset < EHSitesRecordHeaderSize)
+      return bad(Twine("'") + InputName + "' has a truncated .avm.eh_sites record");
+    uint32_t Start = Bytes[Offset] | (Bytes[Offset + 1] << 8) |
+                     (Bytes[Offset + 2] << 16);
+    uint32_t End = Bytes[Offset + 3] | (Bytes[Offset + 4] << 8) |
+                   (Bytes[Offset + 5] << 16);
+    uint16_t Count = Bytes[Offset + 6] | (Bytes[Offset + 7] << 8);
+    Offset += EHSitesRecordHeaderSize;
+    if (Bytes.size() - Offset < size_t(Count) * EHSiteSize)
+      return bad(Twine("'") + InputName + "' has truncated .avm.eh_sites sites");
+
+    ExceptionFunction *Fn = nullptr;
+    for (ExceptionFunction &F : Functions)
+      if (F.Start == Start)
+        Fn = &F;
+    if (!Fn || Fn->End != End)
+      return bad(Twine("exception sites at 0x") + Twine::utohexstr(Start) +
+                 " do not match a function with unwind information");
+
+    for (uint16_t I = 0; I < Count; ++I, Offset += EHSiteSize) {
+      const uint8_t *P = Bytes.data() + Offset;
+      ExceptionSite Site;
+      Site.Start = P[0] | (P[1] << 8) | (P[2] << 16);
+      Site.End = P[3] | (P[4] << 8) | (P[5] << 16);
+      Site.LandingPad = P[6] | (P[7] << 8) | (P[8] << 16);
+      Site.Action = P[9];
+      if (Site.Action == EHActionCleanup)
+        return bad(Twine("cleanup landing pad in '") + InputName +
+                   "' is unsupported: AVM exceptions handle only catch-all clauses");
+      if (Site.Action > EHActionCatchAll)
+        return bad(Twine("unknown exception action in '") + InputName + "'");
+      Fn->Sites.push_back(Site);
+    }
+  }
+  return Error::success();
+}
+
+// Packs one record of .avm.eh_calls: u24 function start, u16 count, then one
+// u24 return PC and u16 outgoing byte count per call. The function end comes
+// from its unwind entry, so the record does not repeat it.
+static Error appendCallRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
+                               SmallVectorImpl<ExceptionFunction> &Functions) {
+  size_t Offset = 0;
+  while (Offset < Bytes.size()) {
+    if (Bytes.size() - Offset < EHCallsRecordHeaderSize)
+      return bad(Twine("'") + InputName + "' has a truncated .avm.eh_calls record");
+    uint32_t Start = Bytes[Offset] | (Bytes[Offset + 1] << 8) |
+                     (Bytes[Offset + 2] << 16);
+    uint16_t Count = Bytes[Offset + 3] | (Bytes[Offset + 4] << 8);
+    Offset += EHCallsRecordHeaderSize;
+    if (Bytes.size() - Offset < size_t(Count) * EHCallRecordSize)
+      return bad(Twine("'") + InputName + "' has truncated .avm.eh_calls entries");
+
+    ExceptionFunction *Fn = nullptr;
+    for (ExceptionFunction &F : Functions)
+      if (F.Start == Start)
+        Fn = &F;
+    if (!Fn)
+      return bad(Twine("call records at 0x") + Twine::utohexstr(Start) +
+                 " do not match a function with unwind information");
+    if (!Fn->Calls.empty())
+      return bad(Twine("duplicate call records for 0x") + Twine::utohexstr(Start));
+
+    for (uint16_t I = 0; I < Count; ++I, Offset += EHCallRecordSize) {
+      const uint8_t *P = Bytes.data() + Offset;
+      ExceptionCall Call;
+      Call.ReturnPc = P[0] | (P[1] << 8) | (P[2] << 16);
+      Call.OutgoingBytes = P[3] | (P[4] << 8);
+      Fn->Calls.push_back(Call);
+    }
+  }
+  return Error::success();
+}
+
+// Builds AVEH2 from the final ELF. Relaxation has already applied, so every
+// address comes from .debug_frame or the relocated exception-record sections.
+static Expected<SmallVector<uint8_t, 0>>
+buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
+                       ArrayRef<ELF32LE::Shdr> Sections,
+                       ArrayRef<PayloadSection> Program, StringRef InputName) {
+  const ELF32LE::Shdr *Frame = nullptr;
+  const ELF32LE::Shdr *SiteSection = nullptr;
+  const ELF32LE::Shdr *CallSection = nullptr;
+  for (const ELF32LE::Shdr &S : Sections) {
+    Expected<StringRef> NameOrErr = ELF.getSectionName(S);
+    if (!NameOrErr)
+      return NameOrErr.takeError();
+    if (*NameOrErr == ".debug_frame")
+      Frame = &S;
+    else if (*NameOrErr == ".avm.eh_sites")
+      SiteSection = &S;
+    else if (*NameOrErr == ".avm.eh_calls")
+      CallSection = &S;
+  }
+  if (!Frame)
+    return bad(Twine("'") + InputName +
+               "' references the exception runtime but has no .debug_frame "
+               "unwind information");
+
+  Expected<ArrayRef<uint8_t>> FrameBytes = contents(ELF, *Frame, ".debug_frame");
+  if (!FrameBytes)
+    return FrameBytes.takeError();
+  DWARFDataExtractor Data(*FrameBytes, /*IsLittleEndian=*/true,
+                          /*AddressSize=*/3);
+  DWARFDebugFrame DebugFrame(Triple::avm, /*IsEH=*/false);
+  if (Error E = DebugFrame.parse(Data))
+    return bad(Twine("'") + InputName + "' has malformed .debug_frame: " +
+               toString(std::move(E)));
+
+  SmallVector<ExceptionFunction, 16> Functions;
+  for (const dwarf::FrameEntry &Entry : DebugFrame.entries()) {
+    const auto *Fde = dyn_cast<dwarf::FDE>(&Entry);
+    if (!Fde)
+      continue;
+    uint64_t Start = Fde->getInitialLocation();
+    uint64_t Range = Fde->getAddressRange();
+    // A discarded function keeps its FDE, but the linker resolves it to zero.
+    if (Start == 0)
+      continue;
+    const PayloadSection *Code = nullptr;
+    for (const PayloadSection &S : Program)
+      if ((S.Flags & ELF::SHF_EXECINSTR) && Start >= S.Address &&
+          Start < S.Address + S.Contents.size())
+        Code = &S;
+    if (!Code)
+      return bad(Twine("unwind entry at 0x") + Twine::utohexstr(Start) +
+                 " does not describe executable program code");
+    if (Range == 0 || Start + Range > Code->Address + Code->Contents.size())
+      return bad(Twine("unwind entry at 0x") + Twine::utohexstr(Start) +
+                 " has an invalid address range");
+
+    ExceptionFunction Fn;
+    Fn.Start = static_cast<uint32_t>(Start);
+    Fn.End = static_cast<uint32_t>(Start + Range);
+    Expected<SmallVector<ExceptionRow, 8>> Rows =
+        decodeUnwindRows(*Fde, Fn.Start, Fn.End, InputName);
+    if (!Rows)
+      return Rows.takeError();
+    Fn.Rows = std::move(*Rows);
+    Functions.push_back(std::move(Fn));
+  }
+  llvm::sort(Functions, [](const ExceptionFunction &A,
+                           const ExceptionFunction &B) {
+    return A.Start < B.Start;
+  });
+  for (size_t I = 1; I < Functions.size(); ++I)
+    if (Functions[I].Start < Functions[I - 1].End)
+      return bad(Twine("overlapping unwind ranges at 0x") +
+                 Twine::utohexstr(Functions[I].Start));
+
+  if (SiteSection) {
+    Expected<ArrayRef<uint8_t>> SiteBytes =
+        contents(ELF, *SiteSection, ".avm.eh_sites");
+    if (!SiteBytes)
+      return SiteBytes.takeError();
+    if (Error E = appendSiteRecords(*SiteBytes, InputName, Functions))
+      return std::move(E);
+  }
+  if (CallSection) {
+    Expected<ArrayRef<uint8_t>> CallBytes =
+        contents(ELF, *CallSection, ".avm.eh_calls");
+    if (!CallBytes)
+      return CallBytes.takeError();
+    if (Error E = appendCallRecords(*CallBytes, InputName, Functions))
+      return std::move(E);
+  }
+
+  // The site lists are emitted in address order, and every landing pad must
+  // lie inside its function. These checks match the runtime's validation.
+  for (ExceptionFunction &Fn : Functions) {
+    llvm::sort(Fn.Calls, [](const ExceptionCall &A, const ExceptionCall &B) {
+      return A.ReturnPc < B.ReturnPc;
+    });
+    for (size_t I = 0; I < Fn.Calls.size(); ++I) {
+      const ExceptionCall &Call = Fn.Calls[I];
+      // Each return PC follows its call instruction, so it lies in (Start, End].
+      if (Call.ReturnPc <= Fn.Start || Call.ReturnPc > Fn.End)
+        return bad(Twine("call return PC 0x") + Twine::utohexstr(Call.ReturnPc) +
+                   " lies outside its function");
+      if (I > 0 && Fn.Calls[I - 1].ReturnPc == Call.ReturnPc)
+        return bad(Twine("duplicate call record at 0x") +
+                   Twine::utohexstr(Call.ReturnPc));
+      if (Call.OutgoingBytes >= llvm::AVM::StackLimit)
+        return bad(Twine("call at 0x") + Twine::utohexstr(Call.ReturnPc) +
+                   " passes more outgoing bytes than the AVM stack holds");
+    }
+    llvm::sort(Fn.Sites, [](const ExceptionSite &A, const ExceptionSite &B) {
+      return A.Start < B.Start;
+    });
+    uint32_t PreviousEnd = Fn.Start;
+    for (const ExceptionSite &Site : Fn.Sites) {
+      if (Site.Start >= Site.End || Site.Start < PreviousEnd || Site.End > Fn.End)
+        return bad(Twine("invalid exception site at 0x") +
+                   Twine::utohexstr(Site.Start));
+      if (Site.Action == EHActionNone) {
+        if (Site.LandingPad != 0)
+          return bad(Twine("exception site at 0x") +
+                     Twine::utohexstr(Site.Start) + " has a landing pad but no handler");
+      } else if (Site.LandingPad < Fn.Start || Site.LandingPad >= Fn.End) {
+        return bad(Twine("landing pad 0x") + Twine::utohexstr(Site.LandingPad) +
+                   " lies outside its function");
+      } else {
+        // The invoke's call returns inside its site. The landing pad releases
+        // that call's stack arguments, so the call needs a record.
+        bool HasCall = llvm::any_of(Fn.Calls, [&](const ExceptionCall &Call) {
+          return Call.ReturnPc > Site.Start && Call.ReturnPc <= Site.End;
+        });
+        if (!HasCall)
+          return bad(Twine("catch-all site at 0x") + Twine::utohexstr(Site.Start) +
+                     " has no call record for its outgoing arguments");
+      }
+      PreviousEnd = Site.End;
+    }
+  }
+
+  if (Functions.size() > 0xffff)
+    return bad("AVEH2 exceeds 65535 functions");
+  SmallVector<uint8_t, 0> Out;
+  for (char C : StringRef("AVEH2"))
+    Out.push_back(static_cast<uint8_t>(C));
+  append16(Out, static_cast<uint16_t>(Functions.size()));
+  append24Value(Out, 0); // block size, patched below
+  for (const ExceptionFunction &Fn : Functions) {
+    if (Fn.Rows.size() > 0xffff || Fn.Sites.size() > 0xffff ||
+        Fn.Calls.size() > 0xffff)
+      return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
+                 " exceeds AVEH2 record limits");
+    append24Value(Out, Fn.Start);
+    append24Value(Out, Fn.End);
+    append16(Out, static_cast<uint16_t>(Fn.Rows.size()));
+    append16(Out, static_cast<uint16_t>(Fn.Sites.size()));
+    append16(Out, static_cast<uint16_t>(Fn.Calls.size()));
+    for (const ExceptionRow &Row : Fn.Rows) {
+      append16(Out, static_cast<uint16_t>(Row.Pc - Fn.Start));
+      Out.push_back(Row.Flags);
+      append16(Out, static_cast<uint16_t>(Row.CFAOffset));
+      for (int16_t Slot : Row.Slots)
+        append16(Out, static_cast<uint16_t>(Slot));
+    }
+    for (const ExceptionSite &Site : Fn.Sites) {
+      append24Value(Out, Site.Start);
+      append24Value(Out, Site.End);
+      append24Value(Out, Site.LandingPad);
+      Out.push_back(Site.Action);
+    }
+    for (const ExceptionCall &Call : Fn.Calls) {
+      append24Value(Out, Call.ReturnPc);
+      append16(Out, Call.OutgoingBytes);
+    }
+  }
+  if (Out.size() > MaxFlashSize)
+    return bad("AVEH2 metadata exceeds the 24-bit block size");
+  write24(Out, 7, static_cast<uint32_t>(Out.size()));
+  return Out;
+}
+
 static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   Expected<OwningBinary<ObjectFile>> Binary = ObjectFile::createObjectFile(Input);
   if (!Binary)
@@ -999,6 +1439,27 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   else
     CrashStart = 0;
 
+  // AVEH2 follows the crash metadata, and only programs that reference the
+  // exception runtime define the anchor. --no-crash-info does not affect it.
+  Expected<std::optional<uint32_t>> ExceptionAnchor =
+      findExceptionAnchor(ELF, *SectionsOrErr, InputName);
+  if (!ExceptionAnchor)
+    return ExceptionAnchor.takeError();
+  std::optional<uint32_t> AnchorAddress = *ExceptionAnchor;
+  SmallVector<uint8_t, 0> ExceptionBlock;
+  uint64_t ExceptionStart = 0;
+  if (AnchorAddress) {
+    Expected<SmallVector<uint8_t, 0>> Block =
+        buildExceptionMetadata(ELF, *SectionsOrErr, Program, InputName);
+    if (!Block)
+      return Block.takeError();
+    ExceptionBlock = std::move(*Block);
+    ExceptionStart = alignTo(FinalPayloadEnd, 4);
+    if (ExceptionStart + ExceptionBlock.size() > MaxPayloadEnd)
+      return bad("AVEH2 exception metadata exceeds the flash payload limit");
+    FinalPayloadEnd = ExceptionStart + ExceptionBlock.size();
+  }
+
   Expected<uint32_t> FileSize =
       finalFileSize(static_cast<uint32_t>(FinalPayloadEnd));
   if (!FileSize)
@@ -1023,6 +1484,10 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     llvm::copy(S.Contents, Image.begin() + S.Address);
   if (!CrashBlock.empty())
     llvm::copy(CrashBlock, Image.begin() + CrashStart);
+  if (AnchorAddress) {
+    llvm::copy(ExceptionBlock, Image.begin() + ExceptionStart);
+    write24(Image, *AnchorAddress, static_cast<uint32_t>(ExceptionStart));
+  }
   size_t Tail = Image.size() - 8;
   Image[Tail] = 0x41; Image[Tail + 1] = 0x56;
   Image[Tail + 2] = 0x54; Image[Tail + 3] = 0x01;

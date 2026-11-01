@@ -6,6 +6,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
+#include "llvm/MC/MCSymbolELF.h"
 
 using namespace llvm;
 
@@ -193,4 +194,20 @@ AVMTargetObjectFile::getSectionForLSDA(const Function &F, const MCSymbol &FnSym,
   return classifySection(
       TargetLoweringObjectFileELF::getSectionForLSDA(F, FnSym, TM),
       AVMSectionClass::ProgramData);
+}
+
+MCSection *AVMTargetObjectFile::getExceptionSitesSection(
+    const Function &F, const MCSymbol &FnSym, const TargetMachine &TM) const {
+  // Grouped and linked with the function text, so discarded functions drop
+  // their site records with them.
+  const auto &Text = cast<MCSectionELF>(FnSym.getSection());
+  unsigned Flags = ELF::SHF_LINK_ORDER;
+  StringRef Group;
+  if (const MCSymbol *G = Text.getGroup()) {
+    Group = G->getName();
+    Flags |= ELF::SHF_GROUP;
+  }
+  return getContext().getELFSection(
+      ".avm.eh_sites", ELF::SHT_PROGBITS, Flags, 0, Group, true,
+      Text.getUniqueID(), cast<MCSymbolELF>(Text.getBeginSymbol()));
 }

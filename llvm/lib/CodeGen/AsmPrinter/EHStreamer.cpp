@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "EHStreamer.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/Dwarf.h"
@@ -415,6 +416,19 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteRange, 4> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
+  // A target can replace the LSDA byte format with fixed-width call-site
+  // records. Those records describe one contiguous function range.
+  if (MCSection *Sites = Asm->getObjFileLowering().getExceptionSitesSection(
+          MF->getFunction(), *Asm->CurrentFnSym, Asm->TM)) {
+    if (CallSiteRanges.size() > 1)
+      Asm->OutContext.reportError(
+          SMLoc(), Twine("AVM exception sites do not support basic block "
+                         "sections in '") +
+                       MF->getName() + "'");
+    emitExceptionSites(Sites, CallSites);
+    return nullptr;
+  }
+
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
   bool HasLEB128Directives = Asm->MAI->hasLEB128Directives();
@@ -803,6 +817,57 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   Asm->emitAlignment(Align(4));
   return GCCETSym;
+}
+
+void EHStreamer::emitExceptionSites(
+    MCSection *Section, const SmallVectorImpl<CallSiteEntry> &CallSites) {
+  // The function record is its range and call-site count, followed by one
+  // entry per call site. A landing pad of 0 means no handler applies, and
+  // action 1 is a catch-all handler. Cleanups and typed clauses are errors.
+  const MachineFunction *MF = Asm->MF;
+  const std::vector<const GlobalValue *> &TypeInfos = MF->getTypeInfos();
+  auto IsCatchAll = [&](const LandingPadInfo &LPI) {
+    return LPI.TypeIds.size() == 1 && LPI.TypeIds[0] > 0 &&
+           LPI.TypeIds[0] <= TypeInfos.size() &&
+           !TypeInfos[LPI.TypeIds[0] - 1];
+  };
+
+  if (!llvm::any_of(CallSites,
+                    [](const CallSiteEntry &Site) { return Site.LPad; }))
+    return;
+
+  Asm->OutStreamer->pushSection();
+  Asm->OutStreamer->switchSection(Section);
+  Asm->OutStreamer->emitSymbolValue(Asm->getFunctionBegin(), 3);
+  Asm->OutStreamer->emitSymbolValue(Asm->getFunctionEnd(), 3);
+  Asm->OutStreamer->emitIntValue(CallSites.size(), 2);
+  for (const CallSiteEntry &Site : CallSites) {
+    MCSymbol *Begin =
+        Site.BeginLabel ? Site.BeginLabel : Asm->getFunctionBegin();
+    MCSymbol *End = Site.EndLabel ? Site.EndLabel : Asm->getFunctionEnd();
+    Asm->OutStreamer->emitSymbolValue(Begin, 3);
+    Asm->OutStreamer->emitSymbolValue(End, 3);
+
+    unsigned Action = 0;
+    if (!Site.LPad) {
+      Asm->OutStreamer->emitIntValue(0, 3);
+    } else {
+      Asm->OutStreamer->emitSymbolValue(Site.LPad->LandingPadLabel, 3);
+      if (IsCatchAll(*Site.LPad)) {
+        Action = 1;
+      } else {
+        const bool Cleanup = Site.LPad->TypeIds.empty() ||
+                             llvm::is_contained(Site.LPad->TypeIds, 0);
+        Asm->OutContext.reportError(
+            SMLoc(), Twine("AVM exceptions support only catch-all handlers; '") +
+                         MF->getName() +
+                         (Cleanup ? "' has a cleanup landing pad"
+                                  : "' has a typed catch or exception filter"));
+      }
+    }
+    Asm->OutStreamer->emitIntValue(Action, 1);
+  }
+  Asm->OutStreamer->popSection();
 }
 
 void EHStreamer::emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel) {

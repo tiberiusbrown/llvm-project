@@ -1341,9 +1341,17 @@ AsmPrinter::getFunctionCFISectionType(const Function &F) const {
   if (F.isDeclarationForLinker())
     return CFISection::None;
 
+  // With the DWARF EH model, a function that needs an unwind entry gets one.
+  // Targets that keep unwind tables out of .eh_frame use .debug_frame, but only
+  // for functions with an unwind table or a personality. Other functions keep
+  // the ordinary CFI decision below.
   if (MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI &&
-      F.needsUnwindTableEntry())
-    return CFISection::EH;
+      F.needsUnwindTableEntry()) {
+    if (!MAI->unwindTablesUseDebugFrame())
+      return CFISection::EH;
+    if (F.hasUWTable() || F.hasPersonalityFn())
+      return CFISection::Debug;
+  }
 
   if (MAI->usesCFIWithoutEH() && F.hasUWTable())
     return MAI->unwindTablesUseDebugFrame() ? CFISection::Debug

@@ -126,6 +126,9 @@ public:
     UsesCFIWithoutEH = true;
     // Unwind tables are nonallocated debug information, not EH frames.
     UnwindTablesUseDebugFrame = true;
+    // Landing pads and call-site tables use LLVM's DWARF model. Their call-site
+    // records are written as AVM sites in place of the LSDA byte format.
+    setExceptionsType(ExceptionHandling::DwarfCFI);
   }
 
   void printSpecifierExpr(raw_ostream &OS,

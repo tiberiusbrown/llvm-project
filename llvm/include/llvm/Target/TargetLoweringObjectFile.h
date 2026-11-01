@@ -158,6 +158,14 @@ public:
     return LSDASection;
   }
 
+  /// Returns the section for a function's exception call-site records when the
+  /// target replaces the LSDA byte format, or null to use the LSDA.
+  virtual MCSection *getExceptionSitesSection(const Function &,
+                                              const MCSymbol &,
+                                              const TargetMachine &) const {
+    return nullptr;
+  }
+
   virtual bool shouldPutJumpTableInFunctionSection(bool UsesLabelDifference,
                                                    const Function &F) const;
 

@@ -102,6 +102,13 @@ public:
                                      const SelectionDAG &DAG,
                                      unsigned Depth = 0) const override;
 
+  // Landing pads receive the exception object in r4 and the catch selector in
+  // r5. Both are 16-bit registers; the selector is zero-extended to i32.
+  Register
+  getExceptionPointerRegister(const Constant *PersonalityFn) const override;
+  Register
+  getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+
 private:
   SDValue BuildI32FromWords(SDValue Low, SDValue High, const SDLoc &DL,
                             SelectionDAG &DAG) const;

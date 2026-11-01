@@ -47,6 +47,9 @@ public:
   MCSection *getSectionForLSDA(const Function &F, const MCSymbol &FnSym,
                                const TargetMachine &TM) const override;
 
+  MCSection *getExceptionSitesSection(const Function &F, const MCSymbol &FnSym,
+                                      const TargetMachine &TM) const override;
+
 private:
   enum class AVMSectionClass { Data, ProgramData, ProgramText };
 

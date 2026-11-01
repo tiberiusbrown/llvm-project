@@ -878,6 +878,16 @@ EVT AVMTargetLowering::getTypeForExtReturn(LLVMContext &, EVT VT,
   return VT;
 }
 
+Register AVMTargetLowering::getExceptionPointerRegister(
+    const Constant *PersonalityFn) const {
+  return AVM::R4;
+}
+
+Register AVMTargetLowering::getExceptionSelectorRegister(
+    const Constant *PersonalityFn) const {
+  return AVM::R5;
+}
+
 const char *AVMTargetLowering::getTargetNodeName(unsigned Opcode) const {
   if (Opcode == AVMISD::BR_CC)
     return "AVMISD::BR_CC";
