@@ -857,6 +857,8 @@ constexpr uint8_t EHFlagR3Base = 0x80;
 constexpr uint8_t EHActionNone = 0;
 constexpr uint8_t EHActionCatchAll = 1;
 constexpr uint8_t EHActionCleanup = 2;
+// The action byte holds only these two flags. A combined landing pad sets both.
+constexpr uint8_t EHActionMask = EHActionCatchAll | EHActionCleanup;
 // Intermediate .avm.eh_sites records: u24 start, u24 end, u16 count, sites.
 constexpr uint32_t EHSitesRecordHeaderSize = 8;
 // Intermediate .avm.eh_calls records: u24 start, u16 count, then call entries.
@@ -1051,10 +1053,7 @@ static Error appendSiteRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
       Site.End = P[3] | (P[4] << 8) | (P[5] << 16);
       Site.LandingPad = P[6] | (P[7] << 8) | (P[8] << 16);
       Site.Action = P[9];
-      if (Site.Action == EHActionCleanup)
-        return bad(Twine("cleanup landing pad in '") + InputName +
-                   "' is unsupported: AVM exceptions handle only catch-all clauses");
-      if (Site.Action > EHActionCatchAll)
+      if (Site.Action & ~EHActionMask)
         return bad(Twine("unknown exception action in '") + InputName + "'");
       Fn->Sites.push_back(Site);
     }
@@ -1262,7 +1261,8 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
           return Call.ReturnPc > Site.Start && Call.ReturnPc <= Site.End;
         });
         if (!HasCall)
-          return bad(Twine("catch-all site at 0x") + Twine::utohexstr(Site.Start) +
+          return bad(Twine("handler or cleanup site at 0x") +
+                     Twine::utohexstr(Site.Start) +
                      " has no call record for its outgoing arguments");
       }
       PreviousEnd = Site.End;

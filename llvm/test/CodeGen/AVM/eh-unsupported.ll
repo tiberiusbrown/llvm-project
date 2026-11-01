@@ -1,8 +1,8 @@
 ; RUN: not llc -mtriple=avm-unknown-arduboyfx -O0 -filetype=asm %s -o /dev/null 2>&1 | FileCheck %s
 
-; Stage 1 handles only catch-all clauses. A typed catch and a cleanup landing
-; pad must fail the compile with a diagnostic instead of producing call-site
-; records that would misrepresent the handler.
+; AVM supports catch-all handlers and cleanups. A typed catch and an exception
+; filter have no AVM encoding, so each must fail the compile with its own
+; diagnostic instead of producing call-site records that misrepresent the handler.
 
 declare void @thrower() addrspace(1)
 declare i32 @__gxx_personality_v0(...) addrspace(1)
@@ -19,16 +19,16 @@ lpad:
   ret i32 1
 }
 
-define void @cleaned() addrspace(1) personality ptr addrspace(1) @__gxx_personality_v0 {
+define i32 @filtered() addrspace(1) personality ptr addrspace(1) @__gxx_personality_v0 {
   invoke addrspace(1) void @thrower() to label %normal unwind label %lpad
 
 normal:
-  ret void
+  ret i32 0
 
 lpad:
-  %pad = landingpad { ptr, i32 } cleanup
-  resume { ptr, i32 } %pad
+  %pad = landingpad { ptr, i32 } filter [1 x ptr] [ptr @_ZTIi]
+  ret i32 1
 }
 
-; CHECK-DAG: error: AVM exceptions support only catch-all handlers; 'typed' has a typed catch or exception filter
-; CHECK-DAG: error: AVM exceptions support only catch-all handlers; 'cleaned' has a cleanup landing pad
+; CHECK-DAG: error: AVM exceptions support only catch-all handlers and cleanups; 'typed' has a typed catch
+; CHECK-DAG: error: AVM exceptions support only catch-all handlers and cleanups; 'filtered' has an exception filter

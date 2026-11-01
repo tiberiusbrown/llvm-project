@@ -71,6 +71,12 @@ lpad:
 ; generated.
 ; ASM:       .section .avm.eh_sites,"o",@progbits,.text
 ; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 2
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .byte 1
 ; ASM-NOT:   .gcc_except_table
 ; ASM-NOT:   .eh_frame
 ;

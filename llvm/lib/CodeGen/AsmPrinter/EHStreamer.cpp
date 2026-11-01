@@ -822,14 +822,44 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 void EHStreamer::emitExceptionSites(
     MCSection *Section, const SmallVectorImpl<CallSiteEntry> &CallSites) {
   // The function record is its range and call-site count, followed by one
-  // entry per call site. A landing pad of 0 means no handler applies, and
-  // action 1 is a catch-all handler. Cleanups and typed clauses are errors.
+  // entry per call site. A landing pad of 0 means no handler or cleanup applies.
+  // The action byte holds two flags: bit 0 for a catch-all handler and bit 1 for
+  // a cleanup. A landing pad that cleans up and then catches sets both.
+  constexpr unsigned AVMActionCatchAll = 1;
+  constexpr unsigned AVMActionCleanup = 2;
   const MachineFunction *MF = Asm->MF;
   const std::vector<const GlobalValue *> &TypeInfos = MF->getTypeInfos();
-  auto IsCatchAll = [&](const LandingPadInfo &LPI) {
-    return LPI.TypeIds.size() == 1 && LPI.TypeIds[0] > 0 &&
-           LPI.TypeIds[0] <= TypeInfos.size() &&
-           !TypeInfos[LPI.TypeIds[0] - 1];
+
+  auto Reject = [&](StringRef Reason) {
+    Asm->OutContext.reportError(
+        SMLoc(), Twine("AVM exceptions support only catch-all handlers and "
+                       "cleanups; '") +
+                     MF->getName() + "' " + Reason);
+  };
+
+  // Derives the action of a landing pad from its clauses. TypeIds holds 0 for
+  // a cleanup, a 1-based index into TypeInfos for a catch, and a negative value
+  // for a filter. A null TypeInfo is a catch-all. A landing pad with no clauses
+  // is cleanup-only. Typed catches and filters have no AVM encoding, so each
+  // one is reported.
+  auto ActionOf = [&](const LandingPadInfo &LPI) {
+    bool HasCatchAll = false;
+    bool HasCleanup = LPI.TypeIds.empty();
+    for (int TypeId : LPI.TypeIds) {
+      if (TypeId == 0) {
+        HasCleanup = true;
+      } else if (TypeId < 0) {
+        Reject("has an exception filter");
+      } else if (static_cast<size_t>(TypeId) > TypeInfos.size()) {
+        Reject("has a type id outside its type table");
+      } else if (TypeInfos[TypeId - 1]) {
+        Reject("has a typed catch");
+      } else {
+        HasCatchAll = true;
+      }
+    }
+    return (HasCatchAll ? AVMActionCatchAll : 0u) |
+           (HasCleanup ? AVMActionCleanup : 0u);
   };
 
   if (!llvm::any_of(CallSites,
@@ -853,17 +883,7 @@ void EHStreamer::emitExceptionSites(
       Asm->OutStreamer->emitIntValue(0, 3);
     } else {
       Asm->OutStreamer->emitSymbolValue(Site.LPad->LandingPadLabel, 3);
-      if (IsCatchAll(*Site.LPad)) {
-        Action = 1;
-      } else {
-        const bool Cleanup = Site.LPad->TypeIds.empty() ||
-                             llvm::is_contained(Site.LPad->TypeIds, 0);
-        Asm->OutContext.reportError(
-            SMLoc(), Twine("AVM exceptions support only catch-all handlers; '") +
-                         MF->getName() +
-                         (Cleanup ? "' has a cleanup landing pad"
-                                  : "' has a typed catch or exception filter"));
-      }
+      Action = ActionOf(*Site.LPad);
     }
     Asm->OutStreamer->emitIntValue(Action, 1);
   }

@@ -753,6 +753,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setLibcallImpl(RTLIB::ATOMIC_FETCH_OR_8, RTLIB::impl___atomic_fetch_or_8);
   setLibcallImpl(RTLIB::ATOMIC_FETCH_XOR_8, RTLIB::impl___atomic_fetch_xor_8);
   setLibcallImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
+  // DwarfEHPrepare rewinds each cleanup through UNWIND_RESUME. AVM uses the DWARF
+  // exception model, and the generic libcall sets skip this triple, so the name is
+  // set here. Without it, the rewind call would have no symbol.
+  setLibcallImpl(RTLIB::UNWIND_RESUME, RTLIB::impl__Unwind_Resume);
 
   for (unsigned Opcode :
        {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FNEG, ISD::FABS, ISD::FSQRT, ISD::FTRUNC, ISD::FFLOOR,
