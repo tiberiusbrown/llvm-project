@@ -1346,7 +1346,8 @@ AsmPrinter::getFunctionCFISectionType(const Function &F) const {
     return CFISection::EH;
 
   if (MAI->usesCFIWithoutEH() && F.hasUWTable())
-    return CFISection::EH;
+    return MAI->unwindTablesUseDebugFrame() ? CFISection::Debug
+                                            : CFISection::EH;
 
   if (hasDebugInfo() || TM.Options.ForceDwarfFrameSection)
     return CFISection::Debug;

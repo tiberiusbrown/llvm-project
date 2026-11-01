@@ -35,6 +35,17 @@ public:
     return false;
   }
 
+  /// Return true if the prologue changes the CFI state of the body. Functions
+  /// without a frame have the entry state everywhere and need no restatement.
+  bool changesFrameState(const MachineFunction &MF) const;
+  /// Restate the body's CFI state at MI, the state after the prologue.
+  void emitBodyFrameState(MachineBasicBlock &MBB,
+                          MachineBasicBlock::iterator MI) const;
+  /// Restate the state after an epilogue: the entry stack with no saved
+  /// registers.
+  void emitReturnFrameState(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator MI) const;
+
 protected:
   bool hasFPImpl(const MachineFunction &MF) const override;
 };

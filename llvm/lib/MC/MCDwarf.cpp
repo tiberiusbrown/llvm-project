@@ -1565,9 +1565,16 @@ void FrameEmitterImpl::emitCFIInstructions(ArrayRef<MCCFIInstruction> Instrs,
         // a set_loc operand does. This is used only in non-allocated CFI.
         if (!IsEH && Streamer.getContext().getTargetTriple().getArch() ==
                          Triple::avm) {
-          Streamer.emitInt8(dwarf::DW_CFA_set_loc);
-          Streamer.emitSymbolValue(
-              ThisSym, Streamer.getContext().getAsmInfo()->getCodePointerSize());
+          // Several directives at one position share a row. DWARF requires
+          // set_loc addresses to increase, so emit it only for a new position.
+          // Labels record their fragment and offset when they are defined.
+          if (ThisSym->getFragment() != BaseLabel->getFragment() ||
+              ThisSym->getOffset() != BaseLabel->getOffset()) {
+            Streamer.emitInt8(dwarf::DW_CFA_set_loc);
+            Streamer.emitSymbolValue(
+                ThisSym,
+                Streamer.getContext().getAsmInfo()->getCodePointerSize());
+          }
         } else {
           Streamer.emitDwarfAdvanceFrameAddr(BaseLabel, ThisSym,
                                              Instr.getLoc());

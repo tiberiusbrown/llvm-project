@@ -1,6 +1,7 @@
 //===-- AVMFinalControlFlow.cpp - Final AVM control-flow cleanup --------===//
 
 #include "AVM.h"
+#include "AVMFrameLowering.h"
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
 #include "llvm/ADT/STLExtras.h"
@@ -8,6 +9,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/MC/MCDwarf.h"
 #include <algorithm>
 #include <iterator>
 
@@ -119,6 +121,30 @@ static bool hasPhysicalFallthroughInto(const MachineBasicBlock &Target) {
     }
   }
   return false;
+}
+
+static bool hasFrameDestroy(MachineBasicBlock &MBB) {
+  return llvm::any_of(MBB, [](const MachineInstr &MI) {
+    return MI.getFlag(MachineInstr::FrameDestroy);
+  });
+}
+
+static bool hasReturn(MachineBasicBlock &MBB) {
+  return llvm::any_of(MBB,
+                      [](const MachineInstr &MI) { return MI.isReturn(); });
+}
+
+// Return the position after the restores that open the block. Frame state
+// belongs after them, so that it is the state the block finally leaves.
+static MachineBasicBlock::iterator
+afterLeadingRestores(MachineBasicBlock &MBB) {
+  const MachineFunction &MF = *MBB.getParent();
+  auto It = MBB.begin();
+  while (It != MBB.end() && It->isCFIInstruction() &&
+         MF.getFrameInstructions()[It->getOperand(0).getCFIIndex()]
+                 .getOperation() == MCCFIInstruction::OpRestoreState)
+    ++It;
+  return It;
 }
 
 class AVMFinalControlFlow final : public MachineFunctionPass {
@@ -275,6 +301,34 @@ public:
         }
         if (emitsCode(*I))
           break;
+      }
+    }
+
+    // CFI rows are read in layout order, and the block placement above is now
+    // final. A block that follows an epilogue starts from the state the
+    // epilogue leaves, so it states the frame it needs: body code restates the
+    // body, and a return tail restates the state after the epilogue. A block
+    // that opens with a restore also restates its state, because the restored
+    // state comes from a remember made when the block was placed elsewhere.
+    const auto *FrameLowering = static_cast<const AVMFrameLowering *>(
+        MF.getSubtarget<AVMSubtarget>().getFrameLowering());
+    if (FrameLowering->changesFrameState(MF)) {
+      for (MachineBasicBlock &MBB : MF) {
+        MachineBasicBlock *Prev = MBB.getPrevNode();
+        if (!Prev)
+          continue;
+        SmallVector<MachineInstr *, 2> Last = getLastCodeInstructions(*Prev);
+        bool PrevLeavesFrame = !Last.empty() && Last.back()->isBarrier() &&
+                               (hasFrameDestroy(*Prev) || hasReturn(*Prev));
+        bool ReturnTail = hasReturn(MBB) && !hasFrameDestroy(MBB);
+        bool OpensWithRestore = afterLeadingRestores(MBB) != MBB.begin();
+        if (ReturnTail && (!PrevLeavesFrame || OpensWithRestore)) {
+          FrameLowering->emitReturnFrameState(MBB, afterLeadingRestores(MBB));
+          Changed = true;
+        } else if (!ReturnTail && (PrevLeavesFrame || OpensWithRestore)) {
+          FrameLowering->emitBodyFrameState(MBB, afterLeadingRestores(MBB));
+          Changed = true;
+        }
       }
     }
 

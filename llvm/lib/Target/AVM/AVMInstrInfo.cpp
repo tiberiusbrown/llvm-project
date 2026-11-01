@@ -75,6 +75,22 @@ bool AVMInstrInfo::isReMaterializableImpl(const MachineInstr &MI) const {
   return TargetInstrInfo::isReMaterializableImpl(MI);
 }
 
+bool AVMInstrInfo::isSafeToMove(const MachineInstr &MI,
+                                const MachineBasicBlock *MBB,
+                                const MachineFunction &MF) const {
+  // An ADJSP followed by its CFI row sets the frame state of its own block.
+  // Hoisting it alone would leave the row in a successor and misdescribe the
+  // predecessor, which is where the stack is actually adjusted.
+  if (MI.getOpcode() == AVM::ADJSP) {
+    const MachineInstr *Next = MI.getNextNode();
+    while (Next && Next->isDebugInstr())
+      Next = Next->getNextNode();
+    if (Next && Next->isCFIInstruction())
+      return false;
+  }
+  return TargetInstrInfo::isSafeToMove(MI, MBB, MF);
+}
+
 bool AVMInstrInfo::shouldHoistCheapInst(const MachineInstr &MI) const {
   if (MI.getOpcode() != AVM::FRAMEADDR_PSEUDO)
     return false;

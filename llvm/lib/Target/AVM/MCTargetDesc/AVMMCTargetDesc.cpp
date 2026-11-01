@@ -124,6 +124,8 @@ public:
     MinInstAlignment = 1;
     SupportsDebugInformation = true;
     UsesCFIWithoutEH = true;
+    // Unwind tables are nonallocated debug information, not EH frames.
+    UnwindTablesUseDebugFrame = true;
   }
 
   void printSpecifierExpr(raw_ostream &OS,

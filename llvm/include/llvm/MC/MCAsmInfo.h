@@ -362,6 +362,12 @@ protected:
   /// (debugging / sanitizers) when `ExceptionsType == ExceptionHandling::None`.
   bool UsesCFIWithoutEH = false;
 
+  /// True if functions with unwind tables describe their CFI in .debug_frame
+  /// rather than .eh_frame when UsesCFIWithoutEH is set. .eh_frame is
+  /// allocated on ELF, so targets whose unwind data must stay nonallocated
+  /// set this.
+  bool UnwindTablesUseDebugFrame = false;
+
   /// Windows exception handling data (.pdata) encoding.  Defaults to Invalid.
   WinEH::EncodingType WinEHEncodingType = WinEH::EncodingType::Invalid;
 
@@ -640,6 +646,8 @@ public:
   bool usesCFIWithoutEH() const {
     return ExceptionsType == ExceptionHandling::None && UsesCFIWithoutEH;
   }
+
+  bool unwindTablesUseDebugFrame() const { return UnwindTablesUseDebugFrame; }
 
   /// Returns true if the exception handling method for the platform uses call
   /// frame information to unwind.

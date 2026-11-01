@@ -61,6 +61,56 @@ uint64_t getCalleeSavedSize(const MachineFrameInfo &MFI) {
 }
 } // namespace
 
+bool AVMFrameLowering::changesFrameState(const MachineFunction &MF) const {
+  return hasFP(MF) || MF.getFrameInfo().getStackSize() != 0;
+}
+
+void AVMFrameLowering::emitBodyFrameState(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const {
+  MachineFunction &MF = *MBB.getParent();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  int64_t CFAOffset = 3 + static_cast<int64_t>(MFI.getStackSize());
+  if (hasFP(MF))
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::cfiDefCfa(
+                nullptr, MRI->getDwarfRegNum(AVM::R3, true), CFAOffset),
+            MachineInstr::NoFlags);
+  else
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::cfiDefCfaOffset(nullptr, CFAOffset),
+            MachineInstr::NoFlags);
+  // The prologue pushes the callee-saved registers in reverse order, so the
+  // k-th push leaves its slot at CFA - (3 + 2k).
+  int64_t PushedOffset = 3;
+  for (const CalleeSavedInfo &Info : llvm::reverse(MFI.getCalleeSavedInfo())) {
+    PushedOffset += 2;
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::createOffset(
+                nullptr, MRI->getDwarfRegNum(Info.getReg(), true),
+                -PushedOffset),
+            MachineInstr::NoFlags);
+  }
+}
+
+void AVMFrameLowering::emitReturnFrameState(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const {
+  MachineFunction &MF = *MBB.getParent();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  emitCFI(MBB, MI, DebugLoc(), TII,
+          MCCFIInstruction::cfiDefCfa(nullptr,
+                                      MRI->getDwarfRegNum(AVM::SP, true), 3),
+          MachineInstr::NoFlags);
+  for (const CalleeSavedInfo &Info : MFI.getCalleeSavedInfo())
+    emitCFI(MBB, MI, DebugLoc(), TII,
+            MCCFIInstruction::createRestore(
+                nullptr, MRI->getDwarfRegNum(Info.getReg(), true)),
+            MachineInstr::NoFlags);
+}
+
 bool AVMFrameLowering::hasFPImpl(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
@@ -222,8 +272,13 @@ MachineBasicBlock::iterator AVMFrameLowering::eliminateCallFramePseudoInstr(
   int64_t CFAOffset = 3 + static_cast<int64_t>(MF.getFrameInfo().getStackSize());
   if (Amount > 0)
     CFAOffset += Amount;
-  emitSPAdjustment(MBB, MI, MI->getDebugLoc(), TII, Amount,
-                   MachineInstr::NoFlags,
+  // Without a frame pointer, the CFI row after this adjustment describes the
+  // stack in this block. Tail merging must not share the adjustment: a
+  // predecessor would then enter the shared block with arguments allocated.
+  // Frame-pointer CFA rows do not depend on SP, so those stay mergeable.
+  MachineInstr::MIFlag Flag =
+      hasFP(MF) ? MachineInstr::NoFlags : MachineInstr::NoMerge;
+  emitSPAdjustment(MBB, MI, MI->getDebugLoc(), TII, Amount, Flag,
                    hasFP(MF) ? nullptr : &CFAOffset);
   return MBB.erase(MI);
 }
