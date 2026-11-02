@@ -179,11 +179,9 @@ public:
 
   void EmitFundamentalRTTIDescriptors(const CXXRecordDecl *RD);
   llvm::Constant *getAddrOfRTTIDescriptor(QualType Ty) override;
-  CatchTypeInfo
-  getAddrOfCXXCatchHandlerType(QualType Ty,
-                               QualType CatchHandlerType) override {
-    return CatchTypeInfo{getAddrOfRTTIDescriptor(Ty), 0};
-  }
+  CatchTypeInfo getAddrOfCXXCatchHandlerType(QualType Ty,
+                                             QualType CatchHandlerType) override;
+  llvm::Constant *getAddrOfAVMExactPointerRefMarker(QualType PointerTy);
 
   bool shouldTypeidBeNullChecked(QualType SrcRecordTy) override;
   void EmitBadTypeidCall(CodeGenFunction &CGF) override;
@@ -3725,6 +3723,10 @@ public:
 
     /// PTI_Noexcept - Pointee is noexcept function (C++1z).
     PTI_Noexcept = 0x40,
+
+    /// PTI_AVMWide - AVM only: the pointer is wider than a 16-bit data pointer,
+    /// because it is a function pointer or points into program memory.
+    PTI_AVMWide = 0x80,
   };
 
   // VMI type info flags.
@@ -4763,10 +4765,25 @@ static unsigned extractPBaseFlags(ASTContext &Ctx, QualType &Type) {
 /// BuildPointerTypeInfo - Build an abi::__pointer_type_info struct,
 /// used for pointer types.
 void ItaniumRTTIBuilder::BuildPointerTypeInfo(QualType PointeeTy) {
+  // The width of a pointer's representation comes from the target. On AVM a
+  // function pointer and a pointer into program memory are 24 bits, which is not
+  // the 16-bit width of a data pointer. The width is read before extractPBaseFlags
+  // removes the pointee's address space.
+  bool WideRepresentation = false;
+  if (CGM.getTriple().getArch() == llvm::Triple::avm) {
+    const TargetInfo &Target = CGM.getTarget();
+    uint64_t Width = PointeeTy->isFunctionType()
+                         ? Target.getFunctionPointerWidth()
+                         : Target.getPointerWidth(PointeeTy.getAddressSpace());
+    WideRepresentation = Width != Target.getPointerWidth(LangAS::Default);
+  }
+
   // Itanium C++ ABI 2.9.5p7:
   //   __flags is a flag word describing the cv-qualification and other
   //   attributes of the type pointed to
   unsigned Flags = extractPBaseFlags(CGM.getContext(), PointeeTy);
+  if (WideRepresentation)
+    Flags |= PTI_AVMWide;
 
   llvm::Type *UnsignedIntLTy =
     CGM.getTypes().ConvertType(CGM.getContext().UnsignedIntTy);
@@ -4816,6 +4833,71 @@ ItaniumRTTIBuilder::BuildPointerToMemberTypeInfo(const MemberPointerType *Ty) {
 
 llvm::Constant *ItaniumCXXABI::getAddrOfRTTIDescriptor(QualType Ty) {
   return ItaniumRTTIBuilder(*this).BuildTypeInfo(Ty);
+}
+
+/// Returns the address point of a runtime support vtable on AVM. Each support vtable
+/// is a nine-byte program-space object, and its address point lies two 24-bit entries
+/// past the symbol, as in every AVM vtable.
+static llvm::Constant *getAVMSupportVTableAddressPoint(CodeGenModule &CGM,
+                                                       StringRef Name) {
+  unsigned RTTIAS = getRTTIAddressSpace(CGM);
+  llvm::Type *EntryTy = getRTTIPointerType(CGM, CGM.GlobalsInt8PtrTy);
+  llvm::Constant *VTable = CGM.CreateOrReplaceCXXRuntimeVariable(
+      Name, llvm::ArrayType::get(EntryTy, 0), llvm::GlobalValue::ExternalLinkage,
+      llvm::Align(1), RTTIAS);
+  CGM.setDSOLocal(cast<llvm::GlobalValue>(VTable->stripPointerCasts()));
+  llvm::Constant *Two = llvm::ConstantInt::get(
+      CGM.getDataLayout().getIndexType(EntryTy), 2);
+  return llvm::ConstantExpr::getGetElementPtr(EntryTy, VTable, Two);
+}
+
+/// A catch of a pointer by reference names the pointer type, which the runtime matches
+/// with the usual pointer conversions. On AVM, a catch of a pointer object that is not
+/// const-qualified must bind to the exact object, so it names a marker instead: a
+/// nine-byte object with the support vtable address point, three reserved zero bytes,
+/// and the pointer's own descriptor. The runtime matches a marker only against the
+/// thrown pointer type, with no conversion. The marker is named after the reference type,
+/// so every translation unit that names the same catch gets one linkonce_odr object.
+CatchTypeInfo ItaniumCXXABI::getAddrOfCXXCatchHandlerType(
+    QualType Ty, QualType CatchHandlerType) {
+  if (CGM.getTriple().getArch() == llvm::Triple::avm)
+    if (const auto *Ref = CatchHandlerType->getAs<LValueReferenceType>())
+      if (Ref->getPointeeType()->isPointerType() &&
+          !Ref->getPointeeType().isConstQualified())
+        return CatchTypeInfo{getAddrOfAVMExactPointerRefMarker(Ty), 0};
+  return CatchTypeInfo{getAddrOfRTTIDescriptor(Ty), 0};
+}
+
+llvm::Constant *
+ItaniumCXXABI::getAddrOfAVMExactPointerRefMarker(QualType PointerTy) {
+  QualType RefTy = CGM.getContext().getLValueReferenceType(
+      PointerTy.getCanonicalType());
+  SmallString<256> Name;
+  llvm::raw_svector_ostream Out(Name);
+  CGM.getCXXABI().getMangleContext().mangleCXXRTTI(RefTy, Out);
+
+  llvm::Module &M = CGM.getModule();
+  if (llvm::GlobalVariable *OldGV = M.getNamedGlobal(Name))
+    return OldGV;
+
+  llvm::Constant *VTable = getAVMSupportVTableAddressPoint(
+      CGM, "__avm_eh_exact_pointer_ref_type_info");
+  llvm::Constant *Reserved =
+      llvm::ConstantAggregateZero::get(llvm::ArrayType::get(CGM.Int8Ty, 3));
+  llvm::Constant *Underlying = getAddrOfRTTIDescriptor(PointerTy);
+  llvm::Constant *Init =
+      llvm::ConstantStruct::getAnon({VTable, Reserved, Underlying});
+
+  auto *GV = new llvm::GlobalVariable(
+      M, Init->getType(), /*isConstant=*/true,
+      llvm::GlobalValue::LinkOnceODRLinkage, Init, Name,
+      /*InsertBefore=*/nullptr, llvm::GlobalVariable::NotThreadLocal,
+      getRTTIAddressSpace(CGM));
+  CGM.setDSOLocal(GV);
+  if (CGM.supportsCOMDAT())
+    GV->setComdat(M.getOrInsertComdat(GV->getName()));
+  GV->setAlignment(llvm::Align(1));
+  return GV;
 }
 
 void ItaniumCXXABI::EmitFundamentalRTTIDescriptors(const CXXRecordDecl *RD) {
@@ -5110,6 +5192,18 @@ static void InitCatchParam(CodeGenFunction &CGF,
 
     // __cxa_begin_catch returns the adjusted object pointer.
     llvm::Value *AdjustedExn = CallBeginCatch(CGF, Exn, EndCatchMightThrow);
+
+    // On AVM, a pointer catch by reference binds to the address that
+    // __cxa_begin_catch returns. That is the caught pointer object itself: the exception
+    // object for an exact mutable reference, or the converted-value buffer for a const
+    // reference that needs a conversion. The generic path below would bind to a copy.
+    if (CGF.CGM.getTriple().getArch() == llvm::Triple::avm &&
+        CaughtType->isPointerType()) {
+      llvm::Value *ExnCast =
+          CGF.Builder.CreateBitCast(AdjustedExn, LLVMCatchTy, "exn.byref");
+      CGF.Builder.CreateStore(ExnCast, ParamAddr);
+      return;
+    }
 
     // We have no way to tell the personality function that we're
     // catching by reference, so if we're catching a pointer,
