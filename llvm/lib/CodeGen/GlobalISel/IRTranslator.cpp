@@ -2402,6 +2402,8 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
   case Intrinsic::memset:
     return translateMemFunc(CI, MIRBuilder, TargetOpcode::G_MEMSET);
   case Intrinsic::eh_typeid_for: {
+    checkTypeInfoOperand(CI.getArgOperand(0), MF->getTarget().getTargetTriple(),
+                         MF->getName(), "llvm.eh.typeid.for operand");
     GlobalValue *GV = ExtractTypeInfo(CI.getArgOperand(0));
     Register Reg = getOrCreateVReg(CI);
     unsigned TypeID = MF->getTypeIDFor(GV);

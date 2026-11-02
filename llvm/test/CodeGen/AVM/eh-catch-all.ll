@@ -68,15 +68,29 @@ lpad:
 ; ASM-NEXT:  .short 0
 
 ; The call-site records are emitted into .avm.eh_sites, and no LSDA section is
-; generated.
+; generated. The catch-all list has one entry, selector 1 with a zero address.
 ; ASM:       .section .avm.eh_sites,"o",@progbits,.text
 ; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
 ; ASM-NEXT:  .short 2
+; ASM-NEXT:  .short 8
+; ASM-NEXT:  .byte 0
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .byte 1
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
 ; ASM-NOT:   .gcc_except_table
 ; ASM-NOT:   .eh_frame
 ;

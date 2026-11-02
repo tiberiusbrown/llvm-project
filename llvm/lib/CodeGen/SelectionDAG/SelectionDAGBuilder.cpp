@@ -6787,7 +6787,11 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   }
 
   case Intrinsic::eh_typeid_for: {
-    // Find the type id for the given typeinfo.
+    // Find the type id for the given typeinfo. An operand that is not a global
+    // would otherwise be taken as the catch-all ID, so AVM rejects it first.
+    checkTypeInfoOperand(I.getArgOperand(0), DAG.getTarget().getTargetTriple(),
+                         DAG.getMachineFunction().getName(),
+                         "llvm.eh.typeid.for operand");
     GlobalValue *GV = ExtractTypeInfo(I.getArgOperand(0));
     unsigned TypeID = DAG.getMachineFunction().getTypeIDFor(GV);
     Res = DAG.getConstant(TypeID, sdl, MVT::i32);

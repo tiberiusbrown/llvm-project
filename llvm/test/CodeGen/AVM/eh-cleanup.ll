@@ -2,9 +2,9 @@
 ; RUN: llc -mtriple=avm-unknown-arduboyfx -O2 -filetype=asm %s -o - | FileCheck %s --check-prefix=ASM-O2
 ; RUN: llc -mtriple=avm-unknown-arduboyfx -O0 -filetype=obj %s -o %t.o
 
-; Cleanup landing pads and combined cleanup-and-catch landing pads. The action
-; byte in each .avm.eh_sites entry is a flag set: 1 is a catch-all handler, 2 is a
-; cleanup, and a landing pad that cleans up and then catches sets both, which is 3.
+; Cleanup landing pads and combined cleanup-and-catch landing pads. Each action list
+; in the pool of .avm.eh_sites has a flags byte: bit 0 is a cleanup. A catch-all is a
+; catch entry with a zero type address, so it is not a flag.
 
 declare void @thrower() addrspace(1)
 declare void @destroy_local() addrspace(1)
@@ -80,69 +80,161 @@ lpad:
   ret i32 2
 }
 
-; Each site record is u24 start, u24 end, u24 landing pad, and the action byte. The
-; call-site table also has a record for the gap after the invoke, so the count is
-; not the number of landing pads.
+; The invoke's site and the gap after it. The pool holds one list: flags 1 for the
+; cleanup, and no catch entries.
 ; ASM-LABEL: cleanup_only:
-; ASM:       .section .avm.eh_sites
+; ASM:       .section .avm.eh_sites,"o",@progbits,.text
 ; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
 ; ASM-NEXT:  .short 2
+; ASM-NEXT:  .short 3
+; ASM-NEXT:  .byte 0
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .byte 2
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .byte 1
+; ASM-NEXT:  .short 0
 ;
-; Each cleanup pad keeps its own record with action 2.
+; Two pads with the same cleanup share one list, so both sites name the same offset.
 ; ASM-LABEL: two_cleanups:
-; ASM:       .section .avm.eh_sites
+; ASM:       .section .avm.eh_sites,"o",@progbits,.text
 ; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
 ; ASM-NEXT:  .short 3
+; ASM-NEXT:  .short 3
+; ASM-NEXT:  .byte 0
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .byte 2
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .byte 2
-;
-; The combined pad records action 3: the cleanup flag and the catch-all flag.
-; ASM-LABEL: cleanup_and_catch:
-; ASM:       .section .avm.eh_sites
-; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
 ; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
-; ASM-NEXT:  .short 2
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .byte 3
-;
-; The catch-only pad keeps action 1.
-; ASM-LABEL: catch_only:
-; ASM:       .section .avm.eh_sites
-; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
-; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
-; ASM-NEXT:  .short 2
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
-; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
 ; ASM-NEXT:  .byte 1
+; ASM-NEXT:  .short 0
+;
+; The combined pad records a cleanup flag and a catch-all entry: flags 1, one
+; entry with selector 1 and a zero address. At -O2, the optimizer drops the cleanup
+; clause from a landing pad that has a catch-all clause, so the flag is then zero.
+; ASM-LABEL: cleanup_and_catch:
+; ASM:       .section .avm.eh_sites,"o",@progbits,.text
+; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 2
+; ASM-NEXT:  .short 8
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .byte 1
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
 
-; The cleanup-only pads keep action 2 at -O2. The optimizer drops the cleanup clause
-; from a landing pad that has a catch-all clause, so the combined pad records action 1
-; at -O2, as clang's optimized builds do.
+; A catch-only pad has no cleanup flag, and its one entry is the catch-all.
+; ASM-LABEL: catch_only:
+; ASM:       .section .avm.eh_sites,"o",@progbits,.text
+; ASM-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 2
+; ASM-NEXT:  .short 8
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .byte 0
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 1
+; ASM-NEXT:  .short 0
+; ASM-NEXT:  .byte 0
+
+; The cleanup-only pads keep the cleanup flag at -O2. The combined pad drops it, as
+; the -O0 checks above show.
 ; ASM-O2-LABEL: cleanup_only:
 ; ASM-O2:       .section .avm.eh_sites
-; ASM-O2:       .byte 2
+; ASM-O2:       .byte 1
+; ASM-O2-NEXT:  .short 0
 ; ASM-O2-LABEL: two_cleanups:
 ; ASM-O2:       .section .avm.eh_sites
-; ASM-O2:       .byte 2
-; ASM-O2:       .byte 2
+; ASM-O2:       .byte 1
+; ASM-O2-NEXT:  .short 0
 ; ASM-O2-LABEL: cleanup_and_catch:
 ; ASM-O2:       .section .avm.eh_sites
-; ASM-O2:       .byte 1
+; ASM-O2-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-O2-NEXT:  .short 2
+; ASM-O2-NEXT:  .short 8
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0
 ; ASM-O2-LABEL: catch_only:
 ; ASM-O2:       .section .avm.eh_sites
-; ASM-O2:       .byte 1
+; ASM-O2-NEXT:  .3byte .Lfunc_begin{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-O2-NEXT:  .short 2
+; ASM-O2-NEXT:  .short 8
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .3byte .Ltmp{{[0-9]+}}
+; ASM-O2-NEXT:  .3byte .Lfunc_end{{[0-9]+}}
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .byte 0
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .short 1
+; ASM-O2-NEXT:  .short 0
+; ASM-O2-NEXT:  .byte 0

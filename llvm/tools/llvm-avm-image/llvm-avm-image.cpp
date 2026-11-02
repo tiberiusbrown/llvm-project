@@ -841,26 +841,28 @@ static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
   return {};
 }
 
-// The guest unwinder reads AVEH3 through this program-space anchor. The runtime
+// The guest unwinder reads AVEH4 through this program-space anchor. The runtime
 // defines it as three zero bytes, and the packer patches them with the block
 // address. A program without the exception runtime has no anchor and no block.
 static constexpr const char *ExceptionAnchorName = "__avm_eh_metadata_ptr";
 
-// AVEH3 layout constants, shared with runtime/lib/eh_unwind.c.
+// AVEH4 layout constants, shared with runtime/lib/eh_unwind.c.
 constexpr uint32_t EHFunctionHeaderSize = 18;
 constexpr uint32_t EHRowHeaderSize = 5;
 // A row has at most four saved registers, two bytes each.
 constexpr uint32_t EHRowMaxSize = 13;
 constexpr uint32_t EHCallRecordSize = 5;
-constexpr uint32_t EHSiteSize = 10;
+constexpr uint32_t EHSiteSize = 12;
+// An action list is a flags byte and a u16 catch count, then the catch entries.
+constexpr uint32_t EHActionHeaderSize = 3;
+// A catch entry is a u16 selector and a u24 type address.
+constexpr uint32_t EHCatchEntrySize = 5;
 constexpr uint8_t EHFlagR3Base = 0x80;
-constexpr uint8_t EHActionNone = 0;
-constexpr uint8_t EHActionCatchAll = 1;
-constexpr uint8_t EHActionCleanup = 2;
-// The action byte holds only these two flags. A combined landing pad sets both.
-constexpr uint8_t EHActionMask = EHActionCatchAll | EHActionCleanup;
-// Intermediate .avm.eh_sites records: u24 start, u24 end, u16 count, sites.
-constexpr uint32_t EHSitesRecordHeaderSize = 8;
+// The only action flag. Every other bit is reserved and must be zero.
+constexpr uint8_t EHActionCleanup = 0x01;
+// Intermediate .avm.eh_sites records: u24 start, u24 end, u16 count, u24 action
+// pool size, the sites, and the action pool.
+constexpr uint32_t EHSitesRecordHeaderSize = 11;
 // Intermediate .avm.eh_calls records: u24 start, u16 count, then call entries.
 constexpr uint32_t EHCallsRecordHeaderSize = 5;
 // DWARF register numbers for the AVM registers used by the unwinder.
@@ -925,11 +927,36 @@ struct ExceptionRow {
   SmallVector<int16_t, 4> Slots; // one per saved register, in r0-r3 order
 };
 
+// One catch entry of an action list. TypeAddress is the 24-bit program address of
+// the catch's RTTI descriptor, and it is zero for catch(...).
+struct ExceptionCatch {
+  uint16_t Selector;
+  uint32_t TypeAddress;
+
+  bool operator==(const ExceptionCatch &Other) const {
+    return Selector == Other.Selector && TypeAddress == Other.TypeAddress;
+  }
+};
+
+// The actions of one landing pad: whether it cleans up, and its catch entries in
+// clause order. A catch-all entry, if present, is last.
+struct ExceptionAction {
+  bool HasCleanup = false;
+  SmallVector<ExceptionCatch, 4> Catches;
+
+  bool operator==(const ExceptionAction &Other) const {
+    return HasCleanup == Other.HasCleanup &&
+           Catches.size() == Other.Catches.size() &&
+           llvm::equal(Catches, Other.Catches);
+  }
+};
+
 struct ExceptionSite {
   uint32_t Start;
   uint32_t End;
   uint32_t LandingPad;
-  uint8_t Action;
+  // Empty for a site with no handler or cleanup.
+  std::optional<ExceptionAction> Action;
 };
 
 // One call in a function with landing pads. ReturnPc is the address after the
@@ -1021,9 +1048,76 @@ decodeUnwindRows(const dwarf::FDE &Fde, uint32_t Start, uint32_t End,
   return Rows;
 }
 
-// Packs one record of .avm.eh_sites. Records are emitted only for functions
-// with landing pads, so a missing record means no handler.
+// Returns 1 when Address lies in a program-space section, where RTTI descriptors
+// are placed.
+static bool inProgramSpace(ArrayRef<PayloadSection> Program, uint32_t Address) {
+  for (const PayloadSection &S : Program)
+    if ((S.Flags & AVMProgSpace) && Address >= S.Address &&
+        Address - S.Address < S.Contents.size())
+      return true;
+  return false;
+}
+
+// Decodes the action list at Offset in Pool, and returns the offset after it. The
+// list must be complete, its selectors must be nonzero and distinct, a catch-all
+// must be last, and every typed entry must name a program-space descriptor.
+static Expected<size_t> decodeActionList(ArrayRef<uint8_t> Pool, size_t Offset,
+                                         ArrayRef<PayloadSection> Program,
+                                         StringRef InputName,
+                                         ExceptionAction &Action) {
+  if (Pool.size() - Offset < EHActionHeaderSize)
+    return bad(Twine("'") + InputName + "' has a truncated exception action");
+  uint8_t Flags = Pool[Offset];
+  if (Flags & ~EHActionCleanup)
+    return bad(Twine("'") + InputName + "' has an exception action with reserved flags");
+  uint16_t Count = Pool[Offset + 1] | (Pool[Offset + 2] << 8);
+  if (Flags == 0 && Count == 0)
+    return bad(Twine("'") + InputName + "' has an exception action that does nothing");
+  if (Pool.size() - Offset - EHActionHeaderSize < size_t(Count) * EHCatchEntrySize)
+    return bad(Twine("'") + InputName + "' has truncated catch entries");
+
+  Action = ExceptionAction();
+  Action.HasCleanup = Flags & EHActionCleanup;
+  const uint8_t *Entry = Pool.data() + Offset + EHActionHeaderSize;
+  for (uint16_t I = 0; I < Count; ++I, Entry += EHCatchEntrySize) {
+    ExceptionCatch Catch;
+    Catch.Selector = Entry[0] | (Entry[1] << 8);
+    Catch.TypeAddress = Entry[2] | (Entry[3] << 8) | (Entry[4] << 16);
+    if (Catch.Selector == 0)
+      return bad(Twine("'") + InputName + "' has a catch entry with selector zero");
+    if (Catch.TypeAddress == 0) {
+      if (I + 1 != Count)
+        return bad(Twine("'") + InputName + "' has a catch-all that is not last");
+    } else if (!inProgramSpace(Program, Catch.TypeAddress)) {
+      return bad(Twine("'") + InputName + "' has a catch type at 0x" +
+                 Twine::utohexstr(Catch.TypeAddress) +
+                 " outside program space");
+    }
+    for (const ExceptionCatch &Prev : Action.Catches)
+      if (Prev.Selector == Catch.Selector)
+        return bad(Twine("'") + InputName + "' repeats selector " +
+                   Twine(Catch.Selector) + " in one action");
+    Action.Catches.push_back(Catch);
+  }
+  return Offset + EHActionHeaderSize + size_t(Count) * EHCatchEntrySize;
+}
+
+// Appends one action list in the AVEH4 layout.
+static void appendActionList(SmallVectorImpl<uint8_t> &Out,
+                             const ExceptionAction &Action) {
+  Out.push_back(Action.HasCleanup ? EHActionCleanup : 0);
+  append16(Out, static_cast<uint16_t>(Action.Catches.size()));
+  for (const ExceptionCatch &Catch : Action.Catches) {
+    append16(Out, Catch.Selector);
+    append24Value(Out, Catch.TypeAddress);
+  }
+}
+
+// Packs one record of .avm.eh_sites, which is followed by its action pool. Records
+// are emitted only for functions with landing pads, so a missing record means no
+// handler. The pool is decoded here, and every list must be used by a site.
 static Error appendSiteRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
+                               ArrayRef<PayloadSection> Program,
                                SmallVectorImpl<ExceptionFunction> &Functions) {
   size_t Offset = 0;
   while (Offset < Bytes.size()) {
@@ -1034,29 +1128,70 @@ static Error appendSiteRecords(ArrayRef<uint8_t> Bytes, StringRef InputName,
     uint32_t End = Bytes[Offset + 3] | (Bytes[Offset + 4] << 8) |
                    (Bytes[Offset + 5] << 16);
     uint16_t Count = Bytes[Offset + 6] | (Bytes[Offset + 7] << 8);
+    uint32_t PoolSize = Bytes[Offset + 8] | (Bytes[Offset + 9] << 8) |
+                        (Bytes[Offset + 10] << 16);
     Offset += EHSitesRecordHeaderSize;
-    if (Bytes.size() - Offset < size_t(Count) * EHSiteSize)
+    size_t SitesSize = size_t(Count) * EHSiteSize;
+    if (Bytes.size() - Offset < SitesSize)
       return bad(Twine("'") + InputName + "' has truncated .avm.eh_sites sites");
+    if (Bytes.size() - Offset - SitesSize < PoolSize)
+      return bad(Twine("'") + InputName + "' has a truncated exception action pool");
+    ArrayRef<uint8_t> Sites = Bytes.slice(Offset, SitesSize);
+    ArrayRef<uint8_t> Pool = Bytes.slice(Offset + SitesSize, PoolSize);
+    Offset += SitesSize + PoolSize;
 
     ExceptionFunction *Fn = nullptr;
     for (ExceptionFunction &F : Functions)
       if (F.Start == Start)
         Fn = &F;
-    if (!Fn || Fn->End != End)
+    if (!Fn || Fn->End != End || Count == 0)
       return bad(Twine("exception sites at 0x") + Twine::utohexstr(Start) +
                  " do not match a function with unwind information");
+    if (!Fn->Sites.empty())
+      return bad(Twine("duplicate exception sites for 0x") + Twine::utohexstr(Start));
 
-    for (uint16_t I = 0; I < Count; ++I, Offset += EHSiteSize) {
-      const uint8_t *P = Bytes.data() + Offset;
+    // The lists are back to back. A site names a list by one plus its offset.
+    SmallVector<ExceptionAction, 8> Lists;
+    SmallVector<uint32_t, 8> ListOffsets;
+    for (size_t Pos = 0; Pos < Pool.size();) {
+      ExceptionAction Action;
+      Expected<size_t> Next =
+          decodeActionList(Pool, Pos, Program, InputName, Action);
+      if (!Next)
+        return Next.takeError();
+      ListOffsets.push_back(static_cast<uint32_t>(Pos));
+      Lists.push_back(std::move(Action));
+      Pos = *Next;
+    }
+
+    SmallVector<bool, 8> Used(Lists.size(), false);
+    for (uint16_t I = 0; I < Count; ++I) {
+      const uint8_t *P = Sites.data() + size_t(I) * EHSiteSize;
       ExceptionSite Site;
       Site.Start = P[0] | (P[1] << 8) | (P[2] << 16);
       Site.End = P[3] | (P[4] << 8) | (P[5] << 16);
       Site.LandingPad = P[6] | (P[7] << 8) | (P[8] << 16);
-      Site.Action = P[9];
-      if (Site.Action & ~EHActionMask)
-        return bad(Twine("unknown exception action in '") + InputName + "'");
+      uint32_t Action = P[9] | (P[10] << 8) | (P[11] << 16);
+      if (Action == 0) {
+        if (Site.LandingPad != 0)
+          return bad(Twine("exception site at 0x") + Twine::utohexstr(Site.Start) +
+                     " has a landing pad but no action");
+      } else {
+        if (Site.LandingPad == 0)
+          return bad(Twine("exception site at 0x") + Twine::utohexstr(Site.Start) +
+                     " has an action but no landing pad");
+        auto Found = llvm::find(ListOffsets, Action - 1);
+        if (Found == ListOffsets.end())
+          return bad(Twine("exception site at 0x") + Twine::utohexstr(Site.Start) +
+                     " does not name an action list");
+        size_t Index = Found - ListOffsets.begin();
+        Used[Index] = true;
+        Site.Action = Lists[Index];
+      }
       Fn->Sites.push_back(Site);
     }
+    if (!llvm::all_of(Used, [](bool U) { return U; }))
+      return bad(Twine("'") + InputName + "' has an action list that no site uses");
   }
   return Error::success();
 }
@@ -1105,29 +1240,32 @@ static Expected<uint32_t> recordOffset(const SmallVectorImpl<uint8_t> &Out,
   size_t Offset = Out.size() - Record;
   if (Offset > 0xffffff)
     return bad(Twine("function at 0x") + Twine::utohexstr(Start) +
-               " exceeds the 24-bit AVEH3 record offset");
+               " exceeds the 24-bit AVEH4 record offset");
   return static_cast<uint32_t>(Offset);
 }
 
-// The runtime locates the sites and calls from the two offsets, so the packer
-// checks them before writing. The rows fill the bytes between the header and
-// SitesOffset, and each row has five to thirteen bytes. Sites and calls fill the
-// rest of the record exactly.
+// The runtime locates the sites, calls, and action pool from the two offsets, so
+// the packer checks them before writing. The rows fill the bytes between the header
+// and SitesOffset, and each row has five to thirteen bytes. The sites, the calls,
+// and the action pool fill the rest of the record exactly.
 static Error checkRecordOffsets(const ExceptionFunction &Fn, uint32_t SitesOffset,
-                                uint32_t NextOffset) {
+                                uint32_t NextOffset, uint32_t PoolSize) {
   uint32_t Rows = Fn.Rows.size();
   if (SitesOffset < EHFunctionHeaderSize + EHRowHeaderSize * Rows ||
       SitesOffset > EHFunctionHeaderSize + EHRowMaxSize * Rows)
     return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
                " has a sites offset outside its rows");
-  uint32_t Body = EHSiteSize * Fn.Sites.size() + EHCallRecordSize * Fn.Calls.size();
+  // The counts are at most 0xffff, so the sum fits in 32 bits with the pool.
+  uint32_t Body = EHSiteSize * static_cast<uint32_t>(Fn.Sites.size()) +
+                  EHCallRecordSize * static_cast<uint32_t>(Fn.Calls.size()) +
+                  PoolSize;
   if (NextOffset < SitesOffset || NextOffset - SitesOffset != Body)
     return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
-               " has a next-record offset that does not match its sites and calls");
+               " has a next-record offset that does not match its sites, calls, and actions");
   return Error::success();
 }
 
-// Builds AVEH3 from the final ELF. Relaxation has already applied, so every
+// Builds AVEH4 from the final ELF. Relaxation has already applied, so every
 // address comes from .debug_frame or the relocated exception-record sections.
 static Expected<SmallVector<uint8_t, 0>>
 buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
@@ -1208,7 +1346,7 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
         contents(ELF, *SiteSection, ".avm.eh_sites");
     if (!SiteBytes)
       return SiteBytes.takeError();
-    if (Error E = appendSiteRecords(*SiteBytes, InputName, Functions))
+    if (Error E = appendSiteRecords(*SiteBytes, InputName, Program, Functions))
       return std::move(E);
   }
   if (CallSection) {
@@ -1247,7 +1385,7 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
       if (Site.Start >= Site.End || Site.Start < PreviousEnd || Site.End > Fn.End)
         return bad(Twine("invalid exception site at 0x") +
                    Twine::utohexstr(Site.Start));
-      if (Site.Action == EHActionNone) {
+      if (!Site.Action) {
         if (Site.LandingPad != 0)
           return bad(Twine("exception site at 0x") +
                      Twine::utohexstr(Site.Start) + " has a landing pad but no handler");
@@ -1270,9 +1408,9 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
   }
 
   if (Functions.size() > 0xffff)
-    return bad("AVEH3 exceeds 65535 functions");
+    return bad("AVEH4 exceeds 65535 functions");
   SmallVector<uint8_t, 0> Out;
-  for (char C : StringRef("AVEH3"))
+  for (char C : StringRef("AVEH4"))
     Out.push_back(static_cast<uint8_t>(C));
   append16(Out, static_cast<uint16_t>(Functions.size()));
   append24Value(Out, 0); // block size, patched below
@@ -1280,7 +1418,7 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     if (Fn.Rows.size() > 0xffff || Fn.Sites.size() > 0xffff ||
         Fn.Calls.size() > 0xffff)
       return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
-                 " exceeds AVEH3 record limits");
+                 " exceeds AVEH4 record limits");
     size_t Record = Out.size();
     append24Value(Out, Fn.Start);
     append24Value(Out, Fn.End);
@@ -1288,7 +1426,7 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     append16(Out, static_cast<uint16_t>(Fn.Sites.size()));
     append16(Out, static_cast<uint16_t>(Fn.Calls.size()));
     // The two offsets are measured from Record. They are patched after the
-    // rows, sites, and calls that they bound are written.
+    // rows, sites, calls, and action pool that they bound are written.
     size_t SitesOffsetField = Out.size();
     append24Value(Out, 0);
     size_t NextOffsetField = Out.size();
@@ -1303,26 +1441,54 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     Expected<uint32_t> SitesOffset = recordOffset(Out, Record, Fn.Start);
     if (!SitesOffset)
       return SitesOffset.takeError();
+
+    // A site's action is patched once its list has a position in the pool.
+    SmallVector<size_t, 8> ActionFields;
     for (const ExceptionSite &Site : Fn.Sites) {
       append24Value(Out, Site.Start);
       append24Value(Out, Site.End);
       append24Value(Out, Site.LandingPad);
-      Out.push_back(Site.Action);
+      ActionFields.push_back(Out.size());
+      append24Value(Out, 0);
     }
     for (const ExceptionCall &Call : Fn.Calls) {
       append24Value(Out, Call.ReturnPc);
       append16(Out, Call.OutgoingBytes);
     }
+
+    // The pool holds each distinct list once, at its first use. Each list is
+    // addressed from the function record, and so is each site that names it.
+    size_t PoolStart = Out.size();
+    SmallVector<ExceptionAction, 8> Pool;
+    SmallVector<uint32_t, 8> PoolOffsets;
+    for (size_t I = 0; I < Fn.Sites.size(); ++I) {
+      if (!Fn.Sites[I].Action)
+        continue;
+      const ExceptionAction &Action = *Fn.Sites[I].Action;
+      auto Found = llvm::find(Pool, Action);
+      if (Found == Pool.end()) {
+        Expected<uint32_t> Offset = recordOffset(Out, Record, Fn.Start);
+        if (!Offset)
+          return Offset.takeError();
+        Pool.push_back(Action);
+        PoolOffsets.push_back(*Offset);
+        appendActionList(Out, Action);
+        Found = Pool.end() - 1;
+      }
+      write24(Out, ActionFields[I], PoolOffsets[Found - Pool.begin()]);
+    }
+    uint32_t PoolSize = static_cast<uint32_t>(Out.size() - PoolStart);
+
     Expected<uint32_t> NextOffset = recordOffset(Out, Record, Fn.Start);
     if (!NextOffset)
       return NextOffset.takeError();
-    if (Error E = checkRecordOffsets(Fn, *SitesOffset, *NextOffset))
+    if (Error E = checkRecordOffsets(Fn, *SitesOffset, *NextOffset, PoolSize))
       return std::move(E);
     write24(Out, SitesOffsetField, *SitesOffset);
     write24(Out, NextOffsetField, *NextOffset);
   }
   if (Out.size() > MaxFlashSize)
-    return bad("AVEH3 metadata exceeds the 24-bit block size");
+    return bad("AVEH4 metadata exceeds the 24-bit block size");
   write24(Out, 7, static_cast<uint32_t>(Out.size()));
   return Out;
 }
@@ -1489,7 +1655,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   else
     CrashStart = 0;
 
-  // AVEH3 follows the crash metadata, and only programs that reference the
+  // AVEH4 follows the crash metadata, and only programs that reference the
   // exception runtime define the anchor. --no-crash-info does not affect it.
   Expected<std::optional<uint32_t>> ExceptionAnchor =
       findExceptionAnchor(ELF, *SectionsOrErr, InputName);
@@ -1506,7 +1672,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     ExceptionBlock = std::move(*Block);
     ExceptionStart = alignTo(FinalPayloadEnd, 4);
     if (ExceptionStart + ExceptionBlock.size() > MaxPayloadEnd)
-      return bad("AVEH3 exception metadata exceeds the flash payload limit");
+      return bad("AVEH4 exception metadata exceeds the flash payload limit");
     FinalPayloadEnd = ExceptionStart + ExceptionBlock.size();
   }
 

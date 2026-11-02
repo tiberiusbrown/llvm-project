@@ -23,6 +23,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
+#include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -865,6 +866,11 @@ MCSymbol *MachineFunction::addLandingPad(MachineBasicBlock *LandingPad) {
     for (unsigned I = LPI->getNumClauses(); I != 0; --I) {
       Value *Val = LPI->getClause(I - 1);
       if (LPI->isCatch(I - 1)) {
+        // LLVM maps an operand that is not a global to the catch-all ID. AVM
+        // must reject such an operand instead, so the check runs before the ID
+        // is taken.
+        checkTypeInfoOperand(Val, getTarget().getTargetTriple(), getName(),
+                             "catch clause");
         LP.TypeIds.push_back(
             getTypeIDFor(dyn_cast<GlobalValue>(Val->stripPointerCasts())));
       } else {
@@ -881,8 +887,10 @@ MCSymbol *MachineFunction::addLandingPad(MachineBasicBlock *LandingPad) {
 
   } else if (const auto *CPI = dyn_cast<CatchPadInst>(FirstI)) {
     for (unsigned I = CPI->arg_size(); I != 0; --I) {
-      auto *TypeInfo =
-          dyn_cast<GlobalValue>(CPI->getArgOperand(I - 1)->stripPointerCasts());
+      const Value *Arg = CPI->getArgOperand(I - 1);
+      checkTypeInfoOperand(Arg, getTarget().getTargetTriple(), getName(),
+                           "catch clause");
+      auto *TypeInfo = dyn_cast<GlobalValue>(Arg->stripPointerCasts());
       LP.TypeIds.push_back(getTypeIDFor(TypeInfo));
     }
 

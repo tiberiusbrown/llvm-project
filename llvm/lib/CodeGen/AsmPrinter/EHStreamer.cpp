@@ -402,6 +402,15 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     return L->TypeIds < R->TypeIds;
   });
 
+  // A target can replace the LSDA byte format with fixed-width call-site
+  // records. Those records carry their own action pool, so the LSDA actions
+  // below are not computed for them.
+  if (MCSection *Sites = Asm->getObjFileLowering().getExceptionSitesSection(
+          MF->getFunction(), *Asm->CurrentFnSym, Asm->TM)) {
+    emitExceptionSites(Sites, LandingPads);
+    return nullptr;
+  }
+
   // Compute the actions table and gather the first action index for each
   // landing pad site.
   SmallVector<ActionEntry, 32> Actions;
@@ -415,19 +424,6 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteEntry, 64> CallSites;
   SmallVector<CallSiteRange, 4> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
-
-  // A target can replace the LSDA byte format with fixed-width call-site
-  // records. Those records describe one contiguous function range.
-  if (MCSection *Sites = Asm->getObjFileLowering().getExceptionSitesSection(
-          MF->getFunction(), *Asm->CurrentFnSym, Asm->TM)) {
-    if (CallSiteRanges.size() > 1)
-      Asm->OutContext.reportError(
-          SMLoc(), Twine("AVM exception sites do not support basic block "
-                         "sections in '") +
-                       MF->getName() + "'");
-    emitExceptionSites(Sites, CallSites);
-    return nullptr;
-  }
 
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
@@ -819,73 +815,177 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   return GCCETSym;
 }
 
+// AVM exception sites. Each function with landing pads gets one record in
+// .avm.eh_sites, which llvm-avm-image packs into AVEH4:
+//
+//   u24 function start, u24 function end, u16 site count, u24 action pool size
+//   site count sites, each u24 start, u24 end, u24 landing pad, u24 action
+//   the action pool, which holds the action lists that the sites reference
+//
+// A site's action is one plus the offset of its list from the start of the pool,
+// and zero when the site has no landing pad. Each action list is
+//
+//   u8 flags, u16 catch count, then catch count entries of u16 selector and u24
+//   type address
+//
+// Flag bit 0 is a cleanup. The catch entries are in clause order, and a zero
+// type address is a catch-all. The selector is the function's LLVM type ID, which
+// the landing pad compares against the selector that the runtime passes in r5.
+namespace {
+
+// An action list header is 3 bytes, followed by 5 bytes per catch entry.
+constexpr unsigned AVMActionHeaderSize = 3;
+constexpr unsigned AVMCatchEntrySize = 5;
+constexpr unsigned AVMActionCleanup = 1;
+
+// One catch entry. A null TypeInfo is a catch-all.
+struct AVMCatchEntry {
+  unsigned Selector;
+  const GlobalValue *TypeInfo;
+
+  bool operator==(const AVMCatchEntry &Other) const {
+    return Selector == Other.Selector && TypeInfo == Other.TypeInfo;
+  }
+};
+
+// The actions of one landing pad: whether it cleans up, and its catch entries in
+// clause order.
+struct AVMActionList {
+  bool HasCleanup = false;
+  SmallVector<AVMCatchEntry, 4> Catches;
+
+  bool operator==(const AVMActionList &Other) const {
+    return HasCleanup == Other.HasCleanup && Catches.size() == Other.Catches.size() &&
+           llvm::equal(Catches, Other.Catches);
+  }
+};
+
+} // namespace
+
 void EHStreamer::emitExceptionSites(
-    MCSection *Section, const SmallVectorImpl<CallSiteEntry> &CallSites) {
-  // The function record is its range and call-site count, followed by one
-  // entry per call site. A landing pad of 0 means no handler or cleanup applies.
-  // The action byte holds two flags: bit 0 for a catch-all handler and bit 1 for
-  // a cleanup. A landing pad that cleans up and then catches sets both.
-  constexpr unsigned AVMActionCatchAll = 1;
-  constexpr unsigned AVMActionCleanup = 2;
+    MCSection *Section,
+    const SmallVectorImpl<const LandingPadInfo *> &LandingPads) {
   const MachineFunction *MF = Asm->MF;
   const std::vector<const GlobalValue *> &TypeInfos = MF->getTypeInfos();
 
-  auto Reject = [&](StringRef Reason) {
+  auto Reject = [&](const Twine &Reason) {
     Asm->OutContext.reportError(
-        SMLoc(), Twine("AVM exceptions support only catch-all handlers and "
-                       "cleanups; '") +
-                     MF->getName() + "' " + Reason);
+        SMLoc(), Twine("AVM exceptions do not support ") + Reason + " in '" +
+                     MF->getName() + "'");
   };
 
-  // Derives the action of a landing pad from its clauses. TypeIds holds 0 for
-  // a cleanup, a 1-based index into TypeInfos for a catch, and a negative value
-  // for a filter. A null TypeInfo is a catch-all. A landing pad with no clauses
-  // is cleanup-only. Typed catches and filters have no AVM encoding, so each
-  // one is reported.
+  // LLVM appends the clauses of a landing pad to TypeIds in reverse source order,
+  // after the cleanup marker 0, so the list is built by walking TypeIds backward.
+  // The first matching clause in source order wins. A catch-all matches every
+  // exception, so the clauses after it can never run and are dropped. A landing pad
+  // with no type IDs is an implicit cleanup.
   auto ActionOf = [&](const LandingPadInfo &LPI) {
-    bool HasCatchAll = false;
-    bool HasCleanup = LPI.TypeIds.empty();
-    for (int TypeId : LPI.TypeIds) {
+    AVMActionList List;
+    List.HasCleanup = LPI.TypeIds.empty();
+    bool CatchAllSeen = false;
+    for (int TypeId : llvm::reverse(LPI.TypeIds)) {
       if (TypeId == 0) {
-        HasCleanup = true;
-      } else if (TypeId < 0) {
-        Reject("has an exception filter");
-      } else if (static_cast<size_t>(TypeId) > TypeInfos.size()) {
-        Reject("has a type id outside its type table");
-      } else if (TypeInfos[TypeId - 1]) {
-        Reject("has a typed catch");
-      } else {
-        HasCatchAll = true;
+        List.HasCleanup = true;
+        continue;
       }
+      if (TypeId < 0) {
+        Reject("exception filters");
+        continue;
+      }
+      if (static_cast<size_t>(TypeId) > TypeInfos.size()) {
+        Reject("type IDs outside the function's type table");
+        continue;
+      }
+      if (TypeId > UINT16_MAX) {
+        Reject("type IDs above 65535");
+        continue;
+      }
+      if (CatchAllSeen)
+        continue;
+      unsigned Selector = static_cast<unsigned>(TypeId);
+      // A repeated clause is unreachable, so only its first occurrence is kept.
+      if (llvm::any_of(List.Catches, [&](const AVMCatchEntry &Entry) {
+            return Entry.Selector == Selector;
+          }))
+        continue;
+      const GlobalValue *TypeInfo = TypeInfos[TypeId - 1];
+      List.Catches.push_back({Selector, TypeInfo});
+      CatchAllSeen = !TypeInfo;
     }
-    return (HasCatchAll ? AVMActionCatchAll : 0u) |
-           (HasCleanup ? AVMActionCleanup : 0u);
+    return List;
   };
 
+  // Sites use the call-site table, keyed by landing pad index. Adjacent invokes that
+  // share a landing pad merge as they do for the LSDA.
+  SmallVector<unsigned, 64> PadKeys;
+  for (unsigned I = 0, E = LandingPads.size(); I != E; ++I)
+    PadKeys.push_back(I);
+  SmallVector<CallSiteEntry, 64> CallSites;
+  SmallVector<CallSiteRange, 4> CallSiteRanges;
+  computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, PadKeys);
+  if (CallSiteRanges.size() > 1)
+    Reject("basic block sections");
+
+  // The function's record is written only when a site has a landing pad.
   if (!llvm::any_of(CallSites,
                     [](const CallSiteEntry &Site) { return Site.LPad; }))
     return;
+  if (CallSites.size() > UINT16_MAX)
+    Reject("more than 65535 call sites");
+
+  // The pool holds each distinct action list once, at its first use. PadActions
+  // holds the site action of each landing pad, which is one plus the offset of
+  // its list.
+  SmallVector<AVMActionList, 8> Lists;
+  SmallVector<unsigned, 8> ListOffsets;
+  SmallVector<unsigned, 8> PadActions(LandingPads.size(), 0);
+  unsigned PoolSize = 0;
+  for (const CallSiteEntry &Site : CallSites) {
+    if (!Site.LPad || PadActions[Site.Action])
+      continue;
+    AVMActionList List = ActionOf(*Site.LPad);
+    unsigned Index = llvm::find(Lists, List) - Lists.begin();
+    if (Index == Lists.size()) {
+      Lists.push_back(List);
+      ListOffsets.push_back(PoolSize);
+      PoolSize += AVMActionHeaderSize + AVMCatchEntrySize * List.Catches.size();
+    }
+    PadActions[Site.Action] = ListOffsets[Index] + 1;
+  }
+  if (PoolSize > 0xffffff)
+    Reject("an action pool larger than 24 bits");
 
   Asm->OutStreamer->pushSection();
   Asm->OutStreamer->switchSection(Section);
   Asm->OutStreamer->emitSymbolValue(Asm->getFunctionBegin(), 3);
   Asm->OutStreamer->emitSymbolValue(Asm->getFunctionEnd(), 3);
   Asm->OutStreamer->emitIntValue(CallSites.size(), 2);
+  Asm->OutStreamer->emitIntValue(PoolSize, 3);
   for (const CallSiteEntry &Site : CallSites) {
     MCSymbol *Begin =
         Site.BeginLabel ? Site.BeginLabel : Asm->getFunctionBegin();
     MCSymbol *End = Site.EndLabel ? Site.EndLabel : Asm->getFunctionEnd();
     Asm->OutStreamer->emitSymbolValue(Begin, 3);
     Asm->OutStreamer->emitSymbolValue(End, 3);
-
-    unsigned Action = 0;
-    if (!Site.LPad) {
-      Asm->OutStreamer->emitIntValue(0, 3);
-    } else {
+    if (Site.LPad) {
       Asm->OutStreamer->emitSymbolValue(Site.LPad->LandingPadLabel, 3);
-      Action = ActionOf(*Site.LPad);
+      Asm->OutStreamer->emitIntValue(PadActions[Site.Action], 3);
+    } else {
+      Asm->OutStreamer->emitIntValue(0, 3);
+      Asm->OutStreamer->emitIntValue(0, 3);
     }
-    Asm->OutStreamer->emitIntValue(Action, 1);
+  }
+  for (const AVMActionList &List : Lists) {
+    Asm->OutStreamer->emitIntValue(List.HasCleanup ? AVMActionCleanup : 0, 1);
+    Asm->OutStreamer->emitIntValue(List.Catches.size(), 2);
+    for (const AVMCatchEntry &Entry : List.Catches) {
+      Asm->OutStreamer->emitIntValue(Entry.Selector, 2);
+      // The descriptor address stays a relocation until the final link.
+      if (Entry.TypeInfo)
+        Asm->OutStreamer->emitSymbolValue(Asm->getSymbol(Entry.TypeInfo), 3);
+      else
+        Asm->OutStreamer->emitIntValue(0, 3);
+    }
   }
   Asm->OutStreamer->popSection();
 }

@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/IR/Instructions.h"
 
@@ -27,6 +28,7 @@ class MachineFunction;
 class TargetLoweringBase;
 class TargetLowering;
 class TargetMachine;
+class Triple;
 struct EVT;
 
 /// Compute the linearized index of a member in a nested
@@ -98,6 +100,17 @@ void computeValueLLTs(const DataLayout &DL, Type &Ty,
 
 /// ExtractTypeInfo - Returns the type info, possibly bitcast, encoded in V.
 GlobalValue *ExtractTypeInfo(Value *V);
+
+/// Rejects a catch clause or llvm.eh.typeid.for operand that the target's
+/// exception runtime cannot match exactly. AVM matches a typed catch by the
+/// address of its RTTI descriptor, so its operand must be null, which is
+/// catch-all, or a global variable or an alias of one, possibly under pointer
+/// casts. Any other operand is a fatal error, because the descriptor lookup
+/// would otherwise treat it as catch-all. \p Use names the operand in the
+/// diagnostic, and \p FnName names the function that contains it. Other targets
+/// are not checked, and they keep LLVM's existing handling.
+void checkTypeInfoOperand(const Value *Operand, const Triple &TT,
+                          StringRef FnName, StringRef Use);
 
 /// getFCmpCondCode - Return the ISD condition code corresponding to
 /// the given LLVM IR floating-point condition code.  This includes

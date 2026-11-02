@@ -138,10 +138,12 @@ protected:
   /// Returns the starting symbol of an exception table.
   MCSymbol *emitExceptionTable();
 
-  /// Emits the function's call-site records into a target-provided section.
-  /// Used instead of the LSDA byte format when the target supplies a section.
-  void emitExceptionSites(MCSection *Section,
-                          const SmallVectorImpl<CallSiteEntry> &CallSites);
+  /// Emits the function's exception-site record into a target-provided section,
+  /// with its action pool. Used instead of the LSDA byte format when the target
+  /// supplies a section.
+  void emitExceptionSites(
+      MCSection *Section,
+      const SmallVectorImpl<const LandingPadInfo *> &LandingPads);
 
   virtual void emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel);
 

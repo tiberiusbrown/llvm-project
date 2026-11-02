@@ -74,11 +74,14 @@ pad_second:
 ;   [0x119,0x11d) near_leaf, second_leaf  no handler
 ;   [0x11d,0x121) throws(2)            catch-all at 0x124
 ;   [0x121,0x136) remainder of main    no handler
+; The record is main's range, five sites, and an action pool of eight bytes. The
+; pool holds one list: flags 0, one catch entry, selector 1, and a zero address.
 ; SITES:      Contents of section .avm.eh_sites:
-; SITES-NEXT: 0000 13010036 01000500 13010015 01000000
-; SITES-NEXT: 0010 00001501 00190100 2e010001 1901001d
-; SITES-NEXT: 0020 01000000 00001d01 00210100 24010001
-; SITES-NEXT: 0030 21010036 01000000 0000
+; SITES-NEXT: 0000 13010036 01000500 08000013 01001501
+; SITES-NEXT: 0010 00000000 00000015 01001901 002e0100
+; SITES-NEXT: 0020 01000019 01001d01 00000000 0000001d
+; SITES-NEXT: 0030 01002101 00240100 01000021 01003601
+; SITES-NEXT: 0040 00000000 00000000 01000100 000000
 
 ; RELOCS:     Relocation section '.rela.avm.eh_sites'
 ; RELOCS:     R_AVM_DEBUG24

@@ -1,8 +1,9 @@
 ; RUN: not llc -mtriple=avm-unknown-arduboyfx -O0 -filetype=asm %s -o /dev/null 2>&1 | FileCheck %s
 
-; AVM supports catch-all handlers and cleanups. A typed catch and an exception
-; filter have no AVM encoding, so each must fail the compile with its own
-; diagnostic instead of producing call-site records that misrepresent the handler.
+; AVM supports typed catches, catch-all handlers, and cleanups. An exception filter
+; has no AVM encoding, so it must fail the compile with its own diagnostic instead of
+; producing an action list that misrepresents the handler. A typed catch compiles, as
+; eh-typed.ll checks.
 
 declare void @thrower() addrspace(1)
 declare i32 @__gxx_personality_v0(...) addrspace(1)
@@ -30,5 +31,5 @@ lpad:
   ret i32 1
 }
 
-; CHECK-DAG: error: AVM exceptions support only catch-all handlers and cleanups; 'typed' has a typed catch
-; CHECK-DAG: error: AVM exceptions support only catch-all handlers and cleanups; 'filtered' has an exception filter
+; CHECK: error: AVM exceptions do not support exception filters in 'filtered'
+; CHECK-NOT: 'typed'

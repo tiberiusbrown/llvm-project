@@ -795,7 +795,7 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
       } else {
         llvm::Value *VFPAddr =
             CGF.Builder.CreateGEP(CGF.Int8Ty, VTable, VTableOffset);
-        if (CGM.getTriple().getArch() == llvm::Triple::avm) {
+        if (CGF.CGM.getTriple().getArch() == llvm::Triple::avm) {
           VirtualFn = CGF.Builder.CreateAlignedLoad(
               llvm::PointerType::get(CGM.getLLVMContext(), 1), VFPAddr,
               CGF.getPointerAlign(), "memptr.virtualfn");
@@ -5171,8 +5171,18 @@ static void InitCatchParam(CodeGenFunction &CGF,
     // If the catch type is a pointer type, __cxa_begin_catch returns
     // the pointer by value.
     if (CatchType->hasPointerRepresentation()) {
-      llvm::Value *CastExn =
-        CGF.Builder.CreateBitCast(AdjustedExn, LLVMCatchTy, "exn.casted");
+      llvm::Value *CastExn = nullptr;
+      if (CGF.CGM.getTriple().getArch() == llvm::Triple::avm) {
+        // On AVM, __cxa_begin_catch returns the exception object's address, not the
+        // caught pointer. A pointer can be 24 bits wide, which a data pointer
+        // return cannot carry, so the landing code loads the pointer from the
+        // object. The load keeps the pointer's own address space.
+        CastExn = CGF.Builder.CreateLoad(
+            Address(AdjustedExn, LLVMCatchTy, CGF.getPointerAlign()), "exn.casted");
+      } else {
+        CastExn =
+            CGF.Builder.CreateBitCast(AdjustedExn, LLVMCatchTy, "exn.casted");
+      }
 
       switch (CatchType.getQualifiers().getObjCLifetime()) {
       case Qualifiers::OCL_Strong:

@@ -196,6 +196,39 @@ GlobalValue *llvm::ExtractTypeInfo(Value *V) {
   return GV;
 }
 
+/// Returns true when GV can name an RTTI descriptor. An alias names one when it
+/// refers, directly or through other aliases, to a global variable. A constant
+/// expression as the aliasee is not a descriptor address. LLVM's
+/// llvm.eh.catch.all.value is an indirection to the catch-all, not a
+/// descriptor, so it does not count.
+static bool isAVMTypeInfoGlobal(const GlobalValue *GV) {
+  while (const auto *GA = dyn_cast<GlobalAlias>(GV)) {
+    GV = dyn_cast_or_null<GlobalValue>(GA->getAliasee());
+    if (!GV)
+      return false;
+  }
+  const auto *Var = dyn_cast<GlobalVariable>(GV);
+  return Var && Var->getName() != "llvm.eh.catch.all.value";
+}
+
+void llvm::checkTypeInfoOperand(const Value *Operand, const Triple &TT,
+                                StringRef FnName, StringRef Use) {
+  if (TT.getArch() != Triple::avm)
+    return;
+  // A null operand is the catch-all entry, so it passes unchanged.
+  const Value *Stripped = Operand->stripPointerCasts();
+  if (isa<ConstantPointerNull>(Stripped))
+    return;
+  if (const auto *GV = dyn_cast<GlobalValue>(Stripped))
+    if (isAVMTypeInfoGlobal(GV))
+      return;
+  // The operand is invalid input, not an LLVM bug, so the error exits without a
+  // crash report.
+  report_fatal_error(Twine("AVM exception ") + Use + " in '" + FnName +
+                         "' must reference a global RTTI descriptor or be null",
+                     /*GenCrashDiag=*/false);
+}
+
 /// getFCmpCondCode - Return the ISD condition code corresponding to
 /// the given LLVM IR floating-point condition code.  This includes
 /// consideration of global floating-point math flags.
