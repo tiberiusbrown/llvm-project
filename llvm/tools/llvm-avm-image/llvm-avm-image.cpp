@@ -841,12 +841,15 @@ static SmallVector<uint8_t, 0> buildCrashInfo(const ObjectFile &Obj,
   return {};
 }
 
-// The guest unwinder reads AVEH4 through this program-space anchor. The runtime
+// The guest unwinder reads AVEH5 through this program-space anchor. The runtime
 // defines it as three zero bytes, and the packer patches them with the block
 // address. A program without the exception runtime has no anchor and no block.
 static constexpr const char *ExceptionAnchorName = "__avm_eh_metadata_ptr";
 
-// AVEH4 layout constants, shared with runtime/lib/eh_unwind.c.
+// AVEH5 layout constants, shared with runtime/lib/eh_unwind.c.
+constexpr uint32_t EHHeaderSize = 10;
+// The index holds the start and the record offset of each function, in order.
+constexpr uint32_t EHIndexEntrySize = 6;
 constexpr uint32_t EHFunctionHeaderSize = 18;
 constexpr uint32_t EHRowHeaderSize = 5;
 // A row has at most four saved registers, two bytes each.
@@ -1102,7 +1105,7 @@ static Expected<size_t> decodeActionList(ArrayRef<uint8_t> Pool, size_t Offset,
   return Offset + EHActionHeaderSize + size_t(Count) * EHCatchEntrySize;
 }
 
-// Appends one action list in the AVEH4 layout.
+// Appends one action list in the AVEH5 layout.
 static void appendActionList(SmallVectorImpl<uint8_t> &Out,
                              const ExceptionAction &Action) {
   Out.push_back(Action.HasCleanup ? EHActionCleanup : 0);
@@ -1240,7 +1243,7 @@ static Expected<uint32_t> recordOffset(const SmallVectorImpl<uint8_t> &Out,
   size_t Offset = Out.size() - Record;
   if (Offset > 0xffffff)
     return bad(Twine("function at 0x") + Twine::utohexstr(Start) +
-               " exceeds the 24-bit AVEH4 record offset");
+               " exceeds the 24-bit AVEH5 record offset");
   return static_cast<uint32_t>(Offset);
 }
 
@@ -1265,7 +1268,46 @@ static Error checkRecordOffsets(const ExceptionFunction &Fn, uint32_t SitesOffse
   return Error::success();
 }
 
-// Builds AVEH4 from the final ELF. Relaxation has already applied, so every
+// Checks the function index and the record chain of the emitted block. The runtime
+// relies on these properties, so the packer checks the bytes it wrote. Each step
+// computes with 64-bit operands and tests the bounds before it subtracts.
+static Error checkFunctionIndex(ArrayRef<uint8_t> Block,
+                                ArrayRef<ExceptionFunction> Functions) {
+  auto Read24 = [&Block](uint64_t Offset) -> uint64_t {
+    return uint64_t(Block[Offset]) | (uint64_t(Block[Offset + 1]) << 8) |
+           (uint64_t(Block[Offset + 2]) << 16);
+  };
+  const uint64_t Size = Block.size();
+  // The first record follows the index, and every record follows the one before it.
+  uint64_t Expected = EHHeaderSize + EHIndexEntrySize * uint64_t(Functions.size());
+  uint64_t PreviousStart = 0;
+  for (size_t I = 0; I < Functions.size(); ++I) {
+    const uint64_t Entry = EHHeaderSize + EHIndexEntrySize * uint64_t(I);
+    const uint64_t Start = Read24(Entry);
+    const uint64_t Offset = Read24(Entry + 3);
+    if (Start != Functions[I].Start || (I > 0 && Start <= PreviousStart))
+      return bad(Twine("AVEH5 index entry ") + Twine(I) +
+                 " is not the start of an ordered function");
+    if (Offset != Expected)
+      return bad(Twine("AVEH5 index entry ") + Twine(I) +
+                 " does not name the record that follows it");
+    if (Size - Offset < EHFunctionHeaderSize)
+      return bad(Twine("AVEH5 record ") + Twine(I) + " is truncated");
+    if (Read24(Offset) != Start || Read24(Offset + 3) != Functions[I].End)
+      return bad(Twine("AVEH5 record ") + Twine(I) +
+                 " does not match its index entry");
+    const uint64_t Next = Read24(Offset + 15);
+    if (Next < EHFunctionHeaderSize || Next > Size - Offset)
+      return bad(Twine("AVEH5 record ") + Twine(I) + " has an invalid next offset");
+    Expected = Offset + Next;
+    PreviousStart = Start;
+  }
+  if (Expected != Size)
+    return bad("AVEH5 final record does not end at the block size");
+  return Error::success();
+}
+
+// Builds AVEH5 from the final ELF. Relaxation has already applied, so every
 // address comes from .debug_frame or the relocated exception-record sections.
 static Expected<SmallVector<uint8_t, 0>>
 buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
@@ -1408,18 +1450,33 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
   }
 
   if (Functions.size() > 0xffff)
-    return bad("AVEH4 exceeds 65535 functions");
+    return bad("AVEH5 exceeds 65535 functions");
+  // The index comes right after the header, and the first record follows it.
+  if (EHHeaderSize + EHIndexEntrySize * uint64_t(Functions.size()) > MaxFlashSize)
+    return bad("AVEH5 function index exceeds the 24-bit block size");
   SmallVector<uint8_t, 0> Out;
-  for (char C : StringRef("AVEH4"))
+  for (char C : StringRef("AVEH5"))
     Out.push_back(static_cast<uint8_t>(C));
   append16(Out, static_cast<uint16_t>(Functions.size()));
   append24Value(Out, 0); // block size, patched below
+  // One index entry per function: its start, then its record offset. The offset is
+  // patched when the record is written, because the record's position is not known yet.
   for (const ExceptionFunction &Fn : Functions) {
+    append24Value(Out, Fn.Start);
+    append24Value(Out, 0);
+  }
+  for (size_t I = 0; I < Functions.size(); ++I) {
+    const ExceptionFunction &Fn = Functions[I];
     if (Fn.Rows.size() > 0xffff || Fn.Sites.size() > 0xffff ||
         Fn.Calls.size() > 0xffff)
       return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
-                 " exceeds AVEH4 record limits");
+                 " exceeds AVEH5 record limits");
     size_t Record = Out.size();
+    if (Record > 0xffffff)
+      return bad(Twine("function at 0x") + Twine::utohexstr(Fn.Start) +
+                 " exceeds the 24-bit AVEH5 record offset");
+    write24(Out, EHHeaderSize + EHIndexEntrySize * I + 3,
+            static_cast<uint32_t>(Record));
     append24Value(Out, Fn.Start);
     append24Value(Out, Fn.End);
     append16(Out, static_cast<uint16_t>(Fn.Rows.size()));
@@ -1488,8 +1545,10 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     write24(Out, NextOffsetField, *NextOffset);
   }
   if (Out.size() > MaxFlashSize)
-    return bad("AVEH4 metadata exceeds the 24-bit block size");
+    return bad("AVEH5 metadata exceeds the 24-bit block size");
   write24(Out, 7, static_cast<uint32_t>(Out.size()));
+  if (Error E = checkFunctionIndex(Out, Functions))
+    return std::move(E);
   return Out;
 }
 
@@ -1655,7 +1714,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   else
     CrashStart = 0;
 
-  // AVEH4 follows the crash metadata, and only programs that reference the
+  // AVEH5 follows the crash metadata, and only programs that reference the
   // exception runtime define the anchor. --no-crash-info does not affect it.
   Expected<std::optional<uint32_t>> ExceptionAnchor =
       findExceptionAnchor(ELF, *SectionsOrErr, InputName);
@@ -1672,7 +1731,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     ExceptionBlock = std::move(*Block);
     ExceptionStart = alignTo(FinalPayloadEnd, 4);
     if (ExceptionStart + ExceptionBlock.size() > MaxPayloadEnd)
-      return bad("AVEH4 exception metadata exceeds the flash payload limit");
+      return bad("AVEH5 exception metadata exceeds the flash payload limit");
     FinalPayloadEnd = ExceptionStart + ExceptionBlock.size();
   }
 

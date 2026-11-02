@@ -816,7 +816,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 }
 
 // AVM exception sites. Each function with landing pads gets one record in
-// .avm.eh_sites, which llvm-avm-image packs into AVEH4:
+// .avm.eh_sites, which llvm-avm-image packs into AVEH5:
 //
 //   u24 function start, u24 function end, u16 site count, u24 action pool size
 //   site count sites, each u24 start, u24 end, u24 landing pad, u24 action
