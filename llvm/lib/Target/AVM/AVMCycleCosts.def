@@ -11,10 +11,14 @@
 // Provenance:
 //   Repository: tiberiusbrown/avm
 //   File:       bench/cycles_instruction.txt
-//   SHA256 (LF): 6a4e6dd4d617c45f5d8a3a2b72e29c843a9c5f15e721b401e6abfed58903f2a3
+//   SHA256 (LF): 9211f36990d3cec1c0d06f7c383a3b6e9a36febb761b5f7906d44e97cf3b2b4d
 //
-// Calibrated 2026-10-26, RelWithDebInfo, two-word FF table (runtime v2).
-// Fixed/branch/shift entries come from the named benchmark forms. FAbs uses
+// Calibrated 2026-11-03, RelWithDebInfo, two-word FF table (runtime v2).
+// The 2026-11-03 sweep re-measured the RAM load kinds Ld8UUpper, Ld16Upper,
+// Ld8UDense, Ld16Dense, Ld8UPostIncDense, Ld16PostIncDense, Ld8UDisplaced,
+// Ld16Displaced, Ld8UPostIncGeneral, Ld16PostIncGeneral, Ldm8U, Ldm16, and
+// Ld32. It added the RAM general F0 kinds Ld8UGeneral and Ld16General, and the
+// AS0 flash-window load kinds (FlashLd*). Fixed/branch/shift entries come from the named benchmark forms. FAbs uses
 // the conservative 38-cycle q0/q1 cost (q2/q3 take 35). Float Typical values
 // use ordinary inputs: add/sub/mul normal, div recurring normal, conversions
 // small positive / positive fractional, compare greater.
@@ -126,24 +130,26 @@ AVM_FIXED_COST(CSetUlt, 41)
 AVM_FIXED_COST(CSetUge, 41)
 AVM_FIXED_COST(CSetSlt, 41)
 AVM_FIXED_COST(CSetSge, 41)
-AVM_FIXED_COST(Ld8UUpper, 18)
+AVM_FIXED_COST(Ld8UUpper, 20)
 AVM_FIXED_COST(St8Upper, 18)
-AVM_FIXED_COST(Ld16Upper, 18)
+AVM_FIXED_COST(Ld16Upper, 21)
 AVM_FIXED_COST(St16Upper, 18)
 AVM_FIXED_COST(St8Dense, 38)
-AVM_FIXED_COST(Ld8UDense, 38)
-AVM_FIXED_COST(Ld16Dense, 39)
+AVM_FIXED_COST(Ld8UDense, 43)
+AVM_FIXED_COST(Ld16Dense, 44)
 AVM_FIXED_COST(St16Dense, 39)
-AVM_FIXED_COST(Ld8UPostIncDense, 39)
-AVM_FIXED_COST(Ld16PostIncDense, 40)
+AVM_FIXED_COST(Ld8UPostIncDense, 43)
+AVM_FIXED_COST(Ld16PostIncDense, 46)
 AVM_FIXED_COST(St8PostIncDense, 38)
 AVM_FIXED_COST(St16PostIncDense, 40)
-AVM_FIXED_COST(Ld8UDisplaced, 54)
-AVM_FIXED_COST(Ld16Displaced, 55)
+AVM_FIXED_COST(Ld8UDisplaced, 56)
+AVM_FIXED_COST(Ld16Displaced, 57)
 AVM_FIXED_COST(St8Displaced, 54)
 AVM_FIXED_COST(St16Displaced, 55)
-AVM_FIXED_COST(Ld8UPostIncGeneral, 76)
-AVM_FIXED_COST(Ld16PostIncGeneral, 77)
+AVM_FIXED_COST(Ld8UGeneral, 72)
+AVM_FIXED_COST(Ld16General, 73)
+AVM_FIXED_COST(Ld8UPostIncGeneral, 78)
+AVM_FIXED_COST(Ld16PostIncGeneral, 79)
 AVM_FIXED_COST(St8PostIncGeneral, 73)
 AVM_FIXED_COST(St16PostIncGeneral, 74)
 AVM_FIXED_COST(LdSp8UShort, 38)
@@ -155,12 +161,34 @@ AVM_FIXED_COST(LdSp8SCold, 64)
 AVM_FIXED_COST(StSp8Cold, 60)
 AVM_FIXED_COST(LdSp16Cold, 64)
 AVM_FIXED_COST(StSp16Cold, 64)
-AVM_FIXED_COST(Ldm8U, 72)
+AVM_FIXED_COST(Ldm8U, 74)
 AVM_FIXED_COST(Stm8, 72)
-AVM_FIXED_COST(Ldm16, 72)
+AVM_FIXED_COST(Ldm16, 74)
 AVM_FIXED_COST(Stm16, 72)
-AVM_FIXED_COST(Ld32, 82)
+AVM_FIXED_COST(Ld32, 84)
 AVM_FIXED_COST(St32, 81)
+
+// AS0 flash-window loads (0x0B00..0xFFFF). Each kind is measured with the
+// encoding of its RAM row above, and only the source address differs. The
+// window reads external flash, so these costs are far above the RAM rows.
+// FlashLd8UUpper, FlashLd16Upper, and FlashLd32 are the constant-table
+// representatives for AVMTargetTransformInfo.
+AVM_FIXED_COST(FlashLd8UUpper, 232)
+AVM_FIXED_COST(FlashLd16Upper, 248)
+AVM_FIXED_COST(FlashLd8UDense, 256)
+AVM_FIXED_COST(FlashLd16Dense, 272)
+AVM_FIXED_COST(FlashLd8UPostIncDense, 264)
+AVM_FIXED_COST(FlashLd16PostIncDense, 282)
+AVM_FIXED_COST(FlashLd8UGeneral, 298)
+AVM_FIXED_COST(FlashLd16General, 315)
+AVM_FIXED_COST(FlashLd8UDisplaced, 262)
+AVM_FIXED_COST(FlashLd16Displaced, 279)
+AVM_FIXED_COST(FlashLd8UPostIncGeneral, 305)
+AVM_FIXED_COST(FlashLd16PostIncGeneral, 322)
+AVM_FIXED_COST(FlashLdm8U, 283)
+AVM_FIXED_COST(FlashLdm16, 300)
+AVM_FIXED_COST(FlashLd32, 329)
+
 AVM_FIXED_COST(Ldp8U, 285)
 AVM_FIXED_COST(Ldp8S, 287)
 AVM_FIXED_COST(Ldp16, 301)

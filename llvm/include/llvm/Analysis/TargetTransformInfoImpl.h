@@ -845,6 +845,18 @@ public:
     return 1;
   }
 
+  // Charge an ordinary load by default, so a target that only overrides
+  // getMemoryOpCost keeps its costs. A target that places constant tables in
+  // a cheaper or dearer memory overrides this query.
+  virtual InstructionCost
+  getConstantTableLookupCost(Type *ElementType, uint64_t /*TableEntries*/,
+                             TTI::TargetCostKind CostKind) const {
+    return getMemoryOpCost(Instruction::Load, ElementType,
+                           DL.getABITypeAlign(ElementType), /*AddressSpace=*/0,
+                           CostKind, {TTI::OK_AnyValue, TTI::OP_None},
+                           /*I=*/nullptr);
+  }
+
   virtual InstructionCost getInterleavedMemoryOpCost(
       unsigned Opcode, Type *VecTy, unsigned Factor, ArrayRef<unsigned> Indices,
       Align Alignment, unsigned AddressSpace, TTI::TargetCostKind CostKind,

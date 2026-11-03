@@ -8,12 +8,18 @@
 #include "AVMInstrInfo.h"
 #include "AVMSubtarget.h"
 #include "AVMTargetMachine.h"
+#include "AVMTargetObjectFile.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicsAVM.h"
 #include "llvm/Support/MathExtras.h"
+
+#include <optional>
 
 namespace llvm {
 class AVMTTIImpl final : public BasicTTIImplBase<AVMTTIImpl> {
@@ -33,6 +39,40 @@ class AVMTTIImpl final : public BasicTTIImplBase<AVMTTIImpl> {
 
   static InstructionCost normalizedCycles(unsigned Cycles) {
     return InstructionCost(AVM::normalizeCyclesForTTI(Cycles));
+  }
+
+  // Whether the load reads an object that the object file places in the flash
+  // window. Only a LoadInst whose pointer resolves to an AS0 global proves this.
+  // The pointer type, a const qualifier, and a readonly argument do not decide
+  // placement, so those loads keep their RAM cost. An explicit .flash section is
+  // placed in the window by name, whatever the automatic rules say.
+  static bool isFlashWindowLoad(const Instruction *I) {
+    const auto *Load = dyn_cast_or_null<LoadInst>(I);
+    if (!Load)
+      return false;
+    const auto *Root = dyn_cast_or_null<GlobalValue>(
+        getUnderlyingObject(Load->getPointerOperand()));
+    if (const auto *Alias = dyn_cast_or_null<GlobalAlias>(Root))
+      Root = Alias->getAliaseeObject();
+    const auto *GV = dyn_cast_or_null<GlobalVariable>(Root);
+    if (!GV)
+      return false;
+    if (AVMTargetObjectFile::isAutoFlashGlobal(GV))
+      return true;
+    return GV->getAddressSpace() == 0 && GV->hasSection() &&
+           GV->getSection().starts_with(".flash");
+  }
+
+  // The measured flash-window load of an element type, or nothing when the
+  // element width has no measurement.
+  static std::optional<AVM::AVMCostKind> flashLoadKind(const Type *Ty) {
+    if (Ty->isIntegerTy(8))
+      return AVM::AVMCostKind::FlashLd8UUpper;
+    if (Ty->isIntegerTy(16))
+      return AVM::AVMCostKind::FlashLd16Upper;
+    if (Ty->isIntegerTy(32) || Ty->isFloatTy())
+      return AVM::AVMCostKind::FlashLd32;
+    return std::nullopt;
   }
 
   InstructionCost getHelperArithmeticCost(Type *Ty, unsigned Opcode,
@@ -598,6 +638,11 @@ public:
       return InstructionCost(
           AVM::normalizeCyclesForTTI(AVM::getFixedCycles(Kind)));
     };
+    if (AddressSpace == 0 && Opcode == Instruction::Load &&
+        isFlashWindowLoad(I)) {
+      if (std::optional<AVMCostKind> Kind = flashLoadKind(Src))
+        return Normalized(*Kind);
+    }
     if (AddressSpace == 0 &&
         (Opcode == Instruction::Load || Opcode == Instruction::Store)) {
       if (Src->isIntegerTy(8) || Src->isIntegerTy(16))
@@ -626,6 +671,22 @@ public:
       return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
                                     CostKind, OpInfo, I);
     return Normalized(Kind);
+  }
+
+  // A table that the optimizer creates is an immutable AS0 object with an
+  // initializer, which the object file places in the flash window at any size.
+  // Each lookup is therefore one flash-window load, and TableEntries does not
+  // change the cost.
+  InstructionCost getConstantTableLookupCost(
+      Type *ElementType, uint64_t /*TableEntries*/,
+      TTI::TargetCostKind CostKind) const override {
+    std::optional<AVM::AVMCostKind> Kind = flashLoadKind(ElementType);
+    if (!Kind)
+      return InstructionCost::getInvalid();
+    if (CostKind == TTI::TCK_CodeSize)
+      return getMemoryOpCost(Instruction::Load, ElementType, Align(1),
+                             /*AddressSpace=*/0, CostKind);
+    return normalizedCycles(AVM::getFixedCycles(*Kind));
   }
 };
 } // namespace llvm

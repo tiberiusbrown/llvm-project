@@ -1188,6 +1188,15 @@ InstructionCost TargetTransformInfo::getMemoryOpCost(
   return Cost;
 }
 
+InstructionCost TargetTransformInfo::getConstantTableLookupCost(
+    Type *ElementType, uint64_t TableEntries,
+    TTI::TargetCostKind CostKind) const {
+  InstructionCost Cost = TTIImpl->getConstantTableLookupCost(
+      ElementType, TableEntries, CostKind);
+  assert(Cost >= 0 && "TTI should not produce negative costs!");
+  return Cost;
+}
+
 InstructionCost TargetTransformInfo::getInterleavedMemoryOpCost(
     unsigned Opcode, Type *VecTy, unsigned Factor, ArrayRef<unsigned> Indices,
     Align Alignment, unsigned AddressSpace, TTI::TargetCostKind CostKind,

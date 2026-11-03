@@ -1620,6 +1620,15 @@ public:
       OperandValueInfo OpdInfo = {OK_AnyValue, OP_None},
       const Instruction *I = nullptr) const;
 
+  /// \return The cost of ONE dynamic load from a compiler-generated immutable
+  /// table of \p TableEntries elements of \p ElementType. The cost excludes
+  /// the index computation and the one-time storage of the table. Use this
+  /// query to price a table before creating it; getMemoryOpCost needs an
+  /// existing instruction.
+  LLVM_ABI InstructionCost getConstantTableLookupCost(
+      Type *ElementType, uint64_t TableEntries,
+      TTI::TargetCostKind CostKind = TTI::TCK_SizeAndLatency) const;
+
   /// \return The cost of the interleaved memory operation.
   /// \p Opcode is the memory operation code
   /// \p VecTy is the vector type of the interleaved access.

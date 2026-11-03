@@ -258,6 +258,7 @@ private:
                                   const SCEV *BECount);
   bool avoidLIRForMultiBlockLoop(bool IsMemset = false,
                                  bool IsLoopMemset = false);
+  bool isSarwateTableProfitable(const PolynomialInfo &Info) const;
   bool optimizeCRCLoop(const PolynomialInfo &Info);
 
   /// @}
@@ -1539,6 +1540,101 @@ bool LoopIdiomRecognize::avoidLIRForMultiBlockLoop(bool IsMemset,
   return false;
 }
 
+// Whether the Sarwate table lookup costs less than the bit-serial loop it
+// replaces. Both sides are priced with TTI in one cost kind before any IR is
+// created, so a rejected loop is left unchanged. The bit-serial loop runs its
+// body TripCount times for each CRC, and the table loop runs TripCount / 8
+// times, once per byte.
+bool LoopIdiomRecognize::isSarwateTableProfitable(
+    const PolynomialInfo &Info) const {
+  const TargetTransformInfo::TargetCostKind CostKind =
+      TargetTransformInfo::TCK_SizeAndLatency;
+  PHINode *IV = CurLoop->getCanonicalInductionVariable();
+  if (!IV)
+    return false;
+
+  LLVMContext &Ctx = CurLoop->getHeader()->getContext();
+  Type *CRCTy = Info.LHS->getType();
+  Type *I8Ty = IntegerType::getInt8Ty(Ctx);
+  Type *IVTy = IV->getType();
+  Type *IndexTy = DL->getIndexType(PointerType::getUnqual(Ctx));
+
+  auto ArithCost = [&](unsigned Opcode, Type *Ty) {
+    return TTI->getArithmeticInstrCost(Opcode, Ty, CostKind);
+  };
+  // A trunc or zext of the same type is free, as CreateZExtOrTrunc leaves it.
+  auto ZExtOrTruncCost = [&](Type *Dst, Type *Src) -> InstructionCost {
+    if (Dst == Src)
+      return 0;
+    unsigned Opcode = Dst->getIntegerBitWidth() < Src->getIntegerBitWidth()
+                          ? Instruction::Trunc
+                          : Instruction::ZExt;
+    return TTI->getCastInstrCost(Opcode, Dst, Src,
+                                 TargetTransformInfo::CastContextHint::None,
+                                 CostKind);
+  };
+
+  // The bit-serial loop. PHIs and debug or lifetime markers do not execute, so
+  // they cost nothing. The latch branch and the exit compare are ordinary
+  // instructions of the loop, so they are counted like the rest.
+  InstructionCost BitIterCost = 0;
+  for (BasicBlock *BB : CurLoop->blocks())
+    for (const Instruction &I : *BB) {
+      if (isa<PHINode>(I) || I.isDebugOrPseudoInst() ||
+          I.isLifetimeStartOrEnd())
+        continue;
+      BitIterCost += TTI->getInstructionCost(&I, CostKind);
+    }
+  InstructionCost BitLoopCost =
+      BitIterCost * InstructionCost(Info.TripCount);
+
+  // One table iteration, built as optimizeCRCLoop builds it. The index is the
+  // CRC's low byte (its high byte when big-endian), optionally XOR'ed with
+  // the data byte for this iteration. The table entry is then combined with the
+  // shifted CRC.
+  InstructionCost TableIterCost = 0;
+  Type *IndexerTy = CRCTy;
+  if (Value *Data = Info.LHSAux) {
+    Type *DataTy = Data->getType();
+    // iv.bits = iv << 3, data.indexer = data >> iv.bits (<< when big-endian),
+    // and the indexer XORs the shifted data with the CRC.
+    TableIterCost += ArithCost(Instruction::Shl, IVTy) +
+                     ZExtOrTruncCost(DataTy, IVTy) +
+                     ArithCost(Info.ByteOrderSwapped ? Instruction::Shl
+                                                     : Instruction::LShr,
+                               DataTy) +
+                     ArithCost(Instruction::Xor, DataTy) +
+                     ZExtOrTruncCost(DataTy, CRCTy);
+    IndexerTy = DataTy;
+  }
+  if (Info.ByteOrderSwapped && CRCTy->getIntegerBitWidth() > 8)
+    TableIterCost += ArithCost(Instruction::LShr, IndexerTy);
+  TableIterCost += ZExtOrTruncCost(I8Ty, IndexerTy);
+  TableIterCost += TTI->getCastInstrCost(
+      Instruction::ZExt, IndexTy, I8Ty,
+      TargetTransformInfo::CastContextHint::None, CostKind);
+  TableIterCost += ArithCost(Instruction::Add, IndexTy); // Table address.
+  TableIterCost +=
+      TTI->getConstantTableLookupCost(CRCTy, /*TableEntries=*/256, CostKind);
+  if (CRCTy->getIntegerBitWidth() > 8)
+    TableIterCost += ArithCost(Info.ByteOrderSwapped ? Instruction::Shl
+                                                     : Instruction::LShr,
+                               CRCTy) +
+                     ArithCost(Instruction::Xor, CRCTy);
+  // Loop control: the IV increment, the exit compare, and the latch branch.
+  TableIterCost +=
+      ArithCost(Instruction::Add, IVTy) +
+      TTI->getCmpSelInstrCost(Instruction::ICmp, IVTy,
+                              CmpInst::makeCmpResultType(IVTy),
+                              CmpInst::BAD_ICMP_PREDICATE, CostKind) +
+      TTI->getCFInstrCost(Instruction::Br, CostKind);
+  InstructionCost TableLoopCost =
+      TableIterCost * InstructionCost(Info.TripCount / 8);
+
+  return BitLoopCost.isValid() && TableLoopCost.isValid() &&
+         TableLoopCost < BitLoopCost;
+}
+
 bool LoopIdiomRecognize::optimizeCRCLoop(const PolynomialInfo &Info) {
   // FIXME: Hexagon has a special HexagonLoopIdiom that optimizes CRC using
   // carry-less multiplication instructions, which is more efficient than our
@@ -1548,6 +1644,11 @@ bool LoopIdiomRecognize::optimizeCRCLoop(const PolynomialInfo &Info) {
   Module &M = *CurLoop->getHeader()->getModule();
   Triple TT(M.getTargetTriple());
   if (TT.getArch() == Triple::hexagon)
+    return false;
+
+  // Keep the bit-serial loop unless the table costs less. This check comes
+  // before any IR changes.
+  if (!isSarwateTableProfitable(Info))
     return false;
 
   // First, create a new GlobalVariable corresponding to the

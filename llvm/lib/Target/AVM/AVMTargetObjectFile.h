@@ -50,10 +50,14 @@ public:
   MCSection *getExceptionSitesSection(const Function &F, const MCSymbol &FnSym,
                                       const TargetMachine &TM) const override;
 
+  // Whether an object is placed in the flash window without an explicit
+  // section. The cost model uses the same predicate, so a load's cost matches
+  // where the object is placed.
+  static bool isAutoFlashGlobal(const GlobalObject *GO);
+
 private:
   enum class AVMSectionClass { Data, ProgramData, ProgramText, Flash };
 
-  static bool isAutoFlashGlobal(const GlobalObject *GO);
   MCSection *moveToFlash(MCSection *Section) const;
   SectionKind getAVMSectionKind(const GlobalObject *GO, SectionKind Kind) const;
   MCSection *classifySection(MCSection *Section, AVMSectionClass Class) const;

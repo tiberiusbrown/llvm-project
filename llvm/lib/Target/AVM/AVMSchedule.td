@@ -30,6 +30,8 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW17 : AVMWrite<17>;
   def AVMW18 : AVMWrite<18>;
   def AVMW19 : AVMWrite<19>;
+  def AVMW20 : AVMWrite<20>;
+  def AVMW21 : AVMWrite<21>;
   def AVMW35 : AVMWrite<35>;
   def AVMW36 : AVMWrite<36>;
   def AVMW37 : AVMWrite<37>;
@@ -38,6 +40,8 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW40 : AVMWrite<40>;
   def AVMW41 : AVMWrite<41>;
   def AVMW42 : AVMWrite<42>;
+  def AVMW43 : AVMWrite<43>;
+  def AVMW44 : AVMWrite<44>;
   def AVMW46 : AVMWrite<46>;
   def AVMW47 : AVMWrite<47>;
   def AVMW51 : AVMWrite<51>;
@@ -45,6 +49,8 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW53 : AVMWrite<53>;
   def AVMW54 : AVMWrite<54>;
   def AVMW55 : AVMWrite<55>;
+  def AVMW56 : AVMWrite<56>;
+  def AVMW57 : AVMWrite<57>;
   def AVMW60 : AVMWrite<60>;
   def AVMW62 : AVMWrite<62>;
   def AVMW64 : AVMWrite<64>;
@@ -52,11 +58,11 @@ let SchedModel = AVMInterpreterModel in {
   def AVMW72 : AVMWrite<72>;
   def AVMW73 : AVMWrite<73>;
   def AVMW74 : AVMWrite<74>;
-  def AVMW76 : AVMWrite<76>;
-  def AVMW77 : AVMWrite<77>;
+  def AVMW78 : AVMWrite<78>;
+  def AVMW79 : AVMWrite<79>;
   def AVMW81 : AVMWrite<81>;
-  def AVMW82 : AVMWrite<82>;
   def AVMW83 : AVMWrite<83>;
+  def AVMW84 : AVMWrite<84>;
   def AVMW102 : AVMWrite<102>;
   def AVMW105 : AVMWrite<105>;
   def AVMW112 : AVMWrite<112>;
@@ -89,8 +95,10 @@ let SchedModel = AVMInterpreterModel in {
   // immediate shifts count one. Operand-sensitive forms use their
   // existing representative encoding; AVMInstrInfo refines actual operands.
   def : InstRW<[AVMW17], (instrs MOV, ADD, SUB, AND, OR, XOR, COPY)>;
-  def : InstRW<[AVMW18], (instrs CMP, LD8U, ST8, LD16, ST16, POP16)>;
+  def : InstRW<[AVMW18], (instrs CMP, ST8, ST16, POP16)>;
   def : InstRW<[AVMW19], (instrs PUSH16)>;
+  def : InstRW<[AVMW20], (instrs LD8U)>;
+  def : InstRW<[AVMW21], (instrs LD16)>;
   def : InstRW<[AVMW35], (instrs ADJSP, SYS, BREQ8, BRNE8, BRULT8, BRUGE8,
                                   BRSLT8, BRSGE8)>;
   def : InstRW<[AVMW36], (instrs CMOV_EQ, CMOV_NE, CMOV_ULT, CMOV_UGE,
@@ -100,34 +108,37 @@ let SchedModel = AVMInterpreterModel in {
                                   ASR32_1, BOOL, INC16, DEC16, LSL16_1,
                                   LSR16_1, ASR16_1, NOT16, BSWAP16, MUL8,
                                   SEXT8, NEG16, TST8, F3ST8, F6ST8_POST,
-                                  F5LD8U, MULU8W, MULS8W, MULSU8W,
+                                  MULU8W, MULS8W, MULSU8W,
                                   LDSP8U_COMPACT, LDSP16_COMPACT,
                                   STSP16_COMPACT, MOV32_F2, FNEG, FABS)>;
-  def : InstRW<[AVMW39], (instrs CMP_RR, TST16, F5LD16, F5ST16, F7LD8U_POST,
-                                  F7ST16_POST)>;
-  def : InstRW<[AVMW40], (instrs SETSP, F7LD16_POST)>;
+  def : InstRW<[AVMW39], (instrs CMP_RR, TST16, F5ST16)>;
+  def : InstRW<[AVMW40], (instrs SETSP, F7ST16_POST)>;
+  def : InstRW<[AVMW43], (instrs F5LD8U, F7LD8U_POST)>;
+  def : InstRW<[AVMW44], (instrs F5LD16)>;
   def : InstRW<[AVMW41], (instrs CSET_EQ, CSET_NE, CSET_ULT, CSET_UGE,
                                   CSET_SLT, CSET_SGE)>;
   def : InstRW<[AVMW42], (instrs SHL16V, LSR16V, ASR16V)>;
-  def : InstRW<[AVMW46], (instrs MUL16)>;
+  def : InstRW<[AVMW46], (instrs MUL16, F7LD16_POST)>;
   def : InstRW<[AVMW47], (instrs LSL16I, LSR16I, ASR16I)>;
   def : InstRW<[AVMW51], (instrs AND_RR, BREQ16, BRNE16, BRULT16, BRUGE16,
                                   BRSLT16, BRSGE16)>;
   def : InstRW<[AVMW52], (instrs LDI16, OR_RR)>;
   def : InstRW<[AVMW53], (instrs LDI8, XOR_RR, COLDLDI8)>;
-  def : InstRW<[AVMW54], (instrs ADDIS8, DPLD8U, DPST8, COLDADDIS8)>;
-  def : InstRW<[AVMW55], (instrs CMPIS8, DPLD16, DPST16, COLDCMPIS8)>;
+  def : InstRW<[AVMW54], (instrs ADDIS8, DPST8, COLDADDIS8)>;
+  def : InstRW<[AVMW55], (instrs CMPIS8, DPST16, COLDCMPIS8)>;
+  def : InstRW<[AVMW56], (instrs DPLD8U)>;
+  def : InstRW<[AVMW57], (instrs DPLD16)>;
   def : InstRW<[AVMW60], (instrs LEASP, STSP8)>;
   def : InstRW<[AVMW62], (instrs LDSP8U)>;
   def : InstRW<[AVMW64], (instrs LDSP8S, LDSP16, STSP16)>;
   def : InstRW<[AVMW71], (instrs COLDLDI16)>;
-  def : InstRW<[AVMW72], (instrs LDM8U, STM8, LDM16, STM16)>;
+  def : InstRW<[AVMW72], (instrs STM8, STM16)>;
   def : InstRW<[AVMW73], (instrs GPST8_POST)>;
-  def : InstRW<[AVMW74], (instrs GPST16_POST)>;
-  def : InstRW<[AVMW76], (instrs GPLD8U_POST)>;
-  def : InstRW<[AVMW77], (instrs GPLD16_POST)>;
+  def : InstRW<[AVMW74], (instrs GPST16_POST, LDM8U, LDM16)>;
+  def : InstRW<[AVMW78], (instrs GPLD8U_POST)>;
+  def : InstRW<[AVMW79], (instrs GPLD16_POST)>;
   def : InstRW<[AVMW81], (instrs ST32)>;
-  def : InstRW<[AVMW82], (instrs LD32)>;
+  def : InstRW<[AVMW84], (instrs LD32)>;
   def : InstRW<[AVMW83], (instrs CMP32, FCMP, FCMP_MC)>;
   def : InstRW<[AVMW102], (instrs FTOU16, FTOU16_MC)>;
   def : InstRW<[AVMW105], (instrs FTOU32, FTOU32_MC)>;
