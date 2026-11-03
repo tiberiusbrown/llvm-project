@@ -98,3 +98,84 @@ define i16 @program_load(ptr addrspace(1) %p) {
   %v = load i16, ptr addrspace(1) %p, align 2
   ret i16 %v
 }
+
+; A loaded pointer is priced at the width of the address space it points into. An
+; AS0 data pointer is 16 bits and costs as an i16 load. An AS1 program pointer is
+; 24 bits, and an AS0 load of one is the two-load expansion of LOAD24_PSEUDO: a
+; 16-bit postincrement load and an 8-bit load. A flash source prices both loads at
+; their flash-window measurements, 282 and 232 cycles (514 total, 30 normalized). A
+; RAM source prices them at the RAM measurements, 46 and 20 cycles (66 total, 4
+; normalized). Code size is the size of F7LD16_POST and LD8U, 3 bytes, for either
+; source. A program pointer loaded from AS1 keeps its LDP24 cost.
+
+@prog_target = addrspace(1) constant [1 x i8] c"\01"
+@flash_data_pointer = internal constant ptr @ram16
+@flash_program_pointer = internal constant ptr addrspace(1) @prog_target
+@flash_program_pointer.alias = internal alias ptr addrspace(1), ptr @flash_program_pointer
+@flash_program_table = internal constant [2 x ptr addrspace(1)] [ptr addrspace(1) @prog_target, ptr addrspace(1) @prog_target]
+@ram_data_pointer = global ptr @ram16
+@ram_program_pointer = global ptr addrspace(1) @prog_target
+
+define ptr @flash_data_pointer_load() {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 15 for instruction: %v = load ptr, ptr @flash_data_pointer, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 1 for instruction: %v = load ptr, ptr @flash_data_pointer, align 2
+  %v = load ptr, ptr @flash_data_pointer, align 2
+  ret ptr %v
+}
+
+define ptr addrspace(1) @flash_program_pointer_load() {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 30 for instruction: %v = load ptr addrspace(1), ptr @flash_program_pointer, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr @flash_program_pointer, align 2
+  %v = load ptr addrspace(1), ptr @flash_program_pointer, align 2
+  ret ptr addrspace(1) %v
+}
+
+define ptr addrspace(1) @flash_program_alias_load() {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 30 for instruction: %v = load ptr addrspace(1), ptr @flash_program_pointer.alias, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr @flash_program_pointer.alias, align 2
+  %v = load ptr addrspace(1), ptr @flash_program_pointer.alias, align 2
+  ret ptr addrspace(1) %v
+}
+
+define ptr addrspace(1) @flash_program_table_load(i16 %i) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 30 for instruction: %v = load ptr addrspace(1), ptr %p, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr %p, align 2
+  %p = getelementptr inbounds [2 x ptr addrspace(1)], ptr @flash_program_table, i16 0, i16 %i
+  %v = load ptr addrspace(1), ptr %p, align 2
+  ret ptr addrspace(1) %v
+}
+
+define ptr @ram_data_pointer_load() {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 1 for instruction: %v = load ptr, ptr @ram_data_pointer, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 1 for instruction: %v = load ptr, ptr @ram_data_pointer, align 2
+  %v = load ptr, ptr @ram_data_pointer, align 2
+  ret ptr %v
+}
+
+define ptr addrspace(1) @ram_program_pointer_load() {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 4 for instruction: %v = load ptr addrspace(1), ptr @ram_program_pointer, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr @ram_program_pointer, align 2
+  %v = load ptr addrspace(1), ptr @ram_program_pointer, align 2
+  ret ptr addrspace(1) %v
+}
+
+define ptr @argument_data_pointer_load(ptr %p) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 1 for instruction: %v = load ptr, ptr %p, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 1 for instruction: %v = load ptr, ptr %p, align 2
+  %v = load ptr, ptr %p, align 2
+  ret ptr %v
+}
+
+define ptr addrspace(1) @argument_program_pointer_load(ptr %p) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 4 for instruction: %v = load ptr addrspace(1), ptr %p, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr %p, align 2
+  %v = load ptr addrspace(1), ptr %p, align 2
+  ret ptr addrspace(1) %v
+}
+
+define ptr addrspace(1) @program_pointer_from_program_load(ptr addrspace(1) %p) {
+; CHECK-LABEL: Cost Model: Found an estimated cost of 19 for instruction: %v = load ptr addrspace(1), ptr addrspace(1) %p, align 2
+; SIZE-LABEL: Cost Model: Found an estimated cost of 3 for instruction: %v = load ptr addrspace(1), ptr addrspace(1) %p, align 2
+  %v = load ptr addrspace(1), ptr addrspace(1) %p, align 2
+  ret ptr addrspace(1) %v
+}

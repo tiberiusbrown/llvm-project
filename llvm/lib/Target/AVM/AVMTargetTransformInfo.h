@@ -75,6 +75,24 @@ class AVMTTIImpl final : public BasicTTIImplBase<AVMTTIImpl> {
     return std::nullopt;
   }
 
+  // A 24-bit program pointer loaded from AS0 is LOAD24_PSEUDO. AVMExpandPseudoInsts
+  // expands it to a 16-bit postincrement load and an 8-bit load, so it is priced
+  // as those two loads rather than as one 32-bit load. The IR does not show the
+  // register that the expansion picks, so this prices the upper-register form. A
+  // flash source makes each load a separate flash-window read, so both loads take
+  // their flash costs.
+  InstructionCost getPointer24LoadCost(bool Flash,
+                                       TTI::TargetCostKind CostKind) const {
+    if (CostKind == TTI::TCK_CodeSize)
+      return encodedBytes(AVM::F7LD16_POST) + encodedBytes(AVM::LD8U);
+    AVM::AVMCostKind WordKind = Flash ? AVM::AVMCostKind::FlashLd16PostIncDense
+                                      : AVM::AVMCostKind::Ld16PostIncDense;
+    AVM::AVMCostKind ByteKind =
+        Flash ? AVM::AVMCostKind::FlashLd8UUpper : AVM::AVMCostKind::Ld8UUpper;
+    return normalizedCycles(AVM::getFixedCycles(WordKind) +
+                            AVM::getFixedCycles(ByteKind));
+  }
+
   InstructionCost getHelperArithmeticCost(Type *Ty, unsigned Opcode,
                                           TTI::TargetCostKind CostKind) const {
     unsigned Words = divideCeil(Ty->getScalarSizeInBits(), 16u);
@@ -607,6 +625,15 @@ public:
       return InstructionCost::getInvalid();
     if (AddressSpace == 1 && Opcode == Instruction::Store)
       return InstructionCost::getInvalid();
+    // A pointer loaded from AS0 is priced at the width of its own address space.
+    // A 16-bit data pointer costs as an i16 load. A 24-bit program pointer costs as
+    // the two-load expansion. The flash placement of the load still decides which
+    // measurement applies.
+    if (AddressSpace == 0 && Opcode == Instruction::Load && Src->isPointerTy()) {
+      if (Src->getPointerAddressSpace() == 1)
+        return getPointer24LoadCost(isFlashWindowLoad(I), CostKind);
+      Src = Type::getInt16Ty(Src->getContext());
+    }
     if (CostKind == TTI::TCK_CodeSize) {
       if (AddressSpace == 0 &&
           (Opcode == Instruction::Load || Opcode == Instruction::Store)) {
