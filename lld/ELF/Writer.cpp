@@ -2887,6 +2887,138 @@ static void checkAVMTypeidAliases(Ctx &ctx) {
   }
 }
 
+// A dynamic typeid reads the RTTI slot of each polymorphic object's vtable. Clang's
+// -fno-rtti vtable keeps that slot zero and has no relocation for it, so a live helper
+// requires every retained ordinary vtable to name a descriptor. The decision uses the
+// symbol after garbage collection and LTO. A dead or undefined helper does not count.
+static bool needsAVMDynamicRTTI(Ctx &ctx) {
+  auto *def =
+      dyn_cast_or_null<Defined>(ctx.symtab->find("__avm_typeid_from_object"));
+  return def && def->section && def->section->isLive();
+}
+
+// eh_cxa.c defines these zero-filled, nine-byte objects. Each one classifies a
+// descriptor kind, so none of them is an ordinary complete-object vtable.
+//
+// _ZTVSt9type_info is the runtime's std::type_info vtable. Its key function is in
+// cxxabi.cpp, which is built without RTTI, so the vtable has no RTTI slot and the
+// runtime has no descriptor for the class. The class declares a deleted copy
+// constructor and no other constructor, so no object can have exactly this dynamic
+// type, and dynamic typeid never reads the slot. Linking the runtime's cxxabi.o
+// without garbage collection would otherwise retain it.
+static bool isAVMRTTISupportVTable(StringRef name) {
+  static constexpr StringRef names[] = {
+      "_ZTVN10__cxxabiv123__fundamental_type_infoE",
+      "_ZTVN10__cxxabiv117__class_type_infoE",
+      "_ZTVN10__cxxabiv120__si_class_type_infoE",
+      "_ZTVN10__cxxabiv121__vmi_class_type_infoE",
+      "_ZTVN10__cxxabiv119__pointer_type_infoE",
+      "_ZTVN10__cxxabiv116__enum_type_infoE",
+      "_ZTVN10__cxxabiv120__function_type_infoE",
+      "_ZTVN10__cxxabiv129__pointer_to_member_type_infoE",
+      "_ZTVN10__cxxabiv117__array_type_infoE",
+      "_ZTVSt9type_info",
+  };
+  return llvm::is_contained(names, name);
+}
+
+// Returns the _ZTI symbol that a vtable relocation names, or null. A global or weak
+// descriptor is named directly. Clang's local descriptors are named through their
+// section, so the descriptor is the object's _ZTI at that section offset.
+static const Symbol *getAVMRTTIDescriptor(const InputSection &sec,
+                                          const Relocation &r) {
+  if (!r.sym)
+    return nullptr;
+  if (r.sym->getName().starts_with("_ZTI"))
+    return r.sym;
+  auto *target = dyn_cast<Defined>(r.sym);
+  if (!r.sym->isSection() || !target || !target->section)
+    return nullptr;
+  for (Symbol *candidate : sec.file->getSymbols()) {
+    auto *def = dyn_cast_or_null<Defined>(candidate);
+    if (def && def->section == target->section &&
+        def->value == uint64_t(r.addend) && def->getName().starts_with("_ZTI"))
+      return def;
+  }
+  return nullptr;
+}
+
+// A descriptor is valid when it is live, nonzero, and addressable through the AS0
+// flash window, with the same bounds as checkAVMTypeidAliases.
+static bool isAVMRTTIDescriptorValid(Ctx &ctx, const Symbol *sym) {
+  auto *def = dyn_cast_or_null<Defined>(sym);
+  if (!def || !def->section || !def->section->isLive() || def->size == 0)
+    return false;
+  const uint64_t begin = def->getVA(ctx);
+  return begin >= AVMRTTIWindowStart && def->size <= AVMRTTIWindowEnd &&
+         begin <= AVMRTTIWindowEnd - def->size;
+}
+
+// Checks one selected vtable. Its extent must lie inside its input section, and it
+// needs a three-byte PROG24 entry that names a valid descriptor. The entries are
+// three bytes apart from the symbol start, so the RTTI slot sits at a multiple of
+// three.
+static void checkAVMSelectedVTable(Ctx &ctx, const Defined &vtable) {
+  auto report = [&](StringRef reason) {
+    Err(ctx) << "AVM polymorphic RTTI required, but selected vtable '"
+             << vtable.getName() << "' " << reason << "\n>>> defined in "
+             << vtable.file;
+  };
+  const auto *sec = dyn_cast_or_null<InputSection>(vtable.section);
+  if (!sec || vtable.size == 0 || vtable.value > sec->getSize() ||
+      vtable.size > sec->getSize() - vtable.value) {
+    report("has no verifiable input-section extent");
+    return;
+  }
+
+  const uint64_t start = vtable.value;
+  const uint64_t end = start + vtable.size;
+  bool sawDescriptor = false;
+  bool validEntry = false;
+  for (const Relocation &r : sec->relocs()) {
+    if (r.type != R_AVM_PROG24 || r.offset < start || r.offset >= end)
+      continue;
+    if (r.offset + 3 > end) {
+      report("has a malformed relocation");
+      return;
+    }
+    const Symbol *descriptor = getAVMRTTIDescriptor(*sec, r);
+    if (!descriptor)
+      continue;
+    sawDescriptor = true;
+    if ((r.offset - start) % 3 == 0 &&
+        isAVMRTTIDescriptorValid(ctx, descriptor))
+      validEntry = true;
+  }
+  if (!validEntry)
+    report(sawDescriptor ? "has an invalid RTTI target" : "has no RTTI entry");
+}
+
+// Validates each retained complete-object and construction vtable after symbol
+// resolution, LTO, and GC. Global vtables resolve to the prevailing definition, so
+// each definition is checked once. Local vtables appear in their own object's symbols.
+// Discarded COMDAT copies are Undefined, so they are skipped.
+static void checkAVMDynamicRTTIVTables(Ctx &ctx) {
+  if (!needsAVMDynamicRTTI(ctx))
+    return;
+  SmallPtrSet<const Defined *, 32> checked;
+  for (ELFFileBase *file : ctx.objectFiles) {
+    for (Symbol *sym : file->getSymbols()) {
+      auto *def = dyn_cast_or_null<Defined>(sym);
+      if (!def)
+        continue;
+      StringRef name = def->getName();
+      if (!(name.starts_with("_ZTV") || name.starts_with("_ZTC")) ||
+          isAVMRTTISupportVTable(name))
+        continue;
+      if (def->section && !def->section->isLive())
+        continue;
+      if (checked.insert(def).second)
+        checkAVMSelectedVTable(ctx, *def);
+    }
+  }
+}
+
 template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
   if (ctx.arg.emachine != EM_AVM || ctx.arg.relocatable)
     return;
@@ -2970,6 +3102,7 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
                << utohexstr(AVMRTTIWindowEnd - 1, false, 6);
   }
   checkAVMTypeidAliases(ctx);
+  checkAVMDynamicRTTIVTables(ctx);
 
   if (!ctx.arg.sectionStartMap.empty())
     return;
