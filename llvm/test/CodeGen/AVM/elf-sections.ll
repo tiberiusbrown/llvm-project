@@ -10,7 +10,7 @@ target triple = "avm-unknown-arduboyfx"
 $grouped = comdat any
 
 @ram_zero = addrspace(0) global i16 0, align 1
-@ram_const = addrspace(0) constant i16 7, align 1
+@flash_const = addrspace(0) constant i16 7, align 1
 @prog_const = addrspace(1) constant i16 9, align 1
 
 define void @first() {
@@ -79,12 +79,11 @@ define linkonce_odr void @grouped() comdat {
 ; SPLIT-NEXT:   SHF_AVM_DATASPACE
 ; SPLIT-NEXT:   SHF_WRITE
 ; SPLIT-NEXT: ]
-; SPLIT:      Name: .data.ram_const
+; SPLIT:      Name: .flash.flash_const
 ; SPLIT:      Type: SHT_PROGBITS
 ; SPLIT:      Flags [
 ; SPLIT-NEXT:   SHF_ALLOC
 ; SPLIT-NEXT:   SHF_AVM_DATASPACE
-; SPLIT-NEXT:   SHF_WRITE
 ; SPLIT-NEXT: ]
 ; SPLIT:      Name: .rodata.prog_const
 ; SPLIT:      Type: SHT_PROGBITS

@@ -1,0 +1,71 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/start.s -o %t/start.o
+# RUN: llvm-mc -triple=avm -filetype=obj %t/flash.s -o %t/flash.o
+# RUN: llvm-mc -triple=avm -filetype=obj %t/data.s -o %t/data.o
+# RUN: llvm-mc -triple=avm -filetype=obj %t/exact.s -o %t/exact.o
+# RUN: llvm-mc -triple=avm -filetype=obj %t/big.s -o %t/big.o
+# RUN: llvm-mc -triple=avm -filetype=obj %t/empty.s -o %t/empty.o
+
+# The flash bytes are stored once at image offset 0x500, and code follows them.
+# RUN: ld.lld %t/start.o %t/flash.o -o %t/flash.elf
+# RUN: llvm-avm-image %t/flash.elf -o %t/flash.bin
+# RUN: %python %S/Inputs/check-flash.py %t/flash.bin 0 0x504 0x500 11223344
+
+# DataSize counts .data only, not the flash window.
+# RUN: ld.lld %t/start.o %t/data.o %t/flash.o -o %t/data.elf
+# RUN: llvm-avm-image %t/data.elf -o %t/data.bin
+# RUN: %python %S/Inputs/check-flash.py %t/data.bin 2 0x504 0x500 11223344
+
+# The largest window maps its last AS0 byte, 0xFFFE, to image offset 0xF9FE.
+# RUN: ld.lld %t/start.o %t/exact.o -o %t/exact.elf
+# RUN: llvm-avm-image %t/exact.elf -o %t/exact.bin
+# RUN: %python %S/Inputs/check-flash.py %t/exact.bin 0 0xfa00 0xf9fe 5a5a
+
+# Program code that overlaps the flash image bytes is rejected.
+# RUN: ld.lld --image-base=0x100 --section-start=.flash=0xb00 \
+# RUN:   --section-start=.text=0x600 %t/start.o %t/big.o -o %t/overlap.elf
+# RUN: not llvm-avm-image %t/overlap.elf -o %t/overlap.bin 2>&1 \
+# RUN:   | FileCheck %s --check-prefix=OVERLAP
+
+# An empty .flash section leaves the flat image byte-for-byte unchanged.
+# RUN: ld.lld %t/start.o -o %t/legacy.elf
+# RUN: llvm-avm-image %t/legacy.elf -o %t/legacy.bin
+# RUN: ld.lld %t/empty.o -o %t/empty.elf
+# RUN: llvm-avm-image %t/empty.elf -o %t/empty.bin
+# RUN: cmp %t/legacy.bin %t/empty.bin
+
+# OVERLAP: AVM section '.text' overlaps '.flash' in the flat image
+
+#--- start.s
+.text
+.globl _start
+_start:
+  .short 0
+
+#--- flash.s
+.section .flash.bytes,"a",@progbits
+.globl bytes
+bytes:
+  .byte 0x11, 0x22, 0x33, 0x44
+
+#--- data.s
+.data
+.globl state
+state:
+  .short 0x1234
+
+#--- exact.s
+.section .flash.exact,"a",@progbits
+  .zero 0xF4FE
+  .short 0x5a5a
+
+#--- big.s
+.section .flash.big,"a",@progbits
+  .zero 0x200
+
+#--- empty.s
+.text
+.globl _start
+_start:
+  .short 0
+.section .flash.empty,"a",@progbits

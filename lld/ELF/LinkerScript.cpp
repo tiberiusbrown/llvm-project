@@ -103,6 +103,11 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
     return ".text";
   }
 
+  // The AVM flash window is one output section with one physical mapping, so
+  // its inputs must not each become a separate section in a custom layout.
+  if (ctx.arg.emachine == EM_AVM && isSectionPrefix(".flash", s->name))
+    return ".flash";
+
   for (StringRef v : {".data.rel.ro", ".saved",      ".data",       ".rodata",
                       ".bss.rel.ro",  ".bss",        ".ldata",
                       ".lrodata",     ".lbss",       ".gcc_except_table",
@@ -279,8 +284,16 @@ void LinkerScript::createAVMDefaultLayout() {
     ordinaryData->sectionPatterns.push_back({{}, StringMatcher(pattern)});
   data->commands.push_back(ordinaryData);
   data->commands.push_back(slotBound("__avm_heap_start"));
+  // Immutable AS0 objects keep flash-window VMAs (0x0B00 maps to image offset
+  // 0x0500). Their bytes occupy the image through the packer's physical
+  // mapping, so program-space code must start after them when they exist.
+  OutputSection *flash = add(".flash", {".flash", ".flash.*"},
+                             [] { return ExprValue(0x0B00); });
+  flash->flags = SHF_ALLOC | SHF_AVM_DATASPACE;
   OutputSection *text = add(".text", {".text", ".text.*"}, {});
-  text->addrExpr = [saved, data, text] {
+  text->addrExpr = [saved, data, flash, text] {
+    if (flash->size)
+      return ExprValue(alignToPowerOf2(0x500 + flash->size, text->addralign));
     return ExprValue(alignToPowerOf2(
         alignToPowerOf2(0x100 + saved->size + data->size, 0x100),
         text->addralign));

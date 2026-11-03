@@ -72,6 +72,11 @@ constexpr uint32_t MaxFlashSize = 0x1000000;
 constexpr uint32_t DevelopmentSaveSize = 0x1000;
 constexpr uint32_t AVMProgSpace = 0x10000000;
 constexpr uint32_t AVMDataSpace = 0x20000000;
+// The AS0 flash window is AS0 0x0B00-0xFFFF, read from image offset address -
+// 0x0600. Its bytes are stored at that physical offset, not at the AS0 address.
+constexpr uint32_t FlashWindowStart = 0x0b00;
+constexpr uint32_t FlashWindowSize = 0xf500;
+constexpr uint32_t FlashImageDelta = 0x0600;
 constexpr uint8_t RuntimeVersion = 4;
 constexpr uint32_t CrashInfoOffset = 0x0f;
 // AVD1 layout constants, shared with the guest reader in runtime/lib.
@@ -1584,6 +1589,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
 
   const ELF32LE::Shdr *Saved = nullptr;
   const ELF32LE::Shdr *Data = nullptr;
+  bool SeenFlash = false;
   SmallVector<PayloadSection, 8> Program;
   for (const ELF32LE::Shdr &S : *SectionsOrErr) {
     Expected<StringRef> NameOrErr = ELF.getSectionName(S);
@@ -1622,6 +1628,30 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
       continue;
 
     if (DataSpace) {
+      if (Name == ".flash") {
+        if (SeenFlash)
+          return bad("multiple .flash output sections are unsupported");
+        SeenFlash = true;
+        if (S.sh_type != ELF::SHT_PROGBITS ||
+            (S.sh_flags & (ELF::SHF_WRITE | ELF::SHF_EXECINSTR)))
+          return bad("AVM flash section '.flash' must be read-only SHT_PROGBITS");
+        if (S.sh_addr != FlashWindowStart)
+          return bad("AVM .flash must begin at AS0 address 0x0b00");
+        if (S.sh_size > FlashWindowSize)
+          return bad(Twine("AVM flash window overflow: ") + Twine(S.sh_size) +
+                     " bytes required, " + Twine(FlashWindowSize) +
+                     " bytes available");
+        if (S.sh_size == 0)
+          continue;
+        Expected<ArrayRef<uint8_t>> Bytes = contents(ELF, S, Name);
+        if (!Bytes)
+          return Bytes.takeError();
+        // The bytes stay in the payload at their physical offset, so the
+        // overlap and copy steps treat them like any other image bytes.
+        Program.push_back(
+            {Name, S.sh_addr - FlashImageDelta, *Bytes, S.sh_flags});
+        continue;
+      }
       if (Name != ".saved" && Name != ".data")
         return bad(Twine("unsupported allocated data-space section '") + Name + "'");
       if (S.sh_type != ELF::SHT_PROGBITS ||
@@ -1678,7 +1708,7 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
   uint32_t PayloadEnd = HeaderSize + DataSize;
   bool EntryIsLiveCode = false;
   for (const PayloadSection &S : Program) {
-    if (S.Address < ProgramStart)
+    if (!(S.Flags & AVMDataSpace) && S.Address < ProgramStart)
       return bad(Twine("AVM program-space section '") + S.Name +
                  "' begins before programStart");
     Expected<uint32_t> End = checkedEnd(S.Address, S.Contents.size(), S.Name);

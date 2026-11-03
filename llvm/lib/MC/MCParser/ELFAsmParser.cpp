@@ -669,7 +669,8 @@ EndStmt:
           hasPrefix(SectionName, ".fini_array"))
         Flags &= ~ELF::SHF_WRITE;
     } else if (hasPrefix(SectionName, ".data") ||
-               hasPrefix(SectionName, ".saved")) {
+               hasPrefix(SectionName, ".saved") ||
+               hasPrefix(SectionName, ".flash")) {
       Flags = (Flags & ~AVMSpaceFlags) | ELF::SHF_AVM_DATASPACE;
     }
     if (hasPrefix(SectionName, ".bss") ||

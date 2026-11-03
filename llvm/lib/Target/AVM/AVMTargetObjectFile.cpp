@@ -4,6 +4,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSymbolELF.h"
@@ -54,6 +55,47 @@ SectionKind AVMTargetObjectFile::getAVMSectionKind(const GlobalObject *GO,
   return Kind;
 }
 
+// Clang clears GlobalVariable::isConstant for objects that need runtime
+// initialization or contain writable mutable subobjects, so constness alone
+// decides placement. Declarations, thread-local objects, and sections chosen by
+// the user stay with their existing placement. Whole-program devirtualization
+// splits vtables into address-space-zero blobs that carry type metadata, and
+// dispatch reads them with program-space loads, so those blobs stay in data
+// space.
+bool AVMTargetObjectFile::isAutoFlashGlobal(const GlobalObject *GO) {
+  const auto *GV = dyn_cast<GlobalVariable>(GO);
+  return GV && GV->getAddressSpace() == 0 && GV->isConstant() &&
+         GV->hasInitializer() && !GV->isThreadLocal() &&
+         !GV->isExternallyInitialized() && !GV->hasSection() &&
+         !GV->hasImplicitSection() && !GV->isDeclarationForLinker() &&
+         !GV->hasAppendingLinkage() && !GV->hasMetadata(LLVMContext::MD_type);
+}
+
+// The base lowering names a read-only global .rodata with an optional symbol or
+// mergeable suffix. Keep every attribute of that section, including the group,
+// COMDAT state, unique ID, and merge entry size, and change only its namespace.
+MCSection *AVMTargetObjectFile::moveToFlash(MCSection *Section) const {
+  auto *ELFSection = static_cast<MCSectionELF *>(Section);
+  StringRef Suffix = ELFSection->getName();
+  if (!Suffix.consume_front(".rodata")) {
+    getContext().reportError(SMLoc(), "AVM flash object lowered to section '" +
+                                          ELFSection->getName() +
+                                          "' outside .rodata");
+    return Section;
+  }
+  // A mergeable section can be shared with an AS1 object of the same kind, and
+  // that object's classification has already set a program-space bit here.
+  // Classification of the flash copy supplies the data-space bit.
+  unsigned Flags = ELFSection->getFlags() &
+                   ~(ELF::SHF_AVM_PROGSPACE | ELF::SHF_AVM_DATASPACE);
+  const MCSymbol *LinkedTo = ELFSection->getLinkedToSymbol();
+  return getContext().getELFSection(
+      (Twine(".flash") + Suffix).str(), ELFSection->getType(), Flags,
+      ELFSection->getEntrySize(), ELFSection->getGroup(),
+      ELFSection->isComdat(), ELFSection->getUniqueID(),
+      LinkedTo ? cast<MCSymbolELF>(LinkedTo) : nullptr);
+}
+
 MCSection *AVMTargetObjectFile::classifySection(MCSection *Section,
                                                 AVMSectionClass Class) const {
   auto *ELFSection = static_cast<MCSectionELF *>(Section);
@@ -61,7 +103,8 @@ MCSection *AVMTargetObjectFile::classifySection(MCSection *Section,
   if (!(Flags & ELF::SHF_ALLOC))
     return Section;
 
-  const bool IsDataSpace = Class == AVMSectionClass::Data;
+  const bool IsDataSpace = Class == AVMSectionClass::Data ||
+                           Class == AVMSectionClass::Flash;
   const unsigned RequiredSpaceFlag =
       IsDataSpace ? ELF::SHF_AVM_DATASPACE : ELF::SHF_AVM_PROGSPACE;
   const unsigned OppositeSpaceFlag =
@@ -94,6 +137,19 @@ MCSection *AVMTargetObjectFile::classifySection(MCSection *Section,
       getContext().reportError(SMLoc(), "AVM program-space data section '" +
                                             ELFSection->getName() +
                                             "' is writable");
+  } else if (Class == AVMSectionClass::Flash) {
+    if (Flags & ELF::SHF_WRITE)
+      getContext().reportError(SMLoc(), "AVM flash section '" +
+                                            ELFSection->getName() +
+                                            "' is writable");
+    if (Flags & ELF::SHF_EXECINSTR)
+      getContext().reportError(SMLoc(), "AVM flash section '" +
+                                            ELFSection->getName() +
+                                            "' is executable");
+    if (ELFSection->getType() != ELF::SHT_PROGBITS)
+      getContext().reportError(SMLoc(), "AVM flash section '" +
+                                            ELFSection->getName() +
+                                            "' is not SHT_PROGBITS");
   } else {
     if (!(Flags & ELF::SHF_WRITE))
       getContext().reportError(SMLoc(), "AVM data-space section '" +
@@ -130,6 +186,17 @@ MCSection *AVMTargetObjectFile::getExplicitSectionGlobal(
 
 MCSection *AVMTargetObjectFile::SelectSectionForGlobal(
     const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+  if (isAutoFlashGlobal(GO)) {
+    // Mergeable literals keep their merge kind. Any other constant becomes
+    // ordinary read-only data, so zero-initialized and relocated objects still
+    // have explicit PROGBITS contents.
+    if (!Kind.isMergeableCString() && !Kind.isMergeableConst())
+      Kind = SectionKind::getReadOnly();
+    return classifySection(
+        moveToFlash(TargetLoweringObjectFileELF::SelectSectionForGlobal(
+            GO, Kind, TM)),
+        AVMSectionClass::Flash);
+  }
   Kind = getAVMSectionKind(GO, Kind);
   MCSection *Section =
       TargetLoweringObjectFileELF::SelectSectionForGlobal(GO, Kind, TM);

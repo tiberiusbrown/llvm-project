@@ -54,8 +54,8 @@ flash_ptr embedded_null(void) {
 // LINK: Name: file_scope
 // LINK: Value: 0x100
 // LINK: Name: flash_table
-// LINK: Value: 0x216
+// LINK: Value: 0x51C
 // LINK-DATA: Contents of section .data:
-// LINK-DATA-NEXT: 0100 10020010 02001002
+// LINK-DATA-NEXT: 0100 16050016 05001605 00000b16 05001605
 // LINK-DATA: Contents of section .rodata:
-// LINK-DATA-NEXT: 0210 48656c6c 6f001002 0048656c 6c6f0000
+// LINK-DATA-NEXT: 0516 48656c6c 6f001605 0048656c 6c6f0000

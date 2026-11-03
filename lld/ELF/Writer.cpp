@@ -2881,6 +2881,30 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
       sec->entsize = 3;
     }
 
+  // The flash window is architectural, so custom layouts must satisfy it too.
+  // An output section with no bytes is not part of the image.
+  OutputSection *flash = find(".flash");
+  if (flash && flash->size) {
+    constexpr uint64_t FlashStart = 0x0B00;
+    constexpr uint64_t FlashEnd = 0x10000;
+    constexpr uint64_t FlashCapacity = FlashEnd - FlashStart;
+    if (flash->addr != FlashStart)
+      Err(ctx) << "AVM .flash must begin at data address 0x0B00";
+    else if (flash->size > FlashCapacity)
+      Err(ctx) << "AVM flash window overflow:\n"
+               << flash->size << " bytes required, " << FlashCapacity
+               << " bytes available\n(AS0 addresses 0x0B00-0xFFFF)";
+    // The window begins on a 256-byte boundary, which the fixed VMA cannot
+    // move, so a larger alignment would not hold for absolute addresses.
+    if (flash->addralign > 256)
+      Err(ctx) << "AVM .flash alignment " << flash->addralign
+               << " exceeds the 256-byte flash window alignment";
+    if (flash->type != SHT_PROGBITS || !isData(*flash) ||
+        (flash->flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR)) != SHF_ALLOC)
+      Err(ctx) << "AVM .flash must be allocated read-only data-space "
+                  "SHT_PROGBITS";
+  }
+
   if (!ctx.arg.sectionStartMap.empty())
     return;
 
@@ -2906,10 +2930,13 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
   if (dataSize > 1024)
     Err(ctx) << "AVM static storage exceeds the 1024-byte limit";
 
+  // Program-space bytes start after the flash image bytes when they exist, and
+  // otherwise after the static storage on the usual 256-byte boundary.
   const uint64_t programStart =
-      alignToPowerOf2(0x100 + dataSize, 0x100);
+      flash && flash->size ? 0x500 + flash->size
+                           : alignToPowerOf2(0x100 + dataSize, 0x100);
   for (OutputSection *sec : ctx.outputSections) {
-    if (!(sec->flags & SHF_ALLOC))
+    if (!(sec->flags & SHF_ALLOC) || sec == flash)
       continue;
     if (isData(*sec)) {
       if (sec != saved && sec != data)
@@ -2940,10 +2967,12 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
         Err(ctx) << "AVM default program-space section " << sec->name
                  << " begins before program address 0x"
                  << utohexstr(programStart);
-    if (OutputSection *text = find(".text"))
-      if (text->addr != programStart)
+    if (OutputSection *text = find(".text")) {
+      const uint64_t textStart = alignToPowerOf2(programStart, text->addralign);
+      if (text->addr != textStart)
         Err(ctx) << "AVM default .text must begin at program address 0x"
-                 << utohexstr(programStart);
+                 << utohexstr(textStart);
+    }
   }
 
   for (StringRef name : {StringRef(".init_array"), StringRef(".fini_array")})

@@ -1,0 +1,44 @@
+# RUN: yaml2obj %s -o %t
+# RUN: llvm-objdump -d --no-show-raw-insn %t | FileCheck %s
+
+# The AS0 flash window starts at 0x0B00, inside the program addresses of .text.
+# The call target lies beyond 0x0B00. It is a program address, so its label
+# comes from .text and not from the numerically preceding data-space section.
+
+# CHECK:      <_start>:
+# CHECK-NEXT: 530:
+# CHECK-SAME: call16{{.*}}<far>
+# CHECK:      <far>:
+
+--- !ELF
+FileHeader:
+  Class: ELFCLASS32
+  Data: ELFDATA2LSB
+  Type: ET_EXEC
+  Machine: EM_AVM
+  Entry: 0x530
+Sections:
+  - Name: .flash
+    Type: SHT_PROGBITS
+    ShFlags: 0x20000002
+    Address: 0xB00
+    AddressAlign: 1
+    Content: "11223344"
+  - Name: .text
+    Type: SHT_PROGBITS
+    ShFlags: 0x10000006
+    Address: 0x530
+    AddressAlign: 1
+    Size: 0x800
+    Content: "e1ed05"
+Symbols:
+  - Name: _start
+    Type: STT_FUNC
+    Section: .text
+    Binding: STB_GLOBAL
+    Value: 0x530
+  - Name: far
+    Type: STT_FUNC
+    Section: .text
+    Binding: STB_GLOBAL
+    Value: 0xB20

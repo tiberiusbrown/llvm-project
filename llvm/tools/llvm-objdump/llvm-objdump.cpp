@@ -2509,6 +2509,14 @@ disassembleObject(ObjectFile &Obj, const ObjectFile &DbgObj,
                 uint64_t TargetSecAddr = 0;
                 while (It != SectionAddresses.begin()) {
                   --It;
+                  // AVM data-space sections hold AS0 addresses that can equal
+                  // program addresses. A branch target is always a program
+                  // address, so skip them rather than label it from a data
+                  // section's symbols.
+                  if (Obj.isELF() && Obj.getArch() == Triple::avm &&
+                      (ELFSectionRef(It->second).getFlags() &
+                       ELF::SHF_AVM_DATASPACE))
+                    continue;
                   if (TargetSecAddr == 0)
                     TargetSecAddr = It->first;
                   if (It->first != TargetSecAddr)

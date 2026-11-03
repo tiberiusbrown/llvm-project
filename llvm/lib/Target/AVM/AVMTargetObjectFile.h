@@ -51,8 +51,10 @@ public:
                                       const TargetMachine &TM) const override;
 
 private:
-  enum class AVMSectionClass { Data, ProgramData, ProgramText };
+  enum class AVMSectionClass { Data, ProgramData, ProgramText, Flash };
 
+  static bool isAutoFlashGlobal(const GlobalObject *GO);
+  MCSection *moveToFlash(MCSection *Section) const;
   SectionKind getAVMSectionKind(const GlobalObject *GO, SectionKind Kind) const;
   MCSection *classifySection(MCSection *Section, AVMSectionClass Class) const;
 };
