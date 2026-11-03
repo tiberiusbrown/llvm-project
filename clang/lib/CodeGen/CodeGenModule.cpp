@@ -8108,18 +8108,14 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
   return getCXXABI().getAddrOfRTTIDescriptor(Ty);
 }
 
-// An AVM descriptor lies at program address P in 0x0500-0xF9FF, and its
-// type_info object is at AS0 address P + 0x0600. The sum is formed in 32 bits
-// and truncated to the 16-bit AS0 address, so the value is an ordinary AS0
-// pointer. The linker checks that each named descriptor and name lies in the
-// window. Naming the target with a weak marker is what makes that check
-// possible, since the alias is computed from a program address.
-llvm::Constant *CodeGenModule::GetAddrOfAVMTypeInfoAlias(QualType Ty) {
+// The marker is a weak undefined symbol in module asm, so it names the descriptor
+// without referencing it. Each module emits a marker once per target.
+void CodeGenModule::RegisterAVMRTTIAliasTargets(QualType Ty) {
   assert(getTriple().getArch() == llvm::Triple::avm &&
          "AVM typeid aliases are only defined for AVM");
   // typeid ignores top-level cv-qualifiers, so the descriptor is for the
-  // unqualified type.
-  Ty = Ty.getUnqualifiedType();
+  // canonical unqualified type.
+  Ty = Ty.getCanonicalType().getUnqualifiedType();
 
   SmallString<256> Descriptor, TypeName;
   llvm::raw_svector_ostream DescriptorOut(Descriptor), TypeNameOut(TypeName);
@@ -8132,6 +8128,21 @@ llvm::Constant *CodeGenModule::GetAddrOfAVMTypeInfoAlias(QualType Ty) {
     if (!StringRef(getModule().getModuleInlineAsm()).contains(Marker))
       getModule().appendModuleInlineAsm(Marker);
   }
+}
+
+// An AVM descriptor lies at program address P in 0x0500-0xF9FF, and its
+// type_info object is at AS0 address P + 0x0600. The sum is formed in 32 bits
+// and truncated to the 16-bit AS0 address, so the value is an ordinary AS0
+// pointer. The linker checks that each named descriptor and name lies in the
+// window. Naming the target with a weak marker is what makes that check
+// possible, since the alias is computed from a program address.
+llvm::Constant *CodeGenModule::GetAddrOfAVMTypeInfoAlias(QualType Ty) {
+  assert(getTriple().getArch() == llvm::Triple::avm &&
+         "AVM typeid aliases are only defined for AVM");
+  // typeid ignores top-level cv-qualifiers, so the descriptor is for the
+  // unqualified type.
+  Ty = Ty.getUnqualifiedType();
+  RegisterAVMRTTIAliasTargets(Ty);
 
   llvm::Constant *Program = GetAddrOfRTTIDescriptor(Ty);
   llvm::Constant *Biased = llvm::ConstantExpr::getAdd(

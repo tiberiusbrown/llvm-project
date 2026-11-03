@@ -1123,6 +1123,11 @@ public:
   /// descriptor and its type name to the linker.
   llvm::Constant *GetAddrOfAVMTypeInfoAlias(QualType Ty);
 
+  /// Names the descriptor and type name of Ty to the linker, so that the linker
+  /// checks that both lie in the AS0 flash window. A dynamic typeid can reach any
+  /// descriptor that a vtable names, so each such descriptor is registered.
+  void RegisterAVMRTTIAliasTargets(QualType Ty);
+
   /// Get the address of a GUID.
   ConstantAddress GetAddrOfMSGuidDecl(const MSGuidDecl *GD);
 

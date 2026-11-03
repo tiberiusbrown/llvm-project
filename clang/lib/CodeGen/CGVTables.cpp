@@ -1016,6 +1016,13 @@ llvm::GlobalVariable *CodeGenVTables::GenerateConstructionVTable(
 
   llvm::Constant *RTTI = CGM.GetAddrOfRTTIDescriptor(
       CGM.getContext().getCanonicalTagType(Base.getBase()));
+  // A construction vtable names the class under construction, and a typeid
+  // inside its constructor or destructor reads that descriptor, so it needs the
+  // same flash-window check as a complete-object vtable.
+  if (CGM.getTriple().getArch() == llvm::Triple::avm && CGM.shouldEmitRTTI() &&
+      !RTTI->isNullValue())
+    CGM.RegisterAVMRTTIAliasTargets(
+        CGM.getContext().getCanonicalTagType(Base.getBase()));
 
   // Create and set the initializer.
   ConstantInitBuilder builder(CGM);

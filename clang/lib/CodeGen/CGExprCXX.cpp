@@ -2235,17 +2235,9 @@ llvm::Value *CodeGenFunction::EmitCXXTypeidExpr(const CXXTypeidExpr *E) {
   //   representing the type of the most derived object (that is, the dynamic
   //   type) to which the glvalue refers.
   // If the operand is already most derived object, no need to look up vtable.
-  if (E->isPotentiallyEvaluated() && !E->isMostDerived(getContext())) {
-    // Dynamic lookup reads the object's vptr, a 24-bit program-space pointer
-    // that the AVM typeid lowering does not handle yet. Reject the expression
-    // instead of returning the static descriptor.
-    if (CGM.getTriple().getArch() == llvm::Triple::avm) {
-      CGM.ErrorUnsupported(E, "polymorphic typeid on AVM");
-      return llvm::PoisonValue::get(PtrTy);
-    }
+  if (E->isPotentiallyEvaluated() && !E->isMostDerived(getContext()))
     return EmitTypeidFromVTable(*this, E->getExprOperand(), PtrTy,
                                 E->hasNullCheck());
-  }
 
   QualType OperandTy = E->getExprOperand()->getType();
   return EmitStaticTypeInfo(OperandTy);

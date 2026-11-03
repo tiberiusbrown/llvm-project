@@ -1696,6 +1696,19 @@ llvm::Value *ItaniumCXXABI::EmitTypeid(CodeGenFunction &CGF,
                                        QualType SrcRecordTy,
                                        Address ThisPtr,
                                        llvm::Type *StdTypeInfoPtrTy) {
+  // On AVM the vptr is a 24-bit program address, and its RTTI slot lies three
+  // bytes below it. The runtime reads that slot and returns the flash-window alias
+  // of the descriptor, which is an ordinary AS0 pointer. The generic path below
+  // would load a 16-bit slot from program space, so it must not run here.
+  if (CGM.getTriple().getArch() == llvm::Triple::avm) {
+    llvm::FunctionType *TypeidTy = llvm::FunctionType::get(
+        CGM.Int8PtrTy, {CGM.Int8PtrTy}, /*isVarArg=*/false);
+    llvm::FunctionCallee TypeidFn =
+        CGM.CreateRuntimeFunction(TypeidTy, "__avm_typeid_from_object");
+    return CGF.EmitNounwindRuntimeCall(TypeidFn,
+                                       {ThisPtr.emitRawPointer(CGF)});
+  }
+
   auto *ClassDecl = SrcRecordTy->castAsCXXRecordDecl();
   llvm::Value *Value = CGF.GetVTablePtr(ThisPtr, CGM.GlobalsInt8PtrTy,
                                         ClassDecl);
@@ -2177,6 +2190,11 @@ void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
   llvm::GlobalVariable::LinkageTypes Linkage = CGM.getVTableLinkage(RD);
   llvm::Constant *RTTI =
       CGM.GetAddrOfRTTIDescriptor(CGM.getContext().getCanonicalTagType(RD));
+  // A dynamic typeid reads the RTTI slot of any object with this vtable, so the
+  // descriptor and its name need the same flash-window check as a static typeid.
+  if (CGM.getTriple().getArch() == llvm::Triple::avm && CGM.shouldEmitRTTI() &&
+      !RTTI->isNullValue())
+    CGM.RegisterAVMRTTIAliasTargets(CGM.getContext().getCanonicalTagType(RD));
 
   // Create and set the initializer.
   ConstantInitBuilder builder(CGM);
