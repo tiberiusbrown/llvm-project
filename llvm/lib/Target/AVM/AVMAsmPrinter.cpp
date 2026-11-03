@@ -130,6 +130,33 @@ class AVMAsmPrinter final : public AsmPrinter {
     return false;
   }
 
+  // Lowers the typeid alias of a program-space object,
+  // inttoptr(trunc(add(ptrtoint(P), bias))), to the symbol plus the bias. The
+  // 16-bit value is the AS0 address of the object, because the window bias is
+  // part of the bias. Returns null for any other constant.
+  const MCExpr *lowerTypeInfoAlias(const Constant *C) {
+    const auto *IntToPtr = dyn_cast<ConstantExpr>(C);
+    if (!IntToPtr || IntToPtr->getOpcode() != Instruction::IntToPtr)
+      return nullptr;
+    const auto *Trunc = dyn_cast<ConstantExpr>(IntToPtr->getOperand(0));
+    if (!Trunc || Trunc->getOpcode() != Instruction::Trunc)
+      return nullptr;
+    const auto *Sum = dyn_cast<ConstantExpr>(Trunc->getOperand(0));
+    if (!Sum || Sum->getOpcode() != Instruction::Add)
+      return nullptr;
+    const auto *Bias = dyn_cast<ConstantInt>(Sum->getOperand(1));
+    const auto *ToInt = dyn_cast<ConstantExpr>(Sum->getOperand(0));
+    if (!Bias || !ToInt || ToInt->getOpcode() != Instruction::PtrToInt)
+      return nullptr;
+    const auto *Program = cast<Constant>(ToInt->getOperand(0));
+    if (!Program->getType()->isPointerTy() ||
+        Program->getType()->getPointerAddressSpace() != 1)
+      return nullptr;
+    return MCBinaryExpr::createAdd(
+        lowerConstant(Program),
+        MCConstantExpr::create(Bias->getZExtValue(), OutContext), OutContext);
+  }
+
   void emitAVMConstant(const DataLayout &DL, const Constant *C) {
     Type *Ty = C->getType();
     if (const auto *CE = dyn_cast<ConstantExpr>(C);
@@ -191,6 +218,10 @@ class AVMAsmPrinter final : public AsmPrinter {
         Offset = FieldOffset + DL.getTypeAllocSize(Field->getType());
       }
       OutStreamer->emitZeros(Layout->getSizeInBytes() - Offset);
+      return;
+    }
+    if (const MCExpr *Alias = lowerTypeInfoAlias(C)) {
+      OutStreamer->emitValue(Alias, 2);
       return;
     }
     emitGlobalConstant(DL, C);

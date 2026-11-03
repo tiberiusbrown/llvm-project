@@ -2270,8 +2270,12 @@ ConstantLValueEmitter::tryEmitBase(const APValue::LValueBase &base) {
   }
 
   // Handle typeid(T).
-  if (TypeInfoLValue TI = base.dyn_cast<TypeInfoLValue>())
-    return CGM.GetAddrOfRTTIDescriptor(QualType(TI.getType(), 0));
+  if (TypeInfoLValue TI = base.dyn_cast<TypeInfoLValue>()) {
+    QualType T(TI.getType(), 0);
+    if (CGM.getTriple().getArch() == llvm::Triple::avm)
+      return CGM.GetAddrOfAVMTypeInfoAlias(T);
+    return CGM.GetAddrOfRTTIDescriptor(T);
+  }
 
   // Otherwise, it must be an expression.
   return Visit(base.get<const Expr*>());
@@ -2432,6 +2436,8 @@ ConstantLValueEmitter::VisitCXXTypeidExpr(const CXXTypeidExpr *E) {
     T = E->getTypeOperand(CGM.getContext());
   else
     T = E->getExprOperand()->getType();
+  if (CGM.getTriple().getArch() == llvm::Triple::avm)
+    return CGM.GetAddrOfAVMTypeInfoAlias(T);
   return CGM.GetAddrOfRTTIDescriptor(T);
 }
 

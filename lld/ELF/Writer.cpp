@@ -2853,6 +2853,40 @@ template <class ELFT> void Writer<ELFT>::checkSections() {
   }
 }
 
+// The AS0 flash window maps program addresses 0x0500-0xF9FF to AS0 addresses
+// 0x0B00-0xFFFF, so an RTTI object at program address P is typeid's alias at
+// P + 0x0600. The alias is formed at run time from the program address, so no
+// relocation shows which objects typeid uses. Clang's typeid lowering therefore
+// names each descriptor and each type name with a weak undefined marker,
+// __avm_rtti_alias.<symbol>. This check uses the address that each marker
+// resolves to. Dead definitions and unresolved markers do not count.
+//
+// The window holds program addresses 0x0500 through 0xF9FF, one past which the
+// alias would exceed 16 bits.
+static constexpr uint64_t AVMRTTIWindowStart = 0x0500;
+static constexpr uint64_t AVMRTTIWindowEnd = 0xfa00;
+
+static void checkAVMTypeidAliases(Ctx &ctx) {
+  constexpr StringRef MarkerPrefix = "__avm_rtti_alias.";
+  for (Symbol *marker : ctx.symtab->getSymbols()) {
+    if (!marker->isUndefined() ||
+        !marker->getName().starts_with(MarkerPrefix))
+      continue;
+    StringRef target = marker->getName().substr(MarkerPrefix.size());
+    auto *def = dyn_cast_or_null<Defined>(ctx.symtab->find(target));
+    if (!def || !def->section || !def->section->isLive())
+      continue;
+    const uint64_t begin = def->getVA(ctx);
+    const uint64_t end = begin + def->size;
+    if (begin >= AVMRTTIWindowStart && end <= AVMRTTIWindowEnd)
+      continue;
+    Err(ctx) << (target.starts_with("_ZTS") ? "AVM type_info name '"
+                                            : "AVM type_info descriptor '")
+             << target
+             << "' is not addressable through the AS0 flash window";
+  }
+}
+
 template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
   if (ctx.arg.emachine != EM_AVM || ctx.arg.relocatable)
     return;
@@ -2904,6 +2938,38 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
       Err(ctx) << "AVM .flash must be allocated read-only data-space "
                   "SHT_PROGBITS";
   }
+
+  // RTTI objects share one section after the flash image bytes. Their program
+  // addresses must lie in the window, and their AS0 aliases, which add 0x0600,
+  // must fit in 16 bits. Custom layouts must satisfy the same placement, and
+  // an output section with no bytes is not part of the image.
+  OutputSection *rtti = find(".avm.rtti");
+  if (rtti && rtti->size) {
+    const uint64_t flashEnd = flash && flash->size
+                                  ? AVMRTTIWindowStart + flash->size
+                                  : AVMRTTIWindowStart;
+    if (rtti->type != SHT_PROGBITS || !isProgram(*rtti) ||
+        (rtti->flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR)) != SHF_ALLOC)
+      Err(ctx) << "AVM .avm.rtti must be allocated read-only program-space "
+                  "SHT_PROGBITS";
+    if (rtti->addr < AVMRTTIWindowStart)
+      Err(ctx) << "AVM .avm.rtti must begin at program address 0x0500 or later";
+    else if (rtti->addr < flashEnd)
+      Err(ctx) << "AVM .avm.rtti overlaps the flash image bytes, which end at "
+                  "program address 0x"
+               << utohexstr(flashEnd, false, 6);
+    if (rtti->addr % std::max<uint64_t>(rtti->addralign, 1) != 0)
+      Err(ctx) << "AVM .avm.rtti is not aligned to " << rtti->addralign
+               << " bytes";
+    const uint64_t rttiEnd = rtti->addr + rtti->size;
+    if (rttiEnd > AVMRTTIWindowEnd)
+      Err(ctx) << "AVM RTTI flash-window overflow:\nRTTI section ends at "
+                  "program address 0x"
+               << utohexstr(rttiEnd, false, 6)
+               << ",\nbut the last addressable byte is 0x"
+               << utohexstr(AVMRTTIWindowEnd - 1, false, 6);
+  }
+  checkAVMTypeidAliases(ctx);
 
   if (!ctx.arg.sectionStartMap.empty())
     return;
@@ -2968,7 +3034,11 @@ template <class ELFT> void Writer<ELFT>::validateAVMLayout() {
                  << " begins before program address 0x"
                  << utohexstr(programStart);
     if (OutputSection *text = find(".text")) {
-      const uint64_t textStart = alignToPowerOf2(programStart, text->addralign);
+      // .text follows the RTTI objects when there are any.
+      const uint64_t afterRTTI = rtti && rtti->size
+                                     ? rtti->addr + rtti->size
+                                     : programStart;
+      const uint64_t textStart = alignToPowerOf2(afterRTTI, text->addralign);
       if (text->addr != textStart)
         Err(ctx) << "AVM default .text must begin at program address 0x"
                  << utohexstr(textStart);

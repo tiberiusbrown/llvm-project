@@ -117,6 +117,65 @@ public:
 #      endif
 };
 
+#    elif defined(__AVM__)
+
+// AVM stores each descriptor in program space. A type_info object is six bytes:
+// a 24-bit vptr, then the 24-bit program address of its mangled name. Both
+// objects lie in the AS0 flash window at program address + 0x0600, so name()
+// returns that alias. Two descriptors for one type are normally the same object,
+// and the name comparison covers the case where they are not.
+class _LIBCPP_EXPORTED_FROM_ABI type_info {
+  type_info& operator=(const type_info&);
+  type_info(const type_info&);
+
+protected:
+  // The program address of the type name. The vptr occupies the first three bytes.
+  const char __attribute__((address_space(1))) * __type_name;
+
+  // The 32-bit sum keeps the whole program address until the AS0 address is
+  // truncated to 16 bits, so the result is an ordinary AS0 pointer.
+  static const char* __alias(const char __attribute__((address_space(1))) * __program) _NOEXCEPT {
+    uint32_t __address = reinterpret_cast<uint32_t>(__program) + 0x0600u;
+    return reinterpret_cast<const char*>(static_cast<uint16_t>(__address));
+  }
+
+public:
+  virtual ~type_info();
+
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI const char* name() const _NOEXCEPT { return __alias(__type_name); }
+
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI bool before(const type_info& __arg) const _NOEXCEPT {
+    return __builtin_strcmp(name(), __arg.name()) < 0;
+  }
+
+  // FNV-1a over the name's bytes, truncated to 16 bits, which is the width of
+  // size_t on AVM. The multiplication by 0x0193 is written as shifts and adds, so
+  // no multiplication helper is linked.
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_t hash_code() const _NOEXCEPT {
+    size_t __hash = 0x811C;
+    for (const char* __p = name(); *__p; ++__p) {
+      __hash ^= static_cast<unsigned char>(*__p);
+      __hash = (__hash << 8) + (__hash << 7) + (__hash << 4) + (__hash << 1) + __hash;
+    }
+    return __hash;
+  }
+
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX23 bool operator==(const type_info& __arg) const _NOEXCEPT {
+    // When evaluated in a constant expression, both type infos simply can't come
+    // from different translation units, so it is sufficient to compare their addresses.
+    if (__libcpp_is_constant_evaluated()) {
+      return this == &__arg;
+    }
+    if (this == &__arg || __type_name == __arg.__type_name)
+      return true;
+    return __builtin_strcmp(name(), __arg.name()) == 0;
+  }
+
+#      if _LIBCPP_STD_VER <= 17
+  _LIBCPP_HIDE_FROM_ABI bool operator!=(const type_info& __arg) const _NOEXCEPT { return !operator==(__arg); }
+#      endif
+};
+
 #    else // !defined(_LIBCPP_ABI_MICROSOFT)
 
 // ========================================================================== //

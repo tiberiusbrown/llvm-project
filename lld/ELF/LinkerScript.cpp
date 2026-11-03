@@ -108,6 +108,11 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
   if (ctx.arg.emachine == EM_AVM && isSectionPrefix(".flash", s->name))
     return ".flash";
 
+  // Every RTTI object is placed in one output section after the flash image
+  // bytes, so a custom layout must not turn each object into its own section.
+  if (ctx.arg.emachine == EM_AVM && isSectionPrefix(".avm.rtti", s->name))
+    return ".avm.rtti";
+
   for (StringRef v : {".data.rel.ro", ".saved",      ".data",       ".rodata",
                       ".bss.rel.ro",  ".bss",        ".ldata",
                       ".lrodata",     ".lbss",       ".gcc_except_table",
@@ -290,8 +295,20 @@ void LinkerScript::createAVMDefaultLayout() {
   OutputSection *flash = add(".flash", {".flash", ".flash.*"},
                              [] { return ExprValue(0x0B00); });
   flash->flags = SHF_ALLOC | SHF_AVM_DATASPACE;
+  // RTTI objects follow the flash image bytes, so their AS0 aliases, which are
+  // program addresses plus 0x0600, stay in the window. The section is empty
+  // unless a translation unit was compiled with -frtti, and the .text placement
+  // below then leaves the layout unchanged.
+  OutputSection *rtti = add(".avm.rtti", {".avm.rtti", ".avm.rtti.*"}, {});
+  rtti->addrExpr = [flash, rtti] {
+    return ExprValue(alignToPowerOf2(0x500 + flash->size,
+                                     std::max<uint64_t>(rtti->addralign, 1)));
+  };
   OutputSection *text = add(".text", {".text", ".text.*"}, {});
-  text->addrExpr = [saved, data, flash, text] {
+  text->addrExpr = [saved, data, flash, rtti, text] {
+    if (rtti->size)
+      return ExprValue(
+          alignToPowerOf2(rtti->addr + rtti->size, text->addralign));
     if (flash->size)
       return ExprValue(alignToPowerOf2(0x500 + flash->size, text->addralign));
     return ExprValue(alignToPowerOf2(

@@ -9,6 +9,7 @@
 #include "InputFiles.h"
 #include "InputSection.h"
 #include "OutputSections.h"
+#include "SymbolTable.h"
 #include "Symbols.h"
 #include "Target.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -126,6 +127,18 @@ public:
     range[2] = finalLength >> 16;
   }
 
+  // Clang names each typeid target with a weak marker,
+  // __avm_rtti_alias.<symbol> (see CodeGenModule::GetAddrOfAVMTypeInfoAlias).
+  // A 16-bit data reference to a program-space object with a marker is the AS0
+  // alias that typeid returns. The linker checks that object's window placement
+  // after layout, so the reference needs no other check. Other program-space
+  // references stay invalid.
+  bool isTypeidAliasTarget(const Symbol &sym) const {
+    Symbol *marker = ctx.symtab->find(
+        (Twine("__avm_rtti_alias.") + sym.getName()).str());
+    return marker && marker->isUndefined();
+  }
+
   void checkAddressSpace(RelType type, const Symbol &sym) const {
     const Defined *defined = dyn_cast<Defined>(&sym);
     if (!defined || !defined->section)
@@ -136,6 +149,9 @@ public:
     uint64_t flags = defined->section->flags;
     if ((flags & (SHF_AVM_PROGSPACE | SHF_AVM_DATASPACE)) == 0 ||
         flags & required)
+      return;
+    if (type == R_AVM_DATA16 && (flags & SHF_AVM_PROGSPACE) &&
+        isTypeidAliasTarget(sym))
       return;
     Err(ctx) << "AVM relocation " << type << " against symbol '" << &sym
              << "' requires a " << (type == R_AVM_DATA16 ? "data" : "program")

@@ -793,6 +793,10 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
       auto *ProgramPtrTy = llvm::PointerType::get(CGM.getLLVMContext(), 1);
       if (rtti->isNullValue())
         return builder.add(llvm::ConstantPointerNull::get(ProgramPtrTy));
+      // A descriptor from -frtti is already a program-space pointer. A cast to
+      // its own address space is not a constant that the AVM assembler emits.
+      if (rtti->getType() == ProgramPtrTy)
+        return builder.add(rtti);
       return builder.add(
           llvm::ConstantExpr::getAddrSpaceCast(rtti, ProgramPtrTy));
     } else

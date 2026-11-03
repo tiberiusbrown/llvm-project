@@ -8108,6 +8108,39 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
   return getCXXABI().getAddrOfRTTIDescriptor(Ty);
 }
 
+// An AVM descriptor lies at program address P in 0x0500-0xF9FF, and its
+// type_info object is at AS0 address P + 0x0600. The sum is formed in 32 bits
+// and truncated to the 16-bit AS0 address, so the value is an ordinary AS0
+// pointer. The linker checks that each named descriptor and name lies in the
+// window. Naming the target with a weak marker is what makes that check
+// possible, since the alias is computed from a program address.
+llvm::Constant *CodeGenModule::GetAddrOfAVMTypeInfoAlias(QualType Ty) {
+  assert(getTriple().getArch() == llvm::Triple::avm &&
+         "AVM typeid aliases are only defined for AVM");
+  // typeid ignores top-level cv-qualifiers, so the descriptor is for the
+  // unqualified type.
+  Ty = Ty.getUnqualifiedType();
+
+  SmallString<256> Descriptor, TypeName;
+  llvm::raw_svector_ostream DescriptorOut(Descriptor), TypeNameOut(TypeName);
+  MangleContext &Mangler = getCXXABI().getMangleContext();
+  Mangler.mangleCXXRTTI(Ty, DescriptorOut);
+  Mangler.mangleCXXRTTIName(Ty, TypeNameOut);
+  for (StringRef Target : {StringRef(Descriptor), StringRef(TypeName)}) {
+    std::string Marker =
+        (Twine(".weak __avm_rtti_alias.") + Target + "\n").str();
+    if (!StringRef(getModule().getModuleInlineAsm()).contains(Marker))
+      getModule().appendModuleInlineAsm(Marker);
+  }
+
+  llvm::Constant *Program = GetAddrOfRTTIDescriptor(Ty);
+  llvm::Constant *Biased = llvm::ConstantExpr::getAdd(
+      llvm::ConstantExpr::getPtrToInt(Program, Int32Ty),
+      llvm::ConstantInt::get(Int32Ty, 0x0600));
+  llvm::Constant *Data = llvm::ConstantExpr::getTrunc(Biased, Int16Ty);
+  return llvm::ConstantExpr::getIntToPtr(Data, Int8PtrTy);
+}
+
 void CodeGenModule::EmitOMPThreadPrivateDecl(const OMPThreadPrivateDecl *D) {
   // Do not emit threadprivates in simd-only mode.
   if (LangOpts.OpenMP && LangOpts.OpenMPSimd)

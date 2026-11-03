@@ -1516,6 +1516,25 @@ static llvm::Type *getRTTIPointerType(CodeGenModule &CGM,
   return DefaultTy;
 }
 
+/// AVM with -frtti places each type descriptor and type name in the .avm.rtti
+/// output section, which the linker keeps in the AS0 flash window so that
+/// typeid can alias it. Without -frtti, the descriptors keep the default
+/// program-space placement that exception handling uses.
+static bool usesAVMFlashRTTI(const CodeGenModule &CGM) {
+  return CGM.getTriple().getArch() == llvm::Triple::avm &&
+         CGM.getLangOpts().RTTI;
+}
+
+/// Returns the section for one AVM RTTI object. Under -fdata-sections each
+/// object gets its own section, so the linker can discard the unused ones.
+static std::string getAVMFlashRTTISectionName(const CodeGenModule &CGM,
+                                              StringRef Prefix,
+                                              StringRef Name) {
+  if (!CGM.getCodeGenOpts().DataSections)
+    return Prefix.str();
+  return (Prefix + "." + Name).str();
+}
+
 static llvm::FunctionCallee getThrowFn(CodeGenModule &CGM) {
   // void __cxa_throw(void *thrown_exception, std::type_info *tinfo,
   //                  void (*dest) (void *));
@@ -3778,6 +3797,8 @@ llvm::GlobalVariable *ItaniumRTTIBuilder::GetAddrOfTypeName(
       getRTTIAddressSpace(CGM));
 
   GV->setInitializer(Init);
+  if (usesAVMFlashRTTI(CGM))
+    GV->setSection(getAVMFlashRTTISectionName(CGM, ".avm.rtti.name", Name));
 
   return GV;
 }
@@ -4373,6 +4394,8 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
       M, CGM.Int8Ty, /*isConstant=*/true, Linkage,
       /*Initializer=*/nullptr, Name, /*InsertBefore=*/nullptr,
       llvm::GlobalVariable::NotThreadLocal, getRTTIAddressSpace(CGM));
+  if (usesAVMFlashRTTI(CGM))
+    GV->setSection(getAVMFlashRTTISectionName(CGM, ".avm.rtti.type", Name));
 
   // Add the vtable pointer.
   BuildVTablePointer(cast<Type>(Ty), GV);

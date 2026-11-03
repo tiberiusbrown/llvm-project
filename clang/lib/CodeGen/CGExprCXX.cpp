@@ -2218,11 +2218,16 @@ llvm::Value *CodeGenFunction::EmitCXXTypeidExpr(const CXXTypeidExpr *E) {
     return getTargetHooks().performAddrSpaceCast(CGM, TypeInfo, GlobAS, PtrTy);
   };
 
-  if (E->isTypeOperand()) {
-    llvm::Constant *TypeInfo =
-        CGM.GetAddrOfRTTIDescriptor(E->getTypeOperand(getContext()));
-    return MaybeASCast(TypeInfo);
-  }
+  // AVM descriptors are program-space objects, and a type_info object is an AS0
+  // object. A static typeid therefore names the flash alias of the descriptor.
+  auto EmitStaticTypeInfo = [&](QualType Ty) -> llvm::Value * {
+    if (CGM.getTriple().getArch() == llvm::Triple::avm)
+      return CGM.GetAddrOfAVMTypeInfoAlias(Ty);
+    return MaybeASCast(CGM.GetAddrOfRTTIDescriptor(Ty));
+  };
+
+  if (E->isTypeOperand())
+    return EmitStaticTypeInfo(E->getTypeOperand(getContext()));
 
   // C++ [expr.typeid]p2:
   //   When typeid is applied to a glvalue expression whose type is a
@@ -2230,12 +2235,20 @@ llvm::Value *CodeGenFunction::EmitCXXTypeidExpr(const CXXTypeidExpr *E) {
   //   representing the type of the most derived object (that is, the dynamic
   //   type) to which the glvalue refers.
   // If the operand is already most derived object, no need to look up vtable.
-  if (E->isPotentiallyEvaluated() && !E->isMostDerived(getContext()))
+  if (E->isPotentiallyEvaluated() && !E->isMostDerived(getContext())) {
+    // Dynamic lookup reads the object's vptr, a 24-bit program-space pointer
+    // that the AVM typeid lowering does not handle yet. Reject the expression
+    // instead of returning the static descriptor.
+    if (CGM.getTriple().getArch() == llvm::Triple::avm) {
+      CGM.ErrorUnsupported(E, "polymorphic typeid on AVM");
+      return llvm::PoisonValue::get(PtrTy);
+    }
     return EmitTypeidFromVTable(*this, E->getExprOperand(), PtrTy,
                                 E->hasNullCheck());
+  }
 
   QualType OperandTy = E->getExprOperand()->getType();
-  return MaybeASCast(CGM.GetAddrOfRTTIDescriptor(OperandTy));
+  return EmitStaticTypeInfo(OperandTy);
 }
 
 static llvm::Value *EmitDynamicCastToNull(CodeGenFunction &CGF,

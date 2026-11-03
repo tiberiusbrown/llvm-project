@@ -1118,6 +1118,11 @@ public:
   /// Get the address of the RTTI descriptor for the given type.
   llvm::Constant *GetAddrOfRTTIDescriptor(QualType Ty, bool ForEH = false);
 
+  /// Get the AS0 address of an AVM type_info object for typeid(Ty). It is the
+  /// flash-window alias of the program-space descriptor, and it also names the
+  /// descriptor and its type name to the linker.
+  llvm::Constant *GetAddrOfAVMTypeInfoAlias(QualType Ty);
+
   /// Get the address of a GUID.
   ConstantAddress GetAddrOfMSGuidDecl(const MSGuidDecl *GD);
 
