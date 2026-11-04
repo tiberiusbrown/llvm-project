@@ -46,6 +46,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMAddressReusePass(PR);
   initializeAVMPrivateSpillCleanupPass(PR);
   initializeAVMProgramMemoryWideningPass(PR);
+  initializeAVMWidenOddIntegersPass(PR);
   initializeAVMSystemServiceRegionsPass(PR);
   initializeAVMExpandSystemServicesPass(PR);
 }
@@ -140,6 +141,8 @@ public:
     }
 
     addPass(createAtomicExpandLegacyPass());
+    // Runs at every optimization level: unoptimized _BitInt shifts need it too.
+    addPass(createAVMWidenOddIntegersPass());
     addPass(createAVMStackTargetsPass());
   }
 

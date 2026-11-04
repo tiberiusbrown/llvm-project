@@ -674,11 +674,13 @@ def SRL32_16_PSEUDO
           (outs GPR32:$dst),
           (ins GPR32:$src),
           [(set GPR32:$dst, (AVMsrl32_16 GPR32:$src))]>;
+// The expansion arithmetic-shifts the high word with the compact ASR16I, so the
+// result pair must be upper, as for SEXT16_32_PSEUDO.
 def SRA32_16_PSEUDO
     : AVMPureCodeGenPseudo<
-          (outs GPR32:$dst),
+          (outs UpperGPR32:$dst),
           (ins GPR32:$src),
-          [(set GPR32:$dst, (AVMsra32_16 GPR32:$src))]>;
+          [(set UpperGPR32:$dst, (AVMsra32_16 GPR32:$src))]>;
 def SEXT24_32_PSEUDO : AVMUnary32Pseudo;
 def PROG_ADDR_PSEUDO
     : AVMRematCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;

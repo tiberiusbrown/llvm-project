@@ -51,6 +51,7 @@ add_llvm_target(AVMCodeGen
   AVMTargetMachine.cpp
   AVMTargetObjectFile.cpp
   AVMTargetTransformInfo.cpp
+  AVMWidenOddIntegers.cpp
 
   DEPENDS
   AVMCommonTableGen

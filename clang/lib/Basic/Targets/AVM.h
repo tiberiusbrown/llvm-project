@@ -85,6 +85,12 @@ public:
 
   uint64_t getPointerAlignV(LangAS) const override { return 8; }
 
+  // C23 requires BITINT_MAXWIDTH to be at least ULLONG_WIDTH. AVM stops at
+  // that portable floor: wider scalars would need calling-convention and
+  // helper support above 64 bits, which the AVM ABI does not define.
+  bool hasBitIntType() const override { return true; }
+  size_t getMaxBitIntWidth() const override { return 64; }
+
   bool isAddressSpaceSupersetOf(LangAS A, LangAS B) const override {
     auto IsData = [](LangAS AS) {
       return AS == LangAS::Default ||
