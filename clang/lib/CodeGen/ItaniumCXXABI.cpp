@@ -1504,19 +1504,23 @@ static llvm::FunctionCallee getAllocateExceptionFn(CodeGenModule &CGM) {
   return CGM.CreateRuntimeFunction(FTy, "__cxa_allocate_exception");
 }
 
-/// AVM addresses RTTI descriptors, their names, their vtables, and destructors
-/// in program space, which is address space 1. Other targets keep their default
-/// address space.
+/// Returns the address space of the storage of RTTI descriptors, their names,
+/// and their vtables. AVM keeps them in program space, which is address space 1.
+/// Every other target keeps them in its default globals address space, which is
+/// zero on some targets and nonzero on others.
 static unsigned getRTTIAddressSpace(const CodeGenModule &CGM) {
-  return CGM.getTriple().getArch() == llvm::Triple::avm ? 1 : 0;
+  if (CGM.getTriple().getArch() == llvm::Triple::avm)
+    return 1;
+  return CGM.getDataLayout().getDefaultGlobalsAddressSpace();
 }
 
-/// Returns the pointer type that names an RTTI object or a destructor. Targets
-/// whose RTTI is not in program space keep DefaultTy.
+/// Returns the pointer type that names an RTTI object or a destructor. Only AVM
+/// names them through its program-space pointer type. Other targets keep
+/// DefaultTy, the pointer type that the caller chose for the operand.
 static llvm::Type *getRTTIPointerType(CodeGenModule &CGM,
                                       llvm::Type *DefaultTy) {
-  if (unsigned AS = getRTTIAddressSpace(CGM))
-    return llvm::PointerType::get(CGM.getLLVMContext(), AS);
+  if (CGM.getTriple().getArch() == llvm::Triple::avm)
+    return llvm::PointerType::get(CGM.getLLVMContext(), 1);
   return DefaultTy;
 }
 
@@ -2390,7 +2394,7 @@ llvm::GlobalVariable *ItaniumCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
   VTable = CGM.CreateOrReplaceCXXRuntimeVariable(
       Name, VTableType, llvm::GlobalValue::ExternalLinkage,
       getContext().toCharUnitsFromBits(PAlign).getAsAlign(),
-      CGM.getTriple().getArch() == llvm::Triple::avm ? 1 : 0);
+      getRTTIAddressSpace(CGM));
   VTable->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
   if (CGM.getTarget().hasPS4DLLImportExport())
@@ -4264,11 +4268,13 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty,
   if (CGM.getItaniumVTableContext().isRelativeLayout())
     VTable = CGM.getModule().getNamedAlias(VTableName);
   // On AVM the vtable is in program space and its entries are 24-bit pointers.
+  // Other targets keep the generic vtable layout, whatever their globals space.
+  bool IsAVM = CGM.getTriple().getArch() == llvm::Triple::avm;
   unsigned RTTIAS = getRTTIAddressSpace(CGM);
   llvm::Type *EntryTy = getRTTIPointerType(CGM, CGM.GlobalsInt8PtrTy);
   if (!VTable) {
     llvm::Type *Ty = llvm::ArrayType::get(EntryTy, 0);
-    if (RTTIAS)
+    if (IsAVM)
       VTable = CGM.CreateOrReplaceCXXRuntimeVariable(
           VTableName, Ty, llvm::GlobalValue::ExternalLinkage, llvm::Align(1),
           RTTIAS);
@@ -4288,7 +4294,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty,
     llvm::Constant *Eight = llvm::ConstantInt::get(CGM.Int32Ty, 8);
     VTable =
         llvm::ConstantExpr::getInBoundsGetElementPtr(CGM.Int8Ty, VTable, Eight);
-  } else if (RTTIAS) {
+  } else if (IsAVM) {
     // Two 24-bit entries lie before the address point, six bytes in total. The
     // vtable's length is not known here, so the address calculation is not
     // inbounds; an inbounds index into a zero-length placeholder would assert
