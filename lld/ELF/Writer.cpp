@@ -2887,14 +2887,21 @@ static void checkAVMTypeidAliases(Ctx &ctx) {
   }
 }
 
-// A dynamic typeid reads the RTTI slot of each polymorphic object's vtable. Clang's
-// -fno-rtti vtable keeps that slot zero and has no relocation for it, so a live helper
-// requires every retained ordinary vtable to name a descriptor. The decision uses the
-// symbol after garbage collection and LTO. A dead or undefined helper does not count.
+// A dynamic typeid and a dynamic_cast to a class type both read the RTTI slot of each
+// polymorphic object's vtable. Clang's -fno-rtti vtable keeps that slot zero and has no
+// relocation for it, so a live helper requires every retained ordinary vtable to name a
+// descriptor. A dynamic_cast to void* reads only the offset-to-top, so
+// __avm_dynamic_cast_to_void does not count. The decision uses the symbols after garbage
+// collection and LTO. A dead or undefined helper does not count.
 static bool needsAVMDynamicRTTI(Ctx &ctx) {
-  auto *def =
-      dyn_cast_or_null<Defined>(ctx.symtab->find("__avm_typeid_from_object"));
-  return def && def->section && def->section->isLive();
+  static constexpr StringRef helpers[] = {"__avm_typeid_from_object",
+                                          "__dynamic_cast"};
+  for (StringRef name : helpers) {
+    auto *def = dyn_cast_or_null<Defined>(ctx.symtab->find(name));
+    if (def && def->section && def->section->isLive())
+      return true;
+  }
+  return false;
 }
 
 // eh_cxa.c defines these zero-filled, nine-byte objects. Each one classifies a

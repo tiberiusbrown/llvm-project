@@ -228,6 +228,10 @@ public:
   }
 
   bool shouldEmitExactDynamicCast(QualType DestRecordTy) override {
+    // The exact-type check compares the object's vptr with a single address. AVM
+    // vptrs are 24-bit, so every AVM cast goes through the runtime __dynamic_cast.
+    if (CGM.getTriple().getArch() == llvm::Triple::avm)
+      return false;
     return hasUniqueVTablePointer(DestRecordTy);
   }
 
@@ -1598,6 +1602,11 @@ static llvm::FunctionCallee getItaniumDynamicCastFn(CodeGenFunction &CGF) {
 
   llvm::Type *Int8PtrTy = CGF.Int8PtrTy;
   llvm::Type *GlobInt8PtrTy = CGF.GlobalsInt8PtrTy;
+  // AVM class descriptors are program-space objects. Its globals address space is not the
+  // program address space, so the descriptor parameters name the program address space.
+  if (CGF.CGM.getTriple().getArch() == llvm::Triple::avm)
+    GlobInt8PtrTy = llvm::PointerType::get(
+        CGF.getLLVMContext(), CGF.CGM.getDataLayout().getProgramAddressSpace());
   llvm::Type *PtrDiffTy =
     CGF.ConvertType(CGF.getContext().getPointerDiffType());
 
@@ -1923,6 +1932,19 @@ llvm::Value *ItaniumCXXABI::emitExactDynamicCast(
 llvm::Value *ItaniumCXXABI::emitDynamicCastToVoid(CodeGenFunction &CGF,
                                                   Address ThisAddr,
                                                   QualType SrcRecordTy) {
+  if (CGM.getTriple().getArch() == llvm::Triple::avm) {
+    // void *__avm_dynamic_cast_to_void(const void *sub);
+    //
+    // The runtime reads the offset-to-top as a full 24-bit value, and it does not
+    // need the class hierarchy. The generic code below reads it as a 16-bit value.
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(CGF.Int8PtrTy, {CGF.Int8PtrTy}, false);
+    llvm::FunctionCallee Fn =
+        CGM.CreateRuntimeFunction(FTy, "__avm_dynamic_cast_to_void");
+    llvm::Value *Args[] = {ThisAddr.emitRawPointer(CGF)};
+    return CGF.EmitNounwindRuntimeCall(Fn, Args);
+  }
+
   auto *ClassDecl = SrcRecordTy->castAsCXXRecordDecl();
   llvm::Value *OffsetToTop;
   if (CGM.getItaniumVTableContext().isRelativeLayout()) {

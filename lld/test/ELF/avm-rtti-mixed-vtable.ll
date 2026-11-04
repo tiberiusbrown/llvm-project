@@ -83,6 +83,29 @@
 ; The helper is dead under GC, so the linker has no dynamic typeid to protect.
 ; RUN: ld.lld --gc-sections --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/start_nohelper.o %t/helper.o %t/nortti.o --undefined=_ZTV1A -o %t/dead-helper.elf
 
+; A dynamic_cast to a class type reads the same RTTI slots as a dynamic typeid, so a live
+; __dynamic_cast activates the check. Its object holds both runtime entry points in separate
+; sections, as the runtime's dynamic_cast.o does, and dynamic_cast<void*> reads only the offset.
+
+; 15. A live __dynamic_cast with an RTTI-disabled selected vtable is rejected.
+; RUN: llc -mtriple=avm-unknown-arduboyfx -filetype=obj -function-sections %t/dc_pair.ll -o %t/dc_pair.o
+; RUN: llc -mtriple=avm-unknown-arduboyfx -filetype=obj %t/dc_start.ll -o %t/dc_start.o
+; RUN: llc -mtriple=avm-unknown-arduboyfx -filetype=obj %t/dc_start_nohelper.ll -o %t/dc_start_nohelper.o
+; RUN: llc -mtriple=avm-unknown-arduboyfx -filetype=obj %t/dc_start_void.ll -o %t/dc_start_void.o
+; RUN: not ld.lld --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/dc_start.o %t/dc_pair.o %t/nortti.o -o %t/15.elf 2>&1 | FileCheck %s --check-prefix=NORTTI-V
+
+; 16. A live __dynamic_cast with RTTI-enabled vtables links.
+; RUN: ld.lld --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/dc_start.o %t/dc_pair.o %t/rtti_window.o %t/desc.o -o %t/16.elf
+
+; 17. A dead __dynamic_cast under garbage collection does not activate the check.
+; RUN: ld.lld --gc-sections --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/dc_start_nohelper.o %t/dc_pair.o %t/nortti.o --undefined=_ZTV1A -o %t/17.elf
+
+; 18. dynamic_cast<void*> alone keeps __dynamic_cast collected, so the RTTI-disabled vtable links.
+; RUN: ld.lld --gc-sections --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/dc_start_void.o %t/dc_pair.o %t/nortti.o --undefined=_ZTV1A -o %t/18.elf
+
+; 19. Without garbage collection, the unreferenced __dynamic_cast is live and activates the check.
+; RUN: not ld.lld --image-base=0x100 --section-start=.data=0x100 --section-start=.avm.rtti=0x600 --section-start=.text=0x2000 --section-start=.rodata=0x10000 %t/dc_start_void.o %t/dc_pair.o %t/nortti.o -o %t/19.elf 2>&1 | FileCheck %s --check-prefix=NORTTI-V
+
 ; NORTTI-V: error: AVM polymorphic RTTI required, but selected vtable '_ZTV1A' has no RTTI entry
 ; NORTTI-V-NEXT: >>> defined in {{.*}}nortti.o
 
@@ -269,3 +292,46 @@ target triple = "avm-unknown-arduboyfx"
 @_ZTI1A = external addrspace(1) constant [6 x i8]
 @_ZTV1B = dso_local unnamed_addr addrspace(1) constant [3 x ptr addrspace(1)] [ptr addrspace(1) null, ptr addrspace(1) null, ptr addrspace(1) null], section ".rodata.pair", align 1
 @_ZTV1A = dso_local unnamed_addr addrspace(1) constant [3 x ptr addrspace(1)] [ptr addrspace(1) null, ptr addrspace(1) @_ZTI1A, ptr addrspace(1) null], section ".rodata.pair", align 1
+
+;--- dc_pair.ll
+target datalayout = "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0"
+target triple = "avm-unknown-arduboyfx"
+
+; Both runtime entry points, each in its own section under -function-sections.
+define ptr @__dynamic_cast(ptr %sub, ptr addrspace(1) %src, ptr addrspace(1) %dst, i16 %hint) {
+  ret ptr %sub
+}
+
+define ptr @__avm_dynamic_cast_to_void(ptr %sub) {
+  ret ptr %sub
+}
+
+;--- dc_start.ll
+target datalayout = "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0"
+target triple = "avm-unknown-arduboyfx"
+
+declare ptr @__dynamic_cast(ptr, ptr addrspace(1), ptr addrspace(1), i16)
+
+define void @_start() {
+  %p = call ptr @__dynamic_cast(ptr null, ptr addrspace(1) null, ptr addrspace(1) null, i16 0)
+  ret void
+}
+
+;--- dc_start_nohelper.ll
+target datalayout = "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0"
+target triple = "avm-unknown-arduboyfx"
+
+define void @_start() {
+  ret void
+}
+
+;--- dc_start_void.ll
+target datalayout = "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0"
+target triple = "avm-unknown-arduboyfx"
+
+declare ptr @__avm_dynamic_cast_to_void(ptr)
+
+define void @_start() {
+  %p = call ptr @__avm_dynamic_cast_to_void(ptr null)
+  ret void
+}
