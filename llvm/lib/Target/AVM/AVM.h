@@ -35,6 +35,8 @@ FunctionPass *createAVMAddressReusePass();
 FunctionPass *createAVMPrivateSpillCleanupPass();
 FunctionPass *createAVMProgramMemoryWideningPass();
 FunctionPass *createAVMWidenOddIntegersPass();
+FunctionPass *createAVMAtomicLibcallsPass();
+FunctionPass *createAVMStackObjectAlignmentPass();
 FunctionPass *createAVMSystemServiceRegionsPass();
 FunctionPass *createAVMExpandSystemServicesPass();
 
@@ -57,6 +59,8 @@ void initializeAVMAddressReusePass(PassRegistry &);
 void initializeAVMPrivateSpillCleanupPass(PassRegistry &);
 void initializeAVMProgramMemoryWideningPass(PassRegistry &);
 void initializeAVMWidenOddIntegersPass(PassRegistry &);
+void initializeAVMAtomicLibcallsPass(PassRegistry &);
+void initializeAVMStackObjectAlignmentPass(PassRegistry &);
 void initializeAVMSystemServiceRegionsPass(PassRegistry &);
 void initializeAVMExpandSystemServicesPass(PassRegistry &);
 } // namespace llvm

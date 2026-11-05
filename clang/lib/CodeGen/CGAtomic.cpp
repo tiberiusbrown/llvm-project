@@ -490,8 +490,12 @@ static void emitAtomicCmpXchgFailureSet(
 
   // MonotonicBB is arbitrarily chosen as the default case; in practice, this
   // doesn't matter unless someone is crazy enough to use something that
-  // doesn't fold to a constant for the ordering.
-  llvm::SwitchInst *SI = CGF.Builder.CreateSwitch(FailureOrderVal, MonotonicBB);
+  // doesn't fold to a constant for the ordering. The case values are i32, so
+  // the ordering is widened first. On targets whose int is narrower than 32
+  // bits (AVM has 16-bit int), the switch would otherwise mix integer widths.
+  llvm::Value *FailureOrderI32 = CGF.Builder.CreateIntCast(
+      FailureOrderVal, CGF.Builder.getInt32Ty(), /*isSigned=*/false);
+  llvm::SwitchInst *SI = CGF.Builder.CreateSwitch(FailureOrderI32, MonotonicBB);
   // Implemented as acquire, since it's the closest in LLVM.
   SI->addCase(CGF.Builder.getInt32((int)llvm::AtomicOrderingCABI::consume),
               AcquireBB);
@@ -939,6 +943,13 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
   }
 
   llvm::Value *Order = EmitScalarExpr(E->getOrder());
+  // AVM's runtime ignores memory orders, and a stronger order never violates a requested one. A
+  // runtime-selected order therefore becomes seq_cst, which emits the operation once instead of
+  // once per order combination. That keeps the -O0 frames of libc++'s atomic wrappers small.
+  if (CGM.getTriple().getArch() == llvm::Triple::avm &&
+      !isa<llvm::ConstantInt>(Order))
+    Order = llvm::ConstantInt::get(
+        Order->getType(), static_cast<uint64_t>(llvm::AtomicOrderingCABI::seq_cst));
   llvm::Value *Scope =
       E->getScopeModel() ? EmitScalarExpr(E->getScope()) : nullptr;
   bool ShouldCastToIntPtrTy = true;
@@ -990,6 +1001,12 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     else
       Val2 = EmitValToTemp(*this, E->getVal2());
     OrderFail = EmitScalarExpr(E->getOrderFail());
+    // The same AVM policy as for the success order. seq_cst is a valid failure order.
+    if (CGM.getTriple().getArch() == llvm::Triple::avm &&
+        !isa<llvm::ConstantInt>(OrderFail))
+      OrderFail = llvm::ConstantInt::get(
+          OrderFail->getType(),
+          static_cast<uint64_t>(llvm::AtomicOrderingCABI::seq_cst));
     if (E->getOp() == AtomicExpr::AO__atomic_compare_exchange_n ||
         E->getOp() == AtomicExpr::AO__atomic_compare_exchange ||
         E->getOp() == AtomicExpr::AO__scoped_atomic_compare_exchange_n ||

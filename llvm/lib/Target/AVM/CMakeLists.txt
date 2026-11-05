@@ -18,6 +18,8 @@ add_public_tablegen_target(AVMCommonTableGen)
 add_llvm_target(AVMCodeGen
   AVMAddressReuse.cpp
   AVMAggregateArguments.cpp
+  AVMAtomicLibcalls.cpp
+  AVMStackObjectAlignment.cpp
   AVMAggregateReturns.cpp
   AVMAsmPrinter.cpp
   AVMBranchPolarity.cpp

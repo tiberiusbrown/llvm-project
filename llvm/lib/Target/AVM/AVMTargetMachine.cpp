@@ -47,6 +47,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMPrivateSpillCleanupPass(PR);
   initializeAVMProgramMemoryWideningPass(PR);
   initializeAVMWidenOddIntegersPass(PR);
+  initializeAVMAtomicLibcallsPass(PR);
+  initializeAVMStackObjectAlignmentPass(PR);
   initializeAVMSystemServiceRegionsPass(PR);
   initializeAVMExpandSystemServicesPass(PR);
 }
@@ -140,6 +142,11 @@ public:
       addPass(createAVMConstantInitializersPass());
     }
 
+    // Calls the sized runtime helpers for eight-byte atomics before AtomicExpand can expand
+    // them through generic helpers. Runs at every optimization level, because -O0 frames
+    // are the reason for it.
+    addPass(createAVMStackObjectAlignmentPass());
+    addPass(createAVMAtomicLibcallsPass());
     addPass(createAtomicExpandLegacyPass());
     // Runs at every optimization level: unoptimized _BitInt shifts need it too.
     addPass(createAVMWidenOddIntegersPass());
