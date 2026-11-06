@@ -106,3 +106,7 @@ def AVMProgramPairReg : RegisterClass<"AVM", [i32, f32], 32,
 
 def CSR_AVM : CalleeSavedRegs<(add R0, R1, R2, R3)>;
 def CSR_AVM_CALL : CalleeSavedRegs<(add R0, R1, R2, R3, SP)>;
+// R3 is the frame pointer in callers with dynamic stack allocations. Keep it
+// preserved even when the other general registers are caller saved.
+def CSR_AVM_PreserveNone : CalleeSavedRegs<(add R3)>;
+def CSR_AVM_PreserveNone_CALL : CalleeSavedRegs<(add R3, SP)>;

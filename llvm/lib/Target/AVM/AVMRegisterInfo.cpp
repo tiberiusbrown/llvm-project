@@ -101,12 +101,16 @@ bool AVMRegisterInfo::getRegAllocationHints(
 }
 
 const uint16_t *
-AVMRegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
+AVMRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+  if (MF->getFunction().getCallingConv() == CallingConv::PreserveNone)
+    return CSR_AVM_PreserveNone_SaveList;
   return CSR_AVM_SaveList;
 }
 
 const uint32_t *AVMRegisterInfo::getCallPreservedMask(const MachineFunction &,
-                                                      CallingConv::ID) const {
+                                                   CallingConv::ID CC) const {
+  if (CC == CallingConv::PreserveNone)
+    return CSR_AVM_PreserveNone_CALL_RegMask;
   return CSR_AVM_CALL_RegMask;
 }
 

@@ -2596,7 +2596,7 @@ SDValue AVMTargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
     SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
-  if (CallConv != CallingConv::C)
+  if (CallConv != CallingConv::C && CallConv != CallingConv::PreserveNone)
     report_fatal_error("unsupported AVM calling convention");
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -2681,7 +2681,8 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
                                      SmallVectorImpl<SDValue> &InVals) const {
   SelectionDAG &DAG = CLI.DAG;
   const SDLoc &DL = CLI.DL;
-  if (CLI.CallConv != CallingConv::C)
+  if (CLI.CallConv != CallingConv::C &&
+      CLI.CallConv != CallingConv::PreserveNone)
     report_fatal_error("unsupported AVM calling convention");
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -2700,6 +2701,7 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   // attributes. Restrict sibling calls to the scalar C ABI and compare its
   // actual return locations, including legalized narrow/pointer results.
   CLI.IsTailCall &= Caller.getCallingConv() == CallingConv::C &&
+                    CLI.CallConv == CallingConv::C &&
                     !CLI.IsVarArg && !Caller.isVarArg() && NumBytes == 0 &&
                     !Caller.hasStructRetAttr() && CLI.RetTy &&
                     Caller.getReturnType() == CLI.RetTy &&
@@ -2884,7 +2886,7 @@ bool AVMTargetLowering::CanLowerReturn(
     CallingConv::ID CallConv, MachineFunction &MF, bool IsVarArg,
     const SmallVectorImpl<ISD::OutputArg> &Outs, LLVMContext &Context,
     const Type *) const {
-  if (CallConv != CallingConv::C)
+  if (CallConv != CallingConv::C && CallConv != CallingConv::PreserveNone)
     return false;
   SmallVector<CCValAssign, 2> RVLocs;
   CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
@@ -2897,7 +2899,7 @@ AVMTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                const SmallVectorImpl<ISD::OutputArg> &Outs,
                                const SmallVectorImpl<SDValue> &OutVals,
                                const SDLoc &DL, SelectionDAG &DAG) const {
-  if (CallConv != CallingConv::C)
+  if (CallConv != CallingConv::C && CallConv != CallingConv::PreserveNone)
     report_fatal_error("unsupported AVM return calling convention");
 
   SmallVector<CCValAssign, 2> RVLocs;

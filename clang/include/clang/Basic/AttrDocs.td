@@ -7064,7 +7064,7 @@ experimental at this time.
 def PreserveNoneDocs : Documentation {
   let Category = DocCatCallingConvs;
   let Content = [{
-On X86-64 and AArch64 targets, this attribute changes the calling convention of a function.
+On X86-64, AArch64 and AVM targets, this attribute changes the calling convention of a function.
 The `preserve_none` calling convention tries to preserve as few general
 registers as possible. So all general registers are caller saved registers. It
 also uses more general registers to pass arguments. This attribute doesn't
@@ -7080,6 +7080,9 @@ may be changed in the future.
   X8, X16-X19, SIMD and floating-point registers follow the AAPCS calling
   convention. X15 is not available for argument passing on Windows, but is
   used to pass arguments on other platforms.
+- On AVM, only SP and the frame-pointer register R3 are preserved by the callee.
+  Argument and return locations, including 24-bit program pointers and stack
+  arguments, follow the C calling convention.
   }];
 }
 

@@ -74,6 +74,10 @@ public:
 
   bool supportsAddressSpaceExceptionPointers() const override { return true; }
 
+  CallingConvCheckResult checkCallingConvention(CallingConv CC) const override {
+    return CC == CC_C || CC == CC_PreserveNone ? CCCR_OK : CCCR_Warning;
+  }
+
   std::optional<unsigned>
   getDWARFAddressSpace(unsigned AddressSpace) const override {
     if (AddressSpace == 1)
