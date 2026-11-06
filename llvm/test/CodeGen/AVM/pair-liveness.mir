@@ -1,4 +1,4 @@
-# RUN: llc -mtriple=avm -run-pass=greedy,virtregrewriter -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -run-pass=greedy,virt-reg-rewriter -verify-machineinstrs %s -o - | FileCheck %s
 # A consumed low word must not stay live while the high word crosses a block.
 ---
 name: high_word_liveout

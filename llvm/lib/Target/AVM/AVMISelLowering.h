@@ -42,10 +42,11 @@ class AVMTargetLowering final : public TargetLowering {
 public:
   AVMTargetLowering(const TargetMachine &TM, const AVMSubtarget &STI);
 
+  FPImmAction getFPImmAction(const APFloat &Imm, EVT VT,
+                             bool ForCodeSize = false) const override;
+  void configureLibcallLoweringInfo(LibcallLoweringInfo &Info) const;
+
   MVT getPointerTy(const DataLayout &DL, uint32_t AS = 0) const override;
-  MVT getScalarShiftAmountTy(const DataLayout &, EVT LHSTy) const override {
-    return LHSTy.getSimpleVT();
-  }
   EVT getTypeForExtReturn(LLVMContext &Context, EVT VT,
                           ISD::NodeType ExtendKind) const override;
   bool areJTsAllowed(const Function *) const override { return false; }
@@ -82,12 +83,9 @@ public:
   AtomicExpansionKind shouldExpandAtomicLoadInIR(LoadInst *LI) const override;
   AtomicExpansionKind shouldExpandAtomicStoreInIR(StoreInst *SI) const override;
   AtomicExpansionKind
-  shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *CI) const override;
+  shouldExpandAtomicCmpXchgInIR(const AtomicCmpXchgInst *CI) const override;
   AtomicExpansionKind
-  shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
-
-  bool isFPImmLegal(const APFloat &Imm, EVT VT,
-                    bool ForCodeSize) const override;
+  shouldExpandAtomicRMWInIR(const AtomicRMWInst *AI) const override;
 
   bool isIntDivCheap(EVT VT, AttributeList) const override {
     return VT == MVT::i16;
@@ -105,9 +103,11 @@ public:
   // Landing pads receive the exception object in r4 and the catch selector in
   // r5. Both are 16-bit registers; the selector is zero-extended to i32.
   Register
-  getExceptionPointerRegister(const Constant *PersonalityFn) const override;
+  getExceptionPointerRegister(ExceptionHandling EH,
+                              const Constant *PersonalityFn) const override;
   Register
-  getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+  getExceptionSelectorRegister(ExceptionHandling EH,
+                               const Constant *PersonalityFn) const override;
 
 private:
   SDValue BuildI32FromWords(SDValue Low, SDValue High, const SDLoc &DL,

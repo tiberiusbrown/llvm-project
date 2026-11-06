@@ -189,14 +189,15 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
   };
   auto BuildDisplacedLoad = [&](unsigned LoadOpcode, Register Dest,
                                 Register Address, int64_t Displacement,
-                                unsigned AddressState = 0) {
+                                RegState AddressState = RegState::NoFlags) {
     return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(LoadOpcode), Dest)
                             .addReg(Address, AddressState)
                             .addImm(Displacement));
   };
   auto BuildDisplacedStore =
       [&](unsigned StoreOpcode, Register Address, int64_t Displacement,
-          Register Src, unsigned AddressState = 0, unsigned SrcState = 0) {
+          Register Src, RegState AddressState = RegState::NoFlags,
+          RegState SrcState = RegState::NoFlags) {
         return CloneMemRefs(BuildMI(MBB, MI, DL, TII.get(StoreOpcode))
                                 .addReg(Address, AddressState)
                                 .addImm(Displacement)
@@ -225,7 +226,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       BuildDisplacedLoad(AVM::DPLD16, Old.getOperand(0).getReg(), Base, Offset);
     else
       BuildDisplacedStore(AVM::DPST16, Base, Offset,
-                          Old.getOperand(2).getReg(), 0,
+                          Old.getOperand(2).getReg(), RegState::NoFlags,
                           getKillRegState(Old.getOperand(2).isKill()));
     Old.eraseFromParent();
     return true;
@@ -254,7 +255,7 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       Opcode == AVM::STACK_LOAD24_PSEUDO || Opcode == AVM::STACK_STORE24_PSEUDO;
   Register ValueReg = Old.getOperand(IsLoad ? 0 : 2).getReg();
   bool IsKill = !IsLoad && Old.getOperand(2).isKill();
-  unsigned SrcFlags = !IsLoad && Old.getOperand(2).isUndef() ? RegState::Undef : 0;
+  RegState SrcFlags = getUndefRegState(!IsLoad && Old.getOperand(2).isUndef());
 
   if (Base == AVM::SP && isUInt<8>(Offset) &&
       (!IsPair || isUInt<8>(Offset + 2))) {
@@ -353,7 +354,8 @@ bool AVMRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
         BuildDisplacedLoad(AVM::DPLD8U, Hi, Address, 2);
         BuildDisplacedLoad(AVM::DPLD16, Lo, Address, 0, RegState::Kill);
       } else {
-        BuildDisplacedStore(AVM::DPST16, Address, 0, Lo, 0, SrcFlags)
+        BuildDisplacedStore(AVM::DPST16, Address, 0, Lo,
+                            RegState::NoFlags, SrcFlags)
             .addReg(ValueReg, SrcFlags | RegState::Implicit);
         BuildDisplacedStore(AVM::DPST8, Address, 2, Hi, RegState::Kill,
                             SrcFlags | getKillRegState(IsKill))
@@ -388,10 +390,4 @@ Register AVMRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return MF.getSubtarget<AVMSubtarget>().getFrameLowering()->hasFP(MF)
              ? AVM::R3
              : AVM::SP;
-}
-
-const TargetRegisterClass *
-AVMRegisterInfo::getPointerRegClass(unsigned Kind) const {
-  assert(Kind == 0 && "AVM has no alternate pointer register class yet");
-  return &AVM::PTR16RegClass;
 }

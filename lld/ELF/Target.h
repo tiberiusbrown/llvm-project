@@ -32,18 +32,19 @@ class TargetInfo {
 public:
   TargetInfo(Ctx &ctx) : ctx(ctx) {}
   virtual uint32_t calcEFlags() const { return 0; }
+  // Create target-specific synthetic sections, defined in Arch/ files.
+  virtual void initTargetSpecificSections() {}
   virtual RelExpr getRelExpr(RelType type, const Symbol &s,
                              const uint8_t *loc) const = 0;
+  // Return the width of a relocation field, or zero for a marker relocation.
+  virtual unsigned getRelocSize(RelType type) const { return 0; }
+  virtual int getTlsGdRelaxSkip(RelType type) const { return 1; }
   virtual RelType getDynRel(RelType type) const { return 0; }
   virtual void writeGotPltHeader(uint8_t *buf) const {}
   virtual void writeGotHeader(uint8_t *buf) const {}
   virtual void writeGotPlt(uint8_t *buf, const Symbol &s) const {}
   virtual void writeIgotPlt(uint8_t *buf, const Symbol &s) const {}
   virtual int64_t getImplicitAddend(const uint8_t *buf, RelType type) const;
-  // Returns the number of bytes occupied by a relocation field. A zero-sized
-  // relocation is a marker and does not access the relocated section.
-  virtual unsigned getRelocSize(RelType type) const { return 0; }
-  virtual int getTlsGdRelaxSkip(RelType type) const { return 1; }
 
   // If lazy binding is supported, the first entry of the PLT has code
   // to call the dynamic linker to resolve PLT entries the first time
@@ -101,8 +102,19 @@ public:
   template <class ELFT, class RelTy>
   void scanSectionImpl(InputSectionBase &, Relocs<RelTy>, unsigned shard);
 
+  // Called after parallel relocation scanning is complete but before
+  // postScanRelocations processes symbol flags. Targets may override this to
+  // perform single-threaded fixups that cannot run during parallel scanning
+  // (e.g. symbol table modifications).
+  virtual void finalizeRelocScan() {}
+
   virtual void relocate(uint8_t *loc, const Relocation &rel,
                         uint64_t val) const = 0;
+  virtual int64_t adjustRelocAddend(const Symbol &, int64_t addend) const {
+    return addend;
+  }
+  virtual void adjustDebugFrameRange(const Symbol &, int64_t,
+                                     uint8_t *) const {}
   void relocateNoSym(uint8_t *loc, RelType type, uint64_t val) const {
     relocate(loc, Relocation{R_NONE, type, 0, 0, nullptr}, val);
   }
@@ -111,18 +123,13 @@ public:
 
   // Do a linker relaxation pass and return true if we changed something.
   virtual bool relaxOnce(int pass) const { return false; }
+  // Relax CFI jump tables if implemented by target.
+  virtual void relaxCFIJumpTables() const {}
   virtual bool synthesizeAlign(uint64_t &dot, InputSection *sec) {
     return false;
   }
   // Do finalize relaxation after collecting relaxation infos.
   virtual void finalizeRelax(int passes) const {}
-
-  // Some targets shrink input sections and must translate section-symbol
-  // relocation addends emitted before relaxation (notably in DWARF).
-  virtual int64_t adjustRelocAddend(const Symbol &, int64_t addend) const {
-    return addend;
-  }
-  virtual void adjustDebugFrameRange(const Symbol &, int64_t, uint8_t *) const {}
 
   virtual void applyJumpInstrMod(uint8_t *loc, JumpModType type,
                                  JumpModType val) const {}
@@ -135,7 +142,7 @@ public:
   // jump consecutively, it tries to flip the conditional jump to convert the
   // direct jump into a fall thru and delete it.  Returns true if a jump
   // instruction can be deleted.
-  virtual bool deleteFallThruJmpInsn(InputSection &is, InputFile *file,
+  virtual bool deleteFallThruJmpInsn(InputSection &is,
                                      InputSection *nextIS) const {
     return false;
   }

@@ -71,7 +71,7 @@ void DWARFDebugRangeList::dump(raw_ostream &OS) const {
     AddrFmt = "{0:x-8} {1:x-4} {2:x-4}\n";
     break;
   case 3:
-    AddrFmt = "%08" PRIx64 " %06" PRIx64 " %06" PRIx64 "\n";
+    AddrFmt = "{0:x-8} {1:x-6} {2:x-6}\n";
     break;
   case 4:
     AddrFmt = "{0:x-8} {1:x-8} {2:x-8}\n";

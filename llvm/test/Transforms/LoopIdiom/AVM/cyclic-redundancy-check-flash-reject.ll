@@ -6,6 +6,7 @@
 ; the same loop, so the rejection comes from the AVM cost, not from recognition.
 
 ; CHECK-NOT: crctable
+; CHECK-NOT: llvm.clmul
 ; CHECK-LABEL: define i64 @crc64.le.tc8(
 ; CHECK:       %crc = phi i64
 ; CHECK:       %crc.lshr = lshr i64 %crc, 1

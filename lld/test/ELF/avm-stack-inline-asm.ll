@@ -20,7 +20,7 @@
 ; OVERFLOW: safe: frame
 
 target triple = "avm"
-target datalayout = "e-P1-p:16:8-p1:24:8-i8:8-i16:8-i24:8-i32:8-i64:8-f32:8-f64:8-a:8-n8:16-S8"
+target datalayout = "e-m:e-p:16:8-p1:24:8-i8:8-i16:8-i32:8-i64:8-f16:8-f32:8-n8:16-S8-P1-G0-A0"
 @output = global i16 0, align 1
 
 define void @_start() addrspace(1) {

@@ -21,6 +21,7 @@
 
 namespace llvm {
 template <typename T> class SmallVectorImpl;
+class Constant;
 class GlobalValue;
 class LLT;
 class MachineBasicBlock;
@@ -100,16 +101,14 @@ LLVM_ABI void computeValueLLTs(const DataLayout &DL, Type &Ty,
 /// ExtractTypeInfo - Returns the type info, possibly bitcast, encoded in V.
 LLVM_ABI GlobalValue *ExtractTypeInfo(Value *V);
 
-/// Rejects a catch clause or llvm.eh.typeid.for operand that the target's
-/// exception runtime cannot match exactly. AVM matches a typed catch by the
-/// address of its RTTI descriptor, so its operand must be null, which is
-/// catch-all, or a global variable or an alias of one, possibly under pointer
-/// casts. Any other operand is a fatal error, because the descriptor lookup
-/// would otherwise treat it as catch-all. \p Use names the operand in the
-/// diagnostic, and \p FnName names the function that contains it. Other targets
-/// are not checked, and they keep LLVM's existing handling.
-void checkTypeInfoOperand(const Value *Operand, const Triple &TT,
-                          StringRef FnName, StringRef Use);
+/// Reject a type-info operand that the AVM exception runtime cannot represent.
+LLVM_ABI void checkTypeInfoOperand(const Value *Operand, const Triple &TT,
+                                   StringRef FnName, StringRef Use);
+
+/// Return true if landingpad result type \p Ty is a struct of an exception
+/// pointer (pointer or integer) and an integer selector, the only lowerable
+/// form.
+LLVM_ABI bool isExceptionPointerAndSelectorType(Type *Ty);
 
 /// getFCmpCondCode - Return the ISD condition code corresponding to
 /// the given LLVM IR floating-point condition code.  This includes
@@ -128,6 +127,32 @@ LLVM_ABI ISD::CondCode getICmpCondCode(ICmpInst::Predicate Pred);
 /// getICmpCondCode - Return the LLVM IR integer condition code
 /// corresponding to the given ISD integer condition code.
 LLVM_ABI ICmpInst::Predicate getICmpCondCode(ISD::CondCode Pred);
+
+/// Test if the address of \p GV can be described in debug info as a plain
+/// reference to its symbol, so that a variable holding that address can be
+/// described for the whole of its scope rather than only from wherever the
+/// address happens to be materialized.
+///
+/// Whether the symbol alone denotes the runtime address depends on \p MF: the
+/// relocation model decides whether a base has to be added to it, and the
+/// debug format and DWARF version decide whether the result can be spelled as
+/// a value rather than as a place to load from.
+LLVM_ABI bool canDescribeGlobalAddressInDebugInfo(const GlobalValue *GV,
+                                                  const MachineFunction &MF);
+
+/// If \p C is the address of a global, possibly displaced by a constant,
+/// return that global and set \p Offset to the displacement in bytes. Returns
+/// nullptr if \p C is not such an address, or if the global's address cannot be
+/// described per canDescribeGlobalAddressInDebugInfo(). \p Offset is set to
+/// zero in those cases, so it only carries a displacement alongside a global.
+LLVM_ABI const GlobalValue *
+getDescribableGlobalAddress(const Constant *C, int64_t &Offset,
+                            const MachineFunction &MF);
+
+/// Test if the debug info for \p MF can name a describable global address in a
+/// location list too, rather than only in a variable's single location. Where
+/// it cannot, a register holding the address is the more robust description.
+LLVM_ABI bool canDescribeGlobalAddressInLocationList(const MachineFunction &MF);
 
 /// Test if the given instruction is in a position to be optimized
 /// with a tail-call. This roughly means that it's in a block with

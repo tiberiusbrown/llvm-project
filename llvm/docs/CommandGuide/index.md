@@ -14,6 +14,7 @@ llubi
 llvm-addr2line
 llvm-ar
 llvm-as
+llvm-avm-image
 llvm-bcanalyzer
 llvm-calc-occupancy
 llvm-cgdata

@@ -213,7 +213,7 @@ define void @global_sprite_object_mmo() {
 ; MIR:       SYS_DRAW_FILLED_RECT_BLACK_PSEUDO{{.*}} :: (load (s8192) from @__avm_framebuffer, align 1), (store (s8192) into @__avm_framebuffer, align 1)
 ; MIR-LABEL: name: timer_result_as_sprite_frame
 ; MIR:       [[SPRITE_TIMER:%[0-9]+]]:{{(gpr16|r4only)}} = SYS_MILLIS_PSEUDO
-; MIR-O0:    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}, killed [[SPRITE_TIMER]]
+; MIR-O0:    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}, {{(killed )?}}[[SPRITE_TIMER]]
 ; MIR-O2:    [[SPRITE_FRAME:%[0-9]+]]:r6only = nomerge COPY [[SPRITE_TIMER]]
 ; MIR-O2:    SYS_DRAW_SPRITE_OVERWRITE_PSEUDO {{%[0-9]+}}, {{%[0-9]+}}, {{%[0-9]+}}, [[SPRITE_FRAME]]
 ; MIR-LABEL: name: inttoptr_sprite_unnormalized

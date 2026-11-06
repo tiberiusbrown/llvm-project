@@ -157,7 +157,7 @@ body: |
     ; CHECK-LABEL: name: inline_asm_boundary
     ; CHECK:      [[BEFORE:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[BEFORE]]
-    ; CHECK-NEXT: INLINEASM &"", 1
+    ; CHECK-NEXT: INLINEASM &"", sideeffect attdialect
     ; CHECK-NEXT: [[AFTER:%[0-9]+]]:r4only = COPY %0
     ; CHECK-NEXT: SYS_DEBUG_PUTC_PSEUDO [[AFTER]]
     SYS_DEBUG_PUTC_PSEUDO %0

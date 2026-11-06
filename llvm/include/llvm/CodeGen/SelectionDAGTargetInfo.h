@@ -30,7 +30,7 @@ class SelectionDAG;
 /// Targets can subclass this to parameterize the
 /// SelectionDAG lowering and instruction selection process.
 ///
-class SelectionDAGTargetInfo {
+class LLVM_ABI SelectionDAGTargetInfo {
 public:
   explicit SelectionDAGTargetInfo() = default;
   SelectionDAGTargetInfo(const SelectionDAGTargetInfo &) = delete;
@@ -47,10 +47,6 @@ public:
   /// a memory operand. Nodes with such opcodes can only be created with
   /// `SelectionDAG::getMemIntrinsicNode`.
   virtual bool isTargetMemoryOpcode(unsigned Opcode) const { return false; }
-
-  /// Return true when nonvolatile memory intrinsics should remain in IR until
-  /// SelectionDAG lowering can offer the target-specific emit hooks below.
-  virtual bool shouldDeferMemIntrinsics() const { return false; }
 
   /// Returns true if a node with the given target-specific opcode has
   /// strict floating-point semantics.
@@ -80,21 +76,22 @@ public:
   virtual SDValue EmitTargetCodeForMemcpy(SelectionDAG &DAG, const SDLoc &dl,
                                           SDValue Chain, SDValue Op1,
                                           SDValue Op2, SDValue Op3,
-                                          Align Alignment, bool isVolatile,
-                                          bool AlwaysInline,
+                                          Align DstAlign, Align SrcAlign,
+                                          bool isVolatile, bool AlwaysInline,
                                           MachinePointerInfo DstPtrInfo,
                                           MachinePointerInfo SrcPtrInfo) const {
     return SDValue();
   }
 
+  /// Preserve alias metadata when the target models intrinsic memory operands.
   virtual SDValue EmitTargetCodeForMemcpyWithAA(
       SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
-      SDValue Src, SDValue Size, Align Alignment, bool IsVolatile,
-      bool AlwaysInline, MachinePointerInfo DstPtrInfo,
+      SDValue Src, SDValue Size, Align DstAlign, Align SrcAlign,
+      bool IsVolatile, bool AlwaysInline, MachinePointerInfo DstPtrInfo,
       MachinePointerInfo SrcPtrInfo, const AAMDNodes &AAInfo) const {
-    return EmitTargetCodeForMemcpy(DAG, DL, Chain, Dst, Src, Size, Alignment,
-                                   IsVolatile, AlwaysInline, DstPtrInfo,
-                                   SrcPtrInfo);
+    return EmitTargetCodeForMemcpy(DAG, DL, Chain, Dst, Src, Size, DstAlign,
+                                   SrcAlign, IsVolatile, AlwaysInline,
+                                   DstPtrInfo, SrcPtrInfo);
   }
 
   /// Emit target-specific code that performs a memmove.
@@ -105,18 +102,20 @@ public:
   /// lowering strategy should be used.
   virtual SDValue EmitTargetCodeForMemmove(
       SelectionDAG &DAG, const SDLoc &dl, SDValue Chain, SDValue Op1,
-      SDValue Op2, SDValue Op3, Align Alignment, bool isVolatile,
+      SDValue Op2, SDValue Op3, Align DstAlign, Align SrcAlign, bool isVolatile,
       MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
     return SDValue();
   }
 
+  /// Preserve alias metadata when the target models intrinsic memory operands.
   virtual SDValue EmitTargetCodeForMemmoveWithAA(
       SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
-      SDValue Src, SDValue Size, Align Alignment, bool IsVolatile,
-      MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo,
-      const AAMDNodes &AAInfo) const {
-    return EmitTargetCodeForMemmove(DAG, DL, Chain, Dst, Src, Size, Alignment,
-                                    IsVolatile, DstPtrInfo, SrcPtrInfo);
+      SDValue Src, SDValue Size, Align DstAlign, Align SrcAlign,
+      bool IsVolatile, MachinePointerInfo DstPtrInfo,
+      MachinePointerInfo SrcPtrInfo, const AAMDNodes &AAInfo) const {
+    return EmitTargetCodeForMemmove(DAG, DL, Chain, Dst, Src, Size, DstAlign,
+                                    SrcAlign, IsVolatile, DstPtrInfo,
+                                    SrcPtrInfo);
   }
 
   /// Emit target-specific code that performs a memset.
@@ -135,6 +134,7 @@ public:
     return SDValue();
   }
 
+  /// Preserve alias metadata when the target models intrinsic memory operands.
   virtual SDValue EmitTargetCodeForMemsetWithAA(
       SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst,
       SDValue Value, SDValue Size, Align Alignment, bool IsVolatile,
@@ -142,6 +142,27 @@ public:
       const AAMDNodes &AAInfo) const {
     return EmitTargetCodeForMemset(DAG, DL, Chain, Dst, Value, Size, Alignment,
                                    IsVolatile, AlwaysInline, DstPtrInfo);
+  }
+
+  /// Emit target-specific code that performs a strstr, in cases where that is
+  /// faster than a libcall. The first returned SDValue is the result of the
+  /// strstr and the second is the chain. Both SDValues can be null if a normal
+  /// libcall should be used.
+  virtual std::pair<SDValue, SDValue>
+  EmitTargetCodeForStrstr(SelectionDAG &DAG, const SDLoc &dl, SDValue Chain,
+                          SDValue Op1, SDValue Op2, const CallInst *CI) const {
+    return std::make_pair(SDValue(), SDValue());
+  }
+
+  /// Emit target-specific code that performs a memccpy, in cases where that is
+  /// faster than a libcall. The first returned SDValue is the result of the
+  /// memccpy and the second is the chain. Both SDValues can be null if a normal
+  /// libcall should be used.
+  virtual std::pair<SDValue, SDValue>
+  EmitTargetCodeForMemccpy(SelectionDAG &DAG, const SDLoc &dl, SDValue Chain,
+                           SDValue Dst, SDValue Src, SDValue C, SDValue Size,
+                           const CallInst *CI) const {
+    return std::make_pair(SDValue(), SDValue());
   }
 
   /// Emit target-specific code that performs a memcmp/bcmp, in cases where that is
@@ -183,11 +204,10 @@ public:
   /// faster than a libcall.
   /// The first returned SDValue is the result of the strcmp and the second is
   /// the chain. Both SDValues can be null if a normal libcall should be used.
-  virtual std::pair<SDValue, SDValue>
-  EmitTargetCodeForStrcmp(SelectionDAG &DAG, const SDLoc &dl, SDValue Chain,
-                          SDValue Op1, SDValue Op2,
-                          MachinePointerInfo Op1PtrInfo,
-                          MachinePointerInfo Op2PtrInfo) const {
+  virtual std::pair<SDValue, SDValue> EmitTargetCodeForStrcmp(
+      SelectionDAG &DAG, const SDLoc &dl, SDValue Chain, SDValue Op1,
+      SDValue Op2, MachinePointerInfo Op1PtrInfo, MachinePointerInfo Op2PtrInfo,
+      const CallInst *CI) const {
     return std::make_pair(SDValue(), SDValue());
   }
 
@@ -220,7 +240,7 @@ public:
 
 /// Proxy class that targets should inherit from if they wish to use
 /// the generated node descriptions.
-class SelectionDAGGenTargetInfo : public SelectionDAGTargetInfo {
+class LLVM_ABI SelectionDAGGenTargetInfo : public SelectionDAGTargetInfo {
 protected:
   const SDNodeInfo &GenNodeInfo;
 

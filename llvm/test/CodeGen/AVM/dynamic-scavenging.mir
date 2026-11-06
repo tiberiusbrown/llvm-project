@@ -1,4 +1,4 @@
-# RUN: llc -mtriple=avm -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -run-pass=prolog-epilog -verify-machineinstrs %s -o - | FileCheck %s
 
 # Every allocatable GPR is live at the fixed-frame store after SP has moved.
 # Address materialization must spill a register through the emergency slot.

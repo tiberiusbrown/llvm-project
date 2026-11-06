@@ -8,11 +8,11 @@ include_directories(BEFORE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LLVM_TARGET_DEFINITIONS AVM.td)
-tablegen(LLVM AVMGenRegisterInfo.inc -gen-register-info)
-tablegen(LLVM AVMGenInstrInfo.inc -gen-instr-info)
-tablegen(LLVM AVMGenSubtargetInfo.inc -gen-subtarget)
-tablegen(LLVM AVMGenCallingConv.inc -gen-callingconv)
-tablegen(LLVM AVMGenDAGISel.inc -gen-dag-isel)
+llvm_tablegen(AVMGenRegisterInfo.inc -gen-register-info)
+llvm_tablegen(AVMGenInstrInfo.inc -gen-instr-info)
+llvm_tablegen(AVMGenSubtargetInfo.inc -gen-subtarget)
+llvm_tablegen(AVMGenCallingConv.inc -gen-callingconv)
+llvm_tablegen(AVMGenDAGISel.inc -gen-dag-isel)
 add_public_tablegen_target(AVMCommonTableGen)
 
 add_llvm_target(AVMCodeGen

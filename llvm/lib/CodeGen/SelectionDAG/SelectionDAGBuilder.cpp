@@ -956,9 +956,8 @@ SDValue RegsForValue::getCopyFromRegs(SelectionDAG &DAG,
         continue;
       }
 
-      // Preserve known low zero bits as well as the high/sign bits below.
-      // In particular, an exported shifted value can have an entirely zero
-      // low word; its users should not have to reconstruct or combine it.
+      // Preserve known low zero bits as well as high/sign bits. An exported
+      // shifted value can have an entirely zero low word.
       unsigned TrailingZeros =
           std::min(LOI->Known.countMinTrailingZeros(), 63u);
       if (TrailingZeros)
@@ -7119,11 +7118,10 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   }
 
   case Intrinsic::eh_typeid_for: {
-    // Find the type id for the given typeinfo. An operand that is not a global
-    // would otherwise be taken as the catch-all ID, so AVM rejects it first.
     checkTypeInfoOperand(I.getArgOperand(0), DAG.getTarget().getTargetTriple(),
                          DAG.getMachineFunction().getName(),
                          "llvm.eh.typeid.for operand");
+    // Find the type id for the given typeinfo.
     GlobalValue *GV = ExtractTypeInfo(I.getArgOperand(0));
     unsigned TypeID = DAG.getMachineFunction().getTypeIDFor(GV);
     Res = DAG.getConstant(TypeID, sdl, MVT::i32);

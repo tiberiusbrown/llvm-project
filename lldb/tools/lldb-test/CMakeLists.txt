@@ -22,6 +22,13 @@ add_lldb_tool(lldb-test
     ${LLDB_ALL_PLUGINS}
   )
 
+if(TARGET lldbPluginProcessAVM)
+  # AVM profile symbolization uses the public SB API as well as private LLDB
+  # libraries. Match other tools that link both without symbol interposition.
+  target_link_libraries(lldb-test PRIVATE liblldb)
+  lldb_prevent_liblldb_symbol_interposition(lldb-test)
+endif()
+
 if(Python3_RPATH)
   set_property(TARGET lldb-test APPEND PROPERTY INSTALL_RPATH "${Python3_RPATH}")
   set_property(TARGET lldb-test APPEND PROPERTY BUILD_RPATH   "${Python3_RPATH}")

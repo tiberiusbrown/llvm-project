@@ -156,10 +156,13 @@ inline bool isTemplateArgument(ConstantExprKind Kind) {
 /// Should this call expression be treated as forming an opaque constant?
 inline bool isOpaqueConstantCall(const CallExpr *E) {
   unsigned Builtin = E->getBuiltinCallee();
+  const FunctionDecl *Callee = E->getDirectCallee();
   return (Builtin == Builtin::BI__builtin___CFStringMakeConstantString ||
           Builtin == Builtin::BI__builtin___NSStringMakeConstantString ||
           Builtin == Builtin::BI__builtin_ptrauth_sign_constant ||
-          Builtin == Builtin::BI__builtin_function_start);
+          Builtin == Builtin::BI__builtin_function_start ||
+          (Callee && Callee->getBuiltinID() &&
+           Callee->getName() == "__builtin_avm_flash_string"));
 }
 
 bool isGlobalLValue(const ValueDecl *D, const Expr *E);

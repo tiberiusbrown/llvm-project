@@ -36,7 +36,7 @@ data_object:
 # CHECK: AddressSize: 32bit
 # CHECK: DataEncoding: LittleEndian
 # CHECK: Type: Relocatable
-# CHECK: Machine: 0x4156
+# CHECK: Machine: EM_AVM (0x4156)
 # CHECK: Flags [ (0x2)
 
 # CHECK: Name: .text

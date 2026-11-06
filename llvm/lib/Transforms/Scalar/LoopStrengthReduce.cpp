@@ -1423,7 +1423,7 @@ void Cost::RateRegister(const Formula &F, const SCEV *Reg,
         // addressing.
         bool CanPreIndex = (AMK & TTI::AMK_PreIndexed) &&
                            F.BaseOffset.isFixed() &&
-                           Step->getSExtValue() == F.BaseOffset.getFixedValue();
+                           *Step == F.BaseOffset.getFixedValue();
         bool CanPostIndex = (AMK & TTI::AMK_PostIndexed) &&
                             !isa<SCEVConstant>(Start) &&
                             SE->isLoopInvariant(Start, L);

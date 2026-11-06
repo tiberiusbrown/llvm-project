@@ -8,7 +8,7 @@
 ; RUN:   -mtune=not-an-avm-tune %s -o %t.bad 2>&1 \
 ; RUN:   | FileCheck %s --check-prefix=BAD-TUNE
 
-define void @empty() {
+define void @empty() nounwind {
 ; ASM-LABEL: empty:
 ; ASM-NEXT: .Lfunc_begin0:
 ; ASM-NEXT:  ; %bb.0:
@@ -16,7 +16,7 @@ define void @empty() {
   ret void
 }
 
-define i16 @add(i16 %a, i16 %b) {
+define i16 @add(i16 %a, i16 %b) nounwind {
 ; ASM-LABEL: add:
 ; ASM-NEXT: .Lfunc_begin1:
 ; ASM-NEXT:  ; %bb.0:
@@ -29,7 +29,7 @@ define i16 @add(i16 %a, i16 %b) {
   ret i16 %v
 }
 
-define i16 @sub(i16 %a, i16 %b) {
+define i16 @sub(i16 %a, i16 %b) nounwind {
 ; ASM-LABEL: sub:
 ; ASM:       sub r4, r5
 ; ASM-NEXT:  ret
@@ -37,7 +37,7 @@ define i16 @sub(i16 %a, i16 %b) {
   ret i16 %v
 }
 
-define i16 @and(i16 %a, i16 %b) {
+define i16 @and(i16 %a, i16 %b) nounwind {
 ; ASM-LABEL: and:
 ; ASM:       and r4, r5
 ; ASM-NEXT:  ret
@@ -45,7 +45,7 @@ define i16 @and(i16 %a, i16 %b) {
   ret i16 %v
 }
 
-define i16 @or(i16 %a, i16 %b) {
+define i16 @or(i16 %a, i16 %b) nounwind {
 ; ASM-LABEL: or:
 ; ASM:       or r4, r5
 ; ASM-NEXT:  ret
@@ -53,7 +53,7 @@ define i16 @or(i16 %a, i16 %b) {
   ret i16 %v
 }
 
-define i16 @xor(i16 %a, i16 %b) {
+define i16 @xor(i16 %a, i16 %b) nounwind {
 ; ASM-LABEL: xor:
 ; ASM:       xor r4, r5
 ; ASM-NEXT:  ret
@@ -61,14 +61,14 @@ define i16 @xor(i16 %a, i16 %b) {
   ret i16 %v
 }
 
-define i16 @constant8() {
+define i16 @constant8() nounwind {
 ; ASM-LABEL: constant8:
 ; ASM:       ldi8 r4, 42
 ; ASM-NEXT:  ret
   ret i16 42
 }
 
-define i16 @constant16() {
+define i16 @constant16() nounwind {
 ; ASM-LABEL: constant16:
 ; ASM:       ldi16 r4, 4660
 ; ASM-NEXT:  ret

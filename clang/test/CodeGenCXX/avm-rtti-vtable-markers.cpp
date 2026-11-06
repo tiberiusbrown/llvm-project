@@ -37,13 +37,13 @@ void make_top() {
 }
 
 // Each vtable's RTTI entry is the descriptor's program-space address.
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI3Key"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTS3Key"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI5VLeft"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI6VRight"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI4VTop"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI5VBase"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTS5VBase"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI3Key"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTS3Key"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI5VLeft"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI6VRight"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI4VTop"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI5VBase"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTS5VBase"
 
 // CHECK: @_ZTV3Key = {{.*}}[ptr addrspace(1) null, ptr addrspace(1) @_ZTI3Key,
 

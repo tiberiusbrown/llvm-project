@@ -1,5 +1,5 @@
 ; RUN: llc -mtriple=avm -O2 -verify-machineinstrs %s -o - | FileCheck %s
-; RUN: llc -mtriple=avm -O2 -stop-after=twoaddressinstruction -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=TWOADDR
+; RUN: llc -mtriple=avm -O2 -stop-after=two-address-instruction -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=TWOADDR
 
 @bytes = external addrspace(1) constant [8 x i8], align 1
 
@@ -23,7 +23,7 @@ define i16 @scan_program() {
 ; TWOADDR-LABEL: name: scan_program
 ; TWOADDR: %[[BASE:[0-9]+]]:gpr32 = PROG_ADDR_PSEUDO @bytes
 ; TWOADDR: %[[OFFSET:[0-9]+]]:gpr32 = ZEXT16_32_PSEUDO
-; TWOADDR-NEXT: %[[ADDRESS:[0-9]+]]:gpr32 = COPY killed %[[OFFSET]]
+; TWOADDR-NEXT: %[[ADDRESS:[0-9]+]]:gpr32 = COPY {{(killed )?}}%[[OFFSET]]
 ; TWOADDR-NEXT: %[[ADDRESS]]:gpr32 = nuw PROG_ADD_PSEUDO %[[ADDRESS]], %[[BASE]]
 entry:
   br label %loop

@@ -252,7 +252,7 @@ body: |
     ; CHECK-NEXT: RELAX_CALL
     ; CHECK-NEXT: $r7 = AND_RR $r7, $r0
     $r0 = MOV_RR $r4
-    RELAX_CALL &callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit $sp
+    RELAX_CALL &callee, csr_avm_call, implicit-def $sp, implicit-def $cc, implicit-def $r7, implicit $sp
     $r7 = AND_RR $r7, $r0
     $r0 = COLDLDI8 9
     RET implicit-def dead $sp, implicit $sp

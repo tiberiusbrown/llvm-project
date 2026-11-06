@@ -4,7 +4,7 @@
 # RUN: llvm-mc -triple=avm -filetype=obj %t/dead.s -o %t/dead.o
 # RUN: ld.lld -e _start --image-base=0 -Tdata=0x200 --gc-sections %t/start.o %t/live.o %t/dead.o -o %t/a.out
 # RUN: llvm-readobj --sections %t/a.out | FileCheck %s --check-prefix=SECTIONS
-# RUN: llvm-objdump -s -j .saved -j .data %t/a.out | FileCheck %s --check-prefix=DATA
+# RUN: llvm-objdump -s -j .saved.live -j .data %t/a.out | FileCheck %s --check-prefix=DATA
 # RUN: llvm-readobj --symbols %t/a.out | FileCheck %s --check-prefix=SYMBOLS
 
 # SECTIONS: Name: .data
@@ -15,13 +15,13 @@
 # SECTIONS-NOT: SHF_GNU_RETAIN
 # SECTIONS: Size: 1
 # SECTIONS: Name: .text
-# SECTIONS: Name: .saved
+# SECTIONS: Name: .saved.live
 # SECTIONS: Flags [ (0x20000003)
 # SECTIONS: Size: 1
 
 # DATA: Contents of section .data:
 # DATA: 0200 56
-# DATA: Contents of section .saved:
+# DATA: Contents of section .saved.live:
 # DATA: 0208 12
 
 # SYMBOLS: Name: live_saved

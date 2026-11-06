@@ -1,4 +1,4 @@
-# RUN: llc -mtriple=avm -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -run-pass=prolog-epilog -verify-machineinstrs %s -o - | FileCheck %s
 # A spill may have an undefined lane. Splitting it into word stores must keep
 # the implicit pair use and must not kill its defined lane before the last use.
 ---

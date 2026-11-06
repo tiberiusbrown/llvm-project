@@ -71,7 +71,7 @@ public:
           const TargetRegisterClass *RC = TII.getRegClass(MI.getDesc(), N);
           Register Fixed = RC->getRegister(0);
           BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(TargetOpcode::COPY), Fixed)
-              .addReg(MO.getReg(), 0, MO.getSubReg());
+              .addReg(MO.getReg(), RegState::NoFlags, MO.getSubReg());
           MO.setReg(Fixed); MO.setSubReg(0); MO.setIsKill(false);
         }
         for (unsigned N = 0; N < MI.getNumExplicitDefs(); ++N) {

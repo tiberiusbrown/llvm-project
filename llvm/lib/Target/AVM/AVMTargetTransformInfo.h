@@ -151,6 +151,11 @@ public:
   InstructionCost
   getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
                         TTI::TargetCostKind CostKind) const override {
+    // The ISA has no carry-less multiply and no calibrated expansion cost.
+    // In particular, do not let CRC strategy selection price it as one op.
+    if (ICA.getID() == Intrinsic::clmul)
+      return InstructionCost::getInvalid();
+
     if (ICA.getID() == Intrinsic::bswap &&
         ICA.getReturnType()->isIntegerTy(16)) {
       if (CostKind == TTI::TCK_CodeSize)
@@ -608,9 +613,9 @@ public:
   InstructionCost
   getCFInstrCost(unsigned Opcode, TTI::TargetCostKind CostKind,
                  const Instruction *I = nullptr) const override {
-    if (CostKind == TTI::TCK_CodeSize && Opcode == Instruction::Br)
+    if (CostKind == TTI::TCK_CodeSize && Opcode == Instruction::CondBr)
       return encodedBytes(AVM::BREQ8);
-    if (CostKind != TTI::TCK_CodeSize && Opcode == Instruction::Br)
+    if (CostKind != TTI::TCK_CodeSize && Opcode == Instruction::CondBr)
       return InstructionCost(AVM::normalizeCyclesForTTI(
           AVM::getBranchCycles(AVM::AVMCostKind::BrEq8, false)));
     return BaseT::getCFInstrCost(Opcode, CostKind, I);

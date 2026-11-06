@@ -606,6 +606,79 @@ static SDValue getAVMFloatSetCC(SDValue LHS, SDValue RHS, ISD::CondCode CC,
 }
 } // namespace
 
+template <typename SetLibcallImpl>
+static void configureAVMLibcalls(SetLibcallImpl SetImpl) {
+  SetImpl(RTLIB::MUL_I32, RTLIB::impl___avm_mulsi3);
+  SetImpl(RTLIB::UDIV_I32, RTLIB::impl___avm_udivsi3);
+  SetImpl(RTLIB::UREM_I32, RTLIB::impl___avm_umodsi3);
+  SetImpl(RTLIB::SDIV_I32, RTLIB::impl___avm_divsi3);
+  SetImpl(RTLIB::SREM_I32, RTLIB::impl___avm_modsi3);
+  SetImpl(RTLIB::UDIVREM_I32, RTLIB::impl___avm_udivmodsi4);
+  SetImpl(RTLIB::SDIVREM_I32, RTLIB::impl___avm_divmodsi4);
+  SetImpl(RTLIB::SHL_I32, RTLIB::impl___avm_ashlsi3);
+  SetImpl(RTLIB::SRL_I32, RTLIB::impl___avm_lshrsi3);
+  SetImpl(RTLIB::SRA_I32, RTLIB::impl___avm_ashrsi3);
+  SetImpl(RTLIB::MUL_I64, RTLIB::impl___avm_muldi3);
+  SetImpl(RTLIB::UDIV_I64, RTLIB::impl___avm_udivdi3);
+  SetImpl(RTLIB::UREM_I64, RTLIB::impl___avm_umoddi3);
+  SetImpl(RTLIB::SDIV_I64, RTLIB::impl___avm_divdi3);
+  SetImpl(RTLIB::SREM_I64, RTLIB::impl___avm_moddi3);
+  SetImpl(RTLIB::UDIVREM_I64, RTLIB::impl___avm_udivmoddi4);
+  SetImpl(RTLIB::SDIVREM_I64, RTLIB::impl___avm_divmoddi4);
+  SetImpl(RTLIB::SHL_I64, RTLIB::impl___avm_ashldi3);
+  SetImpl(RTLIB::SRL_I64, RTLIB::impl___avm_lshrdi3);
+  SetImpl(RTLIB::SRA_I64, RTLIB::impl___avm_ashrdi3);
+  SetImpl(RTLIB::ADD_F32, RTLIB::impl___addsf3);
+  SetImpl(RTLIB::SUB_F32, RTLIB::impl___subsf3);
+  SetImpl(RTLIB::MUL_F32, RTLIB::impl___mulsf3);
+  SetImpl(RTLIB::DIV_F32, RTLIB::impl___divsf3);
+  SetImpl(RTLIB::SQRT_F32, RTLIB::impl_sqrtf);
+  SetImpl(RTLIB::SIN_F32, RTLIB::impl_sinf);
+  SetImpl(RTLIB::COS_F32, RTLIB::impl_cosf);
+  SetImpl(RTLIB::TAN_F32, RTLIB::impl_tanf);
+  SetImpl(RTLIB::ATAN2_F32, RTLIB::impl_atan2f);
+  SetImpl(RTLIB::EXP_F32, RTLIB::impl_expf);
+  SetImpl(RTLIB::LOG_F32, RTLIB::impl_logf);
+  SetImpl(RTLIB::LOG2_F32, RTLIB::impl_log2f);
+  SetImpl(RTLIB::LOG10_F32, RTLIB::impl_log10f);
+  SetImpl(RTLIB::POW_F32, RTLIB::impl_powf);
+  SetImpl(RTLIB::REM_F32, RTLIB::impl_fmodf);
+  SetImpl(RTLIB::TRUNC_F32, RTLIB::impl_truncf);
+  SetImpl(RTLIB::FLOOR_F32, RTLIB::impl_floorf);
+  SetImpl(RTLIB::CEIL_F32, RTLIB::impl_ceilf);
+  SetImpl(RTLIB::ROUND_F32, RTLIB::impl_roundf);
+  SetImpl(RTLIB::FMIN_F32, RTLIB::impl_fminf);
+  SetImpl(RTLIB::FMAX_F32, RTLIB::impl_fmaxf);
+  SetImpl(RTLIB::FPTOSINT_F32_I32, RTLIB::impl___fixsfsi);
+  SetImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
+  SetImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
+  SetImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
+  SetImpl(RTLIB::SINTTOFP_I64_F32, RTLIB::impl___floatdisf);
+  SetImpl(RTLIB::UINTTOFP_I64_F32, RTLIB::impl___floatundisf);
+  SetImpl(RTLIB::FPTOSINT_F32_I64, RTLIB::impl___fixsfdi);
+  SetImpl(RTLIB::FPTOUINT_F32_I64, RTLIB::impl___fixunssfdi);
+  SetImpl(RTLIB::MEMCPY, RTLIB::impl_memcpy);
+  SetImpl(RTLIB::MEMSET, RTLIB::impl_memset);
+  SetImpl(RTLIB::MEMMOVE, RTLIB::impl_memmove);
+  SetImpl(RTLIB::ATOMIC_LOAD, RTLIB::impl___atomic_load);
+  SetImpl(RTLIB::ATOMIC_LOAD_8, RTLIB::impl___atomic_load_8);
+  SetImpl(RTLIB::ATOMIC_STORE, RTLIB::impl___atomic_store);
+  SetImpl(RTLIB::ATOMIC_STORE_8, RTLIB::impl___atomic_store_8);
+  SetImpl(RTLIB::ATOMIC_EXCHANGE, RTLIB::impl___atomic_exchange);
+  SetImpl(RTLIB::ATOMIC_EXCHANGE_8, RTLIB::impl___atomic_exchange_8);
+  SetImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE,
+          RTLIB::impl___atomic_compare_exchange);
+  SetImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE_8,
+          RTLIB::impl___atomic_compare_exchange_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_ADD_8, RTLIB::impl___atomic_fetch_add_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_SUB_8, RTLIB::impl___atomic_fetch_sub_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_AND_8, RTLIB::impl___atomic_fetch_and_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_OR_8, RTLIB::impl___atomic_fetch_or_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_XOR_8, RTLIB::impl___atomic_fetch_xor_8);
+  SetImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
+  SetImpl(RTLIB::UNWIND_RESUME, RTLIB::impl__Unwind_Resume);
+}
+
 AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
                                      const AVMSubtarget &STI)
     : TargetLowering(TM, STI) {
@@ -685,78 +758,9 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
     setOperationAction(Opcode, MVT::i64, Custom);
   }
 
-  setLibcallImpl(RTLIB::MUL_I32, RTLIB::impl___avm_mulsi3);
-  setLibcallImpl(RTLIB::UDIV_I32, RTLIB::impl___avm_udivsi3);
-  setLibcallImpl(RTLIB::UREM_I32, RTLIB::impl___avm_umodsi3);
-  setLibcallImpl(RTLIB::SDIV_I32, RTLIB::impl___avm_divsi3);
-  setLibcallImpl(RTLIB::SREM_I32, RTLIB::impl___avm_modsi3);
-  setLibcallImpl(RTLIB::UDIVREM_I32, RTLIB::impl___avm_udivmodsi4);
-  setLibcallImpl(RTLIB::SDIVREM_I32, RTLIB::impl___avm_divmodsi4);
-  setLibcallImpl(RTLIB::SHL_I32, RTLIB::impl___avm_ashlsi3);
-  setLibcallImpl(RTLIB::SRL_I32, RTLIB::impl___avm_lshrsi3);
-  setLibcallImpl(RTLIB::SRA_I32, RTLIB::impl___avm_ashrsi3);
-  setLibcallImpl(RTLIB::MUL_I64, RTLIB::impl___avm_muldi3);
-  setLibcallImpl(RTLIB::UDIV_I64, RTLIB::impl___avm_udivdi3);
-  setLibcallImpl(RTLIB::UREM_I64, RTLIB::impl___avm_umoddi3);
-  setLibcallImpl(RTLIB::SDIV_I64, RTLIB::impl___avm_divdi3);
-  setLibcallImpl(RTLIB::SREM_I64, RTLIB::impl___avm_moddi3);
-  setLibcallImpl(RTLIB::UDIVREM_I64, RTLIB::impl___avm_udivmoddi4);
-  setLibcallImpl(RTLIB::SDIVREM_I64, RTLIB::impl___avm_divmoddi4);
-  setLibcallImpl(RTLIB::SHL_I64, RTLIB::impl___avm_ashldi3);
-  setLibcallImpl(RTLIB::SRL_I64, RTLIB::impl___avm_lshrdi3);
-  setLibcallImpl(RTLIB::SRA_I64, RTLIB::impl___avm_ashrdi3);
-  setLibcallImpl(RTLIB::ADD_F32, RTLIB::impl___addsf3);
-  setLibcallImpl(RTLIB::SUB_F32, RTLIB::impl___subsf3);
-  setLibcallImpl(RTLIB::MUL_F32, RTLIB::impl___mulsf3);
-  setLibcallImpl(RTLIB::DIV_F32, RTLIB::impl___divsf3);
-  setLibcallImpl(RTLIB::SQRT_F32, RTLIB::impl_sqrtf);
-  setLibcallImpl(RTLIB::SIN_F32, RTLIB::impl_sinf);
-  setLibcallImpl(RTLIB::COS_F32, RTLIB::impl_cosf);
-  setLibcallImpl(RTLIB::TAN_F32, RTLIB::impl_tanf);
-  setLibcallImpl(RTLIB::ATAN2_F32, RTLIB::impl_atan2f);
-  setLibcallImpl(RTLIB::EXP_F32, RTLIB::impl_expf);
-  setLibcallImpl(RTLIB::LOG_F32, RTLIB::impl_logf);
-  setLibcallImpl(RTLIB::LOG2_F32, RTLIB::impl_log2f);
-  setLibcallImpl(RTLIB::LOG10_F32, RTLIB::impl_log10f);
-  setLibcallImpl(RTLIB::POW_F32, RTLIB::impl_powf);
-  setLibcallImpl(RTLIB::REM_F32, RTLIB::impl_fmodf);
-  setLibcallImpl(RTLIB::TRUNC_F32, RTLIB::impl_truncf);
-  setLibcallImpl(RTLIB::FLOOR_F32, RTLIB::impl_floorf);
-  setLibcallImpl(RTLIB::CEIL_F32, RTLIB::impl_ceilf);
-  setLibcallImpl(RTLIB::ROUND_F32, RTLIB::impl_roundf);
-  setLibcallImpl(RTLIB::FMIN_F32, RTLIB::impl_fminf);
-  setLibcallImpl(RTLIB::FMAX_F32, RTLIB::impl_fmaxf);
-  setLibcallImpl(RTLIB::FPTOSINT_F32_I32, RTLIB::impl___fixsfsi);
-  setLibcallImpl(RTLIB::FPTOUINT_F32_I32, RTLIB::impl___fixunssfsi);
-  setLibcallImpl(RTLIB::SINTTOFP_I32_F32, RTLIB::impl___floatsisf);
-  setLibcallImpl(RTLIB::UINTTOFP_I32_F32, RTLIB::impl___floatunsisf);
-  setLibcallImpl(RTLIB::SINTTOFP_I64_F32, RTLIB::impl___floatdisf);
-  setLibcallImpl(RTLIB::UINTTOFP_I64_F32, RTLIB::impl___floatundisf);
-  setLibcallImpl(RTLIB::FPTOSINT_F32_I64, RTLIB::impl___fixsfdi);
-  setLibcallImpl(RTLIB::FPTOUINT_F32_I64, RTLIB::impl___fixunssfdi);
-  setLibcallImpl(RTLIB::MEMCPY, RTLIB::impl_memcpy);
-  setLibcallImpl(RTLIB::MEMSET, RTLIB::impl_memset);
-  setLibcallImpl(RTLIB::MEMMOVE, RTLIB::impl_memmove);
-  setLibcallImpl(RTLIB::ATOMIC_LOAD, RTLIB::impl___atomic_load);
-  setLibcallImpl(RTLIB::ATOMIC_LOAD_8, RTLIB::impl___atomic_load_8);
-  setLibcallImpl(RTLIB::ATOMIC_STORE, RTLIB::impl___atomic_store);
-  setLibcallImpl(RTLIB::ATOMIC_STORE_8, RTLIB::impl___atomic_store_8);
-  setLibcallImpl(RTLIB::ATOMIC_EXCHANGE, RTLIB::impl___atomic_exchange);
-  setLibcallImpl(RTLIB::ATOMIC_EXCHANGE_8, RTLIB::impl___atomic_exchange_8);
-  setLibcallImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE,
-                 RTLIB::impl___atomic_compare_exchange);
-  setLibcallImpl(RTLIB::ATOMIC_COMPARE_EXCHANGE_8,
-                 RTLIB::impl___atomic_compare_exchange_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_ADD_8, RTLIB::impl___atomic_fetch_add_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_SUB_8, RTLIB::impl___atomic_fetch_sub_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_AND_8, RTLIB::impl___atomic_fetch_and_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_OR_8, RTLIB::impl___atomic_fetch_or_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_XOR_8, RTLIB::impl___atomic_fetch_xor_8);
-  setLibcallImpl(RTLIB::ATOMIC_FETCH_NAND_8, RTLIB::impl___atomic_fetch_nand_8);
-  // DwarfEHPrepare rewinds each cleanup through UNWIND_RESUME. AVM uses the DWARF
-  // exception model, and the generic libcall sets skip this triple, so the name is
-  // set here. Without it, the rewind call would have no symbol.
-  setLibcallImpl(RTLIB::UNWIND_RESUME, RTLIB::impl__Unwind_Resume);
+  configureAVMLibcalls([this](RTLIB::Libcall Call, RTLIB::LibcallImpl Impl) {
+    setLibcallImpl(Call, Impl);
+  });
 
   for (unsigned Opcode :
        {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV, ISD::FNEG, ISD::FABS, ISD::FSQRT, ISD::FTRUNC, ISD::FFLOOR,
@@ -794,21 +798,21 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
-  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_UNDEF,
-                          ISD::CTTZ, ISD::CTTZ_ZERO_UNDEF})
+  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_POISON,
+                          ISD::CTTZ, ISD::CTTZ_ZERO_POISON})
     setOperationAction(Opcode, MVT::i16, Expand);
   // i32 is also a legal register type without native bit-count instructions.
   // The generic CTLZ expansion introduces CTPOP, so expand that as well.
   for (unsigned Opcode : {ISD::CTPOP})
     setOperationAction(Opcode, MVT::i32, Expand);
   setOperationAction(ISD::CTLZ, MVT::i32, Custom);
-  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i32, Custom);
+  setOperationAction(ISD::CTLZ_ZERO_POISON, MVT::i32, Custom);
   setOperationAction(ISD::CTTZ, MVT::i32, Custom);
-  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i32, Custom);
+  setOperationAction(ISD::CTTZ_ZERO_POISON, MVT::i32, Custom);
   setOperationAction(ISD::CTTZ, MVT::i64, Custom);
-  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i64, Custom);
+  setOperationAction(ISD::CTTZ_ZERO_POISON, MVT::i64, Custom);
   setOperationAction(ISD::CTLZ, MVT::i64, Custom);
-  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i64, Custom);
+  setOperationAction(ISD::CTLZ_ZERO_POISON, MVT::i64, Custom);
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
@@ -816,6 +820,8 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Custom);
   setOperationAction(ISD::INTRINSIC_VOID, MVT::i8, Custom);
   setMaxAtomicSizeInBitsSupported(32);
+  // AVM's single-threaded atomics use ordinary byte-aligned memory accesses.
+  setSupportsUnalignedAtomics(true);
 
   setLoadExtAction({ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD}, MVT::i16,
                    MVT::i1, Promote);
@@ -841,8 +847,19 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
       MaxStoresPerMemmoveOptSize = 4;
 }
 
-bool AVMTargetLowering::isFPImmLegal(const APFloat &, EVT VT, bool) const {
-  return VT == MVT::f32;
+TargetLowering::FPImmAction
+AVMTargetLowering::getFPImmAction(const APFloat &, EVT VT, bool) const {
+  // AVM float registers hold the IEEE bits in an integer register pair, and
+  // the selector can materialize those bits with LDI32_PSEUDO. Avoid creating
+  // constant-pool addresses for f32 values, which AVM cannot select.
+  return VT == MVT::f32 ? FPImmAction::Bitcast : FPImmAction::ConstantPool;
+}
+
+void AVMTargetLowering::configureLibcallLoweringInfo(
+    LibcallLoweringInfo &Info) const {
+  configureAVMLibcalls([&Info](RTLIB::Libcall Call, RTLIB::LibcallImpl Impl) {
+    Info.setLibcallImpl(Call, Impl);
+  });
 }
 
 static TargetLowering::AtomicExpansionKind getAVMAtomicExpansionKind(Type *Ty) {
@@ -862,12 +879,13 @@ AVMTargetLowering::shouldExpandAtomicStoreInIR(StoreInst *SI) const {
 }
 
 TargetLowering::AtomicExpansionKind
-AVMTargetLowering::shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *CI) const {
+AVMTargetLowering::shouldExpandAtomicCmpXchgInIR(
+    const AtomicCmpXchgInst *CI) const {
   return getAVMAtomicExpansionKind(CI->getCompareOperand()->getType());
 }
 
 TargetLowering::AtomicExpansionKind
-AVMTargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
+AVMTargetLowering::shouldExpandAtomicRMWInIR(const AtomicRMWInst *AI) const {
   return getAVMAtomicExpansionKind(AI->getValOperand()->getType());
 }
 
@@ -883,12 +901,12 @@ EVT AVMTargetLowering::getTypeForExtReturn(LLVMContext &, EVT VT,
 }
 
 Register AVMTargetLowering::getExceptionPointerRegister(
-    const Constant *PersonalityFn) const {
+    ExceptionHandling EH, const Constant *PersonalityFn) const {
   return AVM::R4;
 }
 
 Register AVMTargetLowering::getExceptionSelectorRegister(
-    const Constant *PersonalityFn) const {
+    ExceptionHandling EH, const Constant *PersonalityFn) const {
   return AVM::R5;
 }
 
@@ -1657,7 +1675,10 @@ SDValue AVMTargetLowering::LowerI32Shift(SDValue Op, SelectionDAG &DAG) const {
                         : Op.getOpcode() == ISD::SRL ? RTLIB::SRL_I32
                                                      : RTLIB::SRA_I32;
     MakeLibCallOptions CallOptions;
-    SDValue Ops[] = {Value, Op.getOperand(1)};
+    // DAG shift counts use the target's preferred shift type, which need not
+    // match the runtime ABI. The i32 helpers take a full uint32_t count.
+    SDValue Count = DAG.getZExtOrTrunc(Op.getOperand(1), DL, MVT::i32);
+    SDValue Ops[] = {Value, Count};
     return makeLibCall(DAG, LC, MVT::i32, Ops, CallOptions, DL).first;
   };
 
@@ -2249,12 +2270,12 @@ SDValue AVMTargetLowering::LowerMUL_LOHI(SDValue Op, SelectionDAG &DAG) const {
 void AVMTargetLowering::ReplaceNodeResults(
     SDNode *N, SmallVectorImpl<SDValue> &Results, SelectionDAG &DAG) const {
   if (N->getOpcode() == ISD::CTTZ ||
-      N->getOpcode() == ISD::CTTZ_ZERO_UNDEF ||
+      N->getOpcode() == ISD::CTTZ_ZERO_POISON ||
       N->getOpcode() == ISD::CTLZ ||
-      N->getOpcode() == ISD::CTLZ_ZERO_UNDEF) {
+      N->getOpcode() == ISD::CTLZ_ZERO_POISON) {
     SDLoc DL(N);
     bool IsTrailing = N->getOpcode() == ISD::CTTZ ||
-                      N->getOpcode() == ISD::CTTZ_ZERO_UNDEF;
+                      N->getOpcode() == ISD::CTTZ_ZERO_POISON;
     SDValue Value = N->getOperand(0);
     SDValue Low = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, Value,
                               DAG.getConstant(0, DL, MVT::i32));
@@ -2369,7 +2390,7 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return getI32Word(Op.getOperand(0), Op.getConstantOperandVal(1), SDLoc(Op),
                        DAG);
   case ISD::CTTZ:
-  case ISD::CTTZ_ZERO_UNDEF: {
+  case ISD::CTTZ_ZERO_POISON: {
     SDLoc DL(Op);
     SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
     SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
@@ -2385,7 +2406,7 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return DAG.getNode(ISD::ZERO_EXTEND, DL, Op.getValueType(), Count);
   }
   case ISD::CTLZ:
-  case ISD::CTLZ_ZERO_UNDEF: {
+  case ISD::CTLZ_ZERO_POISON: {
     SDLoc DL(Op);
     SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
     SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
@@ -2420,7 +2441,7 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     case Intrinsic::avm_set_text_mode:
       for (unsigned I = 2; I != Ops.size(); ++I)
         if (Ops[I].getValueType() == MVT::i8)
-          Ops[I] = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Ops[I]);
+          PromoteUnsignedByte(I);
       break;
     default:
       report_fatal_error("unexpected AVM intrinsic with an i8 operand");
@@ -2679,7 +2700,7 @@ SDValue AVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     int FI = MFI.CreateStackObject(Flags.getByValSize(), Align(1), false);
     SDValue Copy = DAG.getFrameIndex(FI, MVT::i16);
     SDValue Size = DAG.getConstant(Flags.getByValSize(), DL, MVT::i16);
-    Chain = DAG.getMemcpy(Chain, DL, Copy, OutVals[I], Size, Align(1),
+    Chain = DAG.getMemcpy(Chain, DL, Copy, OutVals[I], Size, Align(1), Align(1),
                           /*IsVolatile=*/false, /*AlwaysInline=*/false,
                           /*CI=*/nullptr, std::nullopt, MachinePointerInfo(),
                           MachinePointerInfo());

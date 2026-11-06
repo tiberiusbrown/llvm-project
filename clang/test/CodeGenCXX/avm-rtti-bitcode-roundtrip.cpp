@@ -17,6 +17,6 @@ struct Dtor {
 
 void throw_dtor() { throw Dtor{2}; }
 
-// CHECK-DAG: @_ZTI4Dtor = {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 2), ptr addrspace(1) @_ZTS4Dtor }
+// CHECK-DAG: @_ZTI4Dtor = {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 6), ptr addrspace(1) @_ZTS4Dtor }
 // CHECK-DAG: declare {{.*}}void @__cxa_throw(ptr, ptr addrspace(1), ptr addrspace(1))
 // CHECK-DAG: @__cxa_throw(ptr {{.*}}, ptr addrspace(1) @_ZTI4Dtor, ptr addrspace(1) @_ZN4DtorD1Ev)

@@ -17524,24 +17524,28 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S, TypeSourceInfo *TInfo,
     Invalid = true;
   }
 
-  // Reject catch types that need a cross-AS conversion.
-  // cause runtimes don't yet support cross-address-
-  // space conversions
+  // Reject catch types that need a cross-AS conversion unless the target
+  // exception runtime preserves non-default address-space pointer types.
+  bool SupportsAddressSpaceExceptionPointers =
+      getASTContext().getTargetInfo().supportsAddressSpaceExceptionPointers();
   if (Mode == 1) {
-    if (ExDeclType.getAddressSpace() != LangAS::Default ||
-        BaseType.getAddressSpace() != LangAS::Default) {
+    if (!SupportsAddressSpaceExceptionPointers &&
+        (ExDeclType.getAddressSpace() != LangAS::Default ||
+         BaseType.getAddressSpace() != LangAS::Default)) {
       Diag(Loc, diag::err_throw_or_catch_address_space_qualified_ptr)
           << /*IsCatch=*/1 << /*IsRef=*/0 << ExDeclType;
       Invalid = true;
     }
   } else if (Mode == 2) {
     if (const PointerType *PT = BaseType->getAs<PointerType>();
-        PT && (BaseType.getAddressSpace() != LangAS::Default ||
-               PT->getPointeeType().getAddressSpace() != LangAS::Default)) {
+        !SupportsAddressSpaceExceptionPointers && PT &&
+        (BaseType.getAddressSpace() != LangAS::Default ||
+         PT->getPointeeType().getAddressSpace() != LangAS::Default)) {
       Diag(Loc, diag::err_throw_or_catch_address_space_qualified_ptr)
           << /*IsCatch=*/1 << /*IsRef=*/0 << ExDeclType;
       Invalid = true;
-    } else if (BaseType.getAddressSpace() != LangAS::Default) {
+    } else if (!SupportsAddressSpaceExceptionPointers &&
+               BaseType.getAddressSpace() != LangAS::Default) {
       Diag(Loc, diag::err_throw_or_catch_address_space_qualified_ptr)
           << /*IsCatch=*/1 << /*IsRef=*/1 << ExDeclType;
       Invalid = true;

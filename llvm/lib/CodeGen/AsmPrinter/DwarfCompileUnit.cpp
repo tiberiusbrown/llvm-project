@@ -1985,6 +1985,14 @@ DIE *DwarfCompileUnit::getOrCreateContextDIE(const DIScope *Context) {
 DIE *DwarfCompileUnit::getOrCreateSubprogramDIE(const DISubprogram *SP,
                                                 const Function *F,
                                                 bool Minimal) {
+  // A call-site origin can name a definition in another LTO compile unit.
+  // Create its forward reference in the unit that will finalize the definition;
+  // a placeholder in the caller's unit would otherwise remain attribute-less.
+  if (SP->isDefinition() && SP->getUnit() != getCUNode()) {
+    auto &CU = DD->getOrCreateAbstractSubprogramCU(SP, *this);
+    if (&CU != this)
+      return CU.getOrCreateSubprogramDIE(SP, F, Minimal);
+  }
   if (!F && SP->isDefinition()) {
     F = DD->getLexicalScopes().getFunction(SP);
 

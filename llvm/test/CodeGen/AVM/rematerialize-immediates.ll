@@ -4,7 +4,7 @@
 @input_a = external global [16 x float], align 1
 @input_b = external global [16 x float], align 1
 
-define float @reuse_half_constant(float %initial) #0 {
+define float @reuse_half_constant(float %initial) #0 nounwind {
 ; CHECK-LABEL: reuse_half_constant:
 ; CHECK:       ldi16 [[HALF1:r[0-7]]], 16128
 ; CHECK-NOT:   stsp16 {{.*}}, [[HALF1]]

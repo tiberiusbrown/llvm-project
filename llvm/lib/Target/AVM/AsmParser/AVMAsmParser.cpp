@@ -1214,8 +1214,8 @@ class AVMAsmParser final : public MCTargetAsmParser {
 
 public:
   AVMAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
-               const MCInstrInfo &MII, const MCTargetOptions &Options)
-      : MCTargetAsmParser(Options, STI, MII), Parser(Parser) {}
+               const MCInstrInfo &MII)
+      : MCTargetAsmParser(STI, MII), Parser(Parser) {}
 
   bool parseRegister(MCRegister &Reg, SMLoc &StartLoc,
                      SMLoc &EndLoc) override {

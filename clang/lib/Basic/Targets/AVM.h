@@ -58,7 +58,7 @@ public:
     Values.push_back("generic");
   }
 
-  bool setCPU(const std::string &Name) override { return isValidCPUName(Name); }
+  bool setCPU(llvm::StringRef Name) override { return isValidCPUName(Name); }
 
   bool isValidTuneCPUName(StringRef Name) const override {
     return Name == "avm-interpreter-32u4-v1";
@@ -71,6 +71,8 @@ public:
   uint64_t getFunctionPointerWidth() const override { return 24; }
 
   uint64_t getFunctionPointerAlign() const override { return 8; }
+
+  bool supportsAddressSpaceExceptionPointers() const override { return true; }
 
   std::optional<unsigned>
   getDWARFAddressSpace(unsigned AddressSpace) const override {

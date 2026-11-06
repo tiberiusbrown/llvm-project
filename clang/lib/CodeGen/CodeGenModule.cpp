@@ -8738,8 +8738,13 @@ void CodeGenModule::RegisterAVMRTTIAliasTargets(QualType Ty) {
   for (StringRef Target : {StringRef(Descriptor), StringRef(TypeName)}) {
     std::string Marker =
         (Twine(".weak __avm_rtti_alias.") + Target + "\n").str();
-    if (!StringRef(getModule().getModuleInlineAsm()).contains(Marker))
-      getModule().appendModuleInlineAsm(Marker);
+    bool HasMarker = false;
+    for (const llvm::Module::GlobalAsmFragment &Fragment :
+         getModule().getModuleInlineAsm())
+      HasMarker |= StringRef(Fragment.Asm).contains(Marker);
+    if (!HasMarker)
+      getModule().appendModuleInlineAsm(
+          llvm::Module::GlobalAsmFragment(Marker));
   }
 }
 

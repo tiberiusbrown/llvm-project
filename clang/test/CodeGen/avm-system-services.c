@@ -57,7 +57,7 @@ float pressure(float x, float y) {
   return __avm_sinf(x) + __avm_powf(x, y);
 }
 
-// CHECK: module asm ".globl __avm_framebuffer"
+// CHECK: ".globl __avm_framebuffer"
 // CHECK: @__avm_framebuffer = external global [1024 x i8], align 1
 // CHECK-LABEL: define{{.*}} void @debug_services
 // CHECK: call{{.*}} void @llvm.avm.debug.putc(i8

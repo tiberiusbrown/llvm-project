@@ -240,7 +240,7 @@ define void @proven_nonoverlap_move(ptr noalias %dst, ptr noalias %src,
 ; MIR-SAME:   :: (store unknown-size
 ; MIR-SAME:   (load unknown-size
 
-!0 = distinct !{!0, !"service domain"}
+!0 = distinct !{!0, i1 false, !"service domain"}
 !3 = !{!4}
 !4 = distinct !{!4, !0, !"destination"}
 !6 = !{!7}

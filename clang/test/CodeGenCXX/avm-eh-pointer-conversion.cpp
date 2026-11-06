@@ -21,21 +21,21 @@ void throw_noexcept(void (*fp)() noexcept) { throw fp; }
 void throw_plain_fn(void (*fp)()) { throw fp; }
 
 // A data pointer descriptor, with a pointee that is a class, and no AVM bit.
-// CHECK-DAG: @_ZTIP4Base = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 2), ptr addrspace(1) @_ZTSP4Base, i16 0, ptr addrspace(1) @_ZTI4Base }
+// CHECK-DAG: @_ZTIP4Base = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 6), ptr addrspace(1) @_ZTSP4Base, i16 0, ptr addrspace(1) @_ZTI4Base }
 
 // A pointer into program memory is 24 bits, so the flag word is 0x81 for a const int.
-// CHECK-DAG: @_ZTIPU3AS1Ki = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 2), ptr addrspace(1) @_ZTSPU3AS1Ki, i16 129, ptr addrspace(1) @_ZTIi }
+// CHECK-DAG: @_ZTIPU3AS1Ki = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 6), ptr addrspace(1) @_ZTSPU3AS1Ki, i16 129, ptr addrspace(1) @_ZTIi }
 
 // A function pointer is 24 bits, and a noexcept function pointer adds the noexcept bit 0x40,
 // so its flag word is 0xc0. Its pointee is the same function descriptor as the plain type.
-// CHECK-DAG: @_ZTIPDoFvvE = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 2), ptr addrspace(1) @_ZTSPDoFvvE, i16 192, ptr addrspace(1) @_ZTIFvvE }
-// CHECK-DAG: @_ZTIPFvvE = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 2), ptr addrspace(1) @_ZTSPFvvE, i16 128, ptr addrspace(1) @_ZTIFvvE }
+// CHECK-DAG: @_ZTIPDoFvvE = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 6), ptr addrspace(1) @_ZTSPDoFvvE, i16 192, ptr addrspace(1) @_ZTIFvvE }
+// CHECK-DAG: @_ZTIPFvvE = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1), i16, ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv119__pointer_type_infoE, i24 6), ptr addrspace(1) @_ZTSPFvvE, i16 128, ptr addrspace(1) @_ZTIFvvE }
 
 // The marker for a non-const pointer object is named after its reference type. Its three
 // fields are the marker support vtable's address point, three reserved zero bytes, and the
 // underlying pointer descriptor. It is linkonce_odr with a comdat, and it is program-space.
-// CHECK-DAG: @_ZTIRP4Base = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), [3 x i8], ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @__avm_eh_exact_pointer_ref_type_info, i24 2), [3 x i8] zeroinitializer, ptr addrspace(1) @_ZTIP4Base }, comdat, align 1
-// CHECK-DAG: @_ZTIRPU3AS1Ki = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), [3 x i8], ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @__avm_eh_exact_pointer_ref_type_info, i24 2), [3 x i8] zeroinitializer, ptr addrspace(1) @_ZTIPU3AS1Ki }, comdat, align 1
+// CHECK-DAG: @_ZTIRP4Base = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), [3 x i8], ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @__avm_eh_exact_pointer_ref_type_info, i24 6), [3 x i8] zeroinitializer, ptr addrspace(1) @_ZTIP4Base }, comdat, align 1
+// CHECK-DAG: @_ZTIRPU3AS1Ki = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), [3 x i8], ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @__avm_eh_exact_pointer_ref_type_info, i24 6), [3 x i8] zeroinitializer, ptr addrspace(1) @_ZTIPU3AS1Ki }, comdat, align 1
 // The runtime's marker vtable is declared in program space, as the other support vtables are.
 // CHECK-DAG: @__avm_eh_exact_pointer_ref_type_info = external {{.*}}addrspace(1) constant [0 x ptr addrspace(1)]
 

@@ -9,11 +9,10 @@
 #include "llvm/BinaryFormat/AVM.h"
 #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
 #include "llvm/CodeGen/MachineBranchProbabilityInfo.h"
-#include "llvm/CodeGen/MachineDominators.h"
+#include "llvm/CodeGen/MachineCycleAnalysis.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -113,7 +112,7 @@ void AVMFrameLowering::emitReturnFrameState(
 
 bool AVMFrameLowering::hasFPImpl(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  return MF.getTarget().Options.DisableFramePointerElim(MF) ||
+  return MF.disableFramePointerElim() ||
          MFI.isFrameAddressTaken() || MFI.hasVarSizedObjects();
 }
 
@@ -304,10 +303,10 @@ void AVMFrameLowering::orderFrameObjects(
     return;
 
   const auto &TRI = *MF.getSubtarget<AVMSubtarget>().getRegisterInfo();
-  MachineDominatorTree MDT(const_cast<MachineFunction &>(MF));
-  MachineLoopInfo MLI(MDT);
   MachineBranchProbabilityInfo MBPI;
-  MachineBlockFrequencyInfo MBFI(MF, MBPI, MLI);
+  MachineCycleInfo MCI;
+  MCI.compute(const_cast<MachineFunction &>(MF));
+  MachineBlockFrequencyInfo MBFI(MF, MBPI, MCI);
   SmallVector<double, 16> Uses(MFI.getObjectIndexEnd(), 0);
   for (const MachineBasicBlock &MBB : MF) {
     // For size, each static access contributes once. For speed, compact stack

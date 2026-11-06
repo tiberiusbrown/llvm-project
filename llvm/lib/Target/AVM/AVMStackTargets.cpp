@@ -415,7 +415,7 @@ class PointerAnalysis {
       // addresses outside the modeled pointer SSA graph.
       for (Value *Op : I.operands())
         if (Op->getType()->isPointerTy() &&
-            !isa<ICmpInst, BranchInst>(&I))
+            !isa<ICmpInst, CondBrInst, UncondBrInst>(&I))
           escape(value(Op));
     }
   }
@@ -489,8 +489,8 @@ public:
           // Only a proven non-null control-flow edge permits skipping a weak
           // reference. An unguarded undefined weak call stays a gap.
           for (BasicBlock &B : F) {
-            auto *Br = dyn_cast<BranchInst>(B.getTerminator());
-            if (!Br || !Br->isConditional())
+            auto *Br = dyn_cast<CondBrInst>(B.getTerminator());
+            if (!Br)
               continue;
             auto *Cmp = dyn_cast<ICmpInst>(Br->getCondition());
             if (!Cmp || !Cmp->isEquality())

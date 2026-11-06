@@ -61,8 +61,7 @@ define void @compiler_fence() {
 
 define i64 @atomic_load64(ptr %p) {
 ; CHECK-LABEL: atomic_load64:
-; CHECK:       call __atomic_load
-; CHECK:       ret
+; CHECK:       {{call|jmp}} __atomic_load_8
   %value = load atomic i64, ptr %p seq_cst, align 1
   ret i64 %value
 }

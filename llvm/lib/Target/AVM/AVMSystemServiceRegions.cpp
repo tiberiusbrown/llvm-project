@@ -160,7 +160,7 @@ static std::optional<AffineValue> decomposeAffineI16(Register Reg,
   if (!Reg.isVirtual())
     return std::nullopt;
 
-  AffineValue Result{Reg, Reg};
+  AffineValue Result{Reg, Reg, 0, {}};
   SmallVector<MachineInstr *, 2> Defs;
   for (MachineInstr &Def : MRI.def_instructions(Reg))
     Defs.push_back(&Def);
@@ -253,14 +253,6 @@ static bool setupIsSafe(const AffineValue &Value) {
     // Only copies and pure affine arithmetic are admitted by decomposition.
     return !MI->mayLoadOrStore() && !MI->isCall() && !MI->isInlineAsm() &&
            !MI->isBarrier();
-  });
-}
-
-static bool isUseCoveredByRun(const MachineOperand &MO,
-                              ArrayRef<ServiceUse> Run) {
-  return llvm::any_of(Run, [&](const ServiceUse &Service) {
-    return Service.MI == MO.getParent() &&
-           Service.OperandNo == MO.getOperandNo();
   });
 }
 
@@ -1192,6 +1184,18 @@ public:
             Opcode != AVM::LDI32_PSEUDO)
           continue;
         Register Def = MI.getOperand(0).getReg();
+        // A shared service carrier may hide multiple uses behind one COPY.
+        // Follow that carrier before deciding whether rematerialization pays.
+        while (Def.isVirtual()) {
+          MachineOperand *Use = MRI.getOneNonDBGUse(Def);
+          if (!Use || Use->getSubReg())
+            break;
+          MachineInstr &Copy = *Use->getParent();
+          if (!Copy.isFullCopy() || Use->getOperandNo() != 1 ||
+              !Copy.getOperand(0).getReg().isVirtual())
+            break;
+          Def = Copy.getOperand(0).getReg();
+        }
         if (!Def.isVirtual() || MRI.use_nodbg_empty(Def) ||
             MRI.hasOneNonDBGUse(Def))
           continue;

@@ -130,7 +130,7 @@ bool hasOnlyInstructionsAndLabels(StringRef Assembly, const MCAsmInfo &MAI,
 bool llvm::isAVMInlineAsmStackSafe(StringRef Assembly, const TargetMachine &TM,
                                    const MCSubtargetInfo &STI,
                                    MCContext &Original) {
-  if (!hasOnlyInstructionsAndLabels(Assembly, *TM.getMCAsmInfo(), Original))
+  if (!hasOnlyInstructionsAndLabels(Assembly, TM.getMCAsmInfo(), Original))
     return false;
 
   SourceMgr Sources;
@@ -139,19 +139,17 @@ bool llvm::isAVMInlineAsmStackSafe(StringRef Assembly, const TargetMachine &TM,
   // not issue duplicate diagnostics or mutate the real assembler's symbols.
   Sources.setDiagHandler([](const SMDiagnostic &, void *) {});
   MCContext Context(TM.getTargetTriple(), TM.getMCAsmInfo(),
-                    TM.getMCRegisterInfo(), &STI, &Sources,
-                    &TM.Options.MCOptions);
+                    TM.getMCRegisterInfo(), STI, &Sources);
   MCObjectFileInfo ObjectInfo;
   ObjectInfo.initMCObjectFileInfo(Context, /*PIC=*/false);
   Context.setObjectFileInfo(&ObjectInfo);
   std::unique_ptr<MCInstrInfo> MII(TM.getTarget().createMCInstrInfo());
   StackCheckingStreamer Streamer(Context, *MII);
-  Streamer.initSections(/*NoExecStack=*/false, STI);
+  Streamer.initSections(STI);
   std::unique_ptr<MCAsmParser> Parser(
-      createMCAsmParser(Sources, Context, Streamer, *TM.getMCAsmInfo()));
+      createMCAsmParser(Sources, Context, Streamer, TM.getMCAsmInfo()));
   std::unique_ptr<MCTargetAsmParser> TargetParser(
-      TM.getTarget().createMCAsmParser(STI, *Parser, *MII,
-                                       TM.Options.MCOptions));
+      TM.getTarget().createMCAsmParser(STI, *Parser, *MII));
   if (!TargetParser)
     return false;
   Parser->setTargetParser(*TargetParser);

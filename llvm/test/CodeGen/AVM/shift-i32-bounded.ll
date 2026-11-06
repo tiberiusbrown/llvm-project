@@ -144,10 +144,12 @@ define i32 @word_shift16(i16 %input, i32 %count) {
   ret i32 %result
 }
 
-; Counts outside 0..31 still use the helper, without truncating high bits.
+; Counts outside 0..31 are poison; their high bits can be discarded.
 define i32 @wide_count(i16 %input, i32 %count) {
 ; CHECK-LABEL: wide_count:
-; CHECK: {{call|jmp}} __avm_ashlsi3
+; CHECK-NOT: __avm_
+; CHECK: shl16v
+; CHECK: ret
   %value = zext i16 %input to i32
   %bounded = and i32 %count, 65543
   %result = shl i32 %value, %bounded

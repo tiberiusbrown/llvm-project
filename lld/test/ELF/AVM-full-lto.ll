@@ -11,7 +11,7 @@
 ; member and a native data-space object. The helper call must fold to 14.
 
 ; ELF: Format: elf32-avm
-; ELF: Machine: 0x4156
+; ELF: Machine: EM_AVM (0x4156)
 ; ELF: Name: .data
 ; ELF: SHF_AVM_DATASPACE
 ; ELF: Name: .text

@@ -1253,30 +1253,6 @@ def __ashrhi3 : RuntimeLibcallImpl<SRA_I16>;
 def __ashrsi3 : RuntimeLibcallImpl<SRA_I32>;
 def __ashrdi3 : RuntimeLibcallImpl<SRA_I64>;
 
-// AVM wide-integer helper ABI.
-let IsDefault = false in {
-def __avm_ashlsi3 : RuntimeLibcallImpl<SHL_I32>;
-def __avm_lshrsi3 : RuntimeLibcallImpl<SRL_I32>;
-def __avm_ashrsi3 : RuntimeLibcallImpl<SRA_I32>;
-def __avm_mulsi3 : RuntimeLibcallImpl<MUL_I32>;
-def __avm_divsi3 : RuntimeLibcallImpl<SDIV_I32>;
-def __avm_udivsi3 : RuntimeLibcallImpl<UDIV_I32>;
-def __avm_modsi3 : RuntimeLibcallImpl<SREM_I32>;
-def __avm_umodsi3 : RuntimeLibcallImpl<UREM_I32>;
-def __avm_divmodsi4 : RuntimeLibcallImpl<SDIVREM_I32>;
-def __avm_udivmodsi4 : RuntimeLibcallImpl<UDIVREM_I32>;
-def __avm_ashldi3 : RuntimeLibcallImpl<SHL_I64>;
-def __avm_lshrdi3 : RuntimeLibcallImpl<SRL_I64>;
-def __avm_ashrdi3 : RuntimeLibcallImpl<SRA_I64>;
-def __avm_muldi3 : RuntimeLibcallImpl<MUL_I64>;
-def __avm_divdi3 : RuntimeLibcallImpl<SDIV_I64>;
-def __avm_udivdi3 : RuntimeLibcallImpl<UDIV_I64>;
-def __avm_moddi3 : RuntimeLibcallImpl<SREM_I64>;
-def __avm_umoddi3 : RuntimeLibcallImpl<UREM_I64>;
-def __avm_divmoddi4 : RuntimeLibcallImpl<SDIVREM_I64>;
-def __avm_udivmoddi4 : RuntimeLibcallImpl<UDIVREM_I64>;
-}
-
 def __mulqi3 : RuntimeLibcallImpl<MUL_I8>;
 def __mulhi3 : RuntimeLibcallImpl<MUL_I16>;
 def __mulsi3 : RuntimeLibcallImpl<MUL_I32>;
@@ -1496,6 +1472,31 @@ foreach lc = LibCalls__sync in {
 // Clear cache
 def __clear_cache : RuntimeLibcallImpl<CLEAR_CACHE>;
 } // End defset CompilerRtLibgccImpls
+
+// AVM backend-selected helpers, kept outside the default compiler-rt/libgcc
+// library so these target-specific names do not become defaults for others.
+defset list<RuntimeLibcallImpl> AVMImpls = {
+def __avm_ashlsi3 : RuntimeLibcallImpl<SHL_I32>;
+def __avm_lshrsi3 : RuntimeLibcallImpl<SRL_I32>;
+def __avm_ashrsi3 : RuntimeLibcallImpl<SRA_I32>;
+def __avm_mulsi3 : RuntimeLibcallImpl<MUL_I32>;
+def __avm_divsi3 : RuntimeLibcallImpl<SDIV_I32>;
+def __avm_udivsi3 : RuntimeLibcallImpl<UDIV_I32>;
+def __avm_modsi3 : RuntimeLibcallImpl<SREM_I32>;
+def __avm_umodsi3 : RuntimeLibcallImpl<UREM_I32>;
+def __avm_divmodsi4 : RuntimeLibcallImpl<SDIVREM_I32>;
+def __avm_udivmodsi4 : RuntimeLibcallImpl<UDIVREM_I32>;
+def __avm_ashldi3 : RuntimeLibcallImpl<SHL_I64>;
+def __avm_lshrdi3 : RuntimeLibcallImpl<SRL_I64>;
+def __avm_ashrdi3 : RuntimeLibcallImpl<SRA_I64>;
+def __avm_muldi3 : RuntimeLibcallImpl<MUL_I64>;
+def __avm_divdi3 : RuntimeLibcallImpl<SDIV_I64>;
+def __avm_udivdi3 : RuntimeLibcallImpl<UDIV_I64>;
+def __avm_moddi3 : RuntimeLibcallImpl<SREM_I64>;
+def __avm_umoddi3 : RuntimeLibcallImpl<UREM_I64>;
+def __avm_divmoddi4 : RuntimeLibcallImpl<SDIVREM_I64>;
+def __avm_udivmoddi4 : RuntimeLibcallImpl<UDIVREM_I64>;
+}
 
 // libatomic
 //--------------------------------------------------------------------

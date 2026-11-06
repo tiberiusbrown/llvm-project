@@ -39,8 +39,6 @@ public:
                            unsigned FIOperandNum,
                            RegScavenger *RS = nullptr) const override;
   Register getFrameRegister(const MachineFunction &MF) const override;
-  const TargetRegisterClass *
-  getPointerRegClass(unsigned Kind = 0) const override;
 };
 } // namespace llvm
 

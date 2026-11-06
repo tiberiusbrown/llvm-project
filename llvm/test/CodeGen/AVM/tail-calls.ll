@@ -14,7 +14,7 @@ declare void @vararg(...)
 declare void @sret(ptr sret(i16))
 declare i8 @small()
 
-define i16 @framed_direct(i16 %x) {
+define i16 @framed_direct(i16 %x) nounwind {
 ; CHECK-LABEL: framed_direct:
 ; CHECK: adjsp -8
 ; CHECK-NOT: call f1
@@ -37,7 +37,7 @@ define i16 @framed_direct(i16 %x) {
   ret i16 %r
 }
 
-define i16 @saved_direct(i16 %x) {
+define i16 @saved_direct(i16 %x) nounwind {
 ; ISEL-LABEL: name: saved_direct
 ; CHECK-LABEL: saved_direct:
 ; CHECK: push16 r1
@@ -52,7 +52,7 @@ define i16 @saved_direct(i16 %x) {
   ret i16 %r
 }
 
-define i16 @full_direct(i16 %a, i16 %b, i16 %c, i16 %d) {
+define i16 @full_direct(i16 %a, i16 %b, i16 %c, i16 %d) nounwind {
 ; CHECK-LABEL: full_direct:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: pop16 r0
@@ -65,7 +65,7 @@ define i16 @full_direct(i16 %a, i16 %b, i16 %c, i16 %d) {
   ret i16 %r
 }
 
-define i16 @five_arguments(i16 %x) {
+define i16 @five_arguments(i16 %x) nounwind {
 ; CHECK-LABEL: five_arguments:
 ; CHECK: adjsp -2
 ; CHECK: call f5
@@ -75,7 +75,7 @@ define i16 @five_arguments(i16 %x) {
   ret i16 %r
 }
 
-define i16 @framed_indirect(ptr addrspace(1) %fn, i16 %x) {
+define i16 @framed_indirect(ptr addrspace(1) %fn, i16 %x) nounwind {
 ; CHECK-LABEL: framed_indirect:
 ; CHECK: adjsp -{{8|10}}
 ; CHECK-NOT: callp
@@ -97,7 +97,7 @@ define i16 @framed_indirect(ptr addrspace(1) %fn, i16 %x) {
 }
 
 ; Force the incoming target into a lower pair before copying it into q3.
-define i16 @saved_indirect(ptr addrspace(1) %fn, i32 %x) {
+define i16 @saved_indirect(ptr addrspace(1) %fn, i32 %x) nounwind {
 ; CHECK-LABEL: saved_indirect:
 ; CHECK: push16
 ; CHECK: pop16
@@ -111,7 +111,7 @@ define i16 @saved_indirect(ptr addrspace(1) %fn, i32 %x) {
 }
 
 ; R4 and R6:R7 are occupied: the alignment hole at R5 is not a free pair.
-define i16 @indirect_no_pair(ptr addrspace(1) %fn, i16 %x, i32 %y) {
+define i16 @indirect_no_pair(ptr addrspace(1) %fn, i16 %x, i32 %y) nounwind {
 ; CHECK-LABEL: indirect_no_pair:
 ; CHECK: callp
 ; CHECK: pop16
@@ -122,7 +122,7 @@ define i16 @indirect_no_pair(ptr addrspace(1) %fn, i16 %x, i32 %y) {
   ret i16 %r
 }
 
-define i16 @indirect_full(ptr addrspace(1) %fn) {
+define i16 @indirect_full(ptr addrspace(1) %fn) nounwind {
 ; CHECK-LABEL: indirect_full:
 ; CHECK: callp
 ; CHECK: pop16
@@ -133,7 +133,7 @@ define i16 @indirect_full(ptr addrspace(1) %fn) {
   ret i16 %r
 }
 
-define void @reject_byval(ptr %src) {
+define void @reject_byval(ptr %src) nounwind {
 ; CHECK-LABEL: reject_byval:
 ; CHECK: call byval
 ; CHECK: ret
@@ -143,7 +143,7 @@ define void @reject_byval(ptr %src) {
   ret void
 }
 
-define void @reject_vararg_callee() {
+define void @reject_vararg_callee() nounwind {
 ; CHECK-LABEL: reject_vararg_callee:
 ; CHECK: call vararg
 ; CHECK: ret
@@ -155,7 +155,7 @@ define void @reject_vararg_callee() {
   ret void
 }
 
-define void @reject_vararg_caller(...) {
+define void @reject_vararg_caller(...) nounwind {
 ; CHECK-LABEL: reject_vararg_caller:
 ; CHECK: call vararg
 ; CHECK: ret
@@ -165,7 +165,7 @@ define void @reject_vararg_caller(...) {
   ret void
 }
 
-define void @reject_sret_caller(ptr sret(i16) %p) {
+define void @reject_sret_caller(ptr sret(i16) %p) nounwind {
 ; CHECK-LABEL: reject_sret_caller:
 ; CHECK: call sret
 ; CHECK: ret
@@ -173,7 +173,7 @@ define void @reject_sret_caller(ptr sret(i16) %p) {
   ret void
 }
 
-define void @reject_sret_callee(ptr %p) {
+define void @reject_sret_callee(ptr %p) nounwind {
 ; CHECK-LABEL: reject_sret_callee:
 ; CHECK: call sret
 ; CHECK: ret
@@ -183,7 +183,7 @@ define void @reject_sret_callee(ptr %p) {
   ret void
 }
 
-define i16 @reject_return_conversion() {
+define i16 @reject_return_conversion() nounwind {
 ; CHECK-LABEL: reject_return_conversion:
 ; CHECK: call small
 ; CHECK: ret
@@ -194,7 +194,7 @@ define i16 @reject_return_conversion() {
   ret i16 %wide
 }
 
-define i16 @musttail_supported(i16 %x) {
+define i16 @musttail_supported(i16 %x) nounwind {
 ; CHECK-LABEL: musttail_supported:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp f1
@@ -206,7 +206,7 @@ define i16 @musttail_supported(i16 %x) {
   ret i16 %r
 }
 
-define i16 @dynamic_tail(i16 %x) {
+define i16 @dynamic_tail(i16 %x) nounwind {
 ; CHECK-LABEL: dynamic_tail:
 ; CHECK: setsp r3
 ; CHECK: pop16 r3
@@ -220,7 +220,7 @@ define i16 @dynamic_tail(i16 %x) {
 }
 
 ; Zero outgoing stack size alone is insufficient: no tail request.
-define i16 @unmarked_framed(i16 %x) {
+define i16 @unmarked_framed(i16 %x) nounwind {
 ; CHECK-LABEL: unmarked_framed:
 ; CHECK: call f1
 ; CHECK: adjsp 1
@@ -232,7 +232,7 @@ define i16 @unmarked_framed(i16 %x) {
 }
 
 ; A tail hint with work after the call is not in tail position.
-define i16 @not_tail_position(i16 %x) {
+define i16 @not_tail_position(i16 %x) nounwind {
 ; CHECK-LABEL: not_tail_position:
 ; CHECK: call f1
 ; CHECK: ret

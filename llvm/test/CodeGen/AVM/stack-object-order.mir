@@ -1,5 +1,5 @@
-# RUN: llc -mtriple=avm -O2 -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s
-# RUN: llc -mtriple=avm -O0 -run-pass=prologepilog -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=O0
+# RUN: llc -mtriple=avm -O2 -run-pass=prolog-epilog -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -O0 -run-pass=prolog-epilog -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=O0
 
 --- |
   target triple = "avm"

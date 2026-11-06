@@ -19,7 +19,7 @@ define i16 @unwound(i16 %x) uwtable {
 }
 
 ; A function without an unwind table and without debug information has no FDE.
-define i16 @plain(i16 %x) {
+define i16 @plain(i16 %x) nounwind {
   %y = add i16 %x, 2
   ret i16 %y
 }

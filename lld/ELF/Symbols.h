@@ -40,21 +40,25 @@ const ELFSyncStream &operator<<(const ELFSyncStream &, const Symbol *);
 void printTraceSymbol(const Symbol &sym, StringRef name);
 
 enum {
-  NEEDS_GOT = 1 << 0,
-  NEEDS_PLT = 1 << 1,
-  HAS_DIRECT_RELOC = 1 << 2,
+  // True if an undefined or shared symbol is used from a live section.
+  //
+  // NOTE: In Writer.cpp the field is used to mark local defined symbols
+  // which are referenced by relocations when -r or --emit-relocs is given.
+  USED = 1 << 0,
+  NEEDS_GOT = 1 << 1,
+  NEEDS_PLT = 1 << 2,
+  HAS_DIRECT_RELOC = 1 << 3,
   // True if this symbol needs a canonical PLT entry, or (during
   // postScanRelocations) a copy relocation.
-  NEEDS_COPY = 1 << 3,
-  NEEDS_TLSDESC = 1 << 4,
-  NEEDS_TLSGD = 1 << 5,
-  // 1 << 6 unused
+  NEEDS_COPY = 1 << 4,
+  NEEDS_TLSDESC = 1 << 5,
+  NEEDS_TLSGD = 1 << 6,
   NEEDS_GOT_DTPREL = 1 << 7,
   NEEDS_TLSIE = 1 << 8,
   NEEDS_GOT_AUTH = 1 << 9,
-  NEEDS_GOT_NONAUTH = 1 << 10,
+  // 1 << 10 unused
   NEEDS_TLSDESC_AUTH = 1 << 11,
-  NEEDS_TLSDESC_NONAUTH = 1 << 12,
+  // 1 << 12 unused
 };
 
 // The base class for real symbol classes.
@@ -74,9 +78,12 @@ public:
   // The file from which this symbol was created.
   InputFile *file;
 
-  // The default copy constructor is deleted due to atomic flags. Define one for
-  // places where no atomic is needed.
-  Symbol(const Symbol &o) { memcpy(static_cast<void *>(this), &o, sizeof(o)); }
+  // Symbols are referenced by pointer throughout the linker, so an implicit
+  // copy would create a dangerous duplicate; copy the needed members
+  // explicitly instead. Deleting the copy operations also suppresses the
+  // implicit move operations.
+  Symbol(const Symbol &o) = delete;
+  Symbol &operator=(const Symbol &) = delete;
 
 protected:
   const char *nameData;
@@ -101,9 +108,6 @@ public:
 
   uint8_t symbolKind;
 
-  // The partition whose dynamic symbol table contains this symbol's definition.
-  uint8_t partition = 1;
-
   // True if this symbol is preemptible at load time.
   //
   // Primarily set in two locations, (a) parseVersionAndComputeIsPreemptible and
@@ -117,13 +121,6 @@ public:
   // are unreferenced except by other bitcode objects.
   LLVM_PREFERRED_TYPE(bool)
   uint8_t isUsedInRegularObj : 1;
-
-  // True if an undefined or shared symbol is used from a live section.
-  //
-  // NOTE: In Writer.cpp the field is used to mark local defined symbols
-  // which are referenced by relocations when -r or --emit-relocs is given.
-  LLVM_PREFERRED_TYPE(bool)
-  uint8_t used : 1;
 
   // Used by a Defined symbol with protected or default visibility, to record
   // whether it is required to be exported into .dynsym. This is set when any of
@@ -147,6 +144,10 @@ public:
   // True if the name contains '@'.
   LLVM_PREFERRED_TYPE(bool)
   uint8_t hasVersionSuffix : 1;
+
+  // True if the symbol is in SymbolTable::getSymbols().
+  LLVM_PREFERRED_TYPE(bool)
+  uint8_t inserted : 1;
 
   // Symbol visibility. This is the computed minimum visibility of all
   // observed non-DSO symbols.
@@ -204,6 +205,7 @@ public:
   uint64_t getGotVA(Ctx &) const;
   uint64_t getGotPltOffset(Ctx &) const;
   uint64_t getGotPltVA(Ctx &) const;
+  uint64_t getPltOffset(Ctx &) const;
   uint64_t getPltVA(Ctx &) const;
   uint64_t getSize() const;
   OutputSection *getOutputSection() const;
@@ -243,8 +245,8 @@ protected:
          uint8_t stOther, uint8_t type)
       : file(file), nameData(name.data()), nameSize(name.size()), type(type),
         binding(binding), stOther(stOther), symbolKind(k), isPreemptible(false),
-        isUsedInRegularObj(false), used(false), isExported(false),
-        ltoCanOmit(false), traced(false), hasVersionSuffix(false),
+        isUsedInRegularObj(false), isExported(false), ltoCanOmit(false),
+        traced(false), hasVersionSuffix(false), inserted(false),
         isInIplt(false), gotInIgot(false), folded(false),
         archSpecificBit(false), scriptDefined(false), dsoDefined(false),
         dsoProtected(false), versionScriptAssigned(false), thunkAccessed(false),
@@ -346,6 +348,11 @@ public:
   LLVM_PREFERRED_TYPE(bool)
   uint8_t referencedAfterWrap : 1;
 
+  // True if this symbol is referenced by the embedded unoptimized part of
+  // dynamic debugging.
+  LLVM_PREFERRED_TYPE(bool)
+  uint8_t isDynDbgRef : 1;
+
   void setFlags(uint16_t bits) {
     flags.fetch_or(bits, std::memory_order_relaxed);
   }
@@ -357,7 +364,8 @@ public:
   bool needsDynReloc() const {
     return flags.load(std::memory_order_relaxed) &
            (NEEDS_COPY | NEEDS_GOT | NEEDS_PLT | NEEDS_TLSDESC | NEEDS_TLSGD |
-            NEEDS_GOT_DTPREL | NEEDS_TLSIE);
+            NEEDS_GOT_DTPREL | NEEDS_TLSIE | NEEDS_GOT_AUTH |
+            NEEDS_TLSDESC_AUTH);
   }
   void allocateAux(Ctx &ctx) {
     assert(auxIdx == 0);

@@ -31,6 +31,7 @@ public:
   ~AVMSubtarget() override;
 
   void ParseSubtargetFeatures(StringRef CPU, StringRef TuneCPU, StringRef FS);
+  void initLibcallLoweringInfo(LibcallLoweringInfo &Info) const override;
   // The two words of a pair can have independent live ranges. Do not keep a
   // consumed word live just because its sibling is still needed.
   bool enableSubRegLiveness() const override { return true; }

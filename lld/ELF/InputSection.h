@@ -138,8 +138,6 @@ struct RelaxAux {
   // For relocations[i], the actual type is relocTypes[i].
   std::unique_ptr<RelType[]> relocTypes;
   SmallVector<uint32_t, 0> writes;
-  // Target-specific relaxation state indexed by relocation. Targets may use
-  // these arrays to associate relocations and record their selected encoding.
   SmallVector<uint32_t, 0> relocPairs;
   SmallVector<uint8_t, 0> relocStates;
   bool relaxInvalid = false;

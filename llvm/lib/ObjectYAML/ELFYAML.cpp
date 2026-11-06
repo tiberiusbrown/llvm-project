@@ -175,6 +175,7 @@ void ScalarEnumerationTraits<ELFYAML::ELF_NT>::enumeration(
   ECase(NT_OPENBSD_FPREGS);
   ECase(NT_OPENBSD_XFPREGS);
   ECase(NT_OPENBSD_WCOOKIE);
+  ECase(NT_OPENBSD_PACMASK);
   // AMD specific notes. (Code Object V2)
   ECase(NT_AMD_HSA_CODE_OBJECT_VERSION);
   ECase(NT_AMD_HSA_HSAIL);
@@ -194,173 +195,8 @@ void ScalarEnumerationTraits<ELFYAML::ELF_NT>::enumeration(
 
 void ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(
     IO &IO, ELFYAML::ELF_EM &Value) {
-#define ECase(X) IO.enumCase(Value, #X, ELF::X)
-  ECase(EM_NONE);
-  ECase(EM_M32);
-  ECase(EM_SPARC);
-  ECase(EM_386);
-  ECase(EM_68K);
-  ECase(EM_88K);
-  ECase(EM_IAMCU);
-  ECase(EM_860);
-  ECase(EM_MIPS);
-  ECase(EM_S370);
-  ECase(EM_MIPS_RS3_LE);
-  ECase(EM_PARISC);
-  ECase(EM_VPP500);
-  ECase(EM_SPARC32PLUS);
-  ECase(EM_960);
-  ECase(EM_PPC);
-  ECase(EM_PPC64);
-  ECase(EM_S390);
-  ECase(EM_SPU);
-  ECase(EM_V800);
-  ECase(EM_FR20);
-  ECase(EM_RH32);
-  ECase(EM_RCE);
-  ECase(EM_ARM);
-  ECase(EM_ALPHA);
-  ECase(EM_SH);
-  ECase(EM_SPARCV9);
-  ECase(EM_TRICORE);
-  ECase(EM_ARC);
-  ECase(EM_H8_300);
-  ECase(EM_H8_300H);
-  ECase(EM_H8S);
-  ECase(EM_H8_500);
-  ECase(EM_IA_64);
-  ECase(EM_MIPS_X);
-  ECase(EM_COLDFIRE);
-  ECase(EM_68HC12);
-  ECase(EM_MMA);
-  ECase(EM_PCP);
-  ECase(EM_NCPU);
-  ECase(EM_NDR1);
-  ECase(EM_STARCORE);
-  ECase(EM_ME16);
-  ECase(EM_ST100);
-  ECase(EM_TINYJ);
-  ECase(EM_X86_64);
-  ECase(EM_PDSP);
-  ECase(EM_PDP10);
-  ECase(EM_PDP11);
-  ECase(EM_FX66);
-  ECase(EM_ST9PLUS);
-  ECase(EM_ST7);
-  ECase(EM_68HC16);
-  ECase(EM_68HC11);
-  ECase(EM_68HC08);
-  ECase(EM_68HC05);
-  ECase(EM_SVX);
-  ECase(EM_ST19);
-  ECase(EM_VAX);
-  ECase(EM_CRIS);
-  ECase(EM_JAVELIN);
-  ECase(EM_FIREPATH);
-  ECase(EM_ZSP);
-  ECase(EM_MMIX);
-  ECase(EM_HUANY);
-  ECase(EM_PRISM);
-  ECase(EM_AVR);
-  ECase(EM_AVM);
-  ECase(EM_FR30);
-  ECase(EM_D10V);
-  ECase(EM_D30V);
-  ECase(EM_V850);
-  ECase(EM_M32R);
-  ECase(EM_MN10300);
-  ECase(EM_MN10200);
-  ECase(EM_PJ);
-  ECase(EM_OPENRISC);
-  ECase(EM_ARC_COMPACT);
-  ECase(EM_XTENSA);
-  ECase(EM_VIDEOCORE);
-  ECase(EM_TMM_GPP);
-  ECase(EM_NS32K);
-  ECase(EM_TPC);
-  ECase(EM_SNP1K);
-  ECase(EM_ST200);
-  ECase(EM_IP2K);
-  ECase(EM_MAX);
-  ECase(EM_CR);
-  ECase(EM_F2MC16);
-  ECase(EM_MSP430);
-  ECase(EM_BLACKFIN);
-  ECase(EM_SE_C33);
-  ECase(EM_SEP);
-  ECase(EM_ARCA);
-  ECase(EM_UNICORE);
-  ECase(EM_EXCESS);
-  ECase(EM_DXP);
-  ECase(EM_ALTERA_NIOS2);
-  ECase(EM_CRX);
-  ECase(EM_XGATE);
-  ECase(EM_C166);
-  ECase(EM_M16C);
-  ECase(EM_DSPIC30F);
-  ECase(EM_CE);
-  ECase(EM_M32C);
-  ECase(EM_TSK3000);
-  ECase(EM_RS08);
-  ECase(EM_SHARC);
-  ECase(EM_ECOG2);
-  ECase(EM_SCORE7);
-  ECase(EM_DSP24);
-  ECase(EM_VIDEOCORE3);
-  ECase(EM_LATTICEMICO32);
-  ECase(EM_SE_C17);
-  ECase(EM_TI_C6000);
-  ECase(EM_TI_C2000);
-  ECase(EM_TI_C5500);
-  ECase(EM_MMDSP_PLUS);
-  ECase(EM_CYPRESS_M8C);
-  ECase(EM_R32C);
-  ECase(EM_TRIMEDIA);
-  ECase(EM_HEXAGON);
-  ECase(EM_8051);
-  ECase(EM_STXP7X);
-  ECase(EM_NDS32);
-  ECase(EM_ECOG1);
-  ECase(EM_ECOG1X);
-  ECase(EM_MAXQ30);
-  ECase(EM_XIMO16);
-  ECase(EM_MANIK);
-  ECase(EM_CRAYNV2);
-  ECase(EM_RX);
-  ECase(EM_METAG);
-  ECase(EM_MCST_ELBRUS);
-  ECase(EM_ECOG16);
-  ECase(EM_CR16);
-  ECase(EM_ETPU);
-  ECase(EM_SLE9X);
-  ECase(EM_L10M);
-  ECase(EM_K10M);
-  ECase(EM_AARCH64);
-  ECase(EM_AVR32);
-  ECase(EM_STM8);
-  ECase(EM_TILE64);
-  ECase(EM_TILEPRO);
-  ECase(EM_MICROBLAZE);
-  ECase(EM_CUDA);
-  ECase(EM_TILEGX);
-  ECase(EM_CLOUDSHIELD);
-  ECase(EM_COREA_1ST);
-  ECase(EM_COREA_2ND);
-  ECase(EM_ARC_COMPACT2);
-  ECase(EM_OPEN8);
-  ECase(EM_RL78);
-  ECase(EM_VIDEOCORE5);
-  ECase(EM_78KOR);
-  ECase(EM_56800EX);
-  ECase(EM_AMDGPU);
-  ECase(EM_RISCV);
-  ECase(EM_LANAI);
-  ECase(EM_BPF);
-  ECase(EM_VE);
-  ECase(EM_CSKY);
-  ECase(EM_LOONGARCH);
-  ECase(EM_INTELGT);
-#undef ECase
+#define ELF_MACHINE(em, value, arch, gnuname) IO.enumCase(Value, #em, ELF::em);
+#include "llvm/BinaryFormat/ELF.def"
   IO.enumFallback<Hex16>(Value);
 }
 
@@ -425,6 +261,10 @@ void ScalarBitSetTraits<ELFYAML::ELF_EF>::bitset(IO &IO,
 #define BCase(X) IO.bitSetCase(Value, #X, ELF::X)
 #define BCaseMask(X, M) IO.maskedBitSetCase(Value, #X, ELF::X, ELF::M)
   switch (Object->getMachine()) {
+  case ELF::EM_AVM:
+    BCase(EF_AVM_ABI_V1);
+    BCase(EF_AVM_ABI_V2);
+    break;
   case ELF::EM_ARM:
     BCase(EF_ARM_SOFT_FLOAT);
     BCase(EF_ARM_VFP_FLOAT);
@@ -681,6 +521,7 @@ void ScalarEnumerationTraits<ELFYAML::ELF_SHT>::enumeration(
   ECase(SHT_LLVM_OFFLOADING);
   ECase(SHT_LLVM_LTO);
   ECase(SHT_LLVM_CALL_GRAPH);
+  ECase(SHT_LLVM_DYNDBG_ELF);
   ECase(SHT_GNU_SFRAME);
   ECase(SHT_GNU_ATTRIBUTES);
   ECase(SHT_GNU_HASH);
@@ -760,6 +601,10 @@ void ScalarBitSetTraits<ELFYAML::ELF_SHF>::bitset(IO &IO,
     break;
   }
   switch (Object->getMachine()) {
+  case ELF::EM_AVM:
+    BCase(SHF_AVM_PROGSPACE);
+    BCase(SHF_AVM_DATASPACE);
+    break;
   case ELF::EM_AARCH64:
     BCase(SHF_AARCH64_PURECODE);
     break;
@@ -866,6 +711,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
   assert(Object && "The IO context is not initialized");
 #define ELF_RELOC(X, Y) IO.enumCase(Value, #X, ELF::X);
   switch (Object->getMachine()) {
+  case ELF::EM_AVM:
+#include "llvm/BinaryFormat/ELFRelocs/AVM.def"
+    break;
   case ELF::EM_X86_64:
 #include "llvm/BinaryFormat/ELFRelocs/x86_64.def"
     break;
@@ -923,9 +771,6 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
     break;
   case ELF::EM_XTENSA:
 #include "llvm/BinaryFormat/ELFRelocs/Xtensa.def"
-    break;
-  case ELF::EM_AVM:
-#include "llvm/BinaryFormat/ELFRelocs/AVM.def"
     break;
   default:
     // Nothing to do.

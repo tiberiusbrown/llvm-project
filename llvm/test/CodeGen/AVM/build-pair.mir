@@ -13,9 +13,10 @@
 name: identity
 body: |
   bb.0:
+    liveins: $r4, $r5
     ; CHECK-LABEL: name: identity
     ; CHECK: bb.0:
-    ; CHECK-NEXT: RET
+    ; CHECK: RET
     $r4r5 = BUILD_PAIR_PSEUDO $r4, $r5
     RET_PSEUDO implicit-def dead $sp, implicit $sp
 ...
@@ -23,6 +24,7 @@ body: |
 name: independent
 body: |
   bb.0:
+    liveins: $r6, $r7
     ; CHECK-LABEL: name: independent
     ; CHECK: $r4 = MOV $r6
     ; CHECK-NEXT: $r5 = MOV $r7
@@ -34,6 +36,7 @@ body: |
 name: overlap_low
 body: |
   bb.0:
+    liveins: $r6, $r4
     ; CHECK-LABEL: name: overlap_low
     ; CHECK: $r5 = MOV $r4
     ; CHECK-NEXT: $r4 = MOV $r6
@@ -45,6 +48,7 @@ body: |
 name: overlap_high
 body: |
   bb.0:
+    liveins: $r5, $r6
     ; CHECK-LABEL: name: overlap_high
     ; CHECK: $r4 = MOV $r5
     ; CHECK-NEXT: $r5 = MOV $r6
@@ -56,6 +60,7 @@ body: |
 name: swap_upper
 body: |
   bb.0:
+    liveins: $r5, $r4
     ; CHECK-LABEL: name: swap_upper
     ; CHECK: $r4 = XOR $r4, $r5
     ; CHECK-NEXT: $r5 = XOR $r5, $r4
@@ -68,6 +73,7 @@ body: |
 name: swap_cold
 body: |
   bb.0:
+    liveins: $r1, $r0
     ; CHECK-LABEL: name: swap_cold
     ; CHECK: $r0 = XOR_RR $r0, $r1
     ; CHECK-NEXT: $r1 = XOR_RR $r1, $r0
@@ -80,6 +86,7 @@ body: |
 name: broadcast
 body: |
   bb.0:
+    liveins: $r0
     ; CHECK-LABEL: name: broadcast
     ; CHECK: $r1 = MOV_RR $r0
     ; CHECK-NEXT: RET

@@ -10,14 +10,13 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/MC/MCRegister.h"
 
 #include <cstdint>
 
 namespace llvm {
-
-class TargetRegisterClass;
 
 enum class AVMServiceValueKind {
   I16,

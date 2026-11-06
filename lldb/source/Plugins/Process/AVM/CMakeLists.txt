@@ -15,3 +15,7 @@ if(MSVC)
 else()
   target_compile_options(lldbPluginProcessAVM PRIVATE -fexceptions)
 endif()
+
+# This plugin needs exceptions, so it cannot reuse LLVMSupport's PCH, which is
+# built with exceptions disabled.
+set_property(TARGET lldbPluginProcessAVM PROPERTY DISABLE_PRECOMPILE_HEADERS ON)

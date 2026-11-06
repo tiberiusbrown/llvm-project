@@ -1389,12 +1389,3 @@ TEST(ProtocolTypesTest, DAPSession) {
   EXPECT_EQ(expected->debuggerId, session.debuggerId);
   EXPECT_EQ(expected->targetId, session.targetId);
 }
-
-TEST(ProtocolTypesTest, DAPSession) {
-  const DAPSession session{/*targetId*/ 1000, /*debuggerId*/ 300};
-
-  auto expected = parse<DAPSession>(R"({"targetId": 1000, "debuggerId": 300})");
-  ASSERT_THAT_EXPECTED(expected, llvm::Succeeded());
-  EXPECT_EQ(expected->debuggerId, session.debuggerId);
-  EXPECT_EQ(expected->targetId, session.targetId);
-}

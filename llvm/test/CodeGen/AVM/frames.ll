@@ -2,7 +2,7 @@
 ; RUN:   -mtune=avm-interpreter-32u4-v1 -O0 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s
 
-define void @frame127(i8 %x) {
+define void @frame127(i8 %x) nounwind {
 ; CHECK-LABEL: frame127:
 ; CHECK:       adjsp -127
 ; CHECK:       stsp8 [sp+126], r4
@@ -14,7 +14,7 @@ define void @frame127(i8 %x) {
   ret void
 }
 
-define void @frame128(i8 %x) {
+define void @frame128(i8 %x) nounwind {
 ; CHECK-LABEL: frame128:
 ; CHECK:       adjsp -128
 ; CHECK:       stsp8 [sp+127], r4
@@ -27,7 +27,7 @@ define void @frame128(i8 %x) {
   ret void
 }
 
-define i16 @frame_pointer(i16 %x) #0 {
+define i16 @frame_pointer(i16 %x) #0 nounwind {
 ; CHECK-LABEL: frame_pointer:
 ; CHECK:       push16 r3
 ; CHECK-NEXT:  adjsp -4
@@ -46,7 +46,7 @@ define i16 @frame_pointer(i16 %x) #0 {
 
 declare void @take(ptr)
 
-define i16 @dynamic_frame(i16 %size, i16 %x) {
+define i16 @dynamic_frame(i16 %size, i16 %x) nounwind {
 ; CHECK-LABEL: dynamic_frame:
 ; CHECK:       push16 r3
 ; CHECK:       getsp r3
@@ -66,7 +66,7 @@ define i16 @dynamic_frame(i16 %size, i16 %x) {
   ret i16 %v
 }
 
-define void @frame_address() {
+define void @frame_address() nounwind {
 ; CHECK-LABEL: frame_address:
 ; CHECK:       adjsp -8
 ; CHECK-NEXT:  leasp r4, 5
@@ -80,7 +80,7 @@ define void @frame_address() {
 }
 
 define i16 @fp_incoming(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e,
-                        i16 %f) #0 {
+                        i16 %f) #0 nounwind {
 ; CHECK-LABEL: fp_incoming:
 ; CHECK:       push16 r3
 ; CHECK-NEXT:  adjsp -2
@@ -93,7 +93,7 @@ define i16 @fp_incoming(i16 %a, i16 %b, i16 %c, i16 %d, i16 %e,
   ret i16 %f
 }
 
-define ptr addrspace(1) @frame_pointer24(ptr addrspace(1) %x) #0 {
+define ptr addrspace(1) @frame_pointer24(ptr addrspace(1) %x) #0 nounwind {
 ; CHECK-LABEL: frame_pointer24:
 ; CHECK:       st16 [{{r[0-7]}}], {{r[0-7]}}
 ; CHECK-NEXT:  st8 [{{r[0-7]}}+2], {{r[0-7]}}
@@ -109,7 +109,7 @@ attributes #0 = { "frame-pointer"="all" }
 
 ; The incoming stack argument must remain relative to r3 after SP moves.
 define i16 @dynamic_incoming(i16 %n, i16 %b, i16 %c, i16 %d,
-                             i16 %e, i16 %f) {
+                             i16 %e, i16 %f) nounwind {
 ; CHECK-LABEL: dynamic_incoming:
 ; CHECK: push16 r3
 ; CHECK: getsp r3

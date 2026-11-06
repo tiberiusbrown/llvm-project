@@ -10,6 +10,9 @@ class AVMTargetObjectFile final : public TargetLoweringObjectFileELF {
 public:
   unsigned getTextSectionAlignment() const override { return 1; }
 
+  void initialize(MCContext &Ctx, const TargetMachine &TM,
+                  const Module &M) override;
+
   MCSection *getStaticCtorSection(unsigned Priority,
                                   const MCSymbol *KeySym) const override;
   MCSection *getStaticDtorSection(unsigned Priority,
@@ -31,10 +34,12 @@ public:
 
   MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
                                    const Constant *C,
-                                   Align &Alignment) const override;
+                                   Align &Alignment,
+                                   const Function *F) const override;
 
   MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
                                    const Constant *C, Align &Alignment,
+                                   const Function *F,
                                    StringRef SectionSuffix) const override;
 
   MCSection *getSectionForJumpTable(const Function &F,

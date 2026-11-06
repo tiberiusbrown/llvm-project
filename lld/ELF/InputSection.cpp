@@ -23,6 +23,7 @@
 #include "llvm/Support/LEB128.h"
 #include "llvm/Support/xxhash.h"
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <vector>
 
@@ -1158,8 +1159,6 @@ void InputSection::relocateNonAlloc(Ctx &ctx, uint8_t *buf,
         if (emachine == EM_X86_64 && type == R_X86_64_32)
           value = static_cast<uint32_t>(value);
         target.relocateNoSym(bufLoc, type, value);
-        // The FDE of a discarded function has a tombstone start address, so
-        // its rows would repeat that address. It is cleared after relocation.
         if (emachine == EM_AVM && type == R_AVM_DEBUG24 &&
             llvm::is_contained(avmFdePcOffsets, offset))
           avmDeadFdeOffsets.push_back(offset - 8);
@@ -1218,10 +1217,6 @@ void InputSection::relocateNonAlloc(Ctx &ctx, uint8_t *buf,
           SignExtend64<bits>(sym.getVA(ctx, addend - offset - outSecOff)));
   }
 
-  // Clear each discarded FDE after all of its relocations are applied. Its
-  // range becomes empty and its instructions become DW_CFA_nop padding, so no
-  // row repeats a tombstone address. The 3-byte pc_range follows the 3-byte
-  // initial location, and the instructions follow both.
   for (uint64_t start : avmDeadFdeOffsets) {
     uint8_t *fde = buf + start;
     uint32_t length = read32le(fde);

@@ -1,4 +1,4 @@
-# RUN: llc -mtriple=avm -O2 -run-pass=greedy,virtregrewriter \
+# RUN: llc -mtriple=avm -O2 -run-pass=greedy,virt-reg-rewriter \
 # RUN:   -verify-machineinstrs %s -o - | FileCheck %s
 
 --- |

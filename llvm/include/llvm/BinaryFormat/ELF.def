@@ -227,5 +227,6 @@ ELF_MACHINE(EM_AIECTRLCODE,   269, "aiectrlcode", "AMD/Xilinx AIEngine ctrlcode"
 ELF_MACHINE(EM_PPU,           270, "ppu", "T-Head PPU")
 ELF_MACHINE(EM_LST,           271, "lst", "Lisuan Technology LST")
 ELF_MACHINE(EM_CHILI,         272, "chili", "OpenAI Chili architecture")
+ELF_MACHINE(EM_AVM,          0x4156, "avm", "Arduboy Virtual Machine")
 #undef ELF_MACHINE
 #endif

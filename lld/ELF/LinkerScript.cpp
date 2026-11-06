@@ -67,7 +67,9 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
         return ss.save(".rela" + out->name);
       return ss.save(".rel" + out->name);
     }
-    if (ctx.arg.relocatable)
+    // Use default LLD behavior for the embedded unoptimized dynamic debugging
+    // relocatable link.
+    if (ctx.arg.relocatable && !ctx.dynDbgRelocatable)
       return s->name;
   }
 
@@ -113,23 +115,66 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
     return ".ltext";
   }
 
-  // The AVM flash window is one output section with one physical mapping, so
-  // its inputs must not each become a separate section in a custom layout.
   if (ctx.arg.emachine == EM_AVM && isSectionPrefix(".flash", s->name))
     return ".flash";
-
-  // Every RTTI object is placed in one output section after the flash image
-  // bytes, so a custom layout must not turn each object into its own section.
   if (ctx.arg.emachine == EM_AVM && isSectionPrefix(".avm.rtti", s->name))
     return ".avm.rtti";
 
-  for (StringRef v : {".data.rel.ro", ".saved",      ".data",       ".rodata",
+  // When zKeepDataSectionPrefix is true, keep .hot and .unlikely suffixes
+  // in data sections.
+  static constexpr StringRef dataSectionPrefixes[] = {
+      ".data.rel.ro", ".saved", ".data", ".rodata", ".bss.rel.ro", ".bss",
+  };
+
+  // If keep-data-section-prefix is enabled, map hot-prefixed data sections
+  // to a .hot variant in the output and map unlikely-prefixed data sections
+  // to a .unlikely variant. Mapping for the hot input sections is illustrated
+  // below, and the same applies for unlikely ones.
+  // [bar] is a placeholder to represent optional global variable name below
+  // - .data.rel.ro.hot.[bar]  => .data.rel.ro.hot
+  // - .data.hot.[bar] => .data.hot
+  // - {.rodata.hot.[bar], .rodata.str.*.hot., .rodata.cst*.hot.} => .rodata.hot
+  // - .bss.rel.ro => .bss.rel.ro
+  // - .bss.hot.[bar] => .bss.hot
+  // Note .bss.rel.ro doesn't have hot / unlikely mapping. It's placed before
+  // .bss so they get processed before `.bss` prefix is seen, just like
+  // how `.data.rel.ro` should be processed before seeing the `.data` prefix.
+  if (ctx.arg.zKeepDataSectionPrefix)
+    for (auto [index, v] : llvm::enumerate(dataSectionPrefixes)) {
+      StringRef secName = s->name;
+      // If v is the prefix, trim it from secName. Otherwise just continue to
+      // try the next prefix.
+      if (!secName.consume_front(v))
+        continue;
+
+      // Object file writer emits the trailing dot in `.hot.` and `.unlikely.`
+      // to disambiguate between `.<section>.<variable-name>` (without trailing
+      // dot) and `.<section>.hot.[optional-variable-name]`. We check the same
+      // (trailing dot required) to not map a C variable named `unlikely` to a
+      // unlikely variant.
+      if (secName.starts_with(".hot."))
+        return s->name.substr(0, v.size() + 4);
+      if (secName.starts_with(".unlikely."))
+        return s->name.substr(0, v.size() + 9);
+      if (index == 2) {
+        // Place input .rodata.str<N>.hot. or .rodata.cst<N>.hot. into the
+        // .rodata.hot section.
+        if (s->name.ends_with(".hot."))
+          return ".rodata.hot";
+        // Place input .rodata.str<N>.hot. or .rodata.cst<N>.unlikely. into
+        // the .rodata.unlikely section.
+        if (s->name.ends_with(".unlikely."))
+          return ".rodata.unlikely";
+      }
+    }
+
+  for (StringRef v : {".data.rel.ro", ".data",       ".rodata",
                       ".bss.rel.ro",  ".bss",        ".ldata",
                       ".lrodata",     ".lbss",       ".gcc_except_table",
                       ".init_array",  ".fini_array", ".tbss",
                       ".tdata",       ".ARM.exidx",  ".ARM.extab",
                       ".ctors",       ".dtors",      ".sbss",
-                      ".sdata",       ".srodata"})
+                      ".sdata",       ".srodata",    ".gnu.build.attributes"})
     if (isSectionPrefix(v, s->name))
       return v;
 
@@ -184,10 +229,6 @@ OutputDesc *LinkerScript::getOrCreateOutputSection(StringRef name) {
   return secRef;
 }
 
-// AVM has two logical address spaces. Construct the target's ordinary-layout
-// rules as linker-script commands so the normal garbage collection, COMDAT,
-// input merging, and iterative address assignment machinery remains in use.
-// A user supplied SECTIONS command deliberately bypasses these defaults.
 void LinkerScript::createAVMDefaultLayout() {
   if (ctx.arg.emachine != EM_AVM || hasSectionsCommand ||
       !ctx.arg.sectionStartMap.empty())
@@ -213,13 +254,9 @@ void LinkerScript::createAVMDefaultLayout() {
 
   OutputSection *saved = add(".saved", {".saved", ".saved.*"},
                              [] { return ExprValue(0x100); });
-  // Each live function-local static destructor contributes one packed RAM
-  // table slot. Place the slots together at the start of .data and expose
-  // their exact bounds without creating a second data-space output section.
   OutputSection *data = add(
       ".data", {".data.avm_local_dtor_slot.*"},
       [saved] { return ExprValue(0x100 + saved->size); });
-  // Linker-defined bounds may retain an empty data section without inputs.
   data->flags = SHF_ALLOC | SHF_WRITE | SHF_AVM_DATASPACE;
   auto slotBound = [&](StringRef name) {
     auto *cmd = make<SymbolAssignment>(
@@ -232,9 +269,6 @@ void LinkerScript::createAVMDefaultLayout() {
   data->commands.insert(data->commands.begin(),
                         slotBound("__avm_local_dtor_slots_start"));
   data->commands.push_back(slotBound("__avm_local_dtor_slots_end"));
-  // Size the optional registry only after LTO and section GC. Weak CRT hooks
-  // never extract its archive members. Function pointers remain three bytes;
-  // mixed C++ entries add a two-byte construction phase and registration tag.
   auto liveDefinition = [&](StringRef name) {
     auto *sym = dyn_cast_or_null<Defined>(ctx.symtab->find(name));
     auto *sec = sym ? dyn_cast_or_null<InputSectionBase>(sym->section) : nullptr;
@@ -283,12 +317,9 @@ void LinkerScript::createAVMDefaultLayout() {
   if (stackPhase && !stackPhase->section) {
     constant("__avm_termination_phase", stackPhase->value);
   } else {
-    // Custom/older raw entry objects can still supply static tracking storage.
     data->commands.push_back(slotBound("__avm_termination_phase"));
     reserve(registry && mixed ? 2 : 0);
   }
-  // The count must not be an input definition: a weak read from a registry
-  // extracted by a dead registration would otherwise keep it alive under GC.
   if (atexit)
     data->commands.push_back(slotBound("__avm_atexit_count"));
   else
@@ -299,16 +330,9 @@ void LinkerScript::createAVMDefaultLayout() {
     ordinaryData->sectionPatterns.push_back({{}, StringMatcher(pattern)});
   data->commands.push_back(ordinaryData);
   data->commands.push_back(slotBound("__avm_heap_start"));
-  // Immutable AS0 objects keep flash-window VMAs (0x0B00 maps to image offset
-  // 0x0500). Their bytes occupy the image through the packer's physical
-  // mapping, so program-space code must start after them when they exist.
   OutputSection *flash = add(".flash", {".flash", ".flash.*"},
                              [] { return ExprValue(0x0B00); });
   flash->flags = SHF_ALLOC | SHF_AVM_DATASPACE;
-  // RTTI objects follow the flash image bytes, so their AS0 aliases, which are
-  // program addresses plus 0x0600, stay in the window. The section is empty
-  // unless a translation unit was compiled with -frtti, and the .text placement
-  // below then leaves the layout unchanged.
   OutputSection *rtti = add(".avm.rtti", {".avm.rtti", ".avm.rtti.*"}, {});
   rtti->addrExpr = [flash, rtti] {
     return ExprValue(alignToPowerOf2(0x500 + flash->size,
@@ -317,8 +341,7 @@ void LinkerScript::createAVMDefaultLayout() {
   OutputSection *text = add(".text", {".text", ".text.*"}, {});
   text->addrExpr = [saved, data, flash, rtti, text] {
     if (rtti->size)
-      return ExprValue(
-          alignToPowerOf2(rtti->addr + rtti->size, text->addralign));
+      return ExprValue(alignToPowerOf2(rtti->addr + rtti->size, text->addralign));
     if (flash->size)
       return ExprValue(alignToPowerOf2(0x500 + flash->size, text->addralign));
     return ExprValue(alignToPowerOf2(
@@ -1353,7 +1376,7 @@ bool LinkerScript::assignOffsets(OutputSection *sec) {
   if (!(sec->flags & SHF_ALLOC)) {
     // Non-SHF_ALLOC sections have zero addresses.
     dot = 0;
-  } else if (isTbss) {
+  } else if (isTbss && !sec->addrExpr) {
     // Allow consecutive SHF_TLS SHT_NOBITS output sections. The address range
     // starts from the end address of the previous tbss section.
     if (state->tbssAddr == 0)

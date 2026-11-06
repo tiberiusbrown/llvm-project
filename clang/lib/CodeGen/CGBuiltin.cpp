@@ -31,6 +31,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/CodeGenUtils/TargetUtils.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Intrinsics.h"
@@ -89,8 +90,16 @@ static Value *getAVMCompilerOnlyAnchor(CodeGenFunction &CGF, StringRef Name,
   Anchor->setAlignment(Align(1));
 
   std::string GlobalDirective = (Twine(".globl ") + Name).str();
-  if (!StringRef(M.getModuleInlineAsm()).contains(GlobalDirective))
-    M.appendModuleInlineAsm(GlobalDirective);
+  auto HasInlineAsm = [&](StringRef Text) {
+    for (const llvm::Module::GlobalAsmFragment &Fragment :
+         M.getModuleInlineAsm())
+      if (StringRef(Fragment.Asm).contains(Text))
+        return true;
+    return false;
+  };
+  if (!HasInlineAsm(GlobalDirective))
+    M.appendModuleInlineAsm(
+        llvm::Module::GlobalAsmFragment(GlobalDirective));
 
   return CGF.Builder.CreateConstInBoundsGEP2_32(AnchorTy, Anchor, 0, 0);
 }
@@ -590,9 +599,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
               CurrentSpriteName, /*InsertBefore=*/nullptr,
               GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
         CurrentSprite->setAlignment(Align(1));
-        if (!StringRef(M.getModuleInlineAsm())
-                 .contains(".globl __avm_current_sprite"))
-          M.appendModuleInlineAsm(".globl __avm_current_sprite");
+        if (!llvm::any_of(M.getModuleInlineAsm(), [](const auto &Fragment) {
+              return StringRef(Fragment.Asm)
+                  .contains(".globl __avm_current_sprite");
+            }))
+          M.appendModuleInlineAsm(llvm::Module::GlobalAsmFragment(
+              StringRef(".globl __avm_current_sprite")));
         Args.push_back(
             CGF->Builder.CreateConstInBoundsGEP2_32(CurrentSpriteTy, CurrentSprite,
                                                     0, 0));
@@ -619,9 +631,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
               FramebufferName, /*InsertBefore=*/nullptr,
               GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
         Framebuffer->setAlignment(Align(1));
-        if (!StringRef(M.getModuleInlineAsm())
-                 .contains(".globl __avm_framebuffer"))
-          M.appendModuleInlineAsm(".globl __avm_framebuffer");
+        if (!llvm::any_of(M.getModuleInlineAsm(), [](const auto &Fragment) {
+              return StringRef(Fragment.Asm).contains(".globl __avm_framebuffer");
+            }))
+          M.appendModuleInlineAsm(
+              llvm::Module::GlobalAsmFragment(
+                  StringRef(".globl __avm_framebuffer")));
         Args.push_back(
             CGF->Builder.CreateConstInBoundsGEP2_32(FramebufferTy, Framebuffer,
                                                     0, 0));
@@ -646,9 +661,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
               TextStateName, /*InsertBefore=*/nullptr,
               GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
         TextState->setAlignment(Align(1));
-        if (!StringRef(M.getModuleInlineAsm())
-                 .contains(".globl __avm_text_state"))
-          M.appendModuleInlineAsm(".globl __avm_text_state");
+        if (!llvm::any_of(M.getModuleInlineAsm(), [](const auto &Fragment) {
+              return StringRef(Fragment.Asm).contains(".globl __avm_text_state");
+            }))
+          M.appendModuleInlineAsm(
+              llvm::Module::GlobalAsmFragment(
+                  StringRef(".globl __avm_text_state")));
         Args.push_back(CGF->Builder.CreateConstInBoundsGEP2_32(
             TextStateTy, TextState, 0, 0));
 
@@ -668,9 +686,12 @@ static Value *EmitTargetArchBuiltinExpr(CodeGenFunction *CGF,
               FramebufferName, /*InsertBefore=*/nullptr,
               GlobalVariable::NotThreadLocal, /*AddressSpace=*/0);
         Framebuffer->setAlignment(Align(1));
-        if (!StringRef(M.getModuleInlineAsm())
-                 .contains(".globl __avm_framebuffer"))
-          M.appendModuleInlineAsm(".globl __avm_framebuffer");
+        if (!llvm::any_of(M.getModuleInlineAsm(), [](const auto &Fragment) {
+              return StringRef(Fragment.Asm).contains(".globl __avm_framebuffer");
+            }))
+          M.appendModuleInlineAsm(
+              llvm::Module::GlobalAsmFragment(
+                  StringRef(".globl __avm_framebuffer")));
         Args.push_back(CGF->Builder.CreateConstInBoundsGEP2_32(
             FramebufferTy, Framebuffer, 0, 0));
         break;

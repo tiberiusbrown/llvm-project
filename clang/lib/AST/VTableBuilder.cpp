@@ -672,7 +672,7 @@ CharUnits VCallAndVBaseOffsetBuilder::getCurrentOffsetOffset() const {
   // pointer widths.
   bool UseAVMLayout =
       Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
-      !VTables.isRelativeLayout();
+      !Context.getLangOpts().RelativeCXXABIVTables;
   CharUnits OffsetWidth = Context.toCharUnitsFromBits(
       Context.getLangOpts().RelativeCXXABIVTables
           ? 32

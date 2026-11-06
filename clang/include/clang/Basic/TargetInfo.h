@@ -892,6 +892,10 @@ public:
     return getDefaultAlignForAttributeAligned();
   }
 
+  /// Return true if this target's C++ exception runtime preserves pointer
+  /// types whose pointee uses a non-default address space.
+  virtual bool supportsAddressSpaceExceptionPointers() const { return false; }
+
   /// Return the size of intmax_t and uintmax_t for this target, in bits.
   unsigned getIntMaxTWidth() const {
     return getTypeWidth(IntMaxType);

@@ -1,6 +1,7 @@
 //===-- AVMTargetObjectFile.cpp - AVM ELF section lowering ---------------===//
 
 #include "AVMTargetObjectFile.h"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -10,6 +11,14 @@
 #include "llvm/MC/MCSymbolELF.h"
 
 using namespace llvm;
+
+void AVMTargetObjectFile::initialize(MCContext &Ctx, const TargetMachine &TM,
+                                     const Module &M) {
+  TargetLoweringObjectFileELF::initialize(Ctx, TM, M);
+  // AVM writes fixed-width exception sites in .avm.eh_sites instead of an
+  // Itanium LSDA. Do not leave an undefined LSDA temporary in CFI records.
+  LSDAEncoding = dwarf::DW_EH_PE_omit;
+}
 
 static MCSection *prepareStructorSection(MCSection *Section) {
   auto *ELFSection = static_cast<MCSectionELF *>(Section);
@@ -225,17 +234,18 @@ MCSection *AVMTargetObjectFile::getSectionForMachineBasicBlock(
 MCSection *AVMTargetObjectFile::getSectionForConstant(const DataLayout &DL,
                                                       SectionKind Kind,
                                                       const Constant *C,
-                                                      Align &Alignment) const {
+                                                      Align &Alignment,
+                                                      const Function *F) const {
   return classifySection(TargetLoweringObjectFileELF::getSectionForConstant(
-                             DL, Kind, C, Alignment),
+                             DL, Kind, C, Alignment, F),
                          AVMSectionClass::ProgramData);
 }
 
 MCSection *AVMTargetObjectFile::getSectionForConstant(
     const DataLayout &DL, SectionKind Kind, const Constant *C, Align &Alignment,
-    StringRef SectionSuffix) const {
+    const Function *F, StringRef SectionSuffix) const {
   return classifySection(TargetLoweringObjectFileELF::getSectionForConstant(
-                             DL, Kind, C, Alignment, SectionSuffix),
+                             DL, Kind, C, Alignment, F, SectionSuffix),
                          AVMSectionClass::ProgramData);
 }
 

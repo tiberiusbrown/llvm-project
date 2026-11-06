@@ -939,7 +939,8 @@ public:
   getConstantTableLookupCost(Type *ElementType, uint64_t /*TableEntries*/,
                              TTI::TargetCostKind CostKind) const {
     return getMemoryOpCost(Instruction::Load, ElementType,
-                           DL.getABITypeAlign(ElementType), /*AddressSpace=*/0,
+                           DL.getABITypeAlign(ElementType),
+                           DL.getDefaultGlobalsAddressSpace(),
                            CostKind, {TTI::OK_AnyValue, TTI::OP_None},
                            /*I=*/nullptr);
   }

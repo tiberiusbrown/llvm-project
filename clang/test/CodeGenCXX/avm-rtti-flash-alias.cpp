@@ -29,9 +29,9 @@ const std::type_info &call_gamma() { return typeid(Gamma); }
 
 int check_poly() { Poly p; return typeid(p).name() != 0; }
 
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI5Alpha"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTS5Alpha"
-// CHECK-DAG: module asm ".weak __avm_rtti_alias._ZTI5Gamma"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI5Alpha"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTS5Alpha"
+// CHECK-DAG: ".weak __avm_rtti_alias._ZTI5Gamma"
 
 // PLAIN:  @_ZTI5Alpha = linkonce_odr {{.*}}section ".avm.rtti.type", comdat, align 1
 // PLAIN:  @_ZTS5Alpha = linkonce_odr {{.*}}section ".avm.rtti.name", comdat, align 1

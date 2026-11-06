@@ -1,0 +1,34 @@
+# RUN: yaml2obj %s -o %t
+# RUN: %lldb -b -o 'image dump sections' -o 'breakpoint set --name function' %t | FileCheck %s
+
+# AVM's program and data sections have independent address spaces. The data
+# flash window may overlap executable code without invalidating either section.
+# CHECK: [0x0000000000000b00-0x0000000000000b04){{.*}}.flash
+# CHECK: [0x0000000000000b00-0x0000000000000b04){{.*}}.text
+# CHECK: Breakpoint 1: where = {{.*}}`function, address = 0x00000b00
+
+--- !ELF
+FileHeader:
+  Class: ELFCLASS32
+  Data: ELFDATA2LSB
+  Type: ET_EXEC
+  Machine: EM_AVM
+  Flags: [ EF_AVM_ABI_V2 ]
+Sections:
+  - Name: .flash
+    Type: SHT_PROGBITS
+    Flags: [ SHF_ALLOC, SHF_AVM_DATASPACE ]
+    Address: 0xb00
+    Content: '01020304'
+  - Name: .text
+    Type: SHT_PROGBITS
+    Flags: [ SHF_ALLOC, SHF_EXECINSTR, SHF_AVM_PROGSPACE ]
+    Address: 0xb00
+    Content: '00000000'
+Symbols:
+  - Name: function
+    Type: STT_FUNC
+    Section: .text
+    Value: 0xb00
+    Size: 4
+    Binding: STB_GLOBAL

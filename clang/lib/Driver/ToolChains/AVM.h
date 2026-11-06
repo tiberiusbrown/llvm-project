@@ -34,9 +34,10 @@ public:
       llvm::opt::ArgStringList &CC1Args) const override;
   void addClangTargetOptions(const llvm::opt::ArgList &DriverArgs,
                              llvm::opt::ArgStringList &CC1Args,
-                             Action::OffloadKind) const override;
+                             BoundArch BA,
+                             Action::OffloadKind DeviceOffloadKind) const override;
   llvm::opt::DerivedArgList *
-  TranslateArgs(const llvm::opt::DerivedArgList &Args, StringRef BoundArch,
+  TranslateArgs(const llvm::opt::DerivedArgList &Args, BoundArch BA,
                 Action::OffloadKind DeviceOffloadKind) const override;
 
 protected:

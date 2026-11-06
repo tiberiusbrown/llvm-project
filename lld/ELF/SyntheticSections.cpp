@@ -225,8 +225,13 @@ BssSection::BssSection(Ctx &ctx, StringRef name, uint64_t size,
   this->size = size;
 }
 
+static uint64_t ehFrameFlags(const Ctx &ctx) {
+  return SHF_ALLOC |
+         (ctx.arg.emachine == EM_AVM ? SHF_AVM_PROGSPACE : uint64_t(0));
+}
+
 EhFrameSection::EhFrameSection(Ctx &ctx)
-    : SyntheticSection(ctx, ".eh_frame", SHT_PROGBITS, SHF_ALLOC, 1) {}
+    : SyntheticSection(ctx, ".eh_frame", SHT_PROGBITS, ehFrameFlags(ctx), 1) {}
 
 // There is one FDE per function. Returns a non-null pointer to the function
 // symbol if the given FDE points to a live function.
@@ -365,7 +370,8 @@ void EhFrameSection::writeTo(uint8_t *buf) {
 }
 
 EhFrameHeader::EhFrameHeader(Ctx &ctx)
-    : SyntheticSection(ctx, ".eh_frame_hdr", SHT_PROGBITS, SHF_ALLOC, 4) {}
+    : SyntheticSection(ctx, ".eh_frame_hdr", SHT_PROGBITS,
+                       ehFrameFlags(ctx), 4) {}
 
 bool EhFrameHeader::isNeeded() const {
   return isLive() && ctx.in.ehFrame->isNeeded();

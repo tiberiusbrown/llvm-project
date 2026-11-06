@@ -194,7 +194,7 @@ class AVMAsmPrinter final : public AsmPrinter {
       MCInst ProgPtr;
       ProgPtr.setOpcode(AVM::PROGPTR);
       ProgPtr.addOperand(MCOperand::createExpr(Expr));
-      OutStreamer->emitInstruction(ProgPtr, *TM.getMCSubtargetInfo());
+      OutStreamer->emitInstruction(ProgPtr, TM.getMCSubtargetInfo());
       return;
     }
 
@@ -390,7 +390,7 @@ public:
     MCSymbol *Symbol = getSymbol(GV);
     emitVisibility(Symbol, GV->getVisibility(), true);
     Symbol->redefineIfPossible();
-    if (MAI->hasDotTypeDotSizeDirective())
+    if (MAI.hasDotTypeDotSizeDirective())
       OutStreamer->emitSymbolAttribute(Symbol, MCSA_ELF_TypeObject);
 
     SectionKind Kind = TargetLoweringObjectFile::getKindForGlobal(GV, TM);
@@ -405,7 +405,7 @@ public:
     if (LocalAlias != Symbol)
       OutStreamer->emitLabel(LocalAlias);
     emitAVMConstant(DL, GV->getInitializer());
-    if (MAI->hasDotTypeDotSizeDirective())
+    if (MAI.hasDotTypeDotSizeDirective())
       OutStreamer->emitELFSize(Symbol,
                                MCConstantExpr::create(Size, OutContext));
     OutStreamer->addBlankLine();

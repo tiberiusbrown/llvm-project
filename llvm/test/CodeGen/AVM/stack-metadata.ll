@@ -55,7 +55,7 @@
 declare void @leaf()
 declare void @args(i16, i16, i16, i16, i16, i16, i16)
 
-define void @caller() {
+define void @caller() nounwind {
   %a = alloca [40 x i8], align 1
   %p = getelementptr [40 x i8], ptr %a, i16 0, i16 0
   store volatile i8 1, ptr %p
@@ -64,31 +64,31 @@ define void @caller() {
   ret void
 }
 
-define void @dynamic(i16 %size) {
+define void @dynamic(i16 %size) nounwind {
   %a = alloca i8, i16 %size, align 1
   store volatile i8 1, ptr %a
   call void @leaf()
   ret void
 }
 
-define void @indirect(ptr addrspace(1) %f) {
+define void @indirect(ptr addrspace(1) %f) nounwind {
   call addrspace(1) void %f()
   ret void
 }
 
-define void @framed_indirect(ptr addrspace(1) %f) {
+define void @framed_indirect(ptr addrspace(1) %f) nounwind {
   %a = alloca i8, align 1
   store volatile i8 1, ptr %a
   tail call addrspace(1) void %f()
   ret void
 }
 
-define void @tail_forward() {
+define void @tail_forward() nounwind {
   call void @leaf()
   ret void
 }
 
-define void @framed_direct() {
+define void @framed_direct() nounwind {
   %a = alloca [8 x i8], align 1
   store volatile i8 1, ptr %a
   tail call void @leaf()

@@ -164,18 +164,6 @@ public:
 #endif
   }
 
-  /// Returns whether if lldb should read information from the PTY. This is
-  /// always true on non Windows.
-  bool ShouldUsePTY() const {
-#ifdef _WIN32
-    return GetPTY().GetPseudoTerminalHandle() != ((HANDLE)(long long)-1) &&
-           GetNumFileActions() == 0 &&
-           GetFlags().Test(lldb::eLaunchFlagLaunchInTTY);
-#else
-    return true;
-#endif
-  }
-
   void SetLaunchEventData(const char *data) { m_event_data.assign(data); }
 
   const char *GetLaunchEventData() const { return m_event_data.c_str(); }

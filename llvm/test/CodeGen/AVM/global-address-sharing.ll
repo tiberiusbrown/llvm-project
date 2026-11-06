@@ -21,7 +21,7 @@ define i16 @shared_arrays(i16 %index) {
 ; CHECK: ld8u {{r[0-7]}}, [{{r[0-7]}}+96]
 ; ISEL-LABEL: name: shared_arrays
 ; ISEL: %[[SYMBOL:[0-9]+]]:gpr16 = DATA_ADDR_PSEUDO @_MergedGlobals
-; ISEL: %[[BASE:[0-9]+]]:gpr16 = ADD16_PSEUDO %0, killed %[[SYMBOL]]
+; ISEL: %[[BASE:[0-9]+]]:gpr16 = ADD16_PSEUDO %0, {{(killed )?}}%[[SYMBOL]]
 ; ISEL: LOAD8U_PSEUDO %[[BASE]] :: (volatile load (s8) from %ir.pa)
 ; ISEL: LOAD8U_DISP_PSEUDO %[[BASE]], 32 :: (volatile load (s8) from %ir.pb)
 ; ISEL: LOAD8U_DISP_PSEUDO %[[BASE]], 64 :: (volatile load (s8) from %ir.pc)

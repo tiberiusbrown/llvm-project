@@ -112,7 +112,8 @@ public:
 
 class AVMMCAsmInfo final : public MCAsmInfoELF {
 public:
-  AVMMCAsmInfo(const Triple &, const MCTargetOptions &) {
+  AVMMCAsmInfo(const Triple &, const MCTargetOptions &Options)
+      : MCAsmInfoELF(Options) {
     CommentString = ";";
     SeparatorString = "\n";
     WeakRefDirective = "\t.weak\t";
@@ -124,11 +125,7 @@ public:
     MinInstAlignment = 1;
     SupportsDebugInformation = true;
     UsesCFIWithoutEH = true;
-    // Unwind tables are nonallocated debug information, not EH frames.
     UnwindTablesUseDebugFrame = true;
-    // Landing pads and call-site tables use LLVM's DWARF model. Their call-site
-    // records are written as AVM sites in place of the LSDA byte format.
-    setExceptionsType(ExceptionHandling::DwarfCFI);
   }
 
   void printSpecifierExpr(raw_ostream &OS,
@@ -240,6 +237,10 @@ static MCTargetStreamer *createAVMObjectTargetStreamer(MCStreamer &S,
   return new AVMObjectTargetStreamer(S);
 }
 
+static MCTargetStreamer *createAVMNullTargetStreamer(MCStreamer &S) {
+  return new MCTargetStreamer(S);
+}
+
 static MCRelocationInfo *createAVMMCRelocationInfo(const Triple &TT,
                                                    MCContext &Ctx) {
   return llvm::createMCRelocationInfo(TT, Ctx);
@@ -260,4 +261,5 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTargetMC() {
   TargetRegistry::RegisterMCRelocationInfo(T, createAVMMCRelocationInfo);
   TargetRegistry::RegisterObjectTargetStreamer(T,
                                                createAVMObjectTargetStreamer);
+  TargetRegistry::RegisterNullTargetStreamer(T, createAVMNullTargetStreamer);
 }

@@ -194,3 +194,32 @@ define i32 @arithmetic_unbounded(i32 %x, i32 %n) {
   %r = ashr i32 %x, %n
   ret i32 %r
 }
+
+; Legalized counts may be i16, but all i32 shift helpers take an i32 count.
+; The high argument word must be initialized even when the input is narrow.
+define i32 @narrow_count_shl(i32 %value, i16 %count) nounwind {
+; CHECK-LABEL: narrow_count_shl:
+; CHECK: xor r7, r7
+; CHECK: {{call|jmp}} __avm_ashlsi3
+  %wide = zext i16 %count to i32
+  %result = shl i32 %value, %wide
+  ret i32 %result
+}
+
+define i32 @narrow_count_lshr(i32 %value, i16 %count) nounwind {
+; CHECK-LABEL: narrow_count_lshr:
+; CHECK: xor r7, r7
+; CHECK: {{call|jmp}} __avm_lshrsi3
+  %wide = zext i16 %count to i32
+  %result = lshr i32 %value, %wide
+  ret i32 %result
+}
+
+define i32 @narrow_count_ashr(i32 %value, i16 %count) nounwind {
+; CHECK-LABEL: narrow_count_ashr:
+; CHECK: xor r7, r7
+; CHECK: {{call|jmp}} __avm_ashrsi3
+  %wide = zext i16 %count to i32
+  %result = ashr i32 %value, %wide
+  ret i32 %result
+}

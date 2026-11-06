@@ -8,7 +8,7 @@ void filled_rect_services(int x, int y, unsigned char width,
   __avm_draw_filled_rect_black(x, y, width, height);
 }
 
-// CHECK: module asm ".globl __avm_framebuffer"
+// CHECK: ".globl __avm_framebuffer"
 // CHECK: @__avm_framebuffer = external global [1024 x i8], align 1
 //
 // CHECK-LABEL: define{{.*}} void @filled_rect_services

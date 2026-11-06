@@ -46,6 +46,7 @@ InstrProfileFormat
 InstCombineContributorGuide
 WritingAnLLVMBackend
 CodeGenerator
+AVMCodeGenerator
 TableGen/index
 MCJITDesignAndImplementation
 ORCv2
@@ -265,6 +266,7 @@ yaml2obj
 
   Information on how to write LLVM backends for machine targets.
 
+- {doc}`AVMCodeGenerator`
 - {doc}`CodeGenerator`
 
   The design and implementation of the LLVM code generator.  Useful if you are

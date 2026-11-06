@@ -14,16 +14,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 
 using namespace llvm;
-
-static cl::opt<std::string>
-    AVMTuneCPU("mtune", cl::desc("Tune AVM code for a specific processor"),
-               cl::value_desc("cpu-name"), cl::init(""));
 
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   RegisterTargetMachine<AVMTargetMachine> X(getTheAVMTarget());
@@ -59,11 +54,12 @@ AVMTargetMachine::AVMTargetMachine(const Target &T, const Triple &TT,
                                    std::optional<Reloc::Model>,
                                    std::optional<CodeModel::Model>,
                                    CodeGenOptLevel OL, bool)
-    : CodeGenTargetMachineImpl(T, TT.computeDataLayout(), TT, CPU, FS, Options,
+    : CodeGenTargetMachineImpl(T, TT, CPU, FS, Options,
                                Reloc::Static, CodeModel::Large, OL),
       TLOF(std::make_unique<AVMTargetObjectFile>()) {
   // Safety metadata is part of the AVM ABI, including LTO code generation.
   this->Options.EmitStackSizeSection = true;
+  setSupportsExceptionModel(ExceptionHandling::DwarfCFI);
   initAsmInfo();
 }
 
@@ -85,7 +81,7 @@ AVMTargetMachine::getSubtargetImpl(const Function &F) const {
   if (CPU.empty())
     CPU = "avm1";
   std::string TuneCPU = TuneAttr.isValid() ? TuneAttr.getValueAsString().str()
-                                           : std::string(AVMTuneCPU);
+                                          : "avm-interpreter-32u4-v1";
   if (TuneCPU.empty())
     TuneCPU = "avm-interpreter-32u4-v1";
   std::string FS =
@@ -96,7 +92,6 @@ AVMTargetMachine::getSubtargetImpl(const Function &F) const {
 
   auto &ST = SubtargetMap[CPU + "\n" + TuneCPU + "\n" + FS];
   if (!ST) {
-    resetTargetOptions(F);
     ST = std::make_unique<AVMSubtarget>(TargetTriple, CPU, TuneCPU, FS, *this);
   }
   return ST.get();

@@ -13,6 +13,7 @@
 name: multiply
 body: |
   bb.0:
+    liveins: $r4, $r5, $r0, $r1
     ; CHECK-LABEL: name: multiply
     ; CHECK: $r4 = MULU8W $r4, $r5
     ; CHECK-NEXT: $r0 = MUL16 $r0, $r5

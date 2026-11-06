@@ -43,7 +43,8 @@ static SDValue stripProgramPointerNormalization(SDValue Value) {
 static SDValue
 emitCopyOrMoveService(unsigned Opcode, SelectionDAG &DAG, const SDLoc &DL,
                       SDValue Chain, SDValue Dst, SDValue Src, SDValue Size,
-                      Align Alignment, MachinePointerInfo DstPtrInfo,
+                      Align DstAlign, Align SrcAlign,
+                      MachinePointerInfo DstPtrInfo,
                       MachinePointerInfo SrcPtrInfo, const AAMDNodes &AAInfo) {
   const AVMSystemServiceInfo &Info = getRequiredAVMSystemServiceInfo(Opcode);
   MachineFunction &MF = DAG.getMachineFunction();
@@ -94,8 +95,9 @@ emitCopyOrMoveService(unsigned Opcode, SelectionDAG &DAG, const SDLoc &DL,
       if (const auto *C = dyn_cast<ConstantSDNode>(
               LogicalOps[Access.SizeLogicalArgumentIndex]))
         MemSize = LocationSize::precise(C->getZExtValue());
+    Align AccessAlign = Access.LogicalArgumentIndex == 0 ? DstAlign : SrcAlign;
     MMOs.push_back(MF.getMachineMemOperand(PtrInfo, Access.Flags, MemSize,
-                                           Alignment, AAInfo));
+                                           AccessAlign, AAInfo));
   }
   DAG.setNodeMemRefs(Node, MMOs);
   return SDValue(Node, Info.Outputs.size());
@@ -105,9 +107,9 @@ emitCopyOrMoveService(unsigned Opcode, SelectionDAG &DAG, const SDLoc &DL,
 
 SDValue AVMSelectionDAGInfo::EmitTargetCodeForMemcpyWithAA(
     SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst, SDValue Src,
-    SDValue Size, Align Alignment, bool IsVolatile, bool AlwaysInline,
-    MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo,
-    const AAMDNodes &AAInfo) const {
+    SDValue Size, Align DstAlign, Align SrcAlign, bool IsVolatile,
+    bool AlwaysInline, MachinePointerInfo DstPtrInfo,
+    MachinePointerInfo SrcPtrInfo, const AAMDNodes &AAInfo) const {
   if (IsVolatile || AlwaysInline || Size.getValueType() != MVT::i16 ||
       DstPtrInfo.getAddrSpace() != 0)
     return {};
@@ -137,34 +139,35 @@ SDValue AVMSelectionDAGInfo::EmitTargetCodeForMemcpyWithAA(
         DAG.getTargetGlobalAddress(Pool, DL, MVT::i32),
         DAG.getTargetConstant(Length->getZExtValue(), DL, MVT::i16),
         DAG.getRegisterMask(TRI->getCallPreservedMask(MF, CallingConv::C)),
-        Chain, Chain.getValue(1)};
-    MachineSDNode *Node = DAG.getMachineNode(AVM::CONST_COPY_P_PSEUDO, DL,
-                                           MVT::Other, Ops);
+        Chain,
+        Chain.getValue(1)};
+    MachineSDNode *Node =
+        DAG.getMachineNode(AVM::CONST_COPY_P_PSEUDO, DL, MVT::Other, Ops);
     LocationSize MemSize = LocationSize::precise(Length->getZExtValue());
     MachineMemOperand *MMOs[] = {
         MF.getMachineMemOperand(DstPtrInfo, MachineMemOperand::MOStore, MemSize,
-                                Alignment, AAInfo),
+                                DstAlign, AAInfo),
         MF.getMachineMemOperand(SrcPtrInfo, MachineMemOperand::MOLoad, MemSize,
-                                Align(1), AAInfo)};
+                                SrcAlign, AAInfo)};
     DAG.setNodeMemRefs(Node, MMOs);
     return SDValue(Node, 0);
   }
 
-  return emitCopyOrMoveService(Opcode, DAG, DL, Chain, Dst, Src, Size,
-                               Alignment, DstPtrInfo, SrcPtrInfo, AAInfo);
+  return emitCopyOrMoveService(Opcode, DAG, DL, Chain, Dst, Src, Size, DstAlign,
+                               SrcAlign, DstPtrInfo, SrcPtrInfo, AAInfo);
 }
 
 SDValue AVMSelectionDAGInfo::EmitTargetCodeForMemmoveWithAA(
     SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst, SDValue Src,
-    SDValue Size, Align Alignment, bool IsVolatile,
+    SDValue Size, Align DstAlign, Align SrcAlign, bool IsVolatile,
     MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo,
     const AAMDNodes &AAInfo) const {
   if (IsVolatile || Size.getValueType() != MVT::i16 ||
       DstPtrInfo.getAddrSpace() != 0 || SrcPtrInfo.getAddrSpace() != 0)
     return {};
   return emitCopyOrMoveService(AVM::SYS_MEMMOVE_PSEUDO, DAG, DL, Chain, Dst,
-                               Src, Size, Alignment, DstPtrInfo, SrcPtrInfo,
-                               AAInfo);
+                               Src, Size, DstAlign, SrcAlign, DstPtrInfo,
+                               SrcPtrInfo, AAInfo);
 }
 
 SDValue AVMSelectionDAGInfo::EmitTargetCodeForMemsetWithAA(

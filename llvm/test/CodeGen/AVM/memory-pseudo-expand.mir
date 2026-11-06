@@ -11,6 +11,7 @@
 name: expand_memory
 body: |
   bb.0:
+    liveins: $r4
     ; CHECK-LABEL: name: expand_memory
     ; CHECK: $r5 = LD8U $r4
     ; CHECK-NEXT: $r0 = F5LD8U $r4

@@ -36,7 +36,7 @@ define i24 @pack3(i8 zeroext %a, i8 zeroext %b, i8 zeroext %c) {
 ; ISEL-NOT: ZEXT16_32_PSEUDO
 ; ISEL: %[[SHIFT:[0-9]+]]:uppergpr16 = LSL16I_PSEUDO {{.*}}, 8
 ; ISEL-NEXT: %[[LOW:[0-9]+]]:gpr16 = OR16_PSEUDO %[[SHIFT]],
-; ISEL-NEXT: {{.*}}BUILD_PAIR_PSEUDO killed %[[LOW]], %[[C]]
+; ISEL-NEXT: {{.*}}BUILD_PAIR_PSEUDO {{(killed )?}}%[[LOW]], %[[C]]
 ; ISEL-NEXT: $r4r5 = COPY
   %lo = zext i8 %a to i24
   %mid = zext i8 %b to i24

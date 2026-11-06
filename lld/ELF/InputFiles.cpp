@@ -871,26 +871,6 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats,
       continue;
     }
 
-    // Processor-specific types that do not use the following switch statement.
-    //
-    // Extract Build Attributes section contents into aarch64BAsubSections.
-    // Input objects may contain both build Build Attributes and GNU
-    // properties. We delay processing Build Attributes until we have finished
-    // reading all sections so that we can check that these are consistent.
-    if (type == SHT_AARCH64_ATTRIBUTES && ctx.arg.emachine == EM_AARCH64) {
-      ArrayRef<uint8_t> contents = check(obj.getSectionContents(sec));
-      AArch64AttributeParser attributes;
-      if (Error e = attributes.parse(contents, ELFT::Endianness)) {
-        StringRef name = check(obj.getSectionName(sec, shstrtab));
-        InputSection isec(*this, sec, name);
-        Warn(ctx) << &isec << ": " << std::move(e);
-      } else {
-        aarch64BAsubSections = extractBuildAttributesSubsections(attributes);
-        hasAArch64BuildAttributes = true;
-      }
-      this->sections[i] = &InputSection::discarded;
-      continue;
-    }
     if (emachine == EM_AVM && (sec.sh_flags & SHF_ALLOC)) {
       StringRef name = check(obj.getSectionName(sec, shstrtab));
       const uint64_t space = sec.sh_flags &
@@ -921,6 +901,26 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats,
       }
     }
 
+    // Processor-specific types that do not use the following switch statement.
+    //
+    // Extract Build Attributes section contents into aarch64BAsubSections.
+    // Input objects may contain both build Build Attributes and GNU
+    // properties. We delay processing Build Attributes until we have finished
+    // reading all sections so that we can check that these are consistent.
+    if (type == SHT_AARCH64_ATTRIBUTES && ctx.arg.emachine == EM_AARCH64) {
+      ArrayRef<uint8_t> contents = check(obj.getSectionContents(sec));
+      AArch64AttributeParser attributes;
+      if (Error e = attributes.parse(contents, ELFT::Endianness)) {
+        StringRef name = check(obj.getSectionName(sec, shstrtab));
+        InputSection isec(*this, sec, name);
+        Warn(ctx) << &isec << ": " << std::move(e);
+      } else {
+        aarch64BAsubSections = extractBuildAttributesSubsections(attributes);
+        hasAArch64BuildAttributes = true;
+      }
+      this->sections[i] = &InputSection::discarded;
+      continue;
+    }
     switch (type) {
     case SHT_GROUP: {
       if (!ctx.arg.relocatable)

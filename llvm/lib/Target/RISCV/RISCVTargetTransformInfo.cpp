@@ -1578,7 +1578,6 @@ RISCVTTIImpl::getStridedMemoryOpCost(const MemIntrinsicCostAttributes &MICA,
   // Cost is proportional to the number of memory operations implied.  For
   // scalable vectors, we use an estimate on that number since we don't
   // know exactly what VL will be.
-  // FIXME: This will overcost for i64 on rv32 with +zve64x.
   auto &VTy = *cast<VectorType>(DataTy);
   unsigned NumLoads = getEstimatedVLFor(&VTy);
   // Performant implementations of the vector extension will coalesce

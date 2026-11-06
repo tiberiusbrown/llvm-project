@@ -8,7 +8,7 @@ declare float @retfloat()
 declare ptr @retptr()
 declare ptr addrspace(1) @retprogptr()
 
-define signext i8 @tail8() {
+define signext i8 @tail8() nounwind {
 ; CHECK-LABEL: tail8:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp ret8
@@ -19,7 +19,7 @@ define signext i8 @tail8() {
   %r = tail call signext i8 @ret8()
   ret i8 %r
 }
-define i32 @tail32() {
+define i32 @tail32() nounwind {
 ; CHECK-LABEL: tail32:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp ret32
@@ -30,7 +30,7 @@ define i32 @tail32() {
   %r = tail call i32 @ret32()
   ret i32 %r
 }
-define i64 @tail64() {
+define i64 @tail64() nounwind {
 ; CHECK-LABEL: tail64:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp ret64
@@ -41,7 +41,7 @@ define i64 @tail64() {
   %r = tail call i64 @ret64()
   ret i64 %r
 }
-define float @tailfloat() {
+define float @tailfloat() nounwind {
 ; CHECK-LABEL: tailfloat:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp retfloat
@@ -52,7 +52,7 @@ define float @tailfloat() {
   %r = tail call float @retfloat()
   ret float %r
 }
-define ptr @tailptr() {
+define ptr @tailptr() nounwind {
 ; CHECK-LABEL: tailptr:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp retptr
@@ -63,7 +63,7 @@ define ptr @tailptr() {
   %r = tail call ptr @retptr()
   ret ptr %r
 }
-define ptr addrspace(1) @tailprogptr() {
+define ptr addrspace(1) @tailprogptr() nounwind {
 ; CHECK-LABEL: tailprogptr:
 ; CHECK: adjsp 1
 ; CHECK-NEXT: jmp retprogptr

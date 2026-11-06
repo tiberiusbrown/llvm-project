@@ -175,7 +175,7 @@ public:
     updated.AddThread(m_thread);
     return true;
   }
-  size_t DoReadMemory(addr_t address, void *out, size_t size,
+  size_t DoReadMemory(const ProcessAddress &process_addr, void *out, size_t size,
                       Status &error) override;
   size_t DoWriteMemory(addr_t address, const void *bytes, size_t size,
                        Status &error) override;
@@ -441,7 +441,7 @@ public:
 protected:
   void DoExecute(llvm::StringRef command, CommandReturnObject &result) override {
     Args args(command);
-    ProcessSP process = GetTarget().GetProcessSP();
+    ProcessSP process = GetTarget()->GetProcessSP();
     if (!process || process->GetPluginName() != "avm") {
       result.GetErrorStream().PutCString(
           "{\"ok\":false,\"error\":\"avm commands require a launched AVM process\"}\n");
@@ -511,11 +511,11 @@ protected:
             interpreter_hex = avm.InterpreterHexPath();
           }
           avm_debug::SourceMaps maps;
-          auto &path_map = GetTarget().GetSourcePathMap();
+          auto &path_map = GetTarget()->GetSourcePathMap();
           for (uint32_t i = 0; i < path_map.GetSize(); ++i) {
-            ConstString old_path, new_path;
+            std::string old_path, new_path;
             if (path_map.GetPathsAtIndex(i, old_path, new_path))
-              maps.emplace_back(old_path.GetCString(), new_path.GetCString());
+              maps.emplace_back(old_path, new_path);
           }
           avm_debug::symbolize_profile(profile, elf, maps);
           if (profile.window.native)
@@ -575,7 +575,7 @@ protected:
         llvm::StringRef verb = arg(1);
         if (verb == "delete") {
           uint64_t id = unsignedArgument(arg(2), "watchpoint id");
-          if (id > UINT32_MAX || !GetTarget().RemoveWatchpointByID(id))
+          if (id > UINT32_MAX || !GetTarget()->RemoveWatchpointByID(id))
             throw std::invalid_argument("unknown AVM watchpoint id");
           out.Printf("{\"deleted_watchpoint\":%" PRIu64 "}\n", id);
         } else {
@@ -591,7 +591,7 @@ protected:
               size > 0xa00 - address)
             throw std::invalid_argument("AVM watchpoint must be within data RAM 0x100-0x9ff");
           Status error;
-          WatchpointSP watchpoint = GetTarget().CreateWatchpoint(
+          WatchpointSP watchpoint = GetTarget()->CreateWatchpoint(
               0x01000000 + address, size, nullptr, kind, error);
           if (!watchpoint)
             throw std::runtime_error(error.AsCString("cannot create AVM watchpoint"));
@@ -950,8 +950,10 @@ Status ProcessAVM::DoResume(RunDirection direction) {
   return {};
 }
 
-size_t ProcessAVM::DoReadMemory(addr_t address, void *out, size_t size,
+size_t ProcessAVM::DoReadMemory(const ProcessAddress &process_addr, void *out,
+                                size_t size,
                                 Status &error) {
+  addr_t address = process_addr.GetValue();
   try {
     auto guard = LockEmulator();
     bool data_space = address >= 0x01000000 && address < 0x01010000;

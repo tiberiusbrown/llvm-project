@@ -19,14 +19,14 @@ void throw_int() { throw 3; }
 
 // The class descriptor and its name are linkonce_odr program-space objects. The
 // address point is a plain getelementptr with no inbounds flag.
-// CHECK-DAG: @_ZTI5Plain = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 2), ptr addrspace(1) @_ZTS5Plain }
+// CHECK-DAG: @_ZTI5Plain = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 6), ptr addrspace(1) @_ZTS5Plain }
 // CHECK-DAG: @_ZTS5Plain = linkonce_odr {{.*}}addrspace(1) constant [7 x i8] c"5Plain\00"
-// CHECK-DAG: @_ZTI4Dtor = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 2), ptr addrspace(1) @_ZTS4Dtor }
+// CHECK-DAG: @_ZTI4Dtor = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv117__class_type_infoE, i24 6), ptr addrspace(1) @_ZTS4Dtor }
 // CHECK-DAG: @_ZTS4Dtor = linkonce_odr {{.*}}addrspace(1) constant [6 x i8] c"4Dtor\00"
 
 // The fundamental descriptor for int is emitted locally, not declared as an
 // external standard-library object.
-// CHECK-DAG: @_ZTIi = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (ptr addrspace(1), ptr addrspace(1) @_ZTVN10__cxxabiv123__fundamental_type_infoE, i24 2), ptr addrspace(1) @_ZTSi }
+// CHECK-DAG: @_ZTIi = linkonce_odr {{.*}}addrspace(1) constant { ptr addrspace(1), ptr addrspace(1) } { ptr addrspace(1) getelementptr (i8, ptr addrspace(1) @_ZTVN10__cxxabiv123__fundamental_type_infoE, i24 6), ptr addrspace(1) @_ZTSi }
 
 // The runtime's vtables are declared in program space with 24-bit entries. The
 // zero-length declaration is not indexed by an inbounds address calculation.

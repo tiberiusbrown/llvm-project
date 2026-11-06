@@ -65,12 +65,12 @@ void AVM::AddClangCXXStdlibIncludeArgs(const ArgList &Args,
 }
 
 void AVM::addClangTargetOptions(const ArgList &, ArgStringList &CC1Args,
-                                Action::OffloadKind) const {
+                                BoundArch, Action::OffloadKind) const {
   // The SDK has its own headers; host headers must never leak into a build.
   CC1Args.push_back("-nostdsysteminc");
 }
 
-DerivedArgList *AVM::TranslateArgs(const DerivedArgList &Args, StringRef,
+DerivedArgList *AVM::TranslateArgs(const DerivedArgList &Args, BoundArch,
                                    Action::OffloadKind) const {
   auto *DAL = new DerivedArgList(Args.getBaseArgs());
   const OptTable &Opts = getDriver().getOpts();

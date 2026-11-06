@@ -41,6 +41,7 @@ Register AVMInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
   if ((MI.getOpcode() == AVM::STACK_STORE16_PSEUDO ||
        MI.getOpcode() == AVM::STACK_STORE32_PSEUDO) &&
       MI.getOperand(0).isFI() && MI.getOperand(1).getImm() == 0 &&
+      !MI.getOperand(2).getSubReg() &&
       !MI.hasOrderedMemoryRef()) {
     FrameIndex = MI.getOperand(0).getIndex();
     return MI.getOperand(2).getReg();
@@ -197,11 +198,28 @@ void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
                                        MachineInstr::MIFlag Flags) const {
   MachineFunction &MF = *MBB.getParent();
   const MachineFrameInfo &MFI = MF.getFrameInfo();
+  unsigned SubReg = 0;
+  unsigned Offset = 0;
+  if (SrcReg.isVirtual() && AVM::GPR32RegClass.hasSubClassEq(RC)) {
+    // Splitting a live interval can leave only one word defined. A full-pair
+    // spill would overwrite the other word of the original spill slot with
+    // an unrelated physical-register value. Preserve that word in memory.
+    if (const MachineInstr *Def = MF.getRegInfo().getUniqueVRegDef(SrcReg))
+      for (const MachineOperand &MO : Def->all_defs())
+        if (MO.getReg() == SrcReg && MO.isUndef() &&
+            (MO.getSubReg() == AVM::sub_lo16 ||
+             MO.getSubReg() == AVM::sub_hi16)) {
+          SubReg = MO.getSubReg();
+          Offset = SubReg == AVM::sub_hi16 ? 2 : 0;
+          break;
+        }
+  }
   MachineMemOperand *MMO = MF.getMachineMemOperand(
-      MachinePointerInfo::getFixedStack(MF, FrameIndex),
-      MachineMemOperand::MOStore, MFI.getObjectSize(FrameIndex), Align(1));
+      MachinePointerInfo::getFixedStack(MF, FrameIndex, Offset),
+      MachineMemOperand::MOStore,
+      SubReg ? 2 : MFI.getObjectSize(FrameIndex), Align(1));
   unsigned Opcode;
-  if (AVM::GPR16RegClass.hasSubClassEq(RC))
+  if (SubReg || AVM::GPR16RegClass.hasSubClassEq(RC))
     Opcode = AVM::STACK_STORE16_PSEUDO;
   else if (AVM::GPR32RegClass.hasSubClassEq(RC))
     Opcode = AVM::STACK_STORE32_PSEUDO;
@@ -210,8 +228,8 @@ void AVMInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
   DebugLoc DL = MI == MBB.end() ? DebugLoc() : MI->getDebugLoc();
   BuildMI(MBB, MI, DL, get(Opcode))
       .addFrameIndex(FrameIndex)
-      .addImm(0)
-      .addReg(SrcReg, getKillRegState(IsKill))
+      .addImm(Offset)
+      .addReg(SrcReg, getKillRegState(IsKill), SubReg)
       .addMemOperand(MMO)
       .setMIFlag(Flags);
 }

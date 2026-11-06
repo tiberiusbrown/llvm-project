@@ -440,6 +440,13 @@ Error DWARFDebugFrame::parseCFIProgram(FrameEntry &Entry) const {
   assert(Offset >= Entry.getOffset() && Offset <= EndOffset &&
          "entry does not know where its instructions begin");
   DWARFDataExtractor EntryData = *Data;
+  // Lazy parsing starts from the section extractor, whose address size may
+  // differ from the size encoded in this entry's CIE.
+  const CIE *Cie = dyn_cast<CIE>(&Entry);
+  if (!Cie)
+    Cie = cast<FDE>(&Entry)->getLinkedCIE();
+  if (Cie)
+    EntryData.setAddressSize(Cie->getAddressSize());
   // Clear previous unsuccessful parsing attempts, if any.
   Entry.cfis().clear();
   if (Error E = Entry.cfis().parse(EntryData, &Offset, EndOffset))

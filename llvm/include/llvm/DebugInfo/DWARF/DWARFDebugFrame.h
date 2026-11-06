@@ -141,6 +141,7 @@ public:
   uint64_t getCodeAlignmentFactor() const { return CodeAlignmentFactor; }
   int64_t getDataAlignmentFactor() const { return DataAlignmentFactor; }
   uint8_t getVersion() const { return Version; }
+  uint8_t getAddressSize() const { return AddressSize; }
   uint64_t getReturnAddressRegister() const { return ReturnAddressRegister; }
   std::optional<uint64_t> getPersonalityAddress() const { return Personality; }
   std::optional<uint32_t> getPersonalityEncoding() const {

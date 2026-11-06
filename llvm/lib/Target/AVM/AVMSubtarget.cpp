@@ -4,6 +4,7 @@
 #include "AVMSelectionDAGInfo.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/LibcallLoweringInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 
@@ -71,6 +72,11 @@ static ScheduleDAGSDNodes *createAVMDAGScheduler(SelectionDAGISel *IS,
 RegisterScheduler::FunctionPassCtor
 AVMSubtarget::getDAGScheduler(CodeGenOptLevel OptLevel) const {
   return OptLevel == CodeGenOptLevel::None ? nullptr : createAVMDAGScheduler;
+}
+
+void AVMSubtarget::initLibcallLoweringInfo(
+    LibcallLoweringInfo &Info) const {
+  TLInfo.configureLibcallLoweringInfo(Info);
 }
 
 AVMSubtarget &AVMSubtarget::initializeSubtargetDependencies(StringRef CPU,

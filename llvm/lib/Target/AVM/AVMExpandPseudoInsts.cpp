@@ -31,7 +31,8 @@ public:
       return AVM::UpperGPR16RegClass.contains(Reg);
     };
     auto EmitMove = [&](MachineBasicBlock &MBB, MachineInstr &Before,
-                        Register Dest, Register Src, unsigned SrcState = 0) {
+                        Register Dest, Register Src,
+                        RegState SrcState = RegState::NoFlags) {
       if (Dest == Src)
         return;
 
@@ -153,7 +154,7 @@ public:
         case AVM::COPY16_PSEUDO:
           EmitMove(MBB, MI, MI.getOperand(0).getReg(),
                    MI.getOperand(1).getReg(),
-                   MI.getOperand(1).isKill() ? RegState::Kill : 0);
+                   getKillRegState(MI.getOperand(1).isKill()));
           MI.eraseFromParent();
           Changed = true;
           continue;
@@ -171,7 +172,7 @@ public:
             Register DestHi = TRI.getSubReg(Dest, AVM::sub_hi16);
             Register SrcLo = TRI.getSubReg(Src, AVM::sub_lo16);
             Register SrcHi = TRI.getSubReg(Src, AVM::sub_hi16);
-            unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+            RegState Kill = getKillRegState(MI.getOperand(1).isKill());
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::MOV), DestLo)
                 .addReg(SrcLo, Kill);
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::MOV), DestHi)
@@ -229,7 +230,7 @@ public:
             // When Src is the low destination, its value survives as part
             // of the result even if the pseudo's input was marked killed.
             EmitMove(MBB, MI, Hi, Src,
-                     MI.getOperand(1).isKill() && Src != Lo ? RegState::Kill : 0);
+                     getKillRegState(MI.getOperand(1).isKill() && Src != Lo));
             BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(AVM::ASR16I), Hi)
                 .addReg(Hi)
                 .addImm(15);
@@ -245,7 +246,7 @@ public:
           Register DestLo = TRI.getSubReg(Dest, AVM::sub_lo16);
           Register DestHi = TRI.getSubReg(Dest, AVM::sub_hi16);
           EmitMove(MBB, MI, DestHi, Src,
-                   MI.getOperand(1).isKill() ? RegState::Kill : 0);
+                   getKillRegState(MI.getOperand(1).isKill()));
           EmitImmediate(MBB, MI, DestLo, 0);
           MI.eraseFromParent();
           Changed = true;
@@ -997,7 +998,7 @@ public:
           uint64_t Offset = MI.getOperand(0).getImm();
           if (!isUInt<8>(Offset + 2))
             report_fatal_error("AVM outgoing pointer offset exceeds u8");
-          unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+          RegState Kill = getKillRegState(MI.getOperand(1).isKill());
           unsigned LoOpcode =
               PreferCompact(IsUpper(Lo) && isUInt<4>(Offset),
                             AVM::STSP16_COMPACT, AVM::AVMCostKind::StSp16Short,
@@ -1026,7 +1027,7 @@ public:
           uint64_t Offset = MI.getOperand(0).getImm();
           if (!isUInt<8>(Offset + 2))
             report_fatal_error("AVM outgoing i32 argument offset exceeds u8");
-          unsigned Kill = MI.getOperand(1).isKill() ? RegState::Kill : 0;
+          RegState Kill = getKillRegState(MI.getOperand(1).isKill());
           auto EmitWord = [&](Register Reg, uint64_t WordOffset) {
             unsigned Opcode = PreferCompact(
                 IsUpper(Reg) && isUInt<4>(WordOffset), AVM::STSP16_COMPACT,
