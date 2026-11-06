@@ -1,0 +1,88 @@
+# RUN: llc -mtriple=avm -run-pass=avm-system-service-regions \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  define void @wide_load_sum() { ret void }
+  define void @reused_load() { ret void }
+  define void @compact_words() { ret void }
+...
+---
+name: wide_load_sum
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %0:gpr32 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; The old accumulator remains read-only; consume the loaded pair.
+    ; CHECK-LABEL: name: wide_load_sum
+    ; CHECK: [[ACC:%[0-9]+]]:gpr32 = PHI
+    ; CHECK: [[INPUT:%[0-9]+]]:gpr32 = LOAD32_PSEUDO
+    ; CHECK: {{%[0-9]+}}:gpr32 = ADD32_FIXED_RHS_PSEUDO [[INPUT]], [[ACC]]
+    %2:gpr32 = PHI %0, %bb.0, %4, %bb.1
+    %3:gpr32 = LOAD32_PSEUDO %1 :: (load (s32), align 1)
+    %4:gpr32 = ADD32_PSEUDO %2, %3
+    CMP32_PSEUDO %4, %0, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    $r4r5 = COPY %4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...
+---
+name: reused_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %0:gpr32 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; A load that is still needed cannot be consumed by the addition.
+    ; CHECK-LABEL: name: reused_load
+    ; CHECK-NOT: ADD32_FIXED_RHS_PSEUDO
+    ; CHECK: RET_PSEUDO
+    %2:gpr32 = PHI %0, %bb.0, %4, %bb.1
+    %3:gpr32 = LOAD32_PSEUDO %1 :: (load (s32), align 1)
+    %4:gpr32 = ADD32_PSEUDO %2, %3
+    CMP32_PSEUDO %4, %3, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    $r4r5 = COPY %4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...
+---
+name: compact_words
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %0:gpr32 = IMPLICIT_DEF
+    %1:uppergpr16 = IMPLICIT_DEF
+    %2:uppergpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; A pair of compact word results should remain the addition's destination.
+    ; CHECK-LABEL: name: compact_words
+    ; CHECK: [[ACC:%[0-9]+]]:gpr32 = PHI
+    ; CHECK: [[INPUT:%[0-9]+]]:gpr32 = BUILD_PAIR_PSEUDO
+    ; CHECK: {{%[0-9]+}}:gpr32 = ADD32_FIXED_RHS_PSEUDO [[INPUT]], [[ACC]]
+    %3:gpr32 = PHI %0, %bb.0, %7, %bb.1
+    %4:gpr16 = OR16_PSEUDO %1, %2
+    %5:gpr16 = OR16_PSEUDO %2, %1
+    %6:gpr32 = BUILD_PAIR_PSEUDO %4, %5
+    %7:gpr32 = ADD32_PSEUDO %3, %6
+    CMP32_PSEUDO %7, %0, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    $r4r5 = COPY %7
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4r5
+...

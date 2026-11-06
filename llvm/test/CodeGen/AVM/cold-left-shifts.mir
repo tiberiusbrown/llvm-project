@@ -1,0 +1,57 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @cold_shift_with_scratch() { ret void }
+  define void @keep_live_upper_registers() { ret void }
+  define void @keep_two_shifts() { ret void }
+...
+---
+name: cold_shift_with_scratch
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r1, $cc
+    ; CHECK-LABEL: name: cold_shift_with_scratch
+    ; CHECK: $r4 = LDI8 8
+    ; CHECK-NEXT: $r1 = MUL16 $r1, killed $r4
+    ; CHECK-NOT: LSL16_1
+    ; CHECK: RET
+    $r1 = LSL16_1 $r1
+    $r1 = LSL16_1 $r1
+    $r1 = LSL16_1 $r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r1, implicit $cc
+...
+---
+name: keep_live_upper_registers
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r1, $r4r5, $r6r7
+    ; CHECK-LABEL: name: keep_live_upper_registers
+    ; CHECK-NOT: MUL16
+    ; CHECK: $r1 = LSL16_1 $r1
+    ; CHECK-NEXT: $r1 = LSL16_1 $r1
+    ; CHECK-NEXT: $r1 = LSL16_1 $r1
+    ; CHECK: RET
+    $r1 = LSL16_1 $r1
+    $r1 = LSL16_1 $r1
+    $r1 = LSL16_1 $r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r1, implicit $r4r5, implicit $r6r7
+...
+---
+name: keep_two_shifts
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r1
+    ; CHECK-LABEL: name: keep_two_shifts
+    ; CHECK-NOT: MUL16
+    ; CHECK: $r1 = LSL16_1 $r1
+    ; CHECK-NEXT: $r1 = LSL16_1 $r1
+    ; CHECK: RET
+    $r1 = LSL16_1 $r1
+    $r1 = LSL16_1 $r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r1
+...

@@ -1,0 +1,62 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  source_filename = "debug.c"
+  target triple = "avm"
+  define void @debug_constant() !dbg !4 { ret void, !dbg !7 }
+  define void @numbered_constant() { ret void }
+  define void @numbered_copy() { ret void }
+  !llvm.dbg.cu = !{!0}
+  !llvm.module.flags = !{!3}
+  !0 = distinct !DICompileUnit(language: DW_LANG_C11, file: !1, producer: "test", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug)
+  !1 = !DIFile(filename: "debug.c", directory: "/tmp")
+  !2 = !DISubroutineType(types: !{})
+  !3 = !{i32 2, !"Debug Info Version", i32 3}
+  !4 = distinct !DISubprogram(name: "debug_constant", scope: !1, file: !1, line: 1, type: !2, scopeLine: 1, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, retainedNodes: !5)
+  !5 = !{!6}
+  !6 = !DILocalVariable(name: "value", scope: !4, file: !1, line: 1, type: !8)
+  !7 = !DILocation(line: 1, column: 1, scope: !4)
+  !8 = !DIBasicType(name: "unsigned int", size: 16, encoding: DW_ATE_unsigned)
+...
+---
+name: debug_constant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: debug_constant
+    ; CHECK: $r4 = LDI8 32
+    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK-NEXT: DBG_VALUE $r4, $noreg
+    $r4 = LDI8 32
+    $r5 = MOV $r4
+    DBG_VALUE $r4, $noreg, !6, !DIExpression(), debug-location !7
+    $r4 = LDI16 258
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r5
+...
+---
+name: numbered_constant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: numbered_constant
+    ; CHECK: $r4 = LDI8 32, debug-instr-number 1
+    ; CHECK-NEXT: $r5 = MOV $r4
+    $r4 = LDI8 32, debug-instr-number 1
+    $r5 = MOV $r4
+    $r4 = LDI16 258
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r5
+...
+---
+name: numbered_copy
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: numbered_copy
+    ; CHECK: $r4 = LDI8 32
+    ; CHECK-NEXT: $r5 = MOV $r4, debug-instr-number 1
+    $r4 = LDI8 32
+    $r5 = MOV $r4, debug-instr-number 1
+    $r4 = LDI16 258
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r5
+...

@@ -8,7 +8,9 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
+#include "llvm/CodeGen/LiveRegUnits.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -24,6 +26,54 @@ using namespace llvm;
 #define PASS_NAME "AVM late peephole"
 
 namespace {
+
+// Use one canonical representation for live words. A pair and its two words
+// describe the same physical state, but LivePhysRegs can alternate between
+// those representations around a cycle when aliases are partially defined.
+// Register-unit transfer and canonical pair packing give a monotone finite
+// dataflow problem, including loops with mixed word/pair operations.
+static void recomputeCanonicalLiveIns(MachineFunction &MF,
+                                      const AVMRegisterInfo &TRI) {
+  const MachineRegisterInfo &MRI = MF.getRegInfo();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  for (MachineBasicBlock &MBB : MF)
+    MBB.clearLiveIns();
+  bool Changed;
+  do {
+    Changed = false;
+    for (MachineBasicBlock &MBB : llvm::reverse(MF)) {
+      LiveRegUnits Live(TRI);
+      for (const MachineBasicBlock *Succ : MBB.successors())
+        for (const auto &LI : Succ->liveins())
+          Live.addRegMasked(LI.PhysReg, LI.LaneMask);
+      if (MBB.isReturnBlock() && MFI.isCalleeSavedInfoValid())
+        for (const CalleeSavedInfo &Info : MFI.getCalleeSavedInfo())
+          if (Info.isRestored())
+            Live.addReg(Info.getReg());
+      for (const MachineInstr &MI : llvm::reverse(MBB))
+        Live.stepBackward(MI);
+
+      std::vector<MachineBasicBlock::RegisterMaskPair> Old;
+      MBB.clearLiveIns(Old);
+      for (MCPhysReg Pair : {AVM::R0R1, AVM::R2R3, AVM::R4R5, AVM::R6R7}) {
+        MCPhysReg Lo = TRI.getSubReg(Pair, AVM::sub_lo16);
+        MCPhysReg Hi = TRI.getSubReg(Pair, AVM::sub_hi16);
+        bool LoLive = !MRI.isReserved(Lo) && !Live.available(Lo);
+        bool HiLive = !MRI.isReserved(Hi) && !Live.available(Hi);
+        if (LoLive && HiLive && !MRI.isReserved(Pair))
+          MBB.addLiveIn(Pair);
+        else {
+          if (LoLive)
+            MBB.addLiveIn(Lo);
+          if (HiLive)
+            MBB.addLiveIn(Hi);
+        }
+      }
+      MBB.sortUniqueLiveIns();
+      Changed |= Old != MBB.getLiveIns();
+    }
+  } while (Changed);
+}
 
 static bool isWordStackStore(const MachineInstr &MI) {
   return MI.getOpcode() == AVM::STSP16_COMPACT ||
@@ -84,6 +134,369 @@ static bool removeRedundantStackReloads(MachineBasicBlock &MBB,
       // Keep the saved value for other readers, but extend its register lifetime
       // past the store if register allocation marked that use as a kill.
       Store->getOperand(1).setIsKill(false);
+    Changed = true;
+  }
+  return Changed;
+}
+
+// When a constant's original register dies at the following copy, define
+// the copied register directly. This remains cheaper even if that changes an
+// upper immediate into its cold encoding, and does not introduce a scratch.
+static bool retargetImmediateCopies(MachineBasicBlock &MBB,
+                                    const AVMInstrInfo &TII) {
+  MachineFunction &MF = *MBB.getParent();
+  if (!MF.getProperties().hasProperty(
+          MachineFunctionProperties::Property::TracksLiveness))
+    return false;
+  const auto &TRI = TII.getRegisterInfo();
+  bool Changed = false;
+  for (auto It = MBB.begin(); It != MBB.end(); ++It) {
+    unsigned Opcode = It->getOpcode();
+    bool Byte = Opcode == AVM::LDI8 || Opcode == AVM::COLDLDI8;
+    bool Immediate = Byte || Opcode == AVM::LDI16 || Opcode == AVM::COLDLDI16;
+    bool Zero = (Opcode == AVM::SUB || Opcode == AVM::SUB_RR ||
+                 Opcode == AVM::XOR || Opcode == AVM::XOR_RR) &&
+                It->getNumOperands() == 3 && It->getOperand(0).isReg() &&
+                It->getOperand(1).isReg() && It->getOperand(2).isReg() &&
+                It->getOperand(0).getReg() == It->getOperand(1).getReg() &&
+                It->getOperand(0).getReg() == It->getOperand(2).getReg();
+    if ((!Immediate && !Zero) || It->isBundled() ||
+        (Immediate && It->getNumOperands() != 2))
+      continue;
+    auto Copy = std::next(It);
+    if (Copy == MBB.end() || Copy->isBundled() ||
+        (Copy->getOpcode() != AVM::MOV && Copy->getOpcode() != AVM::MOV_RR) ||
+        Copy->getNumOperands() != 2 || Copy->getOperand(1).isUndef())
+      continue;
+    Register Source = It->getOperand(0).getReg();
+    Register Dest = Copy->getOperand(0).getReg();
+    if (!AVM::GPR16RegClass.contains(Source, Dest) ||
+        Copy->getOperand(1).getReg() != Source || TRI.regsOverlap(Source, Dest))
+      continue;
+    // Keep debug-only locations in the original register. Numbered copy
+    // definitions can also be referenced without a register DBG_VALUE use.
+    if (It->peekDebugInstrNum() || Copy->peekDebugInstrNum())
+      continue;
+    bool DebugUse = false;
+    for (MCRegAliasIterator Alias(Source, &TRI, true); Alias.isValid(); ++Alias)
+      for (const MachineOperand &Use : MF.getRegInfo().use_operands(*Alias))
+        DebugUse |= Use.getParent()->isDebugInstr();
+    if (DebugUse)
+      continue;
+    LivePhysRegs Live(TRI);
+    Live.addLiveOuts(MBB);
+    for (auto Scan = MBB.end(), End = std::next(Copy); Scan != End;)
+      Live.stepBackward(*--Scan);
+    if (Live.contains(Source))
+      continue;
+    bool Upper = AVM::UpperGPR16RegClass.contains(Dest);
+    if (Zero) {
+      // A cold self-subtract is cheaper than the cold XOR encoding. Neither
+      // operation changes the architectural condition byte.
+      It->setDesc(TII.get(Upper ? AVM::XOR : AVM::SUB_RR));
+      for (unsigned I = 1; I != 3; ++I) {
+        It->getOperand(I).setReg(Dest);
+        It->getOperand(I).setIsUndef(true);
+        It->getOperand(I).setIsKill(false);
+      }
+    } else {
+      It->setDesc(TII.get(Byte ? (Upper ? AVM::LDI8 : AVM::COLDLDI8)
+                               : (Upper ? AVM::LDI16 : AVM::COLDLDI16)));
+    }
+    It->getOperand(0).setReg(Dest);
+    It->getOperand(0).setIsDead(Copy->getOperand(0).isDead());
+    Copy->eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
+// Both copies of a constant must remain available, but its first definition
+// need not be in the colder register pair. Materialize into upper registers
+// and copy back when that gives the same final state with cheaper encodings.
+static bool materializePairConstantsInUpperRegisters(MachineBasicBlock &MBB,
+                                                     const AVMInstrInfo &TII) {
+  const AVMRegisterInfo &TRI = TII.getRegisterInfo();
+  bool Changed = false;
+  for (MachineInstr &Copy : MBB) {
+    if (Copy.getOpcode() != AVM::MOV32_F2 || Copy.getNumOperands() != 2 ||
+        Copy.getOperand(1).isUndef())
+      continue;
+    Register Dest = Copy.getOperand(0).getReg();
+    Register Source = Copy.getOperand(1).getReg();
+    if (!AVM::UpperGPR32RegClass.contains(Dest) ||
+        AVM::UpperGPR32RegClass.contains(Source) ||
+        !AVM::GPR32RegClass.contains(Source) || TRI.regsOverlap(Dest, Source))
+      continue;
+
+    auto Last = Copy.getIterator();
+    if (Last == MBB.begin())
+      continue;
+    --Last;
+    if (Last == MBB.begin())
+      continue;
+    auto First = std::prev(Last);
+    Register SourceWords[] = {TRI.getSubReg(Source, AVM::sub_lo16),
+                              TRI.getSubReg(Source, AVM::sub_hi16)};
+    Register DestWords[] = {TRI.getSubReg(Dest, AVM::sub_lo16),
+                            TRI.getSubReg(Dest, AVM::sub_hi16)};
+    unsigned Opcodes[2], Indices[2];
+    MachineInstr *Definitions[] = {&*First, &*Last};
+    bool Valid = true;
+    for (unsigned I = 0; I != 2; ++I) {
+      MachineInstr &Def = *Definitions[I];
+      if (!Def.getNumOperands() || !Def.getOperand(0).isReg()) {
+        Valid = false;
+        break;
+      }
+      Register Word = Def.getOperand(0).getReg();
+      if (Word != SourceWords[0] && Word != SourceWords[1]) {
+        Valid = false;
+        break;
+      }
+      Indices[I] = Word == SourceWords[1];
+      switch (Def.getOpcode()) {
+      case AVM::COLDLDI8:
+      case AVM::COLDLDI16:
+        Valid = Def.getNumOperands() == 2 && Def.getOperand(1).isImm();
+        Opcodes[I] = Def.getOpcode() == AVM::COLDLDI8 ? AVM::LDI8 : AVM::LDI16;
+        break;
+      case AVM::SUB_RR:
+      case AVM::XOR_RR:
+        Valid = Def.getNumOperands() == 3 &&
+                Def.getOperand(1).isReg() && Def.getOperand(2).isReg() &&
+                Def.getOperand(1).getReg() == Word &&
+                Def.getOperand(2).getReg() == Word;
+        Opcodes[I] = Def.getOpcode() == AVM::SUB_RR ? AVM::SUB : AVM::XOR;
+        break;
+      default:
+        Valid = false;
+        break;
+      }
+      if (!Valid)
+        break;
+    }
+    if (!Valid || Indices[0] == Indices[1])
+      continue;
+
+    for (unsigned I = 0; I != 2; ++I) {
+      MachineInstr &Def = *Definitions[I];
+      Def.setDesc(TII.get(Opcodes[I]));
+      for (MachineOperand &MO : Def.operands()) {
+        if (!MO.isReg())
+          continue;
+        MO.setReg(DestWords[Indices[I]]);
+        if (MO.isDef())
+          MO.setIsDead(false);
+        else {
+          // A self-subtract/xor does not read its old destination value.
+          MO.setIsUndef(true);
+          MO.setIsKill(false);
+        }
+      }
+    }
+    Copy.getOperand(0).setReg(Source);
+    Copy.getOperand(0).setIsDead(false);
+    Copy.getOperand(1).setReg(Dest);
+    Copy.getOperand(1).setIsKill(false);
+    // SUB and XOR preserve architectural CC, as do loads and copies.
+    Changed = true;
+  }
+  return Changed;
+}
+
+static bool isPlainPhysicalCopy(const MachineInstr &MI) {
+  return (MI.getOpcode() == AVM::MOV || MI.getOpcode() == AVM::MOV_RR ||
+          MI.getOpcode() == AVM::MOV32 || MI.getOpcode() == AVM::MOV32_F2) &&
+         MI.getNumOperands() == 2 && !MI.getOperand(1).isUndef();
+}
+
+// A fallthrough block can repeat a copy already made on its only incoming
+// edge. Prove equality backwards rather than assuming allocation kept either
+// register unchanged. Stop at joins, cycles, calls and every overlapping def.
+static bool removeCopiesFromSinglePredecessors(MachineBasicBlock &MBB,
+                                               const AVMRegisterInfo &TRI) {
+  bool Changed = false;
+  for (auto It = MBB.begin(); It != MBB.end();) {
+    MachineInstr &Copy = *It++;
+    if (!isPlainPhysicalCopy(Copy))
+      continue;
+    Register Dest = Copy.getOperand(0).getReg();
+    Register Source = Copy.getOperand(1).getReg();
+    if ((!AVM::GPR16RegClass.contains(Dest, Source) &&
+         !AVM::GPR32RegClass.contains(Dest, Source)) ||
+        TRI.regsOverlap(Dest, Source))
+      continue;
+
+    MachineBasicBlock *Block = &MBB;
+    MachineBasicBlock::iterator Scan = Copy.getIterator();
+    SmallPtrSet<MachineBasicBlock *, 8> Visited;
+    Visited.insert(Block);
+    SmallVector<MachineInstr *, 32> Instructions;
+    bool Proven = false;
+    unsigned Budget = 64;
+    while (Budget && !Proven) {
+      bool Clobbered = false;
+      while (Scan != Block->begin() && Budget) {
+        --Budget;
+        MachineInstr &MI = *--Scan;
+        Instructions.push_back(&MI);
+        if (MI.isCall() || MI.isInlineAsm() || MI.isBundled()) {
+          Clobbered = true;
+          break;
+        }
+        if (isPlainPhysicalCopy(MI) &&
+            ((MI.getOperand(0).getReg() == Dest &&
+              MI.getOperand(1).getReg() == Source) ||
+             (MI.getOperand(0).getReg() == Source &&
+              MI.getOperand(1).getReg() == Dest))) {
+          Proven = true;
+          break;
+        }
+        // modifiesRegister also checks aliases and register-mask clobbers.
+        if (MI.modifiesRegister(Dest, &TRI) ||
+            MI.modifiesRegister(Source, &TRI)) {
+          Clobbered = true;
+          break;
+        }
+      }
+      if (Proven || Clobbered || !Budget || Block->pred_size() != 1 ||
+          Block->hasAddressTaken() || Block->isEHPad())
+        break;
+      Block = *Block->pred_begin();
+      if (!Visited.insert(Block).second)
+        break;
+      Scan = Block->end();
+    }
+    if (!Proven)
+      continue;
+    // The earlier destination can now be live across the block boundary.
+    for (MachineInstr *MI : Instructions)
+      for (MachineOperand &MO : MI->operands())
+        if (MO.isReg() && MO.getReg().isPhysical() &&
+            (TRI.regsOverlap(MO.getReg(), Dest) ||
+             TRI.regsOverlap(MO.getReg(), Source))) {
+          if (MO.isDef())
+            MO.setIsDead(false);
+          else
+            MO.setIsKill(false);
+        }
+    Copy.eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
+// Upper-register shifts by three use three cheap ADDs, but the same cold
+// sequence costs three full encodings. When a dead upper scratch is available,
+// a multiply by eight computes the same wrapping word in fewer cycles.
+static bool combineColdLeftShifts(MachineBasicBlock &MBB,
+                                   const AVMInstrInfo &TII) {
+  MachineFunction &MF = *MBB.getParent();
+  if (!MF.getProperties().hasProperty(
+          MachineFunctionProperties::Property::TracksLiveness))
+    return false;
+  const auto &TRI = TII.getRegisterInfo();
+  bool Changed = false;
+  for (auto It = MBB.begin(); It != MBB.end();) {
+    auto First = It++;
+    if (First->getOpcode() != AVM::LSL16_1 || First->isBundled())
+      continue;
+    Register Dest = First->getOperand(0).getReg();
+    if (!AVM::GPR16RegClass.contains(Dest) ||
+        AVM::UpperGPR16RegClass.contains(Dest))
+      continue;
+    auto End = First;
+    unsigned Count = 0;
+    while (End != MBB.end() && Count != 3 &&
+           End->getOpcode() == AVM::LSL16_1 && !End->isBundled() &&
+           End->getOperand(0).getReg() == Dest &&
+           End->getOperand(1).getReg() == Dest) {
+      ++Count;
+      ++End;
+    }
+    if (Count != 3)
+      continue;
+    LivePhysRegs Live(TRI);
+    Live.addLiveOuts(MBB);
+    for (auto Scan = MBB.end(); Scan != End;)
+      Live.stepBackward(*--Scan);
+    Register Scratch;
+    for (MCPhysReg Candidate : {AVM::R4, AVM::R5, AVM::R6, AVM::R7})
+      if (Live.available(MF.getRegInfo(), Candidate)) {
+        Scratch = Candidate;
+        break;
+      }
+    if (!Scratch)
+      continue;
+    DebugLoc DL = First->getDebugLoc();
+    BuildMI(MBB, First, DL, TII.get(AVM::LDI8), Scratch).addImm(8);
+    BuildMI(MBB, First, DL, TII.get(AVM::MUL16), Dest)
+        .addReg(Dest)
+        .addReg(Scratch, RegState::Kill);
+    It = MBB.erase(First, End);
+    Changed = true;
+  }
+  return Changed;
+}
+
+// A cold constant immediately used by an upper-register bitwise operation
+// pays for both the cold load and the full operation. Use a dead upper scratch
+// for the constant and compact operation, retaining the original cold value
+// for any later users. The extra copy costs less than these two encoding gains.
+static bool materializeBitwiseConstantsInUpperRegisters(
+    MachineBasicBlock &MBB, const AVMInstrInfo &TII) {
+  MachineFunction &MF = *MBB.getParent();
+  if (!MF.getProperties().hasProperty(
+          MachineFunctionProperties::Property::TracksLiveness))
+    return false;
+  const auto &TRI = TII.getRegisterInfo();
+  bool Changed = false;
+  for (auto It = MBB.begin(); It != MBB.end(); ++It) {
+    if ((It->getOpcode() != AVM::COLDLDI8 &&
+         It->getOpcode() != AVM::COLDLDI16) ||
+        It->isBundled() || It->getNumOperands() != 2)
+      continue;
+    auto User = std::next(It);
+    if (User == MBB.end() || User->isBundled() ||
+        User->getNumOperands() != 3)
+      continue;
+    unsigned Compact;
+    switch (User->getOpcode()) {
+    case AVM::AND_RR: Compact = AVM::AND; break;
+    case AVM::OR_RR: Compact = AVM::OR; break;
+    case AVM::XOR_RR: Compact = AVM::XOR; break;
+    default: continue;
+    }
+    Register Constant = It->getOperand(0).getReg();
+    Register Dest = User->getOperand(0).getReg();
+    if (!AVM::GPR16RegClass.contains(Constant) ||
+        AVM::UpperGPR16RegClass.contains(Constant) ||
+        !AVM::UpperGPR16RegClass.contains(Dest) ||
+        User->getOperand(1).getReg() != Dest ||
+        User->getOperand(2).getReg() != Constant)
+      continue;
+    LivePhysRegs Live(TRI);
+    Live.addLiveOuts(MBB);
+    for (auto Scan = MBB.end(), End = std::next(User); Scan != End;)
+      Live.stepBackward(*--Scan);
+    Register Scratch;
+    for (MCPhysReg Candidate : {AVM::R4, AVM::R5, AVM::R6, AVM::R7})
+      if (Candidate != Dest && Live.available(MF.getRegInfo(), Candidate)) {
+        Scratch = Candidate;
+        break;
+      }
+    if (!Scratch)
+      continue;
+    It->setDesc(TII.get(It->getOpcode() == AVM::COLDLDI8 ? AVM::LDI8
+                                                       : AVM::LDI16));
+    It->getOperand(0).setReg(Scratch);
+    It->getOperand(0).setIsDead(false);
+    BuildMI(MBB, User, It->getDebugLoc(), TII.get(AVM::MOV_RR), Constant)
+        .addReg(Scratch);
+    User->setDesc(TII.get(Compact));
+    User->getOperand(2).setReg(Scratch);
+    User->getOperand(2).setIsKill(true);
     Changed = true;
   }
   return Changed;
@@ -1136,16 +1549,28 @@ public:
     const AVMInstrInfo &TII = *MF.getSubtarget<AVMSubtarget>().getInstrInfo();
     bool Changed = false;
     for (MachineBasicBlock &MBB : MF) {
+      Changed |= materializePairConstantsInUpperRegisters(MBB, TII);
+      Changed |= combineColdLeftShifts(MBB, TII);
       Changed |= removeRedundantStackReloads(MBB, TII.getRegisterInfo());
       Changed |= reuseReversedCompare(MBB, TII);
       if (!MF.getFunction().hasOptSize())
         Changed |= selectByBitOne(MBB, TII);
       Changed |= reuseBooleanCompareFlags(MBB, TII);
     }
+    bool ChangedCopies = false;
+    for (MachineBasicBlock &MBB : MF)
+      ChangedCopies |=
+          removeCopiesFromSinglePredecessors(MBB, TII.getRegisterInfo());
+    if (ChangedCopies) {
+      recomputeCanonicalLiveIns(MF, TII.getRegisterInfo());
+      Changed = true;
+    }
     AVMRegisterRange Ranges(MF, TII);
     for (MachineBasicBlock &MBB : MF) {
       Changed |= cleanRegisterAndStackValues(MBB, TII, Ranges);
       Changed |= forwardCompareCopies(MBB, TII);
+      Changed |= retargetImmediateCopies(MBB, TII);
+      Changed |= materializeBitwiseConstantsInUpperRegisters(MBB, TII);
     }
     SmallVector<MachineBasicBlock *, 16> Blocks;
     for (MachineBasicBlock &MBB : MF)
@@ -1165,7 +1590,7 @@ public:
             if (MO.isReg() && MO.isUse())
               MO.setIsKill(false);
       }
-      fullyRecomputeLiveIns(Blocks);
+      recomputeCanonicalLiveIns(MF, TII.getRegisterInfo());
     }
     Changed |= ChangedCFG;
     return Changed;

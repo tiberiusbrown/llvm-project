@@ -52,19 +52,21 @@ define i16 @shared_arrays(i16 %index) {
   ret i16 %result
 }
 
-; Establishing a common object before LSR would change the pointer-IV policy.
-; Merge after loop preparation: keep the scalar index and share its base in
-; the loop's DAG instead of creating additional loop-carried pointers.
+; Merge after generic loop preparation. Once the common object is known,
+; the exact-trip unit-stride loop needs only one pointer IV for all fields,
+; including its exit test, instead of a scalar index plus a dynamic base add.
 define i16 @shared_loop() {
 ; ISEL-LABEL: name: shared_loop
+; ISEL: %[[LOOPSTART:[0-9]+]]:gpr16 = DATA_ADDR_PSEUDO @_MergedGlobals
 ; ISEL: bb.1.loop:
-; ISEL: DATA_ADDR_PSEUDO @_MergedGlobals
-; ISEL: %[[LOOPBASE:[0-9]+]]:gpr16 = ADD16_PSEUDO
+; ISEL: %[[LOOPBASE:[0-9]+]]:gpr16 = PHI %[[LOOPSTART]],
 ; ISEL: LOAD8U_PSEUDO %[[LOOPBASE]]
 ; ISEL: LOAD8U_DISP_PSEUDO %[[LOOPBASE]], 32
 ; ISEL: LOAD8U_DISP_PSEUDO %[[LOOPBASE]], 64
 ; ISEL: LOAD8U_DISP_PSEUDO {{(killed )?}}%[[LOOPBASE]], 96
-; ISEL-NOT: DATA_ADDR_PSEUDO
+; ISEL: %[[NEXT:[0-9]+]]:gpr16 = INC16_PSEUDO %[[LOOPBASE]]
+; ISEL: %[[END:[0-9]+]]:gpr16 = DATA_ADDR_PSEUDO @_MergedGlobals + 32
+; ISEL: CMP16_PSEUDO %[[NEXT]], %[[END]]
 ; ISEL: RET_PSEUDO
 entry:
   br label %loop

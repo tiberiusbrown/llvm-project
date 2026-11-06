@@ -1,0 +1,102 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=register-coalescer \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# An upper scalar recurrence must not constrain an entire program-load pair
+# merely because the recurrence starts with a word from that pair. Local
+# extracts may still coalesce; a copy at the loop boundary retains freedom.
+--- |
+  target triple = "avm"
+  @data = external addrspace(1) global i32
+  define i16 @program_word_recurrence() { ret i16 0 }
+  define i16 @local_program_word() { ret i16 0 }
+  define i16 @local_ram_word() { ret i16 0 }
+  define i16 @stream_parameter_word() { ret i16 0 }
+...
+---
+name: program_word_recurrence
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: program_word_recurrence
+    ; CHECK: %[[PAIR:[0-9]+]]:gpr32 = PLOAD32_PSEUDO
+    ; CHECK: %[[WORD:[0-9]+]]:uppergpr16 = COPY %[[PAIR]].sub_hi16
+    %0:gpr32 = PROG_ADDR_PSEUDO @data
+    %1:gpr32 = PLOAD32_PSEUDO %0 :: (load (s32) from @data, align 1, addrspace 1)
+    %2:uppergpr16 = COPY %1.sub_hi16
+    %3:gpr16 = LDI8_PSEUDO 16
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    ; CHECK-LABEL: bb.1:
+    ; CHECK: %[[WORD]]:uppergpr16 = LSR16I_PSEUDO %[[WORD]], 1
+    %2:uppergpr16 = LSR16I_PSEUDO %2, 1
+    %3:gpr16 = DEC16_PSEUDO %3
+    TST16_PSEUDO %3, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    $r4 = COPY %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# A shared static base reached through COPY/ADD needs a resident pair;
+# a local upper-word shift must not also pin the entire packet to upper pairs.
+---
+name: local_program_word
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: local_program_word
+    ; CHECK: %[[PACKET:[0-9]+]]:gpr32 = PLOAD32_PSEUDO
+    ; CHECK: %[[SCALAR:[0-9]+]]:uppergpr16 = COPY %[[PACKET]].sub_lo16
+    ; CHECK-NEXT: %[[SCALAR]]:uppergpr16 = LSR16I_PSEUDO %[[SCALAR]], 8
+    %0:gpr32 = PROG_ADDR_PSEUDO @data
+    %5:gpr32 = LDI32_PSEUDO 1, 0
+    %6:gpr32 = COPY %0
+    %6:gpr32 = PROG_ADD_PSEUDO %6, %5
+    %1:gpr32 = PLOAD32_PSEUDO %6 :: (load (s32) from @data, align 1, addrspace 1)
+    %2:uppergpr16 = COPY %1.sub_lo16
+    %2:uppergpr16 = LSR16I_PSEUDO %2, 8
+    %4:gpr16 = PLOAD8U_PSEUDO %0 :: (load (s8) from @data, addrspace 1)
+    %2:uppergpr16 = ADD16_PSEUDO %2, %4
+    $r4 = COPY %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# Ordinary local RAM extraction retains the generic coalescing policy.
+---
+name: local_ram_word
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: local_ram_word
+    ; CHECK: %[[RAM:[0-9]+]]:uppergpr32 = LOAD32_PSEUDO
+    ; CHECK: %[[RAM]].sub_lo16:uppergpr32 = LSR16I_PSEUDO %[[RAM]].sub_lo16, 8
+    %0:gpr16 = COPY $r4
+    %1:gpr32 = LOAD32_PSEUDO %0 :: (load (s32), align 1)
+    %2:uppergpr16 = COPY %1.sub_lo16
+    %2:uppergpr16 = LSR16I_PSEUDO %2, 8
+    $r4 = COPY %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# A parameter stream has no separately retained static base; its packet may
+# coalesce locally into an upper pair without that additional pressure.
+---
+name: stream_parameter_word
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; CHECK-LABEL: name: stream_parameter_word
+    ; CHECK: %[[STREAM:[0-9]+]]:uppergpr32 = PLOAD32_PSEUDO
+    ; CHECK: %[[STREAM]].sub_lo16:uppergpr32 = LSR16I_PSEUDO %[[STREAM]].sub_lo16, 8
+    %0:gpr32 = COPY $r4r5
+    %1:gpr32 = PLOAD32_PSEUDO %0 :: (load (s32), align 1, addrspace 1)
+    %2:uppergpr16 = COPY %1.sub_lo16
+    %2:uppergpr16 = LSR16I_PSEUDO %2, 8
+    $r4 = COPY %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...

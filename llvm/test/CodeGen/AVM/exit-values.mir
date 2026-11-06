@@ -1,0 +1,89 @@
+# RUN: llc -mtriple=avm -run-pass=avm-exit-values -verify-machineinstrs -verify-machine-dom-info %s -o - | FileCheck %s
+
+# A null default for a pointer-returning scan must be materialized only on
+# the null-return edges, leaving the input pointer free to use return r4.
+---
+name: scan_exit
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $r6
+    ; CHECK-LABEL: name: scan_exit
+    ; CHECK-NOT: %1:gpr16 = LDI8_PSEUDO 0
+    ; CHECK: %[[ZERO1:[0-9]+]]:gpr16 = LDI8_PSEUDO 0
+    ; CHECK: %[[ZERO2:[0-9]+]]:gpr16 = LDI8_PSEUDO 0
+    ; CHECK: %6:gpr16 = PHI %[[ZERO1]], %bb.{{[0-9]+}}, %3, %bb.3, %[[ZERO2]], %bb.{{[0-9]+}}
+    %0:gpr16 = COPY $r4
+    %1:gpr16 = LDI8_PSEUDO 0
+    %2:gpr16 = COPY $r6
+    TST16_PSEUDO %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.4, 0, implicit $cc
+    JMP_PSEUDO %bb.1
+  bb.1:
+    %3:gpr16 = PHI %0, %bb.0, %4, %bb.2
+    %5:gpr16 = LOAD8U_PSEUDO %3
+    TST8_PSEUDO %5, implicit-def $cc
+    BR_CC_PSEUDO %bb.3, 0, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    %4:gpr16 = INC16_PSEUDO %3
+    TST16_PSEUDO %4, implicit-def $cc
+    BR_CC_PSEUDO %bb.4, 0, implicit $cc
+    JMP_PSEUDO %bb.1
+  bb.3:
+    JMP_PSEUDO %bb.4
+  bb.4:
+    %6:gpr16 = PHI %1, %bb.0, %3, %bb.3, %1, %bb.2
+    $r4 = COPY %6
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# The constant is also needed by a non-PHI use inside the loop.
+---
+name: used_in_loop
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: used_in_loop
+    ; CHECK: %1:gpr16 = LDI8_PSEUDO 0
+    ; CHECK-NOT: LDI8_PSEUDO 0
+    ; CHECK: RET_PSEUDO
+    %0:gpr16 = COPY $r4
+    %1:gpr16 = LDI8_PSEUDO 0
+    JMP_PSEUDO %bb.1
+  bb.1:
+    %2:gpr16 = PHI %0, %bb.0, %4, %bb.1
+    %3:gpr16 = ADD16_PSEUDO %2, %1
+    %4:gpr16 = INC16_PSEUDO %3
+    TST16_PSEUDO %4, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    %5:gpr16 = PHI %1, %bb.1
+    $r4 = COPY %5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# Short conditional returns have no loop over which the constant interferes.
+---
+name: no_loop
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4
+    ; CHECK-LABEL: name: no_loop
+    ; CHECK: %1:gpr16 = LDI8_PSEUDO 0
+    ; CHECK: %2:gpr16 = PHI %1, %bb.0, %0, %bb.1
+    %0:gpr16 = COPY $r4
+    %1:gpr16 = LDI8_PSEUDO 0
+    TST16_PSEUDO %0, implicit-def $cc
+    BR_CC_PSEUDO %bb.2, 0, implicit $cc
+    JMP_PSEUDO %bb.1
+  bb.1:
+    JMP_PSEUDO %bb.2
+  bb.2:
+    %2:gpr16 = PHI %1, %bb.0, %0, %bb.1
+    $r4 = COPY %2
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...

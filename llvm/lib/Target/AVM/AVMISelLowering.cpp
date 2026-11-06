@@ -798,9 +798,10 @@ AVMTargetLowering::AVMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
-  for (unsigned Opcode : {ISD::CTPOP, ISD::CTLZ, ISD::CTLZ_ZERO_POISON,
-                          ISD::CTTZ, ISD::CTTZ_ZERO_POISON})
-    setOperationAction(Opcode, MVT::i16, Expand);
+  setOperationAction(ISD::CTPOP, MVT::i16, Expand);
+  for (unsigned Opcode : {ISD::CTLZ, ISD::CTLZ_ZERO_POISON, ISD::CTTZ,
+                          ISD::CTTZ_ZERO_POISON})
+    setOperationAction(Opcode, MVT::i16, Custom);
   // i32 is also a legal register type without native bit-count instructions.
   // The generic CTLZ expansion introduces CTPOP, so expand that as well.
   for (unsigned Opcode : {ISD::CTPOP})
@@ -1014,6 +1015,15 @@ bool AVMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
   int64_t Width = MemoryVT.getStoreSize();
   if (!Increment || Increment->getSExtValue() != Width ||
       Pointer != Op->getOperand(0))
+    return false;
+  // A conditional result retaining the original RAM address prevents the
+  // postincrement from consuming it. A separate increment can follow that
+  // select, whereas a tied indexed load needs copies before and after it.
+  if (AddressSpace == 0 &&
+      llvm::any_of(Pointer->uses(), [&](const SDUse &Use) {
+        return Use.get() == Pointer &&
+               Use.getUser()->getOpcode() == AVMISD::CMOV;
+      }))
     return false;
   Base = Pointer;
   Offset = DAG.getConstant(Width, SDLoc(N), Pointer.getValueType());
@@ -1259,6 +1269,10 @@ static SDValue getAVMSelect(SDValue True, SDValue False, SDValue CC,
   EVT VT = True.getValueType();
   if (VT == MVT::i32 || VT == MVT::f32) {
     auto GetBits = [](SDValue Value, uint32_t &Bits) {
+      // FP immediate legalization can wrap an integer constant in a bitcast
+      // before the select is lowered. Inspect its exact bits in that form too.
+      while (Value.getOpcode() == ISD::BITCAST)
+        Value = Value.getOperand(0);
       if (const auto *C = dyn_cast<ConstantSDNode>(Value)) {
         Bits = C->getZExtValue();
         return true;
@@ -2281,9 +2295,15 @@ void AVMTargetLowering::ReplaceNodeResults(
                               DAG.getConstant(0, DL, MVT::i32));
     SDValue High = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, Value,
                                DAG.getConstant(1, DL, MVT::i32));
-    unsigned CountOpcode = IsTrailing ? ISD::CTTZ : ISD::CTLZ;
-    SDValue LowCount = DAG.getNode(CountOpcode, DL, MVT::i32, Low);
-    SDValue HighCount = DAG.getNode(CountOpcode, DL, MVT::i32, High);
+    // A zero primary word selects the other word's count, so its zero count
+    // need not be defined. Preserve the requested zero semantics in the other
+    // word, which supplies the result when the entire input is zero.
+    unsigned PrimaryOpcode =
+        IsTrailing ? ISD::CTTZ_ZERO_POISON : ISD::CTLZ_ZERO_POISON;
+    SDValue LowCount = DAG.getNode(IsTrailing ? PrimaryOpcode : N->getOpcode(),
+                                   DL, MVT::i32, Low);
+    SDValue HighCount = DAG.getNode(IsTrailing ? N->getOpcode() : PrimaryOpcode,
+                                    DL, MVT::i32, High);
     SDValue HighIsZero = DAG.getSetCC(
         DL, MVT::i1, High, DAG.getConstant(0, DL, MVT::i32), ISD::SETEQ);
     SDValue LowIsZero = DAG.getSetCC(
@@ -2392,10 +2412,34 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::CTTZ:
   case ISD::CTTZ_ZERO_POISON: {
     SDLoc DL(Op);
+    if (Op.getValueType() == MVT::i16) {
+      // U16TOF is exact for every unsigned word. Isolate the lowest set bit
+      // and read its binary32 exponent instead of expanding a population count
+      // into several dozen integer instructions. No rounding mode can affect
+      // these exact powers of two, and AVM FP operations have no exceptions.
+      SDValue Value = Op.getOperand(0);
+      SDValue Lowest = DAG.getNode(ISD::AND, DL, MVT::i16, Value,
+                                   DAG.getNegative(Value, DL, MVT::i16));
+      SDValue Float = DAG.getNode(ISD::UINT_TO_FP, DL, MVT::f32, Lowest);
+      SDValue Bits = DAG.getNode(ISD::BITCAST, DL, MVT::i32, Float);
+      SDValue Exponent = DAG.getNode(
+          ISD::SRL, DL, MVT::i16, getI32Word(Bits, 1, DL, DAG),
+          DAG.getConstant(7, DL, MVT::i16));
+      SDValue Count = DAG.getNode(ISD::SUB, DL, MVT::i16, Exponent,
+                                  DAG.getConstant(127, DL, MVT::i16));
+      if (Op.getOpcode() == ISD::CTTZ_ZERO_POISON ||
+          DAG.isKnownNeverZero(Value))
+        return Count;
+      SDValue IsZero = DAG.getSetCC(
+          DL, MVT::i1, Value, DAG.getConstant(0, DL, MVT::i16), ISD::SETEQ);
+      return DAG.getSelect(DL, MVT::i16, IsZero,
+                            DAG.getConstant(16, DL, MVT::i16), Count);
+    }
     SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
     SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
-    SDValue LowCount = DAG.getNode(ISD::CTTZ, DL, MVT::i16, Low);
-    SDValue HighCount = DAG.getNode(ISD::CTTZ, DL, MVT::i16, High);
+    // The low-word count is ignored when that word is zero.
+    SDValue LowCount = DAG.getNode(ISD::CTTZ_ZERO_POISON, DL, MVT::i16, Low);
+    SDValue HighCount = DAG.getNode(Op.getOpcode(), DL, MVT::i16, High);
     SDValue HighCountPlusWord = DAG.getNode(
         ISD::ADD, DL, MVT::i16, HighCount,
         DAG.getConstant(16, DL, MVT::i16));
@@ -2408,10 +2452,30 @@ SDValue AVMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::CTLZ:
   case ISD::CTLZ_ZERO_POISON: {
     SDLoc DL(Op);
+    if (Op.getValueType() == MVT::i16) {
+      // All unsigned words are exactly representable in binary32, so its
+      // exponent gives the highest set bit without integer bit propagation.
+      SDValue Value = Op.getOperand(0);
+      SDValue Float = DAG.getNode(ISD::UINT_TO_FP, DL, MVT::f32, Value);
+      SDValue Bits = DAG.getNode(ISD::BITCAST, DL, MVT::i32, Float);
+      SDValue Exponent = DAG.getNode(
+          ISD::SRL, DL, MVT::i16, getI32Word(Bits, 1, DL, DAG),
+          DAG.getConstant(7, DL, MVT::i16));
+      SDValue Count = DAG.getNode(ISD::SUB, DL, MVT::i16,
+                                  DAG.getConstant(142, DL, MVT::i16), Exponent);
+      if (Op.getOpcode() == ISD::CTLZ_ZERO_POISON ||
+          DAG.isKnownNeverZero(Value))
+        return Count;
+      SDValue IsZero = DAG.getSetCC(
+          DL, MVT::i1, Value, DAG.getConstant(0, DL, MVT::i16), ISD::SETEQ);
+      return DAG.getSelect(DL, MVT::i16, IsZero,
+                            DAG.getConstant(16, DL, MVT::i16), Count);
+    }
     SDValue Low = getI32Word(Op.getOperand(0), 0, DL, DAG);
     SDValue High = getI32Word(Op.getOperand(0), 1, DL, DAG);
-    SDValue LowCount = DAG.getNode(ISD::CTLZ, DL, MVT::i16, Low);
-    SDValue HighCount = DAG.getNode(ISD::CTLZ, DL, MVT::i16, High);
+    SDValue LowCount = DAG.getNode(Op.getOpcode(), DL, MVT::i16, Low);
+    // The high-word count is ignored when that word is zero.
+    SDValue HighCount = DAG.getNode(ISD::CTLZ_ZERO_POISON, DL, MVT::i16, High);
     SDValue LowCountPlusWord = DAG.getNode(
         ISD::ADD, DL, MVT::i16, LowCount,
         DAG.getConstant(16, DL, MVT::i16));

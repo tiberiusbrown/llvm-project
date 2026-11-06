@@ -66,13 +66,20 @@ def UpperGPR32 : RegisterClass<"AVM", [i32, f32], 8, (add R4R5, R6R7)>;
 def ProgPtrGPR32 : RegisterClass<"AVM", [i32], 8,
                                  (add R4R5, R6R7, R0R1, R2R3)>;
 
+// A loaded FP operand retained across several fixed operations needs an intact
+// pair before ordinary scalar recurrences occupy one word of every pair.
+def RetainedFP32 : RegisterClass<"AVM", [i32, f32], 8,
+                                 (add R0R1, R2R3, R4R5, R6R7)> {
+  let AllocationPriority = 1;
+}
+
 // Singleton classes are pre-RA fixed-service carriers and operands of other
 // genuinely fixed target operations. System-service pseudos themselves use
 // semantic general classes; the descriptor-driven service passes introduce
 // these carriers only where keeping a value in its ABI register is profitable.
 // Allocate these constrained intervals before ordinary classes so spill
 // products cannot occupy their only register before the ABI setup is assigned.
-let AllocationPriority = 1 in {
+let AllocationPriority = 2 in {
 def R0Only : RegisterClass<"AVM", [i16], 8, (add R0)>;
 def R1Only : RegisterClass<"AVM", [i16], 8, (add R1)>;
 def R2Only : RegisterClass<"AVM", [i16], 8, (add R2)>;

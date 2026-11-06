@@ -6,6 +6,7 @@
 #include "AVMSubtarget.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineCycleAnalysis.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -21,6 +22,33 @@ using namespace llvm;
 AVMInstrInfo::AVMInstrInfo(const AVMSubtarget &STI)
     : AVMGenInstrInfo(STI, RI, AVM::ADJCALLSTACKDOWN, AVM::ADJCALLSTACKUP),
       RI() {}
+
+bool AVMInstrInfo::isSafeToSink(MachineInstr &MI,
+                               MachineBasicBlock *SuccToSinkTo,
+                               MachineCycleInfo *CI) const {
+  if (!CI)
+    return true;
+  CycleRef Cycle = CI->getCycle(MI.getParent());
+  if (!Cycle)
+    return true;
+
+  // Sinking a two-address update of a loop-carried value keeps its input
+  // alive across the source block instead of its fresh result. In AVM's
+  // eight-register file that constraint can spill the recurrence even when
+  // aggregate pressure is unchanged. Keep the update by its header PHI.
+  const MachineRegisterInfo &MRI = MI.getMF()->getRegInfo();
+  for (unsigned I = 0, E = MI.getNumOperands(); I != E; ++I) {
+    const MachineOperand &MO = MI.getOperand(I);
+    if (!MO.isReg() || !MO.isUse() || !MO.getReg().isVirtual() ||
+        !MI.isRegTiedToDefOperand(I))
+      continue;
+    MachineInstr *Def = MRI.getVRegDef(MO.getReg());
+    if (Def && Def->isPHI() && CI->getCycle(Def->getParent()) == Cycle &&
+        CI->isReducible(Cycle) && CI->getHeader(Cycle) == Def->getParent())
+      return false;
+  }
+  return true;
+}
 
 Register AVMInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
                                          int &FrameIndex) const {
@@ -649,6 +677,7 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
            get(AVM::ASR16I).getSize();
   }
   case AVM::ADD16_PSEUDO:
+  case AVM::ADD16_FIXED_RHS_PSEUDO:
   case AVM::SUB16_PSEUDO:
   case AVM::AND16_PSEUDO:
   case AVM::OR16_PSEUDO:
@@ -689,6 +718,7 @@ unsigned AVMInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AVM::CMP16_PSEUDO:
     return IsUpper(MI.getOperand(0)) && IsUpper(MI.getOperand(1)) ? 1 : 2;
   case AVM::ADD32_PSEUDO:
+  case AVM::ADD32_FIXED_RHS_PSEUDO:
   case AVM::SUB32_PSEUDO:
   case AVM::PROG_ADD_PSEUDO:
     return get(AVM::ADD32).getSize() + (MI.getOpcode() == AVM::PROG_ADD_PSEUDO
@@ -882,6 +912,7 @@ unsigned AVMInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
            AVM::getShiftCycles(AVMCostKind::Asr16I, 15);
   }
   case AVM::ADD32_PSEUDO:
+  case AVM::ADD32_FIXED_RHS_PSEUDO:
     return Fixed(AVMCostKind::Add32);
   case AVM::SUB32_PSEUDO:
     return Fixed(AVMCostKind::Sub32);

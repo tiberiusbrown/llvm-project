@@ -229,8 +229,7 @@ name: remove_redundant_zext
 body: |
   bb.0:
     ; CHECK-LABEL: name: remove_redundant_zext
-    ; CHECK: $r4 = LDI8 5
-    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK: $r5 = LDI8 5
     ; CHECK-NOT: ZEXT8
     $r4 = LDI8 5
     $r4 = ZEXT8 $r4

@@ -243,11 +243,13 @@ bool AVMTailDuplication::isAllowedUnmodeledPseudo(const MachineInstr &MI) {
   case AVM::BR_CC_PSEUDO:
   case AVM::JMP_PSEUDO:
   case AVM::ADD16_PSEUDO:
+  case AVM::ADD16_FIXED_RHS_PSEUDO:
   case AVM::SUB16_PSEUDO:
   case AVM::AND16_PSEUDO:
   case AVM::OR16_PSEUDO:
   case AVM::XOR16_PSEUDO:
   case AVM::ADD32_PSEUDO:
+  case AVM::ADD32_FIXED_RHS_PSEUDO:
   case AVM::SUB32_PSEUDO:
   case AVM::AND32_PSEUDO:
   case AVM::OR32_PSEUDO:

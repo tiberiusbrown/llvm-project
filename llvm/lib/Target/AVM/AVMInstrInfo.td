@@ -686,11 +686,16 @@ def PROG_ADDR_PSEUDO
     : AVMRematCodeGenPseudo<(outs GPR32:$dst), (ins AVMImm24:$addr)>;
 def PROG_CANON_PSEUDO : AVMUnary32Pseudo;
 def ADD16_PSEUDO : AVMBinary16Pseudo<add> { let isCommutable = 1; }
+// A short service-result carrier must remain the read-only RHS. Commuting it
+// into the tied destination would extend a singleton ABI register interval.
+def ADD16_FIXED_RHS_PSEUDO : AVMTwoAddr16Pseudo;
 def SUB16_PSEUDO : AVMBinary16Pseudo<sub>;
 def AND16_PSEUDO : AVMBinary16Pseudo<and> { let isCommutable = 1; }
 def OR16_PSEUDO : AVMBinary16Pseudo<or> { let isCommutable = 1; }
 def XOR16_PSEUDO : AVMBinary16Pseudo<xor> { let isCommutable = 1; }
 def ADD32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
+// Preserve a consumed load as the tied destination of a wide accumulation.
+def ADD32_FIXED_RHS_PSEUDO : AVMBinary32Pseudo;
 def SUB32_PSEUDO : AVMBinary32Pseudo;
 def AND32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }
 def OR32_PSEUDO : AVMBinary32Pseudo { let isCommutable = 1; }

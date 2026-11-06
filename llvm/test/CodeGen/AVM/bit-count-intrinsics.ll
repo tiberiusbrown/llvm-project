@@ -20,6 +20,7 @@ define i16 @popcount(i16 %x) {
 
 define i16 @leading_zeros(i16 %x) {
 ; CHECK-LABEL: leading_zeros:
+; CHECK:       u16tof
 ; CHECK:       lsr16
 ; CHECK:       ret
   %count = call i16 @llvm.ctlz.i16(i16 %x, i1 true)
@@ -29,6 +30,7 @@ define i16 @leading_zeros(i16 %x) {
 define i16 @trailing_zeros(i16 %x) {
 ; CHECK-LABEL: trailing_zeros:
 ; CHECK:       and
+; CHECK:       u16tof
 ; CHECK:       ret
   %count = call i16 @llvm.cttz.i16(i16 %x, i1 true)
   ret i16 %count
@@ -36,6 +38,9 @@ define i16 @trailing_zeros(i16 %x) {
 
 define i16 @leading_zeros_defined(i16 %x) {
 ; CHECK-LABEL: leading_zeros_defined:
+; CHECK:       u16tof
+; CHECK:       ret
+; CHECK:       ldi8 r{{[0-7]}}, 16
 ; CHECK:       ret
   %count = call i16 @llvm.ctlz.i16(i16 %x, i1 false)
   ret i16 %count
@@ -43,6 +48,9 @@ define i16 @leading_zeros_defined(i16 %x) {
 
 define i16 @trailing_zeros_defined(i16 %x) {
 ; CHECK-LABEL: trailing_zeros_defined:
+; CHECK:       u16tof
+; CHECK:       ret
+; CHECK:       ldi8 r{{[0-7]}}, 16
 ; CHECK:       ret
   %count = call i16 @llvm.cttz.i16(i16 %x, i1 false)
   ret i16 %count

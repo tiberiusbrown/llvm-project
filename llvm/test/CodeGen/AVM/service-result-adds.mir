@@ -1,0 +1,132 @@
+# RUN: llc -mtriple=avm -run-pass=avm-system-service-regions -verify-machineinstrs %s -o - | FileCheck %s
+# RUN: llc -mtriple=avm -run-pass=avm-system-service-regions,two-address-instruction -verify-machineinstrs %s -o - | FileCheck %s --check-prefix=TWOADDR
+
+---
+name: sum_lengths
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: sum_lengths
+    ; CHECK: %[[FIRST:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %2:gpr16 = nomerge COPY %[[FIRST]]
+    ; CHECK: %[[SECOND:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK-NOT: nomerge COPY %[[SECOND]]
+    ; CHECK: %4:gpr16 = ADD16_FIXED_RHS_PSEUDO %2, %[[SECOND]]
+    ; TWOADDR-LABEL: name: sum_lengths
+    ; TWOADDR: SYS_STRLEN_PSEUDO
+    ; TWOADDR: %[[SECOND:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; TWOADDR: %[[ACC:[0-9]+]]:gpr16 = COPY %2
+    ; TWOADDR-NEXT: %[[ACC]]:gpr16 = ADD16_FIXED_RHS_PSEUDO %[[ACC]], %[[SECOND]]
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = SYS_STRLEN_PSEUDO %0
+    %3:gpr16 = SYS_STRLEN_PSEUDO %1
+    %4:gpr16 = ADD16_PSEUDO %3, %2
+    $r4 = COPY %4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# A later service overwrites the fixed result before the integer add.
+---
+name: intervening_service
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: intervening_service
+    ; CHECK: %[[FIRST:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %[[SNAPSHOT:[0-9]+]]:gpr16 = nomerge COPY %[[FIRST]]
+    ; CHECK: SYS_STRLEN_PSEUDO
+    ; CHECK: %5:gpr16 = ADD16_PSEUDO %[[SNAPSHOT]],
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %4:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = SYS_STRLEN_PSEUDO %0
+    %3:gpr16 = SYS_STRLEN_PSEUDO %1
+    %5:gpr16 = ADD16_PSEUDO %2, %4
+    %6:gpr16 = ADD16_PSEUDO %5, %3
+    $r4 = COPY %6
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# A snapshot with multiple users must stay separate from its fixed carrier.
+---
+name: multiple_uses
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: multiple_uses
+    ; CHECK: %[[RESULT:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %2:gpr16 = nomerge COPY %[[RESULT]]
+    ; CHECK: %3:gpr16 = ADD16_PSEUDO %2, %1
+    ; CHECK: %4:gpr16 = XOR16_PSEUDO %2, %3
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = SYS_STRLEN_PSEUDO %0
+    %3:gpr16 = ADD16_PSEUDO %2, %1
+    %4:gpr16 = XOR16_PSEUDO %2, %3
+    $r4 = COPY %4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# A fixed destination could force the accumulator into the service result's
+# physical register before the add. Its snapshot must remain independent.
+---
+name: fixed_add_destination
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: fixed_add_destination
+    ; CHECK: %[[RESULT:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %2:gpr16 = nomerge COPY %[[RESULT]]
+    ; CHECK: %3:r4only = ADD16_PSEUDO %1, %2
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = SYS_STRLEN_PSEUDO %0
+    %3:r4only = ADD16_PSEUDO %1, %2
+    SYS_DEBUG_PUTC_PSEUDO %3
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+
+# A different fixed value may be reloaded just before its use. That use is a
+# boundary even when there is no overlapping fixed definition in the scan.
+---
+name: intervening_fixed_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: intervening_fixed_use
+    ; CHECK: %[[RESULT:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %2:gpr16 = nomerge COPY %[[RESULT]]
+    ; CHECK: SYS_DEBUG_PUTC_PSEUDO
+    ; CHECK: %4:gpr16 = ADD16_PSEUDO %3, %2
+    %0:gpr16 = IMPLICIT_DEF
+    %1:r4only = IMPLICIT_DEF
+    %2:gpr16 = SYS_STRLEN_PSEUDO %0
+    SYS_DEBUG_PUTC_PSEUDO %1
+    %3:gpr16 = IMPLICIT_DEF
+    %4:gpr16 = ADD16_PSEUDO %3, %2
+    $r4 = COPY %4
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+
+# Extending a singleton result across a deferred reduction tree can evict a
+# more frequently used general value. Fold only an immediate consumer.
+---
+name: deferred_reduction
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: deferred_reduction
+    ; CHECK: %[[RESULT:[0-9]+]]:r4only = SYS_STRLEN_PSEUDO
+    ; CHECK: %3:gpr16 = nomerge COPY %[[RESULT]]
+    ; CHECK: %4:gpr16 = ADD16_PSEUDO %1, %2
+    ; CHECK: %5:gpr16 = ADD16_PSEUDO %4, %3
+    %0:gpr16 = IMPLICIT_DEF
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    %3:gpr16 = SYS_STRLEN_PSEUDO %0
+    %4:gpr16 = ADD16_PSEUDO %1, %2
+    %5:gpr16 = ADD16_PSEUDO %4, %3
+    $r4 = COPY %5
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...

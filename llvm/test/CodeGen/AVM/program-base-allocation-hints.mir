@@ -1,0 +1,35 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=greedy,virt-reg-rewriter \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# A program base retained through a loop should leave compact upper words for
+# the loop's scalar work; the base pair is equally usable by program loads.
+--- |
+  target triple = "avm"
+  @data = external addrspace(1) global i8
+  define i16 @retained_program_base() { ret i16 0 }
+...
+---
+name: retained_program_base
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retained_program_base
+    ; CHECK: $r0r1 = PROG_ADDR_PSEUDO @data
+    %0:gpr32 = PROG_ADDR_PSEUDO @data
+    %1:gpr16 = LDI8_PSEUDO 0
+    %2:gpr16 = LDI8_PSEUDO 16
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    ; CHECK: PLOAD8U_PSEUDO $r0r1
+    %3:gpr16 = PLOAD8U_PSEUDO %0 :: (load (s8) from @data, addrspace 1)
+    %1:gpr16 = ADD16_PSEUDO %1, %3
+    %2:gpr16 = DEC16_PSEUDO %2
+    TST16_PSEUDO %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    $r4 = COPY %1
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...

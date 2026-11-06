@@ -362,6 +362,7 @@ public:
           continue;
         }
         case AVM::ADD16_PSEUDO:
+        case AVM::ADD16_FIXED_RHS_PSEUDO:
           NewOpcode = PreferCompact(IsUpper(MI.getOperand(0).getReg()) &&
                                         IsUpper(MI.getOperand(1).getReg()) &&
                                         IsUpper(MI.getOperand(2).getReg()),
@@ -397,6 +398,7 @@ public:
                                     AVM::XOR_RR, AVM::AVMCostKind::XorFull);
           break;
         case AVM::ADD32_PSEUDO:
+        case AVM::ADD32_FIXED_RHS_PSEUDO:
           NewOpcode = AVM::ADD32;
           break;
         case AVM::SUB32_PSEUDO:

@@ -1,0 +1,109 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @retarget_upper_constant() { ret void }
+  define void @retarget_cold_constant() { ret void }
+  define void @retarget_to_cold_register() { ret void }
+  define void @keep_live_source() { ret void }
+  define void @retarget_zero_to_cold() { ret void }
+  define void @retarget_zero_to_upper() { ret void }
+  define void @keep_live_zero() { ret void }
+...
+---
+name: retarget_upper_constant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retarget_upper_constant
+    ; CHECK: $r5 = LDI8 32
+    ; CHECK-NEXT: $r4 = LDI16 258
+    ; CHECK-NEXT: RET
+    $r4 = LDI8 32
+    $r5 = MOV $r4
+    $r4 = LDI16 258
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r5
+...
+---
+name: retarget_cold_constant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retarget_cold_constant
+    ; CHECK: $r7 = LDI16 12345
+    ; CHECK-NEXT: $r1 = COLDLDI8 3
+    ; CHECK-NEXT: RET
+    $r1 = COLDLDI16 12345
+    $r7 = MOV_RR $r1
+    $r1 = COLDLDI8 3
+    RET implicit-def dead $sp, implicit $sp, implicit $r1, implicit $r7
+...
+---
+name: retarget_to_cold_register
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retarget_to_cold_register
+    ; CHECK: $r0 = COLDLDI8 32
+    ; CHECK-NEXT: $r4 = LDI16 258
+    ; CHECK-NEXT: RET
+    $r4 = LDI8 32
+    $r0 = MOV_RR $r4
+    $r4 = LDI16 258
+    RET implicit-def dead $sp, implicit $sp, implicit $r0, implicit $r4
+...
+---
+name: keep_live_source
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_live_source
+    ; CHECK: $r4 = LDI8 32
+    ; CHECK-NEXT: $r5 = MOV $r4
+    ; CHECK-NEXT: RET
+    $r4 = LDI8 32
+    $r5 = MOV $r4
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r5
+...
+---
+name: retarget_zero_to_cold
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retarget_zero_to_cold
+    ; CHECK: $r3 = SUB_RR undef $r3, undef $r3
+    ; CHECK-NEXT: $r7 = LDI8 1
+    ; CHECK-NEXT: RET
+    $r7 = XOR undef $r7, undef $r7
+    $r3 = MOV_RR $r7
+    $r7 = LDI8 1
+    RET implicit-def dead $sp, implicit $sp, implicit $r3, implicit $r7
+...
+---
+name: retarget_zero_to_upper
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: retarget_zero_to_upper
+    ; CHECK: $r5 = XOR undef $r5, undef $r5
+    ; CHECK-NEXT: $r0 = COLDLDI8 3
+    ; CHECK-NEXT: RET
+    $r0 = SUB_RR undef $r0, undef $r0
+    $r5 = MOV_RR $r0
+    $r0 = COLDLDI8 3
+    RET implicit-def dead $sp, implicit $sp, implicit $r0, implicit $r5
+...
+---
+name: keep_live_zero
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_live_zero
+    ; CHECK: $r7 = XOR undef $r7, undef $r7
+    ; CHECK-NEXT: $r3 = MOV_RR $r7
+    ; CHECK-NEXT: RET
+    $r7 = XOR undef $r7, undef $r7
+    $r3 = MOV_RR $r7
+    RET implicit-def dead $sp, implicit $sp, implicit $r3, implicit $r7
+...

@@ -1,0 +1,68 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @compact_mask_use() { ret void }
+  define void @compact_or_use() { ret void }
+  define void @keep_live_scratches() { ret void }
+  define void @keep_cold_destination() { ret void }
+...
+---
+name: compact_mask_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4, $cc
+    ; CHECK-LABEL: name: compact_mask_use
+    ; CHECK: $r5 = LDI8 63
+    ; CHECK-NEXT: $r2 = MOV_RR $r5
+    ; CHECK-NEXT: $r4 = AND $r4, {{(killed )?}}$r5
+    ; CHECK-NEXT: RET
+    $r2 = COLDLDI8 63
+    $r4 = AND_RR $r4, $r2
+    RET implicit-def dead $sp, implicit $sp, implicit $r4, implicit $r2, implicit $cc
+...
+---
+name: compact_or_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r7
+    ; CHECK-LABEL: name: compact_or_use
+    ; CHECK: $r4 = LDI16 65295
+    ; CHECK-NEXT: $r1 = MOV_RR $r4
+    ; CHECK-NEXT: $r7 = OR $r7, {{(killed )?}}$r4
+    ; CHECK-NEXT: RET
+    $r1 = COLDLDI16 65295
+    $r7 = OR_RR $r7, $r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r7, implicit $r1
+...
+---
+name: keep_live_scratches
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5, $r6r7
+    ; CHECK-LABEL: name: keep_live_scratches
+    ; CHECK: $r2 = COLDLDI8 63
+    ; CHECK-NEXT: $r4 = AND_RR $r4, $r2
+    ; CHECK-NEXT: RET
+    $r2 = COLDLDI8 63
+    $r4 = AND_RR $r4, $r2
+    RET implicit-def dead $sp, implicit $sp, implicit $r4r5, implicit $r6r7, implicit $r2
+...
+---
+name: keep_cold_destination
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r0
+    ; CHECK-LABEL: name: keep_cold_destination
+    ; CHECK: $r2 = COLDLDI8 63
+    ; CHECK-NEXT: $r0 = AND_RR $r0, $r2
+    ; CHECK-NEXT: RET
+    $r2 = COLDLDI8 63
+    $r0 = AND_RR $r0, $r2
+    RET implicit-def dead $sp, implicit $sp, implicit $r0, implicit $r2
+...

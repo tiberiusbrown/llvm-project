@@ -30,6 +30,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVMTarget() {
   initializeAVMCanonicalizeBooleansPass(PR);
   initializeAVMBytePHIsPass(PR);
   initializeAVMLoopStrengthReducePass(PR);
+  initializeAVMUnitStrideLoopsPass(PR);
+  initializeAVMExitValuesPass(PR);
   initializeAVMConstantInitializersPass(PR);
   initializeAVMAggregateReturnsPass(PR);
   initializeAVMAggregateArgumentsPass(PR);
@@ -101,7 +103,7 @@ namespace {
 // GlobalMerge's legacy FunctionPass runs in doInitialization(), before loop
 // strength reduction regardless of its pipeline position. Run its module
 // implementation here instead: merging must expose relative addresses to
-// selection without changing which loop induction variables are selected.
+// selection without changing generic loop induction-variable selection.
 class AVMGlobalMerge : public ModulePass {
   const AVMTargetMachine &TM;
 
@@ -158,8 +160,12 @@ public:
     // selection. The selector can then cost a shared base against independent
     // pointers, including the slower displaced loads. Keep each merged object
     // within the positive displacement window and preserve external symbols.
-    if (getOptLevel() != CodeGenOptLevel::None)
+    if (getOptLevel() != CodeGenOptLevel::None) {
       addPass(new AVMGlobalMerge(getTM<AVMTargetMachine>()));
+      // Now a known common object can replace a scalar index with one
+      // unit-stride pointer, including its exit test, without adding an IV.
+      addPass(createAVMUnitStrideLoopsPass());
+    }
     return false;
   }
 
@@ -178,6 +184,8 @@ public:
     if (getOptLevel() != CodeGenOptLevel::None)
       addPass(createAVMCanonicalizeBooleansPass());
     addPass(createAVMSystemServiceRegionsPass());
+    if (getOptLevel() != CodeGenOptLevel::None)
+      addPass(createAVMExitValuesPass());
   }
 
   void addPreSched2() override {

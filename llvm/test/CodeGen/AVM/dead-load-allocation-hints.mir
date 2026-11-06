@@ -1,0 +1,36 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=greedy,virt-reg-rewriter \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+# Discarded volatile loads may reuse a dying address register. An address
+# still used afterward must remain intact despite the allocation hint.
+--- |
+  target triple = "avm"
+  define void @dead_load_dying_address() { ret void }
+  define void @dead_load_live_address() { ret void }
+...
+---
+name: dead_load_dying_address
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r7
+    %0:gpr16 = COPY $r7
+    ; CHECK-LABEL: name: dead_load_dying_address
+    ; CHECK: dead $r6r7 = LOAD32_PSEUDO killed $r7
+    dead %1:gpr32 = LOAD32_PSEUDO %0 :: (volatile load (s32), align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: dead_load_live_address
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r7
+    %0:gpr16 = COPY $r7
+    ; CHECK-LABEL: name: dead_load_live_address
+    ; CHECK: dead $r4r5 = LOAD32_PSEUDO $r7
+    ; CHECK-NEXT: STORE16_PSEUDO killed $r7, $r7
+    dead %1:gpr32 = LOAD32_PSEUDO %0 :: (volatile load (s32), align 1)
+    STORE16_PSEUDO %0, %0 :: (volatile store (s16), align 1)
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

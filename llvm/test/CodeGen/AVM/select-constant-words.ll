@@ -81,3 +81,19 @@ define i32 @integer_different_words(i16 %a, i16 %b) {
   %r = select i1 %c, i32 305419896, i32 -1698898193
   ret i32 %r
 }
+
+; The floating immediates can already be legalized to bitcasts when they are
+; selected as arithmetic operands. Keep the common zero word shared here too.
+define float @signed_half_bias(float %x) {
+; CHECK-LABEL: signed_half_bias:
+; CHECK:       cmov
+; CHECK-NOT:   cmov
+; CHECK:       fadd
+; CHECK:       ret
+  %bits = bitcast float %x to i32
+  %sign = and i32 %bits, -2147483648
+  %negative = icmp ne i32 %sign, 0
+  %bias = select i1 %negative, float -0.5, float 0.5
+  %r = fadd float %x, %bias
+  ret float %r
+}

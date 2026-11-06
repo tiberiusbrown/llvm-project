@@ -385,9 +385,105 @@ private:
         CurDAG->getMachineNode(AVM::PROG_CANON_PSEUDO, DL, MVT::i32, Value), 0);
   }
 
+  struct ProgramAddress {
+    SDValue Index;
+    const GlobalAddressSDNode *Symbol = nullptr;
+    uint32_t Offset = 0;
+
+    bool hasSameBase(const ProgramAddress &Other) const {
+      return Index == Other.Index &&
+             ((!Symbol && !Other.Symbol) ||
+              (Symbol && Other.Symbol &&
+               Symbol->getGlobal() == Other.Symbol->getGlobal() &&
+               Symbol->getTargetFlags() == Other.Symbol->getTargetFlags()));
+    }
+  };
+
+  static ProgramAddress splitProgramAddress(SDValue Address) {
+    ProgramAddress Parts;
+    for (;;) {
+      Address = stripProgramPointerNormalization(Address);
+      if (Address.getOpcode() != ISD::ADD) {
+        if (Address.getOpcode() != AVMISD::PROG_WRAPPER)
+          Parts.Index = Address;
+        return Parts;
+      }
+      SDValue Left = Address.getOperand(0), Right = Address.getOperand(1);
+      if (isa<ConstantSDNode>(Left) ||
+          Left.getOpcode() == AVMISD::PROG_WRAPPER)
+        std::swap(Left, Right);
+      if (const auto *C = dyn_cast<ConstantSDNode>(Right)) {
+        Parts.Offset += C->getZExtValue();
+        Address = Left;
+        continue;
+      }
+      if (!Parts.Symbol && Right.getOpcode() == AVMISD::PROG_WRAPPER) {
+        Parts.Symbol = dyn_cast<GlobalAddressSDNode>(Right.getOperand(0));
+        if (!Parts.Symbol)
+          return {};
+        Parts.Offset += Parts.Symbol->getOffset();
+        Address = Left;
+        continue;
+      }
+      Parts.Index = Address;
+      return Parts;
+    }
+  }
+
+  // Generic DAG reassociation distributes a shared symbol+index across field
+  // displacements. Reconstruct adjacent program loads here, after combining,
+  // using the first load's native writeback instead of another symbol+index
+  // calculation. In particular, packed 24-bit pointer fields need only one
+  // record address, leaving a register pair free for the loaded pointer.
+  bool formAdjacentProgramLoadPair() {
+    SmallVector<LoadSDNode *, 8> Loads;
+    for (SDNode &N : CurDAG->allnodes())
+      if (auto *Load = dyn_cast<LoadSDNode>(&N);
+          Load && Load->getAddressSpace() == 1 && Load->isSimple() &&
+          Load->isUnindexed() &&
+          Load->getBasePtr().getValueType() == MVT::i32) {
+        EVT VT = Load->getMemoryVT();
+        if (VT == MVT::i8 || VT == MVT::i16 || VT == MVT::i24 ||
+            VT == MVT::i32 || VT == MVT::f32)
+          Loads.push_back(Load);
+      }
+    for (LoadSDNode *First : Loads) {
+      ProgramAddress A = splitProgramAddress(First->getBasePtr());
+      if (!A.Index)
+        continue;
+      unsigned Width = First->getMemoryVT().getStoreSize();
+      for (LoadSDNode *Second : Loads) {
+        if (First == Second)
+          continue;
+        ProgramAddress B = splitProgramAddress(Second->getBasePtr());
+        if (!A.hasSameBase(B) || uint32_t(B.Offset - A.Offset) != Width ||
+            Second->isPredecessorOf(First))
+          continue;
+        SDLoc DL(First);
+        SDValue Indexed = CurDAG->getIndexedLoad(
+            SDValue(First, 0), DL, First->getBasePtr(),
+            CurDAG->getConstant(Width, DL, MVT::i32), ISD::POST_INC);
+        CurDAG->ReplaceAllUsesOfValueWith(SDValue(First, 0), Indexed);
+        CurDAG->ReplaceAllUsesOfValueWith(SDValue(First, 1),
+                                        Indexed.getValue(2));
+        SmallVector<SDValue, 4> Ops(Second->op_begin(), Second->op_end());
+        Ops[1] = Indexed.getValue(1);
+        SDNode *Updated = CurDAG->UpdateNodeOperands(Second, Ops);
+        if (Updated != Second)
+          CurDAG->ReplaceAllUsesWith(Second, Updated);
+        CurDAG->RemoveDeadNodes();
+        return true;
+      }
+    }
+    return false;
+  }
+
   void PreprocessISelDAG() override {
     formAffineStoreValues();
     formSharedDataBases();
+    if (OptLevel != CodeGenOptLevel::None)
+      while (formAdjacentProgramLoadPair())
+        ;
     UnsignedByteInputs.clear();
     for (const auto &[Value, Reg] : FuncInfo->ValueMap)
       if (const auto *I = dyn_cast<Instruction>(Value);
@@ -1117,9 +1213,30 @@ private:
     if (Node->getOpcode() == ISD::TRUNCATE &&
         Node->getOperand(0).getValueType() == MVT::i32 &&
         Node->getValueType(0) == MVT::i16) {
+      SDValue Input = Node->getOperand(0);
+      unsigned SubReg = AVM::sub_lo16;
+      // Extract program-load words directly, avoiding a pair temporary in
+      // byte/word reductions. Keep ordinary pair carriers independent: their
+      // other words may remain live across more arithmetic or calls.
+      bool IsWordShift = Input.getOpcode() == AVMISD::SRL32_16 ||
+          Input.getOpcode() == AVMISD::SRA32_16 ||
+          (Input.isMachineOpcode() &&
+           (Input.getMachineOpcode() == AVM::SRL32_16_PSEUDO ||
+            Input.getMachineOpcode() == AVM::SRA32_16_PSEUDO));
+      SDValue Source = IsWordShift ? Input.getOperand(0) : SDValue();
+      const auto *Load = Source ? dyn_cast<LoadSDNode>(Source) : nullptr;
+      bool IsProgramLoad =
+          (Load && Load->getAddressSpace() == 1 &&
+           Load->getMemoryVT() == MVT::i32) ||
+          (Source && Source.isMachineOpcode() &&
+           (Source.getMachineOpcode() == AVM::PLOAD32_PSEUDO ||
+            Source.getMachineOpcode() == AVM::PLOAD32_POST_PSEUDO));
+      if (IsWordShift && IsProgramLoad) {
+        Input = Source;
+        SubReg = AVM::sub_hi16;
+      }
       SDValue Ops[] = {
-          Node->getOperand(0),
-          CurDAG->getTargetConstant(AVM::sub_lo16, SDLoc(Node), MVT::i32)};
+          Input, CurDAG->getTargetConstant(SubReg, SDLoc(Node), MVT::i32)};
       CurDAG->SelectNodeTo(Node, TargetOpcode::EXTRACT_SUBREG, MVT::i16, Ops);
       return true;
     }

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AVM.h"
+#include "AVMCostModel.h"
 #include "AVMInstrInfo.h"
 #include "AVMSystemServiceInfo.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1106,6 +1107,189 @@ static bool foldOneUseCarrierCopies(MachineFunction &MF,
   return Changed;
 }
 
+// Read a short-lived service result directly as the non-destructive operand
+// of an integer sum. The accumulator stays general, so its lifetime cannot
+// absorb the fixed ABI carrier or extend it across the next service call.
+static bool foldLocalServiceResultAdds(MachineFunction &MF,
+                                       MachineRegisterInfo &MRI,
+                                       const TargetInstrInfo &TII) {
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF)
+    for (auto It = MBB.begin(); It != MBB.end();) {
+      MachineInstr &Copy = *It++;
+      if (!Copy.isFullCopy())
+        continue;
+      Register Dst = Copy.getOperand(0).getReg();
+      Register Src = Copy.getOperand(1).getReg();
+      if (!Dst.isVirtual() || !Src.isVirtual() || !MRI.hasOneUse(Dst) ||
+          !AVM::GPR16RegClass.hasSubClassEq(MRI.getRegClass(Dst)) ||
+          isAVMFixedServiceRegisterClass(MRI.getRegClass(Dst)))
+        continue;
+      const TargetRegisterClass *FixedRC = MRI.getRegClass(Src);
+      MachineInstr *Def = MRI.getVRegDef(Src);
+      if (!isAVMFixedServiceRegisterClass(FixedRC) ||
+          !AVM::GPR16RegClass.hasSubClassEq(FixedRC) ||
+          FixedRC->getNumRegs() != 1 || !Def ||
+          Def->getParent() != &MBB ||
+          !getAVMSystemServiceInfo(Def->getOpcode()))
+        continue;
+      MachineOperand *Use = MRI.getOneNonDBGUse(Dst);
+      if (!Use || Use->getSubReg() ||
+          (Use->getOperandNo() != 1 && Use->getOperandNo() != 2))
+        continue;
+      MachineInstr &Add = *Use->getParent();
+      if (Add.getOpcode() != AVM::ADD16_PSEUDO || Add.getParent() != &MBB)
+        continue;
+      Register Result = Add.getOperand(0).getReg();
+      if (!Result.isVirtual() || Add.getOperand(0).getSubReg() ||
+          !AVM::GPR16RegClass.hasSubClassEq(MRI.getRegClass(Result)) ||
+          isAVMFixedServiceRegisterClass(MRI.getRegClass(Result)))
+        continue;
+      unsigned OtherNo = Use->getOperandNo() == 1 ? 2 : 1;
+      Register Other = Add.getOperand(OtherNo).getReg();
+      if (!Other.isVirtual() || Add.getOperand(OtherNo).getSubReg() ||
+          isAVMFixedServiceRegisterClass(MRI.getRegClass(Other)))
+        continue;
+      // Retaining a fixed result across even a few independent operations
+      // can evict a more valuable general value from an upper register.
+      // Limit this fold to an immediate consumer rather than extending the
+      // carrier through a deferred reduction tree or another fixed use.
+      auto Next = std::next(Copy.getIterator());
+      while (Next != MBB.end() && Next->isMetaInstruction())
+        ++Next;
+      if (Next == MBB.end() || &*Next != &Add)
+        continue;
+      if (OtherNo == 2 && !TII.commuteInstruction(Add))
+        continue;
+      Add.getOperand(2).setReg(Src);
+      Add.getOperand(2).setIsKill(false);
+      MRI.clearKillFlags(Src);
+      Add.setDesc(TII.get(AVM::ADD16_FIXED_RHS_PSEUDO));
+      Copy.eraseFromParent();
+      Changed = true;
+    }
+  return Changed;
+}
+
+// With several byte products, keeping an accumulator in the compact bank
+// through every product can force two temporary spills. Tie the first sum to
+// its consumed product instead, accepting a short backedge copy so the old
+// accumulator can use one spill/reload while the products occupy that bank.
+static bool tieProductSums(MachineFunction &MF, MachineRegisterInfo &MRI,
+                           MachineLoopInfo &MLI, const TargetInstrInfo &TII,
+                           const TargetRegisterInfo &TRI) {
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    MachineLoop *Loop = MLI.getLoopFor(&MBB);
+    if (!Loop || Loop->getHeader() != &MBB || Loop->getNumBlocks() != 1)
+      continue;
+    unsigned Products = 0;
+    bool ByteProduct = false, IntegerOnly = true;
+    for (const MachineInstr &MI : MBB) {
+      if (MI.isCall() || MI.isInlineAsm() ||
+          MI.modifiesRegister(AVM::R4R5, &TRI) ||
+          MI.modifiesRegister(AVM::R6R7, &TRI))
+        IntegerOnly = false;
+      switch (MI.getOpcode()) {
+      case AVM::MUL8_PSEUDO:
+      case AVM::MULU8W_PSEUDO:
+      case AVM::MULU8W_FLEX_PSEUDO:
+      case AVM::MULS8W_PSEUDO:
+      case AVM::MULSU8W_PSEUDO:
+        ByteProduct = true;
+        [[fallthrough]];
+      case AVM::MUL16_PSEUDO:
+        ++Products;
+        break;
+      }
+    }
+    if (!IntegerOnly || !ByteProduct || Products < 3)
+      continue;
+    for (MachineInstr &MI : MBB) {
+      if (MI.getOpcode() != AVM::ADD16_PSEUDO)
+        continue;
+      for (unsigned PhiNo : {1u, 2u}) {
+        Register Acc = MI.getOperand(PhiNo).getReg();
+        Register Product = MI.getOperand(3 - PhiNo).getReg();
+        if (!Acc.isVirtual() || !Product.isVirtual() ||
+            MI.getOperand(PhiNo).getSubReg() ||
+            MI.getOperand(3 - PhiNo).getSubReg() ||
+            !AVM::GPR16RegClass.hasSubClassEq(MRI.getRegClass(Acc)) ||
+            !MRI.hasOneNonDBGUse(Acc) || !MRI.hasOneNonDBGUse(Product))
+          continue;
+        const MachineInstr *Phi = MRI.getUniqueVRegDef(Acc);
+        const MachineInstr *Def = MRI.getUniqueVRegDef(Product);
+        if (!Phi || !Phi->isPHI() || Phi->getParent() != &MBB || !Def ||
+            Def->getParent() != &MBB ||
+            Def->getOpcode() != AVM::MUL16_PSEUDO)
+          continue;
+        if (PhiNo == 1 && !TII.commuteInstruction(MI))
+          continue;
+        MI.setDesc(TII.get(AVM::ADD16_FIXED_RHS_PSEUDO));
+        Changed = true;
+        break;
+      }
+    }
+  }
+  return Changed;
+}
+
+// A wide accumulation need not overwrite its old PHI. Consumed loads and pairs
+// assembled by compact word operations already have a useful result pair;
+// carry the sum through that pair instead of copying it to the accumulator.
+static bool tieWideInputSums(MachineFunction &MF, MachineRegisterInfo &MRI,
+                             MachineLoopInfo &MLI, const TargetInstrInfo &TII) {
+  bool Changed = false;
+  for (MachineBasicBlock &MBB : MF) {
+    MachineLoop *Loop = MLI.getLoopFor(&MBB);
+    if (!Loop || Loop->getHeader() != &MBB || Loop->getNumBlocks() != 1)
+      continue;
+    for (MachineInstr &MI : MBB) {
+      if (MI.getOpcode() != AVM::ADD32_PSEUDO)
+        continue;
+      for (unsigned PhiNo : {1u, 2u}) {
+        Register Acc = MI.getOperand(PhiNo).getReg();
+        Register Input = MI.getOperand(3 - PhiNo).getReg();
+        if (!Acc.isVirtual() || !Input.isVirtual() ||
+            MI.getOperand(PhiNo).getSubReg() ||
+            MI.getOperand(3 - PhiNo).getSubReg() ||
+            !MRI.hasOneNonDBGUse(Acc) || !MRI.hasOneNonDBGUse(Input))
+          continue;
+        const MachineInstr *Phi = MRI.getUniqueVRegDef(Acc);
+        const MachineInstr *Def = MRI.getUniqueVRegDef(Input);
+        if (!Phi || !Phi->isPHI() || Phi->getParent() != &MBB || !Def ||
+            Def->getParent() != &MBB)
+          continue;
+        bool CompactPair = Def->getOpcode() == AVM::BUILD_PAIR_PSEUDO;
+        if (CompactPair)
+          for (unsigned WordNo : {1u, 2u}) {
+            Register Word = Def->getOperand(WordNo).getReg();
+            const MachineInstr *WordDef =
+                Word.isVirtual() ? MRI.getUniqueVRegDef(Word) : nullptr;
+            if (!WordDef || WordDef->getParent() != &MBB ||
+                WordDef->getOpcode() != AVM::OR16_PSEUDO ||
+                !MRI.hasOneNonDBGUse(Word) ||
+                !WordDef->getOperand(1).getReg().isVirtual() ||
+                !WordDef->getOperand(2).getReg().isVirtual() ||
+                !AVM::UpperGPR16RegClass.hasSubClassEq(
+                    MRI.getRegClass(WordDef->getOperand(1).getReg())) ||
+                !AVM::UpperGPR16RegClass.hasSubClassEq(
+                    MRI.getRegClass(WordDef->getOperand(2).getReg())))
+              CompactPair = false;
+          }
+        if (Def->getOpcode() != AVM::LOAD32_PSEUDO && !CompactPair)
+          continue;
+        if (PhiNo == 1 && !TII.commuteInstruction(MI))
+          continue;
+        MI.setDesc(TII.get(AVM::ADD32_FIXED_RHS_PSEUDO));
+        Changed = true;
+        break;
+      }
+    }
+  }
+  return Changed;
+}
+
 class AVMSystemServiceRegions final : public MachineFunctionPass {
 public:
   static char ID;
@@ -1172,11 +1356,16 @@ public:
         }
       }
       Changed |= foldOneUseCarrierCopies(MF, MRI, TRI);
+      Changed |= foldLocalServiceResultAdds(MF, MRI, TII);
+      Changed |= tieProductSums(MF, MRI, MLI, TII, TRI);
+      Changed |= tieWideInputSums(MF, MRI, MLI, TII);
       Changed |= eraseDeadImmediateMaterializations(MF, MRI);
     }
 
-    // Avoid aggressive one-use rematerialization perturbing fixed-carrier
-    // allocation while retaining profitable multi-use immediates.
+    // Avoid aggressive local one-use rematerialization perturbing fixed-carrier
+    // allocation. An invariant with one static loop use is still worth
+    // rematerializing: otherwise that use can reload a spilled constant on
+    // every iteration.
     for (MachineBasicBlock &MBB : MF)
       for (MachineInstr &MI : MBB) {
         unsigned Opcode = MI.getOpcode();
@@ -1196,9 +1385,89 @@ public:
             break;
           Def = Copy.getOperand(0).getReg();
         }
-        if (!Def.isVirtual() || MRI.use_nodbg_empty(Def) ||
-            MRI.hasOneNonDBGUse(Def))
+        if (!Def.isVirtual() || MRI.use_nodbg_empty(Def))
           continue;
+        if (Opcode == AVM::LDI8_PSEUDO &&
+            AVM::GPR16RegClass.hasSubClassEq(MRI.getRegClass(Def))) {
+          const MachineBasicBlock *UseBlock = nullptr;
+          unsigned BitwiseUses = 0;
+          bool Eligible = true;
+          for (const MachineInstr &Use : MRI.use_nodbg_instructions(Def)) {
+            unsigned UseOpcode = Use.getOpcode();
+            if ((UseOpcode != AVM::AND16_PSEUDO &&
+                 UseOpcode != AVM::OR16_PSEUDO &&
+                 UseOpcode != AVM::XOR16_PSEUDO) ||
+                (UseBlock && UseBlock != Use.getParent())) {
+              Eligible = false;
+              break;
+            }
+            UseBlock = Use.getParent();
+            ++BitwiseUses;
+          }
+          MachineLoop *UseLoop = UseBlock ? MLI.getLoopFor(UseBlock) : nullptr;
+          bool InvariantMask = UseLoop && !UseLoop->contains(MI.getParent());
+          // Many unrolled uses can keep a mask resident in the cold bank;
+          // forcing it upper instead recreates it for each short expression.
+          if (Eligible && BitwiseUses <= 3 &&
+              (BitwiseUses >= 3 || InvariantMask) && UseLoop &&
+              llvm::none_of(*UseBlock, [&](const MachineInstr &I) {
+                return I.isCall() || I.isInlineAsm() ||
+                       I.modifiesRegister(AVM::R4R5, &TRI) ||
+                       I.modifiesRegister(AVM::R6R7, &TRI);
+              })) {
+            // A resident invariant mask saves a full bitwise encoding on every
+            // iteration; several local uses can amortize materialization too.
+            // Favor the compact bank for these integer-only loop masks.
+            if (MRI.constrainRegClass(Def, &AVM::UpperGPR16RegClass))
+              Changed = true;
+          }
+        }
+        if (MachineOperand *Use = MRI.getOneNonDBGUse(Def)) {
+          MachineInstr *User = Use->getParent();
+          MachineLoop *UseLoop = MLI.getLoopFor(User->getParent());
+          if (!UseLoop)
+            continue;
+          if (!UseLoop->contains(MI.getParent())) {
+            auto WordCost = [](const MachineOperand &MO) {
+              uint16_t Bits = MO.getImm();
+              return AVM::getFixedCycles(
+                  !Bits ? AVM::AVMCostKind::ClrUpper
+                        : isUInt<8>(Bits) ? AVM::AVMCostKind::Ldi8Upper
+                                         : AVM::AVMCostKind::Ldi16Upper);
+            };
+            // Full-width nonzero words can cost more to materialize than
+            // reloading a short stack slot. Keep those invariants available
+            // to allocation instead of forcing rematerialization.
+            unsigned Words = Opcode == AVM::LDI32_PSEUDO ? 2 : 1;
+            unsigned Cost = WordCost(MI.getOperand(1));
+            if (Words == 2)
+              Cost += WordCost(MI.getOperand(2));
+            if (Cost > Words * AVM::getFixedCycles(AVM::AVMCostKind::LdSp16Short))
+              continue;
+          }
+          if (UseLoop->contains(MI.getParent())) {
+            if (User->isPHI() || MI.getParent() != User->getParent())
+              continue;
+            // A loop-local constant selected before other fixed-register
+            // operations can also be evicted before its sole use. Let the
+            // allocator recreate it at that use instead of spilling a pair.
+            bool CrossesClobber = false;
+            for (auto I = std::next(MI.getIterator()), E = User->getIterator();
+                 I != E; ++I)
+              if (I->isCall() ||
+                  llvm::any_of(I->operands(), [&](const MachineOperand &MO) {
+                    return MO.isReg() && MO.isDef() &&
+                           MO.getReg().isPhysical() &&
+                           (TRI.regsOverlap(MO.getReg(), AVM::R4R5) ||
+                            TRI.regsOverlap(MO.getReg(), AVM::R6R7));
+                  })) {
+                CrossesClobber = true;
+                break;
+              }
+            if (!CrossesClobber)
+              continue;
+          }
+        }
         MI.setFlag(MachineInstr::NoMerge);
         Changed = true;
       }

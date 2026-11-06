@@ -1,0 +1,121 @@
+# RUN: llc -mtriple=avm -run-pass=avm-system-service-regions \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  define void @single_loop_use() { ret void }
+  define void @single_local_use() { ret void }
+  define void @loop_local_clobber() { ret void }
+  define void @expensive_invariant() { ret void }
+  define void @expensive_word_invariant() { ret void }
+...
+---
+name: single_loop_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; A COPY can hide the only static use of a loop-invariant immediate.
+    ; Retain rematerialization rather than a reload on every iteration.
+    ; CHECK-LABEL: name: single_loop_use
+    ; CHECK: %0:gpr32 = nomerge LDI32_PSEUDO 0, 15872
+    %0:gpr32 = LDI32_PSEUDO 0, 15872
+    %1:gpr32 = COPY %0
+    %2:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r6r7 = COPY %1
+    CMP16_PSEUDO %2, %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: single_local_use
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; Local one-use materialization keeps the ordinary allocation policy.
+    ; CHECK-LABEL: name: single_local_use
+    ; CHECK: %0:gpr32 = LDI32_PSEUDO 0, 15872
+    %0:gpr32 = LDI32_PSEUDO 0, 15872
+    $r6r7 = COPY %0
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r6r7
+...
+---
+name: loop_local_clobber
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %1:gpr32 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; A fixed-register operation between a local immediate and its use
+    ; should not force a spill and reload of that immediate.
+    ; CHECK-LABEL: name: loop_local_clobber
+    ; CHECK: {{%[0-9]+}}:gpr32 = nomerge LDI32_PSEUDO 0, 16256
+    %0:gpr32 = LDI32_PSEUDO 0, 16256
+    $r4r5 = COPY %1
+    $r6r7 = COPY %0
+    CMP16_PSEUDO %2, %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: expensive_invariant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; Recreating two full nonzero words costs more than a short pair reload.
+    ; CHECK-LABEL: name: expensive_invariant
+    ; CHECK: %0:gpr32 = LDI32_PSEUDO 63875, 16162
+    %0:gpr32 = LDI32_PSEUDO 63875, 16162
+    %1:gpr32 = COPY %0
+    %2:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r6r7 = COPY %1
+    CMP16_PSEUDO %2, %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...
+---
+name: expensive_word_invariant
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    ; One full nonzero word is likewise more expensive than a short reload.
+    ; CHECK-LABEL: name: expensive_word_invariant
+    ; CHECK: %0:gpr16 = LDI16_PSEUDO 21930
+    %0:gpr16 = LDI16_PSEUDO 21930
+    %1:gpr16 = COPY %0
+    %2:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    $r4 = COPY %1
+    CMP16_PSEUDO %2, %2, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    RET_PSEUDO implicit-def dead $sp, implicit $sp
+...

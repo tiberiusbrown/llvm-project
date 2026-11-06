@@ -35,6 +35,8 @@ public:
   bool isProfitableToFoldRedundantCopy(
       const MachineInstr &PrevCopy, const MachineInstr &Copy,
       const MachineRegisterInfo &MRI) const override;
+  bool isSafeToSink(MachineInstr &MI, MachineBasicBlock *SuccToSinkTo,
+                    MachineCycleInfo *CI) const override;
   Register isLoadFromStackSlot(const MachineInstr &MI,
                                int &FrameIndex) const override;
   Register isLoadFromStackSlot(const MachineInstr &MI, int &FrameIndex,

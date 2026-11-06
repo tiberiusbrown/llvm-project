@@ -1,0 +1,69 @@
+# RUN: llc -mtriple=avm -run-pass=avm-system-service-regions \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  define void @mixed_products() { ret void }
+  define void @word_products() { ret void }
+...
+---
+name: mixed_products
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %0:gpr16 = LDI8_PSEUDO 0
+    %1:uppergpr16 = IMPLICIT_DEF
+    %2:uppergpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; Leave the accumulator read-only while byte products occupy upper regs.
+    ; CHECK-LABEL: name: mixed_products
+    ; CHECK: [[ACC:%[0-9]+]]:gpr16 = PHI
+    ; CHECK: MULU8W_PSEUDO
+    ; CHECK: [[PRODUCT:%[0-9]+]]:gpr16 = MUL16_PSEUDO
+    ; CHECK: {{%[0-9]+}}:gpr16 = ADD16_FIXED_RHS_PSEUDO [[PRODUCT]], [[ACC]]
+    %3:gpr16 = PHI %0, %bb.0, %9, %bb.1
+    %4:gpr16 = MUL16_PSEUDO %1, %2
+    %5:uppergpr16 = MULU8W_PSEUDO %1, %2
+    %6:gpr16 = MUL16_PSEUDO %1, %2
+    %7:gpr16 = ADD16_PSEUDO %3, %6
+    %8:gpr16 = ADD16_PSEUDO %7, %5
+    %9:gpr16 = ADD16_PSEUDO %8, %4
+    CMP16_PSEUDO %9, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    $r4 = COPY %9
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...
+---
+name: word_products
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1
+    %0:gpr16 = LDI8_PSEUDO 0
+    %1:gpr16 = IMPLICIT_DEF
+    %2:gpr16 = IMPLICIT_DEF
+    JMP_PSEUDO %bb.1
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; Ordinary word-only reductions have no upper-byte multiplication pressure.
+    ; CHECK-LABEL: name: word_products
+    ; CHECK-NOT: ADD16_FIXED_RHS_PSEUDO
+    ; CHECK: RET_PSEUDO
+    %3:gpr16 = PHI %0, %bb.0, %9, %bb.1
+    %4:gpr16 = MUL16_PSEUDO %1, %2
+    %5:gpr16 = MUL16_PSEUDO %1, %2
+    %6:gpr16 = MUL16_PSEUDO %1, %2
+    %7:gpr16 = ADD16_PSEUDO %3, %6
+    %8:gpr16 = ADD16_PSEUDO %7, %5
+    %9:gpr16 = ADD16_PSEUDO %8, %4
+    CMP16_PSEUDO %9, %1, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+  bb.2:
+    $r4 = COPY %9
+    RET_PSEUDO implicit-def dead $sp, implicit $sp, implicit $r4
+...

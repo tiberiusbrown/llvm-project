@@ -1,0 +1,64 @@
+# RUN: llc -mtriple=avm -O2 -run-pass=avm-late-peephole \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  target triple = "avm"
+  define void @upper_constant_copy() { ret void }
+  define void @two_immediates() { ret void }
+  define void @keep_partial_constant() { ret void }
+  define void @keep_upper_materialization() { ret void }
+...
+---
+name: upper_constant_copy
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $cc
+    ; CHECK-LABEL: name: upper_constant_copy
+    ; CHECK: $r6 = SUB undef $r6, undef $r6
+    ; CHECK-NEXT: $r7 = LDI16 48768
+    ; CHECK-NEXT: $r0r1 = MOV32_F2 $r6r7
+    ; CHECK-NEXT: RET
+    $r0 = SUB_RR undef $r0, undef $r0
+    $r1 = COLDLDI16 48768
+    $r6r7 = MOV32_F2 $r0r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r0r1, implicit $r6r7, implicit $cc
+...
+---
+name: two_immediates
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: two_immediates
+    ; CHECK: $r5 = LDI16 12345
+    ; CHECK-NEXT: $r4 = LDI8 7
+    ; CHECK-NEXT: $r2r3 = MOV32_F2 $r4r5
+    $r3 = COLDLDI16 12345
+    $r2 = COLDLDI8 7
+    $r4r5 = MOV32_F2 $r2r3
+    RET implicit-def dead $sp, implicit $sp, implicit $r2r3, implicit $r4r5
+...
+---
+name: keep_partial_constant
+body: |
+  bb.0:
+    liveins: $r0
+    ; CHECK-LABEL: name: keep_partial_constant
+    ; CHECK: $r1 = COLDLDI16 48768
+    ; CHECK-NEXT: $r6r7 = MOV32_F2 $r0r1
+    $r1 = COLDLDI16 48768
+    $r6r7 = MOV32_F2 $r0r1
+    RET implicit-def dead $sp, implicit $sp, implicit $r0r1, implicit $r6r7
+...
+---
+name: keep_upper_materialization
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: keep_upper_materialization
+    ; CHECK: $r6 = XOR undef $r6, undef $r6
+    ; CHECK-NEXT: $r7 = LDI16 48768
+    ; CHECK-NEXT: $r0r1 = MOV32_F2 $r6r7
+    $r6 = XOR undef $r6, undef $r6
+    $r7 = LDI16 48768
+    $r0r1 = MOV32_F2 $r6r7
+    RET implicit-def dead $sp, implicit $sp, implicit $r0r1, implicit $r6r7
+...

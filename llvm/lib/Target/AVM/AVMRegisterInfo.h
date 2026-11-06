@@ -26,6 +26,11 @@ public:
   }
   BitVector getReservedRegs(const MachineFunction &MF) const override;
   float getSpillWeightScaleFactor(const TargetRegisterClass *RC) const override;
+  bool getRegAllocationHints(
+      Register VirtReg, ArrayRef<MCPhysReg> Order,
+      SmallSetVector<MCPhysReg, 16> &Hints, const MachineFunction &MF,
+      const VirtRegMap *VRM = nullptr,
+      const LiveRegMatrix *Matrix = nullptr) const override;
   bool regClassPriorityTrumpsGlobalness(const MachineFunction &) const override {
     // Fixed ABI carriers need their only register before general intervals
     // are split into spill products that can no longer be evicted.

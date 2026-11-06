@@ -8,12 +8,14 @@
 #include "AVMSubtarget.h"
 #include "AVMSystemServiceInfo.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/CodeGen/VirtRegMap.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -30,7 +32,72 @@ AVMRegisterInfo::AVMRegisterInfo() : AVMGenRegisterInfo(0) {}
 float AVMRegisterInfo::getSpillWeightScaleFactor(
     const TargetRegisterClass *RC) const {
   // Each word of a register pair requires its own stack transfer.
+  // Retained FP operands additionally compete with fixed operand copies at
+  // several uses; prefer spilling narrower scalar state to repeated pair IO.
+  if (RC == &AVM::RetainedFP32RegClass)
+    return 4.0f;
   return getSpillSize(*RC) / 2.0f;
+}
+
+bool AVMRegisterInfo::getRegAllocationHints(
+    Register VirtReg, ArrayRef<MCPhysReg> Order,
+    SmallSetVector<MCPhysReg, 16> &Hints, const MachineFunction &MF,
+    const VirtRegMap *VRM, const LiveRegMatrix *Matrix) const {
+  bool HardHints = TargetRegisterInfo::getRegAllocationHints(
+      VirtReg, Order, Hints, MF, VRM, Matrix);
+  const MachineRegisterInfo &MRI = MF.getRegInfo();
+  if (MRI.getRegClass(VirtReg) == &AVM::RetainedFP32RegClass) {
+    SmallSetVector<MCPhysReg, 16> Preferred;
+    for (MCPhysReg Pair : {AVM::R2R3, AVM::R0R1})
+      if (is_contained(Order, Pair))
+        Preferred.insert(Pair);
+    Preferred.insert(Hints.begin(), Hints.end());
+    Hints = std::move(Preferred);
+    return HardHints;
+  }
+  if (!AVM::GPR32RegClass.hasSubClassEq(MRI.getRegClass(VirtReg)))
+    return HardHints;
+  const MachineInstr *Def = MRI.getUniqueVRegDef(VirtReg);
+  if (!Def)
+    return HardHints;
+  if (Def->getOpcode() == AVM::PROG_ADDR_PSEUDO &&
+      !MF.getFunction().hasOptSize() &&
+      any_of(MRI.use_nodbg_instructions(VirtReg),
+             [&](const MachineInstr &Use) {
+               return Use.getParent() != Def->getParent();
+             })) {
+    // A retained program base does not need compact scalar encodings. Keep
+    // upper words available for loop masks, shifts and counters instead of
+    // rematerializing the base when those operations compete for the pair.
+    SmallSetVector<MCPhysReg, 16> Preferred;
+    for (MCPhysReg Pair : {AVM::R0R1, AVM::R2R3})
+      if (is_contained(Order, Pair))
+        Preferred.insert(Pair);
+    Preferred.insert(Hints.begin(), Hints.end());
+    Hints = std::move(Preferred);
+    return HardHints;
+  }
+  if (!Def->mayLoad())
+    return HardHints;
+  if (MRI.use_nodbg_empty(VirtReg) && Def->getNumOperands() > 1 &&
+      Def->getOperand(1).isReg()) {
+    Register Address = Def->getOperand(1).getReg();
+    if (Address.isVirtual() && VRM && VRM->hasPhys(Address))
+      Address = VRM->getPhys(Address);
+    // A discarded volatile load can reuse its dying address register. Prefer
+    // that pair over evicting an unrelated live value for its unused result.
+    if (Address.isPhysical())
+      for (MCPhysReg Pair : Order)
+        if (isSubRegister(Pair, Address)) {
+          SmallSetVector<MCPhysReg, 16> Preferred;
+          Preferred.insert(Pair);
+          Preferred.insert(Hints.begin(), Hints.end());
+          Hints = std::move(Preferred);
+          return HardHints;
+        }
+  }
+
+  return HardHints;
 }
 
 const uint16_t *
@@ -66,30 +133,6 @@ static bool crossesFixedServiceClassBoundary(const TargetRegisterClass *SrcRC,
   return NewFixed;
 }
 
-static bool isOneUseGeneralToFixedServiceCopy(MachineInstr *MI) {
-  if (!MI || !MI->isCopy() || MI->getNumExplicitOperands() < 2)
-    return false;
-
-  const MachineOperand &DstMO = MI->getOperand(0);
-  const MachineOperand &SrcMO = MI->getOperand(1);
-  if (!DstMO.isReg() || !SrcMO.isReg())
-    return false;
-  Register Dst = DstMO.getReg();
-  Register Src = SrcMO.getReg();
-  if (!Dst.isVirtual() || !Src.isVirtual())
-    return false;
-
-  MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
-  if (!isAVMFixedServiceRegisterClass(MRI.getRegClass(Dst)) ||
-      isAVMFixedServiceRegisterClass(MRI.getRegClass(Src)) ||
-      !MRI.hasOneNonDBGUse(Src))
-    return false;
-
-  for (const MachineOperand &Use : MRI.use_nodbg_operands(Src))
-    return Use.getParent() == MI && Use.getOperandNo() == 1;
-  return false;
-}
-
 // Fixed service register classes describe short ABI setup/result intervals.
 // They must not absorb a general live interval through coalescing. General and
 // fixed intervals must remain separate so the general interval remains
@@ -103,8 +146,82 @@ bool AVMRegisterInfo::shouldCoalesce(MachineInstr *MI,
     return false;
 
   if (crossesFixedServiceClassBoundary(SrcRC, DstRC, NewRC))
-    //return isOneUseGeneralToFixedServiceCopy(MI);
     return false;
+
+  if ((SrcRC == &AVM::RetainedFP32RegClass ||
+       DstRC == &AVM::RetainedFP32RegClass) &&
+      NewRC != &AVM::RetainedFP32RegClass)
+    return false;
+
+  if (MI && MI->isCopy() && AVM::GPR32RegClass.hasSubClassEq(NewRC)) {
+    const MachineRegisterInfo &MRI = MI->getMF()->getRegInfo();
+    Register Scalar, Pair;
+    const TargetRegisterClass *PairRC = nullptr;
+    if (AVM::GPR16RegClass.hasSubClassEq(SrcRC)) {
+      Scalar = MI->getOperand(1).getReg();
+      Pair = MI->getOperand(0).getReg();
+      PairRC = DstRC;
+    } else if (AVM::GPR16RegClass.hasSubClassEq(DstRC)) {
+      Scalar = MI->getOperand(0).getReg();
+      Pair = MI->getOperand(1).getReg();
+      PairRC = SrcRC;
+    }
+    bool ProgramLoad = false;
+    const MachineInstr *ProgramLoadDef = nullptr;
+    if (Pair.isVirtual())
+      for (const MachineOperand &Def : MRI.def_operands(Pair))
+        if (Def.getOperandNo() == 0 &&
+            (Def.getParent()->getOpcode() == AVM::PLOAD32_PSEUDO ||
+             Def.getParent()->getOpcode() == AVM::PLOAD32_POST_PSEUDO)) {
+          ProgramLoad = true;
+          ProgramLoadDef = Def.getParent();
+          break;
+        }
+    if (ProgramLoad && Scalar.isVirtual()) {
+      // With an independently retained program base, an upper-word shift
+      // should not also restrict an entire packet to the two upper pairs.
+      // Follow copies and pointer arithmetic through PHI elimination to find
+      // a shared static base. A streaming parameter does not impose that same
+      // extra pair pressure and can profitably use an upper packet pair.
+      if (AVM::UpperGPR32RegClass.hasSubClassEq(NewRC) &&
+          !AVM::UpperGPR32RegClass.hasSubClassEq(PairRC)) {
+        unsigned BaseOp =
+            ProgramLoadDef->getOpcode() == AVM::PLOAD32_POST_PSEUDO ? 2 : 1;
+        SmallVector<Register, 8> Worklist{
+            ProgramLoadDef->getOperand(BaseOp).getReg()};
+        SmallDenseSet<Register, 16> Seen;
+        while (!Worklist.empty() && Seen.size() < 64) {
+          Register Address = Worklist.pop_back_val();
+          if (!Address.isVirtual() || !Seen.insert(Address).second)
+            continue;
+          for (const MachineOperand &AddressDef : MRI.def_operands(Address)) {
+            const MachineInstr &Def = *AddressDef.getParent();
+            if (Def.getOpcode() == AVM::PROG_ADDR_PSEUDO &&
+                !MRI.hasOneNonDBGUse(Address))
+              return false;
+            if (Def.isFullCopy() ||
+                Def.getOpcode() == AVM::PROG_CANON_PSEUDO)
+              Worklist.push_back(Def.getOperand(1).getReg());
+            else if (Def.getOpcode() == AVM::PROG_ADD_PSEUDO ||
+                     Def.getOpcode() == AVM::ADD32_PSEUDO) {
+              Worklist.push_back(Def.getOperand(1).getReg());
+              Worklist.push_back(Def.getOperand(2).getReg());
+            } else if (Def.isPHI()) {
+              for (unsigned I = 1; I < Def.getNumOperands(); I += 2)
+                Worklist.push_back(Def.getOperand(I).getReg());
+            } else if (Def.getOpcode() == AVM::PLOAD32_POST_PSEUDO &&
+                       AddressDef.getOperandNo() == 1)
+              Worklist.push_back(Def.getOperand(2).getReg());
+          }
+        }
+      }
+      // Also keep scalar recurrences in other blocks independent of the
+      // packet, rather than restricting every update to even/odd registers.
+      for (const MachineOperand &MO : MRI.reg_nodbg_operands(Scalar))
+        if (MO.getParent()->getParent() != MI->getParent())
+          return false;
+    }
+  }
 
   return true;
 }

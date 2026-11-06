@@ -1,0 +1,104 @@
+# RUN: llc -mtriple=avm -run-pass=avm-fixed-float-regs \
+# RUN:   -verify-machineinstrs %s -o - | FileCheck %s
+
+--- |
+  define float @local_immediate(float %a, float %b) { ret float %a }
+  define float @shared_immediate(float %a, float %b) { ret float %a }
+  define float @nonlocal_immediate(float %a) { ret float %a }
+  define float @straight_line(float %a, float %b) { ret float %a }
+...
+---
+name: local_immediate
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5, $r6r7
+    successors: %bb.1
+    %0:q2only = COPY $r4r5
+    %1:q3only = COPY $r6r7
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    ; The single-use constant and its carrier should move together to the
+    ; second operand setup, after the first operation and its result copy.
+    ; CHECK-LABEL: name: local_immediate
+    ; CHECK-NOT: LDI32_PSEUDO
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    ; CHECK: $r4r5 = COPY %4
+    ; CHECK-NEXT: %2:gpr32 = LDI32_PSEUDO 0, 16256
+    ; CHECK-NEXT: %3:gpr32 = COPY %2
+    ; CHECK-NEXT: $r6r7 = COPY %3
+    ; CHECK-NEXT: $r4r5 = FADD_PSEUDO
+    %2:gpr32 = LDI32_PSEUDO 0, 16256
+    %3:q3only = COPY %2
+    %4:q2only = FADD_PSEUDO %0, %1
+    %5:q2only = FADD_PSEUDO %4, %3
+    %6:gpr16 = IMPLICIT_DEF
+    CMP16_PSEUDO %6, %6, implicit-def $cc
+    BR_CC_PSEUDO %bb.1, 1, implicit $cc
+    JMP_PSEUDO %bb.2
+
+  bb.2:
+    $r4r5 = COPY %5
+    RET_PSEUDO implicit-def $sp, implicit $sp, implicit $r4r5
+...
+---
+name: shared_immediate
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; Shared constants retain their placement and can be rematerialized by
+    ; register allocation when preserving their value would need spills.
+    ; CHECK-LABEL: name: shared_immediate
+    ; CHECK: %1:gpr32 = LDI32_PSEUDO 0, 16256
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    %0:q2only = COPY $r4r5
+    %1:q3only = LDI32_PSEUDO 0, 16256
+    %2:q2only = FADD_PSEUDO %0, %1
+    %3:q2only = FADD_PSEUDO %2, %1
+    $r4r5 = COPY %3
+    RET_PSEUDO implicit-def $sp, implicit $sp, implicit $r4r5
+...
+---
+name: nonlocal_immediate
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5
+    ; Materialization in another block retains its execution frequency.
+    ; CHECK-LABEL: name: nonlocal_immediate
+    ; CHECK: %1:gpr32 = LDI32_PSEUDO 0, 16256
+    ; CHECK-NEXT: JMP_PSEUDO %bb.1
+    %0:q2only = COPY $r4r5
+    %1:q3only = LDI32_PSEUDO 0, 16256
+    JMP_PSEUDO %bb.1
+
+  bb.1:
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    %2:q2only = FADD_PSEUDO %0, %1
+    $r4r5 = COPY %2
+    RET_PSEUDO implicit-def $sp, implicit $sp, implicit $r4r5
+...
+---
+name: straight_line
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $r4r5, $r6r7
+    ; Straight-line kernels keep their original copy hints and scheduling.
+    ; CHECK-LABEL: name: straight_line
+    ; CHECK: %2:gpr32 = LDI32_PSEUDO 0, 16256
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    ; CHECK: $r4r5 = FADD_PSEUDO
+    %0:q2only = COPY $r4r5
+    %1:q3only = COPY $r6r7
+    %2:gpr32 = LDI32_PSEUDO 0, 16256
+    %3:q3only = COPY %2
+    %4:q2only = FADD_PSEUDO %0, %1
+    %5:q2only = FADD_PSEUDO %4, %3
+    $r4r5 = COPY %5
+    RET_PSEUDO implicit-def $sp, implicit $sp, implicit $r4r5
+...
