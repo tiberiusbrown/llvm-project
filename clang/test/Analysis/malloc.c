@@ -870,10 +870,21 @@ void doNotInvalidateWhenPassedToSystemCalls(char *s) {
   strlen(p);
   strcpy(p, s);
   strcpy(s, p);
+  // FIXME: We should stop analysis here, even if we emit no warnings, since
+  // overlapping buffers for strycpy is a fatal error.
   strcpy(p, p);
   memcpy(p, s, 1);
   memcpy(s, p, 1);
   memcpy(p, p, 1);
+} // expected-warning {{leak}}
+
+void overlappingMemcpyDoesNotSinkPath(char *s) {
+  char *p = malloc(12);
+  // FIXME: We should stop analysis here, even if we emit no warnings, since
+  // overlapping buffers for strycpy is a fatal error.
+  int a[4] = {0};
+  memcpy(a+2, a+1, 8);
+  (void)p;
 } // expected-warning {{leak}}
 
 // Treat source buffer contents as escaped.
@@ -1006,6 +1017,21 @@ void testWinWcsdupContentIsDefined(const wchar_t *s, unsigned validIndex) {
   wchar_t result = s2[1];// no warning
   free(s2);
 }
+
+struct if_nameindex { char x; };
+struct if_nameindex *if_nameindex(void);
+void if_freenameindex(struct if_nameindex *ptr);
+
+char testIfnameindex() {
+  struct if_nameindex *i = if_nameindex();
+  return i->x; // expected-warning {{Potential leak of memory pointed to by}}
+}
+
+void testIffreenameindex() {
+  struct if_nameindex *i = if_nameindex();
+  char x = i->x;
+  if_freenameindex(i);
+} // no warning
 
 // ----------------------------------------------------------------------------
 // Test the system library functions to which the pointer can escape.
