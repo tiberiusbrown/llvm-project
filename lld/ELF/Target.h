@@ -92,13 +92,14 @@ public:
                              uint64_t dst) const;
 
   // Function for scanning relocation. Typically overridden by targets that
-  // require special type or addend adjustment.
-  virtual void scanSection(InputSectionBase &);
+  // require special type or addend adjustment. `shard` selects the `relocsVec`
+  // shard that discovered dynamic relocations are appended to.
+  virtual void scanSection(InputSectionBase &, unsigned shard);
   // Called by scanSection as a default implementation for specific ELF
   // relocation types.
-  template <class ELFT> void scanSection1(InputSectionBase &);
+  template <class ELFT> void scanSection1(InputSectionBase &, unsigned shard);
   template <class ELFT, class RelTy>
-  void scanSectionImpl(InputSectionBase &, Relocs<RelTy>);
+  void scanSectionImpl(InputSectionBase &, Relocs<RelTy>, unsigned shard);
 
   virtual void relocate(uint8_t *loc, const Relocation &rel,
                         uint64_t val) const = 0;
@@ -171,6 +172,11 @@ public:
 
   // On PPC ELF V2 abi, the first entry in the .got is the .TOC.
   unsigned gotHeaderEntriesNum = 0;
+
+  // True if the dynamic linker resolves a PLT entry by writing the target
+  // address to a GotPltSection slot (named .plt on PPC). SPARC instead has it
+  // rewrite the PLT entry's instructions, so pltRel applies to .plt.
+  bool usesGotPlt = true;
 
   // On PPC ELF V2 abi, the dynamic section needs DT_PPC64_OPT (DT_LOPROC + 3)
   // to be set to 0x2 if there can be multiple TOC's. Although we do not emit

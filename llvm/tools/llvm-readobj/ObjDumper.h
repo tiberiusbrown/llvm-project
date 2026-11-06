@@ -171,6 +171,7 @@ public:
   // Only implemented for MachO.
   virtual void printMachODataInCode() { }
   virtual void printMachOVersionMin() { }
+  virtual void printMachOTargetTriple() {}
   virtual void printMachODysymtab() { }
   virtual void printMachOSegment() { }
   virtual void printMachOIndirectSymbols() { }
