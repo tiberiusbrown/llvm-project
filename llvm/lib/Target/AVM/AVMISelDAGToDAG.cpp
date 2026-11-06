@@ -1941,6 +1941,14 @@ private:
     int64_t Offset;
     if (!matchFrameAddress(SDValue(Node, 0), FrameIndex, Offset))
       return false;
+    // A converted stack address is also an ordinary i16 integer. Keep
+    // subtraction in register arithmetic: a negative constant is not a
+    // nonnegative displacement within the eventual stack frame. In particular,
+    // range checks can fold ptrtoint(local) - C into this ADD. Materializing
+    // the frame address first preserves i16 wrapping and lets normal selection
+    // use DEC/ADDI.S8 or LDI16+ADD instead of rejecting a frame displacement.
+    if (Offset < 0)
+      return false;
     SDValue TFI = CurDAG->getTargetFrameIndex(FrameIndex, MVT::i16);
     CurDAG->SelectNodeTo(
         Node, AVM::FRAMEADDR_PSEUDO, Node->getValueType(0), TFI,
