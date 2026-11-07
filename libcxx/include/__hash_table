@@ -1008,6 +1008,14 @@ public:
   _LIBCPP_HIDE_FROM_ABI void clear() _NOEXCEPT;
 #if defined(__AVM__)
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) size_type __avm_rehash_size(size_type __n);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) __next_pointer
+  __avm_find_multi(size_t __hash, value_type& __value);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_grow_multi();
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) __next_pointer
+  __avm_multi_hint(const_iterator __p, const value_type& __value);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_insert_multi_before(__node_pointer __cp, __next_pointer __hint);
+
   template <bool _UniqueKeys>
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_rebuild_buckets(size_type __n);
   _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI void __rehash_unique(size_type __n) {
@@ -1015,10 +1023,15 @@ public:
     if (__n != bucket_count())
       __do_rehash<true>(__n);
   }
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI void __rehash_multi(size_type __n) {
+    __n = __avm_rehash_size(__n);
+    if (__n != bucket_count())
+      __do_rehash<false>(__n);
+  }
 #else
   _LIBCPP_HIDE_FROM_ABI void __rehash_unique(size_type __n) { __rehash<true>(__n); }
-#endif
   _LIBCPP_HIDE_FROM_ABI void __rehash_multi(size_type __n) { __rehash<false>(__n); }
+#endif
   _LIBCPP_HIDE_FROM_ABI void __reserve_unique(size_type __n) {
     __rehash_unique(static_cast<size_type>(__math::ceil(__n / max_load_factor())));
   }
@@ -1108,7 +1121,13 @@ public:
       _NOEXCEPT_(__is_nothrow_swappable_v<hasher>&& __is_nothrow_swappable_v<key_equal>);
 #endif
 
-  _LIBCPP_HIDE_FROM_ABI size_type max_bucket_count() const _NOEXCEPT { return max_size(); }
+  _LIBCPP_HIDE_FROM_ABI size_type max_bucket_count() const _NOEXCEPT {
+#if defined(__AVM__)
+    return std::min<size_type>(max_size(), numeric_limits<ptrdiff_t>::max());
+#else
+    return max_size();
+#endif
+  }
   _LIBCPP_HIDE_FROM_ABI size_type bucket_size(size_type __n) const;
   _LIBCPP_HIDE_FROM_ABI float load_factor() const _NOEXCEPT {
     size_type __bc = bucket_count();
@@ -1696,6 +1715,32 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_unique(__node_pointer __
   return pair<iterator, bool>(iterator(__existing_node), __inserted);
 }
 
+#if defined(__AVM__)
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_grow_multi() {
+  size_type __n;
+  if (__avm_insert_needs_rehash(__n))
+    __rehash_multi(__n);
+}
+
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__next_pointer
+__hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_multi_hint(const_iterator __p, const value_type& __value) {
+  return __p != end() && key_eq()(*__p, __value) ? __p.__node_ : nullptr;
+}
+
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_insert_multi_before(__node_pointer __cp, __next_pointer __hint) {
+  size_t __chash = std::__constrain_hash(__cp->__hash_, bucket_count());
+  __next_pointer __pp = __bucket_list_[__chash];
+  while (__pp->__next_ != __hint)
+    __pp = __pp->__next_;
+  __cp->__next_ = __hint;
+  __pp->__next_ = static_cast<__next_pointer>(__cp);
+  ++size();
+}
+#endif
+
 // Prepare the container for an insertion of the value __cp_val with the hash
 // __cp_hash. This does a lookup into the container to see if __cp_value is
 // already present, and performs a rehash if necessary. Returns a pointer to the
@@ -1706,12 +1751,25 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_unique(__node_pointer __
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__next_pointer
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi_prepare(size_t __cp_hash, value_type& __cp_val) {
+#if defined(__AVM__)
+  __avm_grow_multi();
+#else
   size_type __bc = bucket_count();
   if (size() + 1 > __bc * max_load_factor() || __bc == 0) {
     __rehash_multi(std::max<size_type>(
         2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor()))));
     __bc = bucket_count();
   }
+#endif
+#if defined(__AVM__)
+  return __avm_find_multi(__cp_hash, __cp_val);
+}
+
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__next_pointer
+__hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_find_multi(size_t __cp_hash, value_type& __cp_val) {
+  size_type __bc = bucket_count();
+#endif
   size_t __chash      = std::__constrain_hash(__cp_hash, __bc);
   __next_pointer __pn = __bucket_list_[__chash];
   if (__pn != nullptr) {
@@ -1778,6 +1836,15 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi(__node_pointer __c
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::iterator
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi(const_iterator __p, __node_pointer __cp) {
+#if defined(__AVM__)
+  if (__next_pointer __hint = __avm_multi_hint(__p, __cp->__get_value())) {
+    __cp->__hash_ = __hint->__hash();
+    __avm_grow_multi();
+    __avm_insert_multi_before(__cp, __hint);
+    return iterator(__cp->__ptr());
+  }
+  return __node_insert_multi(__cp);
+#else
   if (__p != end() && key_eq()(*__p, __cp->__get_value())) {
     __next_pointer __np = __p.__node_;
     __cp->__hash_       = __np->__hash();
@@ -1797,14 +1864,24 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi(const_iterator __p
     return iterator(static_cast<__next_pointer>(__cp));
   }
   return __node_insert_multi(__cp);
+#endif
 }
 
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 template <class... _Args>
 typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::iterator
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__emplace_multi(_Args&&... __args) {
+#if defined(__AVM__)
+  __node_holder __h = __avm_construct_node_hash_at(__avm_allocate_node(), 0, std::forward<_Args>(__args)...);
+  __node_pointer __cp = __h.get();
+  __cp->__hash_ = hash_function()(__cp->__get_value());
+  __next_pointer __pn = __node_insert_multi_prepare(__cp->__hash(), __cp->__get_value());
+  __node_insert_multi_perform(__cp, __pn);
+  iterator __r(__cp->__ptr());
+#else
   __node_holder __h = __construct_node(std::forward<_Args>(__args)...);
-  iterator __r      = __node_insert_multi(__h.get());
+  iterator __r = __node_insert_multi(__h.get());
+#endif
   __h.release();
   return __r;
 }
@@ -1813,8 +1890,23 @@ template <class _Tp, class _Hash, class _Equal, class _Alloc>
 template <class... _Args>
 typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::iterator
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__emplace_hint_multi(const_iterator __p, _Args&&... __args) {
+#if defined(__AVM__)
+  __node_holder __h = __avm_construct_node_hash_at(__avm_allocate_node(), 0, std::forward<_Args>(__args)...);
+  __node_pointer __cp = __h.get();
+  if (__next_pointer __hint = __avm_multi_hint(__p, __cp->__get_value())) {
+    __cp->__hash_ = __hint->__hash();
+    __avm_grow_multi();
+    __avm_insert_multi_before(__cp, __hint);
+  } else {
+    __cp->__hash_ = hash_function()(__cp->__get_value());
+    __next_pointer __pn = __node_insert_multi_prepare(__cp->__hash(), __cp->__get_value());
+    __node_insert_multi_perform(__cp, __pn);
+  }
+  iterator __r(__cp->__ptr());
+#else
   __node_holder __h = __construct_node(std::forward<_Args>(__args)...);
-  iterator __r      = __node_insert_multi(__p, __h.get());
+  iterator __r = __node_insert_multi(__p, __h.get());
+#endif
   __h.release();
   return __r;
 }
@@ -1921,6 +2013,11 @@ _LIBCPP_HIDE_FROM_ABI void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_hand
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::size_type
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_rehash_size(size_type __n) {
+  // Bucket counts are bounded by AVM's address differences. Let allocation
+  // reject oversized requests before passing them to the prime search, whose
+  // arithmetic otherwise wraps near the end of AVM's 16-bit size_t range.
+  if (__n > size_type(numeric_limits<ptrdiff_t>::max()))
+    return __n;
   if (__n == 1)
     __n = 2;
   else if (__n & (__n - 1))
@@ -1929,10 +2026,12 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_rehash_size(size_type __n) {
   if (__n > __bc)
     return __n;
   if (__n < __bc) {
+    size_type __minimum = size_type(__math::ceil(float(size()) / max_load_factor()));
+    if (__minimum > size_type(numeric_limits<ptrdiff_t>::max()))
+      return __bc;
     __n = std::max<size_type>(
         __n,
-        std::__is_hash_power2(__bc) ? std::__next_hash_pow2(size_t(__math::ceil(float(size()) / max_load_factor())))
-                                    : std::__next_prime(size_t(__math::ceil(float(size()) / max_load_factor()))));
+        std::__is_hash_power2(__bc) ? std::__next_hash_pow2(__minimum) : std::__next_prime(__minimum));
     if (__n < __bc)
       return __n;
   }
@@ -1970,6 +2069,8 @@ template <class _Tp, class _Hash, class _Equal, class _Alloc>
 template <bool _UniqueKeys>
 void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__do_rehash(size_type __bucket_count) {
 #if defined(__AVM__)
+  if (__bucket_count > size_type(numeric_limits<ptrdiff_t>::max()))
+    std::__throw_bad_array_new_length();
   __node_pointer_pointer __new_buckets = nullptr;
   if (__bucket_count > 0) {
 #  if _LIBCPP_STD_VER >= 17

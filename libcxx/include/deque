@@ -1259,6 +1259,47 @@ private:
   _LIBCPP_HIDE_FROM_ABI void __add_front_capacity();
   _LIBCPP_HIDE_FROM_ABI void __add_front_capacity(size_type __n);
 #  if defined(__AVM__)
+  // Own only newly allocated blocks until the map transfer commits. Keeping
+  // the rollback state directly avoids by-value lambda forwarding at O0.
+  class __avm_block_guard {
+    deque& __self_;
+    __split_buffer<pointer, __pointer_allocator>* __buf_;
+
+  public:
+    _LIBCPP_HIDE_FROM_ABI __avm_block_guard(deque& __self, __split_buffer<pointer, __pointer_allocator>& __buf) _NOEXCEPT
+        : __self_(__self), __buf_(std::addressof(__buf)) {}
+    __avm_block_guard(const __avm_block_guard&) = delete;
+    __avm_block_guard& operator=(const __avm_block_guard&) = delete;
+    _LIBCPP_HIDE_FROM_ABI void __complete() _NOEXCEPT { __buf_ = nullptr; }
+    _LIBCPP_HIDE_FROM_ABI ~__avm_block_guard() {
+      if (__buf_ != nullptr) {
+        __self_.__annotate_delete();
+        for (__map_pointer __i = __buf_->begin(); __i != __buf_->end(); ++__i)
+          __alloc_traits::deallocate(__self_.__alloc(), *__i, __block_size);
+      }
+    }
+  };
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI pointer __avm_allocate_block() {
+#    if _LIBCPP_STD_VER >= 17
+    if constexpr (__is_std_allocator_v<allocator_type> &&
+                  _LIBCPP_ALIGNOF(value_type) <= _LIBCPP_DEFAULT_NEW_ALIGNMENT &&
+                  __block_size <= size_t(-1) / sizeof(value_type))
+      return static_cast<pointer>(__builtin_operator_new(size_t(__block_size) * sizeof(value_type)));
+#    endif
+    return __alloc_traits::allocate(__alloc(), __block_size);
+  }
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_allocate_blocks(__split_buffer<pointer, __pointer_allocator>& __buf, size_type __nb);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_resize_shrink(size_type __n);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_recycle_front_blocks(size_type __n);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_add_back_blocks(size_type __nb, size_type __spare);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_grow_map_back_many(__split_buffer<pointer, __pointer_allocator>& __buf, size_type __spare);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_construct_back(size_type __n);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_construct_back(size_type __n, const value_type& __v);
+  template <class _InputIterator>
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_construct_back_with_size(_InputIterator __f, size_type __n);
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_recycle_back_block();
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_prepend_block();
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
@@ -1511,12 +1552,23 @@ inline _Allocator deque<_Tp, _Allocator>::get_allocator() const _NOEXCEPT {
   return __alloc();
 }
 
+#if defined(__AVM__)
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_resize_shrink(size_type __n) {
+  __erase_to_end(begin() + __n);
+}
+#endif
+
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::resize(size_type __n) {
   if (__n > size())
     __append(__n - size());
   else if (__n < size())
+#if defined(__AVM__)
+    __avm_resize_shrink(__n);
+#else
     __erase_to_end(begin() + __n);
+#endif
 }
 
 template <class _Tp, class _Allocator>
@@ -1524,7 +1576,11 @@ void deque<_Tp, _Allocator>::resize(size_type __n, const value_type& __v) {
   if (__n > size())
     __append(__n - size(), __v);
   else if (__n < size())
+#if defined(__AVM__)
+    __avm_resize_shrink(__n);
+#else
     __erase_to_end(begin() + __n);
+#endif
 }
 
 template <class _Tp, class _Allocator>
@@ -1924,12 +1980,23 @@ void deque<_Tp, _Allocator>::__append(_ForIter __f, _ForIter __l) {
 template <class _Tp, class _Allocator>
 template <class _InputIterator>
 _LIBCPP_HIDE_FROM_ABI void deque<_Tp, _Allocator>::__append_with_size(_InputIterator __f, size_type __n) {
+#if !defined(__AVM__)
   allocator_type& __a       = __alloc();
+#endif
   size_type __back_capacity = __back_spare();
   if (__n > __back_capacity)
     __add_back_capacity(__n - __back_capacity);
 
   // __n <= __back_capacity
+#if defined(__AVM__)
+  __avm_construct_back_with_size(std::move(__f), __n);
+}
+
+template <class _Tp, class _Allocator>
+template <class _InputIterator>
+void deque<_Tp, _Allocator>::__avm_construct_back_with_size(_InputIterator __f, size_type __n) {
+  allocator_type& __a = __alloc();
+#endif
   __annotate_increase_back(__n);
   for (__deque_block_range __br : __deque_range(end(), end() + __n)) {
     _ConstructTransaction __tx(this, __br);
@@ -1941,11 +2008,21 @@ _LIBCPP_HIDE_FROM_ABI void deque<_Tp, _Allocator>::__append_with_size(_InputIter
 
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::__append(size_type __n) {
+#if !defined(__AVM__)
   allocator_type& __a       = __alloc();
+#endif
   size_type __back_capacity = __back_spare();
   if (__n > __back_capacity)
     __add_back_capacity(__n - __back_capacity);
   // __n <= __back_capacity
+#if defined(__AVM__)
+  __avm_construct_back(__n);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_construct_back(size_type __n) {
+  allocator_type& __a = __alloc();
+#endif
   __annotate_increase_back(__n);
   for (__deque_block_range __br : __deque_range(end(), end() + __n)) {
     _ConstructTransaction __tx(this, __br);
@@ -1957,11 +2034,21 @@ void deque<_Tp, _Allocator>::__append(size_type __n) {
 
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::__append(size_type __n, const value_type& __v) {
+#if !defined(__AVM__)
   allocator_type& __a       = __alloc();
+#endif
   size_type __back_capacity = __back_spare();
   if (__n > __back_capacity)
     __add_back_capacity(__n - __back_capacity);
   // __n <= __back_capacity
+#if defined(__AVM__)
+  __avm_construct_back(__n, __v);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_construct_back(size_type __n, const value_type& __v) {
+  allocator_type& __a = __alloc();
+#endif
   __annotate_increase_back(__n);
   for (__deque_block_range __br : __deque_range(end(), end() + __n)) {
     _ConstructTransaction __tx(this, __br);
@@ -2135,6 +2222,7 @@ void deque<_Tp, _Allocator>::__add_front_capacity(size_type __n) {
   }
 }
 
+
 // Create back capacity for one block of elements.
 // Strong guarantee.  Either do it or don't touch anything.
 #  if defined(__AVM__)
@@ -2231,6 +2319,81 @@ void deque<_Tp, _Allocator>::__add_back_capacity() {
 
 // Create back capacity for __n elements.
 // Strong guarantee.  Either do it or don't touch anything.
+#if defined(__AVM__)
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_allocate_blocks(
+    __split_buffer<pointer, __pointer_allocator>& __buf, size_type __nb) {
+  __avm_block_guard __guard(*this, __buf);
+  for (; __nb > 0; --__nb) {
+    __buf.__emplace_back_with_spare(__avm_allocate_block());
+    __annotate_poison_block(std::__to_address(__buf.back()), std::__to_address(__buf.back() + __block_size));
+  }
+  __guard.__complete();
+}
+
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_recycle_front_blocks(size_type __spare) {
+  __start_ -= __block_size * __spare;
+  for (; __spare > 0; --__spare) {
+    pointer __pt = __map_.front();
+    __map_.pop_front();
+    __map_.__emplace_back_with_spare(__pt);
+  }
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_add_back_blocks(size_type __nb, size_type __spare) {
+  for (; __nb > 0; --__nb) {
+    if (__map_.__back_spare() == 0)
+      break;
+    __map_.__emplace_back_with_spare(__avm_allocate_block());
+    __annotate_whole_block(__map_.size() - 1, __asan_poison);
+  }
+  for (; __nb > 0; --__nb, ++__spare, __start_ += __block_size - (__map_.size() == 1)) {
+    __map_.__emplace_front_with_spare(__avm_allocate_block());
+    __annotate_whole_block(0, __asan_poison);
+  }
+  // Done allocating, reorder capacity
+  __start_ -= __block_size * __spare;
+  for (; __spare > 0; --__spare) {
+    pointer __pt = __map_.front();
+    __map_.pop_front();
+    __map_.__emplace_back_with_spare(__pt);
+  }
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_grow_map_back_many(
+    __split_buffer<pointer, __pointer_allocator>& __buf, size_type __spare) {
+  size_type __ds = __spare * __block_size;
+  for (; __spare > 0; --__spare) {
+    __buf.__emplace_back_with_spare(__map_.front());
+    __map_.pop_front();
+  }
+  for (__map_pointer __i = __map_.end(); __i != __map_.begin();)
+    __buf.__emplace_front_with_spare(*--__i);
+  __map_.__swap_without_allocator(__buf);
+  __start_ -= __ds;
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__add_back_capacity(size_type __n) {
+  size_type __nb = __recommend_blocks(__n + __map_.empty());
+  size_type __spare = std::min<size_type>(__front_spare() / __block_size, __nb);
+  __nb -= __spare;
+  if (__nb == 0)
+    __avm_recycle_front_blocks(__spare);
+  else if (__nb <= __map_.capacity() - __map_.size())
+    __avm_add_back_blocks(__nb, __spare);
+  else {
+    __split_buffer<pointer, __pointer_allocator> __buf(__map_.__get_allocator());
+    __buf.__avm_allocate_empty(std::max<size_type>(2 * __map_.capacity(), __nb + __map_.size()), __map_.size() - __spare);
+    __avm_allocate_blocks(__buf, __nb);
+    __avm_grow_map_back_many(__buf, __spare);
+  }
+}
+#else
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::__add_back_capacity(size_type __n) {
   allocator_type& __a = __alloc();
@@ -2299,6 +2462,8 @@ void deque<_Tp, _Allocator>::__add_back_capacity(size_type __n) {
     __start_ -= __ds;
   }
 }
+#endif // __AVM__
+
 
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::pop_front() {
