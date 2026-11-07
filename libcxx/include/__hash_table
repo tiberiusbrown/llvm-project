@@ -816,12 +816,43 @@ public:
   _LIBCPP_HIDE_FROM_ABI iterator __node_insert_multi(__node_pointer __nd);
   _LIBCPP_HIDE_FROM_ABI iterator __node_insert_multi(const_iterator __p, __node_pointer __nd);
 
+#if defined(__AVM__)
+  // Keep lookup and load-factor arithmetic out of the node-construction frame.
+  // These phases do not need to retain each other's temporary values on AVM's
+  // 256-byte stack, even when compiling without optimization.
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) __next_pointer
+  __avm_find_unique(const key_type& __key, size_t __hash) {
+    size_type __bc = bucket_count();
+    return __bc == 0 ? nullptr : __find_ptr(__key, __hash, std::__constrain_hash(__hash, __bc));
+  }
+
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_grow_for_insert() {
+    size_type __bc = bucket_count();
+    if (size() + 1 > __bc * max_load_factor())
+      __rehash_unique(std::max<size_type>(
+          2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor()))));
+  }
+#endif
+
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
     return std::__try_key_extraction<key_type, value_type>(
         [this](const key_type& __key, _Args&&... __args2) {
-          size_t __hash   = hash_function()(__key);
-          size_type __bc  = bucket_count();
+#if defined(__AVM__)
+          size_t __hash = hash_function()(__key);
+          if (auto __nd = __avm_find_unique(__key, __hash))
+            return pair<iterator, bool>(iterator(__nd), false);
+          __node_holder __h = __construct_node_hash(__hash, std::forward<_Args>(__args2)...);
+          // Construct first so a failed construction cannot change the buckets.
+          // Keep the holder until rehash succeeds to preserve rollback on error.
+          __avm_grow_for_insert();
+          __next_pointer __nd = static_cast<__next_pointer>(__h.get());
+          __node_insert_unique_perform(__h.get());
+          __h.release();
+          return pair<iterator, bool>(iterator(__nd), true);
+#else
+          size_t __hash  = hash_function()(__key);
+          size_type __bc = bucket_count();
           size_t __chash;
           if (__bc != 0) {
             __chash = std::__constrain_hash(__hash, __bc);
@@ -856,6 +887,7 @@ public:
             ++size();
           }
           return pair<iterator, bool>(iterator(__nd), true);
+#endif
         },
         [this](_Args&&... __args2) {
           __node_holder __h        = __construct_node(std::forward<_Args>(__args2)...);

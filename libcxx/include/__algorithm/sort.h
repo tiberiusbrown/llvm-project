@@ -857,9 +857,43 @@ extern template _LIBCPP_EXPORTED_FROM_ABI void
 __sort<__less<long double>&, long double*>(long double*, long double*, __less<long double>&);
 _LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
 
+#if defined(__AVM__)
+// Keep the AVM sort nonrecursive and avoid the 64-bit partition bitmaps.
+// Swap-based sifting also supports proxy iterators through the policy's swap.
+template <class _AlgPolicy, class _RandomAccessIterator, class _Comp>
+_LIBCPP_CONSTEXPR_SINCE_CXX20 void
+__avm_heap_sift(_RandomAccessIterator __first,
+                typename iterator_traits<_RandomAccessIterator>::difference_type __hole,
+                typename iterator_traits<_RandomAccessIterator>::difference_type __count,
+                _Comp& __comp) {
+  using _Ops = _IterOps<_AlgPolicy>;
+  // The division bounds the multiplication below, including for 16-bit
+  // difference_type near its largest representable range length.
+  while (__hole < __count / 2) {
+    auto __child = __hole * 2 + 1;
+    if (__child + 1 < __count && __comp(*(__first + __child), *(__first + __child + 1)))
+      ++__child;
+    if (!__comp(*(__first + __hole), *(__first + __child)))
+      return;
+    _Ops::iter_swap(__first + __hole, __first + __child);
+    __hole = __child;
+  }
+}
+#endif
+
 template <class _AlgPolicy, class _RandomAccessIterator, class _Comp>
 _LIBCPP_CONSTEXPR_SINCE_CXX20 void
 __sort_dispatch(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp& __comp) {
+#if defined(__AVM__)
+  auto __count = __last - __first;
+  for (auto __parent = __count / 2; __parent > 0;)
+    std::__avm_heap_sift<_AlgPolicy>(__first, --__parent, __count, __comp);
+  while (__count > 1) {
+    --__count;
+    _IterOps<_AlgPolicy>::iter_swap(__first, __first + __count);
+    std::__avm_heap_sift<_AlgPolicy>(__first, 0, __count, __comp);
+  }
+#else
   if (__first == __last) // log(0) is undefined, so don't try computing the depth
     return;
 
@@ -871,6 +905,7 @@ __sort_dispatch(_RandomAccessIterator __first, _RandomAccessIterator __last, _Co
   // branches in the comparator.
   std::__introsort<_AlgPolicy, _Comp&, _RandomAccessIterator, __use_branchless_sort<_Comp, _RandomAccessIterator> >(
       __first, __last, __comp, __depth_limit);
+#endif
 }
 
 template <class _Type, class... _Options>

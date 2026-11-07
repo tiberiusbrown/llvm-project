@@ -27,9 +27,22 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
+// AVM's small stack cannot afford separate callback copies and forwarding
+// frames at O0. The entry owns the callbacks; dispatch only borrows them.
+#if defined(__AVM__)
+#  define _LIBCPP_AVM_KEY_INLINE _LIBCPP_ALWAYS_INLINE
+#  define _LIBCPP_AVM_KEY_CALLBACK(_Tp) _Tp&
+#else
+#  define _LIBCPP_AVM_KEY_INLINE
+#  define _LIBCPP_AVM_KEY_CALLBACK(_Tp) _Tp
+#endif
+
 template <class _KeyT, bool, class _Ret, class _WithKey, class _WithoutKey, class... _Args>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret
-__try_key_extraction_impl(__priority_tag<0>, _WithKey, _WithoutKey __without_key, _Args&&... __args) {
+_LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
+    __priority_tag<0>,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithKey),
+    _LIBCPP_AVM_KEY_CALLBACK(_WithoutKey) __without_key,
+    _Args&&... __args) {
   return __without_key(std::forward<_Args>(__args)...);
 }
 
@@ -40,8 +53,11 @@ template <class _KeyT,
           class _WithoutKey,
           class _Arg,
           __enable_if_t<is_same<_KeyT, __remove_const_ref_t<_Arg> >::value, int> = 0>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret
-__try_key_extraction_impl(__priority_tag<1>, _WithKey __with_key, _WithoutKey, _Arg&& __arg) {
+_LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
+    __priority_tag<1>,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithKey) __with_key,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithoutKey),
+    _Arg&& __arg) {
   return __with_key(__arg, std::forward<_Arg>(__arg));
 }
 
@@ -54,8 +70,11 @@ template <class _KeyT,
           __enable_if_t<__is_map && __is_pair_v<__remove_const_ref_t<_Arg> > &&
                             is_same<__remove_const_t<typename __remove_const_ref_t<_Arg>::first_type>, _KeyT>::value,
                         int> = 0>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret
-__try_key_extraction_impl(__priority_tag<1>, _WithKey __with_key, _WithoutKey, _Arg&& __arg) {
+_LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
+    __priority_tag<1>,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithKey) __with_key,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithoutKey),
+    _Arg&& __arg) {
   return __with_key(__arg.first, std::forward<_Arg>(__arg));
 }
 
@@ -67,8 +86,12 @@ template <class _KeyT,
           class _Arg1,
           class _Arg2,
           __enable_if_t<__is_map && is_same<_KeyT, __remove_const_ref_t<_Arg1> >::value, int> = 0>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret
-__try_key_extraction_impl(__priority_tag<1>, _WithKey __with_key, _WithoutKey, _Arg1&& __arg1, _Arg2&& __arg2) {
+_LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
+    __priority_tag<1>,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithKey) __with_key,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithoutKey),
+    _Arg1&& __arg1,
+    _Arg2&& __arg2) {
   return __with_key(__arg1, std::forward<_Arg1>(__arg1), std::forward<_Arg2>(__arg2));
 }
 
@@ -85,10 +108,10 @@ template <class _KeyT,
                             __is_tuple_v<_Tuple1> && tuple_size<_Tuple1>::value == 1 &&
                             is_same<__remove_const_ref_t<typename tuple_element<0, _Tuple1>::type>, _KeyT>::value,
                         int> = 0>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
+_LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_impl(
     __priority_tag<1>,
-    _WithKey __with_key,
-    _WithoutKey,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithKey) __with_key,
+    _LIBCPP_AVM_KEY_CALLBACK(_WithoutKey),
     _PiecewiseConstruct&& __pc,
     _Tuple1&& __tuple1,
     _Tuple2&& __tuple2) {
@@ -106,12 +129,16 @@ _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret __try_key_extraction_im
 //
 // Both `__with_key` and `__without_key` must take all arguments by reference.
 template <class _KeyT, class _ValT, class _WithKey, class _WithoutKey, class... _Args>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 decltype(std::declval<_WithoutKey>()(std::declval<_Args>()...))
-__try_key_extraction(_WithKey __with_key, _WithoutKey __without_key, _Args&&... __args) {
+_LIBCPP_AVM_KEY_INLINE
+    _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 decltype(std::declval<_WithoutKey>()(std::declval<_Args>()...))
+    __try_key_extraction(_WithKey __with_key, _WithoutKey __without_key, _Args&&... __args) {
   using _Ret = decltype(__without_key(std::forward<_Args>(__args)...));
   return std::__try_key_extraction_impl<_KeyT, !is_same<_KeyT, _ValT>::value, _Ret>(
       __priority_tag<1>(), __with_key, __without_key, std::forward<_Args>(__args)...);
 }
+
+#undef _LIBCPP_AVM_KEY_CALLBACK
+#undef _LIBCPP_AVM_KEY_INLINE
 
 _LIBCPP_END_NAMESPACE_STD
 
