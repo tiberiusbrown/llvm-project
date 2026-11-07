@@ -13,6 +13,7 @@
 #include <__fwd/pair.h>
 #include <__fwd/tuple.h>
 #include <__type_traits/enable_if.h>
+#include <__type_traits/integral_constant.h>
 #include <__type_traits/is_same.h>
 #include <__type_traits/remove_const.h>
 #include <__type_traits/remove_const_ref.h>
@@ -122,6 +123,61 @@ _LIBCPP_AVM_KEY_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 _Ret 
       std::forward<_Tuple2>(__tuple2));
 }
 #endif // _LIBCPP_CXX03_LANG
+
+#if defined(__AVM__)
+// Describe extraction without runtime callbacks so hash insertion can keep its
+// lookup, construction, and rollback in one frame even at O0.
+template <class _KeyT, bool, class, class... _Args>
+struct __avm_key_extraction_impl : false_type {};
+
+template <class _KeyT, bool _IsMap, class _Arg>
+struct __avm_key_extraction_impl< _KeyT,
+                                  _IsMap,
+                                  __enable_if_t<is_same<_KeyT, __remove_const_ref_t<_Arg> >::value>,
+                                  _Arg> : true_type {
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg&& __arg) { return __arg; }
+};
+
+template <class _KeyT, class _Arg>
+struct __avm_key_extraction_impl<
+    _KeyT,
+    true,
+    __enable_if_t<__is_pair_v<__remove_const_ref_t<_Arg> > &&
+                  is_same<__remove_const_t<typename __remove_const_ref_t<_Arg>::first_type>, _KeyT>::value>,
+    _Arg> : true_type {
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg&& __arg) { return __arg.first; }
+};
+
+template <class _KeyT, class _Arg1, class _Arg2>
+struct __avm_key_extraction_impl< _KeyT,
+                                  true,
+                                  __enable_if_t<is_same<_KeyT, __remove_const_ref_t<_Arg1> >::value>,
+                                  _Arg1,
+                                  _Arg2> : true_type {
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg1&& __arg1, _Arg2&&) { return __arg1; }
+};
+
+#  ifndef _LIBCPP_CXX03_LANG
+template <class _KeyT, class _PiecewiseConstruct, class _Tuple1, class _Tuple2>
+struct __avm_key_extraction_impl<
+    _KeyT,
+    true,
+    __enable_if_t<is_same<__remove_const_ref_t<_PiecewiseConstruct>, piecewise_construct_t>::value &&
+                  __is_tuple_v<_Tuple1> && tuple_size<_Tuple1>::value == 1 &&
+                  is_same<__remove_const_ref_t<typename tuple_element<0, _Tuple1>::type>, _KeyT>::value>,
+    _PiecewiseConstruct,
+    _Tuple1,
+    _Tuple2> : true_type {
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT&
+  __get(_PiecewiseConstruct&&, _Tuple1&& __tuple1, _Tuple2&&) {
+    return std::get<0>(__tuple1);
+  }
+};
+#  endif // _LIBCPP_CXX03_LANG
+
+template <class _KeyT, class _ValT, class... _Args>
+using __avm_key_extraction = __avm_key_extraction_impl<_KeyT, !is_same<_KeyT, _ValT>::value, void, _Args...>;
+#endif // __AVM__
 
 // This function tries extracting the given _KeyT from _Args...
 // If it succeeds to extract the key, it calls the `__with_key` function with the extracted key and all of the

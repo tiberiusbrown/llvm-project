@@ -826,31 +826,49 @@ public:
     return __bc == 0 ? nullptr : __find_ptr(__key, __hash, std::__constrain_hash(__hash, __bc));
   }
 
-  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_grow_for_insert() {
+  // Finish the load-factor arithmetic before entering rehash's allocation and
+  // exception paths. Report the decision separately to preserve even a zero
+  // growth request without reserving a sentinel bucket count.
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) bool __avm_insert_needs_rehash(size_type& __n) {
     size_type __bc = bucket_count();
-    if (size() + 1 > __bc * max_load_factor())
-      __rehash_unique(std::max<size_type>(
-          2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor()))));
+    if (!(size() + 1 > __bc * max_load_factor()))
+      return false;
+    __n = std::max<size_type>(
+        2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor())));
+    return true;
   }
-#endif
 
+  template <class... _Args, __enable_if_t<__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
+    const key_type& __key = __avm_key_extraction<key_type, value_type, _Args...>::__get(std::forward<_Args>(__args)...);
+    size_t __hash         = hash_function()(__key);
+    if (auto __nd = __avm_find_unique(__key, __hash))
+      return pair<iterator, bool>(iterator(__nd), false);
+    __node_holder __h = __construct_node_hash(__hash, std::forward<_Args>(__args)...);
+    // Construct first so a failed construction cannot change the buckets.
+    // Keep the holder until rehash succeeds to preserve rollback on error.
+    size_type __n;
+    if (__avm_insert_needs_rehash(__n))
+      __rehash_unique(__n);
+    __next_pointer __nd = static_cast<__next_pointer>(__h.get());
+    __node_insert_unique_perform(__h.get());
+    __h.release();
+    return pair<iterator, bool>(iterator(__nd), true);
+  }
+
+  template <class... _Args, __enable_if_t<!__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
+    __node_holder __h        = __construct_node(std::forward<_Args>(__args)...);
+    pair<iterator, bool> __r = __node_insert_unique(__h.get());
+    if (__r.second)
+      __h.release();
+    return __r;
+  }
+#else
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
     return std::__try_key_extraction<key_type, value_type>(
         [this](const key_type& __key, _Args&&... __args2) {
-#if defined(__AVM__)
-          size_t __hash = hash_function()(__key);
-          if (auto __nd = __avm_find_unique(__key, __hash))
-            return pair<iterator, bool>(iterator(__nd), false);
-          __node_holder __h = __construct_node_hash(__hash, std::forward<_Args>(__args2)...);
-          // Construct first so a failed construction cannot change the buckets.
-          // Keep the holder until rehash succeeds to preserve rollback on error.
-          __avm_grow_for_insert();
-          __next_pointer __nd = static_cast<__next_pointer>(__h.get());
-          __node_insert_unique_perform(__h.get());
-          __h.release();
-          return pair<iterator, bool>(iterator(__nd), true);
-#else
           size_t __hash  = hash_function()(__key);
           size_type __bc = bucket_count();
           size_t __chash;
@@ -887,7 +905,6 @@ public:
             ++size();
           }
           return pair<iterator, bool>(iterator(__nd), true);
-#endif
         },
         [this](_Args&&... __args2) {
           __node_holder __h        = __construct_node(std::forward<_Args>(__args2)...);
@@ -898,6 +915,7 @@ public:
         },
         std::forward<_Args>(__args)...);
   }
+#endif // __AVM__
 
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI iterator __emplace_multi(_Args&&... __args);
