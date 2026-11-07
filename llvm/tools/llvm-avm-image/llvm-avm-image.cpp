@@ -1357,6 +1357,11 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     // A discarded function keeps its FDE, but the linker resolves it to zero.
     if (Start == 0)
       continue;
+    // An empty function (for example an out-of-line __builtin_unreachable
+    // wrapper at O0) can retain an FDE without describing any instructions.
+    // It needs no unwind record and may share its address with the next function.
+    if (Range == 0)
+      continue;
     const PayloadSection *Code = nullptr;
     for (const PayloadSection &S : Program)
       if ((S.Flags & ELF::SHF_EXECINSTR) && Start >= S.Address &&
@@ -1365,7 +1370,7 @@ buildExceptionMetadata(const ELFFile<ELF32LE> &ELF,
     if (!Code)
       return bad(Twine("unwind entry at 0x") + Twine::utohexstr(Start) +
                  " does not describe executable program code");
-    if (Range == 0 || Start + Range > Code->Address + Code->Contents.size())
+    if (Start + Range > Code->Address + Code->Contents.size())
       return bad(Twine("unwind entry at 0x") + Twine::utohexstr(Start) +
                  " has an invalid address range");
 

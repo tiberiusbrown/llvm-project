@@ -1,0 +1,75 @@
+# RUN: split-file %s %t
+# RUN: llvm-mc -triple=avm -filetype=obj %t/functions.s -o %t/functions.o
+# RUN: ld.lld -T %t/layout.ld %t/functions.o -o %t/functions.elf
+# RUN: llvm-avm-image --no-crash-info %t/functions.elf -o %t/functions.bin
+# RUN: %python %t/check.py %t/functions.bin
+
+# Nonempty ranges extending beyond executable code must still be rejected.
+# RUN: llvm-objcopy --dump-section .debug_frame=%t/frame.bin %t/functions.elf
+# RUN: %python %t/corrupt.py %t/frame.bin
+# RUN: llvm-objcopy --update-section .debug_frame=%t/frame.bin %t/functions.elf %t/bad.elf
+# RUN: not llvm-avm-image %t/bad.elf -o %t/bad.bin 2>&1 | FileCheck %s
+# CHECK: unwind entry at 0x1000 has an invalid address range
+
+# Empty FDEs both before a real function and at the end of executable code
+# must be omitted without dropping the real function's unwind record.
+#--- functions.s
+.text
+.cfi_sections .debug_frame
+.globl empty_before
+.type empty_before,@function
+empty_before:
+  .cfi_startproc
+  .cfi_endproc
+.size empty_before, .-empty_before
+.globl _start
+.type _start,@function
+_start:
+  .cfi_startproc
+  ret
+  .cfi_endproc
+.size _start, .-_start
+.globl empty_after
+.type empty_after,@function
+empty_after:
+  .cfi_startproc
+  .cfi_endproc
+.size empty_after, .-empty_after
+.section .rodata,"a",@progbits
+.globl __avm_eh_metadata_ptr
+.type __avm_eh_metadata_ptr,@object
+__avm_eh_metadata_ptr:
+  .byte 0, 0, 0
+.size __avm_eh_metadata_ptr, 3
+
+#--- layout.ld
+ENTRY(_start)
+SECTIONS {
+  .text 0x1000 : { *(.text) }
+  .rodata : { *(.rodata) }
+}
+
+#--- check.py
+import struct
+import sys
+
+image = open(sys.argv[1], "rb").read()
+block = image.index(b"AVEH5")
+assert struct.unpack_from("<H", image, block + 5)[0] == 1
+u24 = lambda offset: int.from_bytes(image[offset:offset + 3], "little")
+assert u24(block + 10) == 0x1000
+record = block + u24(block + 13)
+assert u24(record) == 0x1000
+assert u24(record + 3) == 0x1001
+
+#--- corrupt.py
+import struct
+import sys
+
+path = sys.argv[1]
+data = bytearray(open(path, "rb").read())
+# Skip the CIE. In the first FDE, the length and CIE offset are four bytes
+# each, followed by the three-byte initial location and three-byte range.
+fde = 4 + struct.unpack_from("<I", data)[0]
+data[fde + 11:fde + 14] = b"\xff\xff\xff"
+open(path, "wb").write(data)
