@@ -1258,6 +1258,16 @@ private:
   _LIBCPP_HIDE_FROM_ABI void __erase_to_end(const_iterator __f);
   _LIBCPP_HIDE_FROM_ABI void __add_front_capacity();
   _LIBCPP_HIDE_FROM_ABI void __add_front_capacity(size_type __n);
+#  if defined(__AVM__)
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_recycle_back_block();
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_prepend_block();
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_grow_map_front(__split_buffer<pointer, __pointer_allocator>& __buf, pointer __block);
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_recycle_front_block();
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_append_block();
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void
+  __avm_grow_map_back(__split_buffer<pointer, __pointer_allocator>& __buf, pointer __block);
+#  endif
   _LIBCPP_HIDE_FROM_ABI void __add_back_capacity();
   _LIBCPP_HIDE_FROM_ABI void __add_back_capacity(size_type __n);
   _LIBCPP_HIDE_FROM_ABI iterator __move_and_check(iterator __f, iterator __l, iterator __r, const_pointer& __vt);
@@ -1963,6 +1973,56 @@ void deque<_Tp, _Allocator>::__append(size_type __n, const value_type& __v) {
 
 // Create front capacity for one block of elements.
 // Strong guarantee.  Either do it or don't touch anything.
+#if defined(__AVM__)
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_recycle_back_block() {
+  __start_ += __block_size;
+  pointer __pt = __map_.back();
+  __map_.pop_back();
+  __map_.__emplace_front_with_spare(__pt);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_prepend_block() {
+  allocator_type& __a = __alloc();
+  if (__map_.__front_spare() > 0)
+    __map_.__emplace_front_with_spare(__alloc_traits::allocate(__a, __block_size));
+  else {
+    __map_.__emplace_back_with_spare(__alloc_traits::allocate(__a, __block_size));
+    pointer __pt = __map_.back();
+    __map_.pop_back();
+    __map_.__emplace_front_with_spare(__pt);
+  }
+  __start_ = __map_.size() == 1 ? __block_size / 2 : __start_ + __block_size;
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_grow_map_front(__split_buffer<pointer, __pointer_allocator>& __buf, pointer __block) {
+  allocator_type& __a = __alloc();
+  typedef __allocator_destructor<_Allocator> _Dp;
+  unique_ptr<pointer, _Dp> __hold(__block, _Dp(__a, __block_size));
+  __buf.__emplace_back_with_spare(__hold.get());
+  __hold.release();
+  for (__map_pointer __i = __map_.begin(); __i != __map_.end(); ++__i)
+    __buf.__emplace_back_with_spare(*__i);
+  __map_.__swap_without_allocator(__buf);
+  __start_ = __map_.size() == 1 ? __block_size / 2 : __start_ + __block_size;
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__add_front_capacity() {
+  if (__back_spare() >= __block_size)
+    __avm_recycle_back_block();
+  else if (__map_.size() < __map_.capacity())
+    __avm_prepend_block();
+  else {
+    __split_buffer<pointer, __pointer_allocator> __buf(__map_.__get_allocator());
+    __buf.__avm_allocate_empty(std::max<size_type>(2 * __map_.capacity(), 1), 0);
+    __avm_grow_map_front(__buf, __alloc_traits::allocate(__alloc(), __block_size));
+  }
+  __annotate_whole_block(0, __asan_poison);
+}
+#else
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::__add_front_capacity() {
   allocator_type& __a = __alloc();
@@ -2004,6 +2064,8 @@ void deque<_Tp, _Allocator>::__add_front_capacity() {
   }
   __annotate_whole_block(0, __asan_poison);
 }
+
+#endif // __AVM__
 
 // Create front capacity for __n elements.
 // Strong guarantee.  Either do it or don't touch anything.
@@ -2075,6 +2137,55 @@ void deque<_Tp, _Allocator>::__add_front_capacity(size_type __n) {
 
 // Create back capacity for one block of elements.
 // Strong guarantee.  Either do it or don't touch anything.
+#  if defined(__AVM__)
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_recycle_front_block() {
+  __start_ -= __block_size;
+  pointer __pt = __map_.front();
+  __map_.pop_front();
+  __map_.__emplace_back_with_spare(__pt);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_append_block() {
+  allocator_type& __a = __alloc();
+  if (__map_.__back_spare() != 0)
+    __map_.__emplace_back_with_spare(__alloc_traits::allocate(__a, __block_size));
+  else {
+    __map_.__emplace_front_with_spare(__alloc_traits::allocate(__a, __block_size));
+    pointer __pt = __map_.front();
+    __map_.pop_front();
+    __map_.__emplace_back_with_spare(__pt);
+  }
+  __annotate_whole_block(__map_.size() - 1, __asan_poison);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__avm_grow_map_back(__split_buffer<pointer, __pointer_allocator>& __buf, pointer __block) {
+  allocator_type& __a = __alloc();
+  typedef __allocator_destructor<_Allocator> _Dp;
+  unique_ptr<pointer, _Dp> __hold(__block, _Dp(__a, __block_size));
+  __buf.__emplace_back_with_spare(__hold.get());
+  __hold.release();
+  for (__map_pointer __i = __map_.end(); __i != __map_.begin();)
+    __buf.__emplace_front_with_spare(*--__i);
+  __map_.__swap_without_allocator(__buf);
+  __annotate_whole_block(__map_.size() - 1, __asan_poison);
+}
+
+template <class _Tp, class _Allocator>
+void deque<_Tp, _Allocator>::__add_back_capacity() {
+  if (__front_spare() >= __block_size)
+    __avm_recycle_front_block();
+  else if (__map_.size() < __map_.capacity())
+    __avm_append_block();
+  else {
+    __split_buffer<pointer, __pointer_allocator> __buf(__map_.__get_allocator());
+    __buf.__avm_allocate_empty(std::max<size_type>(2 * __map_.capacity(), 1), __map_.size());
+    __avm_grow_map_back(__buf, __alloc_traits::allocate(__alloc(), __block_size));
+  }
+}
+#  else
 template <class _Tp, class _Allocator>
 void deque<_Tp, _Allocator>::__add_back_capacity() {
   allocator_type& __a = __alloc();
@@ -2115,6 +2226,8 @@ void deque<_Tp, _Allocator>::__add_back_capacity() {
     __annotate_whole_block(__map_.size() - 1, __asan_poison);
   }
 }
+
+#  endif // __AVM__
 
 // Create back capacity for __n elements.
 // Strong guarantee.  Either do it or don't touch anything.

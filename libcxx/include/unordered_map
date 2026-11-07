@@ -784,6 +784,14 @@ public:
   _LIBCPP_HIDE_FROM_ABI __hash_map_iterator() _NOEXCEPT {}
 
   _LIBCPP_HIDE_FROM_ABI __hash_map_iterator(_HashIterator __i) _NOEXCEPT : __i_(__i) {}
+#if defined(__AVM__)
+private:
+  _LIBCPP_HIDE_FROM_ABI __hash_map_iterator(typename _NodeTypes::__next_pointer __node) _NOEXCEPT : __i_(__node) {}
+  template <class, class, class, class>
+  friend class __hash_table;
+public:
+#endif
+
 
   _LIBCPP_HIDE_FROM_ABI reference operator*() const { return *__i_; }
   _LIBCPP_HIDE_FROM_ABI pointer operator->() const { return pointer_traits<pointer>::pointer_to(*__i_); }

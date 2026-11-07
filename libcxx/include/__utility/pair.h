@@ -425,8 +425,13 @@ private:
        tuple<_Args2...>& __second_args,
        __index_sequence<_I1...>,
        __index_sequence<_I2...>)
+#  if defined(__AVM__)
+      noexcept(is_nothrow_constructible<first_type, _Args1...>::value &&
+               is_nothrow_constructible<second_type, _Args2...>::value)
+#  endif
       : first(std::forward<_Args1>(std::get<_I1>(__first_args))...),
-        second(std::forward<_Args2>(std::get<_I2>(__second_args))...) {}
+        second(std::forward<_Args2>(std::get<_I2>(__second_args))...) {
+  }
 #endif
 };
 

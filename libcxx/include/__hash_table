@@ -28,7 +28,9 @@
 #include <__memory/pointer_traits.h>
 #include <__memory/swap_allocator.h>
 #include <__memory/unique_ptr.h>
+#include <__new/exceptions.h>
 #include <__new/launder.h>
+#include <__type_traits/conditional.h>
 #include <__type_traits/copy_cvref.h>
 #include <__type_traits/enable_if.h>
 #include <__type_traits/invoke.h>
@@ -147,20 +149,39 @@ private:
   };
 
 public:
-  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value() { return __value_; }
+  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value()
+#  if defined(__AVM__)
+      _NOEXCEPT
+#  endif
+  {
+    return __value_;
+  }
 #else
 
 private:
   _ALIGNAS_TYPE(__node_value_type) char __buffer_[sizeof(__node_value_type)];
 
 public:
-  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value() {
+  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value()
+#  if defined(__AVM__)
+      _NOEXCEPT
+#  endif
+  {
     return *std::__launder(reinterpret_cast<__node_value_type*>(&__buffer_));
   }
 #endif
 
+#if defined(__AVM__)
+  // Start the node lifetime without constructing its union-held value.
+  _LIBCPP_HIDE_FROM_ABI explicit __hash_node(size_t __hash) _NOEXCEPT : _Base(nullptr), __hash_(__hash) {}
+#endif
+
   template <class _Alloc, class... _Args>
   _LIBCPP_HIDE_FROM_ABI explicit __hash_node(size_t __hash, _Alloc& __na, _Args&&... __args)
+#if defined(__AVM__)
+      _NOEXCEPT_(noexcept(allocator_traits<_Alloc>::construct(
+          std::declval<_Alloc&>(), std::declval<__node_value_type*>(), std::declval<_Args>()...)))
+#endif
       : _Base(nullptr), __hash_(__hash) {
     allocator_traits<_Alloc>::construct(__na, std::addressof(__get_value()), std::forward<_Args>(__args)...);
   }
@@ -772,6 +793,12 @@ public:
   typedef __hash_const_iterator<__node_pointer> const_iterator;
   typedef __hash_local_iterator<__node_pointer> local_iterator;
   typedef __hash_const_local_iterator<__node_pointer> const_local_iterator;
+#if defined(__AVM__)
+  // Return the public map iterator directly, retaining its existing type and
+  // layout while avoiding a second pair conversion in unordered_map.
+  using __unique_insert_iterator =
+      __conditional_t<__is_hash_value_type<_Tp>::value, __hash_map_iterator<iterator>, iterator>;
+#endif
 
   _LIBCPP_HIDE_FROM_ABI __hash_table() _NOEXCEPT_(
       is_nothrow_default_constructible<__bucket_list>::value&& is_nothrow_default_constructible<__first_node>::value&&
@@ -820,8 +847,9 @@ public:
   // Keep lookup and load-factor arithmetic out of the node-construction frame.
   // These phases do not need to retain each other's temporary values on AVM's
   // 256-byte stack, even when compiling without optimization.
+  template <class _LookupKey>
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) __next_pointer
-  __avm_find_unique(const key_type& __key, size_t __hash) {
+  __avm_find_unique(const _LookupKey& __key, size_t __hash) {
     size_type __bc = bucket_count();
     return __bc == 0 ? nullptr : __find_ptr(__key, __hash, std::__constrain_hash(__hash, __bc));
   }
@@ -831,7 +859,7 @@ public:
   // growth request without reserving a sentinel bucket count.
   _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) bool __avm_insert_needs_rehash(size_type& __n) {
     size_type __bc = bucket_count();
-    if (!(size() + 1 > __bc * max_load_factor()))
+    if (!(size() + 1 > __bc * max_load_factor() || __bc == 0))
       return false;
     __n = std::max<size_type>(
         2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor())));
@@ -839,30 +867,50 @@ public:
   }
 
   template <class... _Args, __enable_if_t<__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
-  _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
+  _LIBCPP_HIDE_FROM_ABI pair<__unique_insert_iterator, bool> __emplace_unique(_Args&&... __args) {
     const key_type& __key = __avm_key_extraction<key_type, value_type, _Args...>::__get(std::forward<_Args>(__args)...);
     size_t __hash         = hash_function()(__key);
-    if (auto __nd = __avm_find_unique(__key, __hash))
-      return pair<iterator, bool>(iterator(__nd), false);
-    __node_holder __h = __construct_node_hash(__hash, std::forward<_Args>(__args)...);
-    // Construct first so a failed construction cannot change the buckets.
-    // Keep the holder until rehash succeeds to preserve rollback on error.
-    size_type __n;
-    if (__avm_insert_needs_rehash(__n))
-      __rehash_unique(__n);
-    __next_pointer __nd = static_cast<__next_pointer>(__h.get());
-    __node_insert_unique_perform(__h.get());
-    __h.release();
-    return pair<iterator, bool>(iterator(__nd), true);
+    __next_pointer __nd   = __avm_find_unique(__key, __hash);
+    bool __inserted       = false;
+    if (__nd == nullptr) {
+      __node_holder __h = __avm_construct_node_hash_at(
+          __avm_allocate_node(), __hash, std::forward<_Args>(__args)...);
+      // Construct before changing buckets; retain the holder through rehash.
+      size_type __n;
+      if (__avm_insert_needs_rehash(__n)) {
+        __n = __avm_rehash_size(__n);
+        if (__n != bucket_count())
+          __do_rehash<true>(__n);
+      }
+      __node_insert_unique_perform(__h.get());
+      __nd       = static_cast<__next_pointer>(__h.release());
+      __inserted = true;
+    }
+    return pair<__unique_insert_iterator, bool>(__unique_insert_iterator(__nd), __inserted);
   }
 
   template <class... _Args, __enable_if_t<!__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
-  _LIBCPP_HIDE_FROM_ABI pair<iterator, bool> __emplace_unique(_Args&&... __args) {
-    __node_holder __h        = __construct_node(std::forward<_Args>(__args)...);
-    pair<iterator, bool> __r = __node_insert_unique(__h.get());
-    if (__r.second)
-      __h.release();
-    return __r;
+  _LIBCPP_HIDE_FROM_ABI pair<__unique_insert_iterator, bool> __emplace_unique(_Args&&... __args) {
+    __node_holder __h = __avm_construct_node_hash_at(
+        __avm_allocate_node(), 0, std::forward<_Args>(__args)...);
+    __node_pointer __p = __h.get();
+    // Hash the constructed value before lookup without retaining the generic
+    // node-insertion adapters through rehash allocation.
+    __p->__hash_ = hash_function()(__p->__get_value());
+    __next_pointer __nd = __avm_find_unique(__p->__get_value(), __p->__hash());
+    bool __inserted = false;
+    if (__nd == nullptr) {
+      size_type __n;
+      if (__avm_insert_needs_rehash(__n)) {
+        __n = __avm_rehash_size(__n);
+        if (__n != bucket_count())
+          __do_rehash<true>(__n);
+      }
+      __node_insert_unique_perform(__p);
+      __nd = static_cast<__next_pointer>(__h.release());
+      __inserted = true;
+    }
+    return pair<__unique_insert_iterator, bool>(__unique_insert_iterator(__nd), __inserted);
   }
 #else
   template <class... _Args>
@@ -958,7 +1006,18 @@ public:
 #endif
 
   _LIBCPP_HIDE_FROM_ABI void clear() _NOEXCEPT;
+#if defined(__AVM__)
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) size_type __avm_rehash_size(size_type __n);
+  template <bool _UniqueKeys>
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) void __avm_rebuild_buckets(size_type __n);
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI void __rehash_unique(size_type __n) {
+    __n = __avm_rehash_size(__n);
+    if (__n != bucket_count())
+      __do_rehash<true>(__n);
+  }
+#else
   _LIBCPP_HIDE_FROM_ABI void __rehash_unique(size_type __n) { __rehash<true>(__n); }
+#endif
   _LIBCPP_HIDE_FROM_ABI void __rehash_multi(size_type __n) { __rehash<false>(__n); }
   _LIBCPP_HIDE_FROM_ABI void __reserve_unique(size_type __n) {
     __rehash_unique(static_cast<size_type>(__math::ceil(__n / max_load_factor())));
@@ -1091,13 +1150,57 @@ private:
   template <bool _UniqueKeys>
   _LIBCPP_HIDE_FROM_ABI void __rehash(size_type __n);
   template <bool _UniqueKeys>
-  _LIBCPP_HIDE_FROM_ABI void __do_rehash(size_type __n);
+#if defined(__AVM__)
+  _LIBCPP_ALWAYS_INLINE
+#endif
+  _LIBCPP_HIDE_FROM_ABI void
+  __do_rehash(size_type __n);
+
+#if defined(__AVM__)
+  template <class _NodeAlloc = __node_allocator, __enable_if_t<__is_std_allocator_v<_NodeAlloc>, int> = 0>
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI __node_pointer __avm_allocate_node() {
+    // A single complete node always fits allocator::max_size(). Keep the
+    // standard alignment path for over-aligned types and all custom hooks.
+    if (_LIBCPP_ALIGNOF(__node) > _LIBCPP_DEFAULT_NEW_ALIGNMENT)
+      return __node_traits::allocate(__node_alloc(), 1);
+    return static_cast<__node_pointer>(__builtin_operator_new(sizeof(__node)));
+  }
+  template <class _NodeAlloc = __node_allocator, __enable_if_t<!__is_std_allocator_v<_NodeAlloc>, int> = 0>
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI __node_pointer __avm_allocate_node() {
+    return __node_traits::allocate(__node_alloc(), 1);
+  }
+#endif
 
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI __node_holder __construct_node(_Args&&... __args);
 
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI __node_holder __construct_node_hash(size_t __hash, _Args&&... __args);
+#if defined(__AVM__)
+  template <class... _Args>
+  _LIBCPP_HIDE_FROM_ABI __node_holder
+  __avm_construct_node_hash_at(__node_pointer __p, size_t __hash, _Args&&... __args) {
+    __node_allocator& __na = __node_alloc();
+    using _Value = typename __node::__node_value_type;
+#if _LIBCPP_STD_VER >= 17
+    if constexpr (__is_std_allocator_v<__node_allocator> && is_nothrow_constructible<_Value, _Args...>::value) {
+      ::new (static_cast<void*>(std::addressof(*__p))) __node(__hash);
+      ::new (static_cast<void*>(std::addressof(__p->__get_value()))) _Value(std::forward<_Args>(__args)...);
+      return __node_holder(__p, _Dp(__na, true));
+    }
+#endif
+    // No rollback owner is needed until a non-throwing construction finishes.
+    // Return its owner directly, avoiding a moved-from holder at O0.
+    if (is_nothrow_constructible<__node, size_t, __node_allocator&, _Args...>::value) {
+      ::new (static_cast<void*>(std::addressof(*__p))) __node(__hash, __na, std::forward<_Args>(__args)...);
+      return __node_holder(__p, _Dp(__na, true));
+    }
+    __node_holder __h(__p, _Dp(__na));
+    ::new (static_cast<void*>(std::addressof(*__h))) __node(__hash, __na, std::forward<_Args>(__args)...);
+    __h.get_deleter().__value_constructed = true;
+    return __h;
+  }
+#endif
 
   _LIBCPP_HIDE_FROM_ABI void __copy_assign_alloc(const __hash_table& __u) {
     __copy_assign_alloc(__u, integral_constant<bool, __node_traits::propagate_on_container_copy_assignment::value>());
@@ -1528,6 +1631,14 @@ void __hash_table<_Tp, _Hash, _Equal, _Alloc>::clear() _NOEXCEPT {
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 _LIBCPP_HIDE_FROM_ABI typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__next_pointer
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_unique_prepare(size_t __hash, value_type& __value) {
+#if defined(__AVM__)
+  if (auto __nd = __avm_find_unique(__value, __hash))
+    return __nd;
+  size_type __n;
+  if (__avm_insert_needs_rehash(__n))
+    __rehash_unique(__n);
+  return nullptr;
+#else
   size_type __bc = bucket_count();
 
   if (__bc != 0) {
@@ -1540,6 +1651,7 @@ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_unique_prepare(size_t __
         2 * __bc + !std::__is_hash_power2(__bc), size_type(__math::ceil(float(size() + 1) / max_load_factor()))));
   }
   return nullptr;
+#endif
 }
 
 // Insert the node __nd into the container by pushing it into the right bucket,
@@ -1805,9 +1917,37 @@ _LIBCPP_HIDE_FROM_ABI void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_hand
 }
 #endif // _LIBCPP_STD_VER >= 17
 
+#if defined(__AVM__)
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::size_type
+__hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_rehash_size(size_type __n) {
+  if (__n == 1)
+    __n = 2;
+  else if (__n & (__n - 1))
+    __n = std::__next_prime(__n);
+  size_type __bc = bucket_count();
+  if (__n > __bc)
+    return __n;
+  if (__n < __bc) {
+    __n = std::max<size_type>(
+        __n,
+        std::__is_hash_power2(__bc) ? std::__next_hash_pow2(size_t(__math::ceil(float(size()) / max_load_factor())))
+                                    : std::__next_prime(size_t(__math::ceil(float(size()) / max_load_factor()))));
+    if (__n < __bc)
+      return __n;
+  }
+  return __bc;
+}
+#endif
+
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 template <bool _UniqueKeys>
 void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__rehash(size_type __n) _LIBCPP_DISABLE_UBSAN_UNSIGNED_INTEGER_CHECK {
+#if defined(__AVM__)
+  __n = __avm_rehash_size(__n);
+  if (__n != bucket_count())
+    __do_rehash<_UniqueKeys>(__n);
+#else
   if (__n == 1)
     __n = 2;
   else if (__n & (__n - 1))
@@ -1823,15 +1963,44 @@ void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__rehash(size_type __n) _LIBCPP_D
     if (__n < __bc)
       __do_rehash<_UniqueKeys>(__n);
   }
+#endif
 }
 
 template <class _Tp, class _Hash, class _Equal, class _Alloc>
 template <bool _UniqueKeys>
 void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__do_rehash(size_type __bucket_count) {
+#if defined(__AVM__)
+  __node_pointer_pointer __new_buckets = nullptr;
+  if (__bucket_count > 0) {
+#  if _LIBCPP_STD_VER >= 17
+    if constexpr (__is_std_allocator_v<__pointer_allocator> &&
+                  _LIBCPP_ALIGNOF(__next_pointer) <= _LIBCPP_DEFAULT_NEW_ALIGNMENT) {
+      // Keep the standard allocator's overflow and alignment contract while
+      // dropping its forwarding frame from the bucket-allocation path.
+      if (__bucket_count > size_t(-1) / sizeof(__next_pointer))
+        std::__throw_bad_array_new_length();
+      __new_buckets = static_cast<__node_pointer_pointer>(__builtin_operator_new(__bucket_count * sizeof(__next_pointer)));
+    } else
+#  endif
+    {
+      __new_buckets = __pointer_alloc_traits::allocate(__bucket_list_.get_deleter().__alloc(), __bucket_count);
+    }
+  }
+  __bucket_list_.reset(__new_buckets);
+#else
   __pointer_allocator& __ptr_alloc = __bucket_list_.get_deleter().__alloc();
   __bucket_list_.reset(__bucket_count > 0 ? __pointer_alloc_traits::allocate(__ptr_alloc, __bucket_count) : nullptr);
+#endif
   __bucket_list_.get_deleter().size() = __bucket_count;
 
+#if defined(__AVM__)
+  __avm_rebuild_buckets<_UniqueKeys>(__bucket_count);
+}
+
+template <class _Tp, class _Hash, class _Equal, class _Alloc>
+template <bool _UniqueKeys>
+void __hash_table<_Tp, _Hash, _Equal, _Alloc>::__avm_rebuild_buckets(size_type __bucket_count) {
+#endif
   if (__bucket_count == 0)
     return;
 
@@ -1875,14 +2044,22 @@ typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_holder
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__construct_node(_Args&&... __args) {
   static_assert(!__is_hash_value_type<_Args...>::value, "Construct cannot be called with a hash value type");
   __node_allocator& __na = __node_alloc();
+#if defined(__AVM__)
+  __node_holder __h(__avm_allocate_node(), _Dp(__na));
+#else
   __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+#endif
 
   // Begin the lifetime of the node itself and the value_type contained within.
   //
   // We don't use the allocator's construct() method to construct the node itself since the
   // Cpp17FooInsertable named requirements don't require the allocator's construct() method
   // to work on anything other than the value_type.
+#if defined(__AVM__)
+  ::new (static_cast<void*>(std::addressof(*__h))) __node(/* hash = */ 0, __na, std::forward<_Args>(__args)...);
+#else
   std::__construct_at(std::addressof(*__h), /* hash = */ 0, __na, std::forward<_Args>(__args)...);
+#endif
 
   __h.get_deleter().__value_constructed = true;
 
@@ -1896,8 +2073,16 @@ typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_holder
 __hash_table<_Tp, _Hash, _Equal, _Alloc>::__construct_node_hash(size_t __hash, _Args&&... __args) {
   static_assert(!__is_hash_value_type<_Args...>::value, "Construct cannot be called with a hash value type");
   __node_allocator& __na = __node_alloc();
+#if defined(__AVM__)
+  __node_holder __h(__avm_allocate_node(), _Dp(__na));
+#else
   __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+#endif
+#if defined(__AVM__)
+  ::new (static_cast<void*>(std::addressof(*__h))) __node(/* hash = */ __hash, __na, std::forward<_Args>(__args)...);
+#else
   std::__construct_at(std::addressof(*__h), /* hash = */ __hash, __na, std::forward<_Args>(__args)...);
+#endif
   __h.get_deleter().__value_constructed = true;
   return __h;
 }

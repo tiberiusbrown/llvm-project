@@ -34,6 +34,7 @@
 #include <__type_traits/is_relocatable.h>
 #include <__type_traits/is_swappable.h>
 #include <__type_traits/is_trivially_destructible.h>
+#include <__type_traits/is_pointer.h>
 #include <__utility/forward.h>
 #include <__utility/move.h>
 
@@ -638,6 +639,83 @@ public:
   template <class... _Args>
   _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void emplace_back(_Args&&... __args);
 
+#if defined(__AVM__)
+  // Initialize an empty holder in a separate allocation phase. The caller can
+  // retain this holder while later constructing elements and committing growth.
+  _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void __avm_allocate_empty(size_type __cap, size_type __start) {
+    _LIBCPP_ASSERT_INTERNAL(capacity() == 0 && empty(), "split buffer already has storage");
+    _LIBCPP_ASSERT_INTERNAL(__cap >= __start, "can't have a start point outside the capacity");
+    if (__cap > 0) {
+      // AVM's standard allocator returns exactly the requested count. Custom
+      // allocate_at_least hooks still supply their actual allocation size.
+#  if _LIBCPP_STD_VER >= 17
+      if constexpr (__is_std_allocator_v<allocator_type>) {
+        __set_data(__get_allocator().allocate(__cap));
+      } else
+#  endif
+      {
+#  if _LIBCPP_STD_VER >= 23
+        auto __allocation = __alloc_traits::allocate_at_least(__get_allocator(), __cap);
+#  else
+        auto __allocation = std::__allocate_at_least(__get_allocator(), __cap);
+#  endif
+        __set_data(__allocation.ptr);
+        __cap = __allocation.count;
+      }
+    }
+    __set_valid_range(__front_cap() + __start, __front_cap() + __start);
+    __set_capacity(__cap);
+  }
+
+  // Deque has already reserved enough map slots. Avoid bringing an impossible
+  // map-allocation path into its allocation/exception stack at O0.
+  template <class... _Args>
+  _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void __emplace_back_with_spare(_Args&&... __args) {
+    _LIBCPP_ASSERT_INTERNAL(size() < capacity(), "split buffer needs spare capacity");
+    pointer __end = end();
+    if (__back_spare() == 0) {
+      difference_type __d = (__front_spare() + 1) / 2;
+#  if _LIBCPP_STD_VER >= 17
+      if constexpr (is_pointer<pointer>::value && is_pointer<value_type>::value) {
+        for (pointer __p = begin(); __p != __end; ++__p)
+          *(__p - __d) = *__p;
+        __end -= __d;
+      } else
+#  endif
+      {
+        __end = std::move(begin(), __end, begin() - __d);
+      }
+      __set_valid_range(begin() - __d, __end);
+    }
+    __alloc_traits::construct(__get_allocator(), std::__to_address(__end), std::forward<_Args>(__args)...);
+    __set_sentinel(++__end);
+  }
+
+  template <class... _Args>
+  _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void __emplace_front_with_spare(_Args&&... __args) {
+    _LIBCPP_ASSERT_INTERNAL(size() < capacity(), "split buffer needs spare capacity");
+    if (__front_spare() == 0) {
+      difference_type __d = (__back_spare() + 1) / 2;
+      pointer __end       = end();
+      pointer __new_end   = __end + __d;
+#  if _LIBCPP_STD_VER >= 17
+      if constexpr (is_pointer<pointer>::value && is_pointer<value_type>::value) {
+        for (pointer __p = __end; __p != begin();) {
+          --__p;
+          *(__p + __d) = *__p;
+        }
+        __set_valid_range(begin() + __d, __new_end);
+      } else
+#  endif
+      {
+        __set_valid_range(std::move_backward(begin(), __end, __new_end), __new_end);
+      }
+    }
+    __alloc_traits::construct(__get_allocator(), std::__to_address(begin() - 1), std::forward<_Args>(__args)...);
+    __set_valid_range(begin() - 1, size() + 1);
+  }
+#endif
+
   _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void pop_front() { __destruct_at_begin(begin() + 1); }
   _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI void pop_back() { __destruct_at_end(end() - 1); }
 
@@ -833,9 +911,21 @@ __split_buffer<_Tp, _Allocator, _Layout>::__split_buffer(size_type __cap, size_t
     : __base_type(__a) {
   _LIBCPP_ASSERT_INTERNAL(__cap >= __start, "can't have a start point outside the capacity");
   if (__cap > 0) {
-    auto __allocation = std::__allocate_at_least(__get_allocator(), __cap);
-    __set_data(__allocation.ptr);
-    __cap = __allocation.count;
+#if defined(__AVM__) && _LIBCPP_STD_VER >= 17
+    if constexpr (__is_std_allocator_v<allocator_type>) {
+      __set_data(__get_allocator().allocate(__cap));
+    } else {
+#endif
+#if defined(__AVM__) && _LIBCPP_STD_VER >= 23
+      auto __allocation = __alloc_traits::allocate_at_least(__get_allocator(), __cap);
+#else
+      auto __allocation = std::__allocate_at_least(__get_allocator(), __cap);
+#endif
+      __set_data(__allocation.ptr);
+      __cap = __allocation.count;
+#if defined(__AVM__) && _LIBCPP_STD_VER >= 17
+    }
+#endif
   }
 
   pointer __begin = __front_cap() + __start;

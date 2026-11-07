@@ -19,6 +19,7 @@
 #include <__iterator/iterator_traits.h>
 #include <__iterator/next.h>
 #include <__memory/addressof.h>
+#include <__memory/allocator.h>
 #include <__memory/allocator_traits.h>
 #include <__memory/compressed_pair.h>
 #include <__memory/construct_at.h>
@@ -603,18 +604,39 @@ private:
   };
 
 public:
-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_value_type& __get_value() { return __value_; }
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_value_type& __get_value()
+#  if defined(__AVM__)
+      _NOEXCEPT
+#  endif
+  {
+    return __value_;
+  }
 #else
 
 private:
   _ALIGNAS_TYPE(__node_value_type) unsigned char __buffer_[sizeof(__node_value_type)];
 
 public:
-  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value() { return *reinterpret_cast<__node_value_type*>(__buffer_); }
+  _LIBCPP_HIDE_FROM_ABI __node_value_type& __get_value()
+#  if defined(__AVM__)
+      _NOEXCEPT
+#  endif
+  {
+    return *reinterpret_cast<__node_value_type*>(__buffer_);
+  }
+#endif
+
+#if defined(__AVM__)
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __tree_node() _NOEXCEPT {}
 #endif
 
   template <class _Alloc, class... _Args>
-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 explicit __tree_node(_Alloc& __na, _Args&&... __args) {
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 explicit __tree_node(_Alloc& __na, _Args&&... __args)
+#if defined(__AVM__)
+      _NOEXCEPT_(noexcept(allocator_traits<_Alloc>::construct(
+          std::declval<_Alloc&>(), std::declval<__node_value_type*>(), std::declval<_Args>()...)))
+#endif
+  {
     allocator_traits<_Alloc>::construct(__na, std::addressof(__get_value()), std::forward<_Args>(__args)...);
   }
 
@@ -1072,6 +1094,73 @@ public:
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 iterator
   __emplace_hint_multi(const_iterator __p, _Args&&... __args);
 
+#if defined(__AVM__)
+  template <class... _Args, __enable_if_t<__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 pair<iterator, bool> __emplace_unique(_Args&&... __args) {
+    const key_type& __key = __avm_key_extraction<key_type, value_type, _Args...>::__get(std::forward<_Args>(__args)...);
+    auto [__parent, __child] = __find_equal(__key);
+    __node_pointer __r       = std::__static_fancy_pointer_cast<__node_pointer>(__child);
+    bool __inserted          = false;
+    if (__child == nullptr) {
+      __node_holder __h =
+          __avm_construct_node_at(__avm_allocate_node(), std::forward<_Args>(__args)...);
+      __insert_node_at(__parent, __child, std::__static_fancy_pointer_cast<__node_base_pointer>(__h.get()));
+      __r        = __h.release();
+      __inserted = true;
+    }
+    return pair<iterator, bool>(iterator(__r), __inserted);
+  }
+
+  template <class... _Args, __enable_if_t<!__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 pair<iterator, bool> __emplace_unique(_Args&&... __args) {
+    __node_holder __h =
+        __avm_construct_node_at(__avm_allocate_node(), std::forward<_Args>(__args)...);
+    auto [__parent, __child] = __find_equal(__h->__get_value());
+    __node_pointer __r       = std::__static_fancy_pointer_cast<__node_pointer>(__child);
+    bool __inserted          = false;
+    if (__child == nullptr) {
+      __insert_node_at(__parent, __child, std::__static_fancy_pointer_cast<__node_base_pointer>(__h.get()));
+      __r        = __h.release();
+      __inserted = true;
+    }
+    return pair<iterator, bool>(iterator(__r), __inserted);
+  }
+
+  template <class... _Args, __enable_if_t<__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 pair<iterator, bool>
+  __emplace_hint_unique(const_iterator __p, _Args&&... __args) {
+    const key_type& __key = __avm_key_extraction<key_type, value_type, _Args...>::__get(std::forward<_Args>(__args)...);
+    __node_base_pointer __dummy;
+    auto [__parent, __child] = __find_equal(__p, __dummy, __key);
+    __node_pointer __r       = std::__static_fancy_pointer_cast<__node_pointer>(__child);
+    bool __inserted          = false;
+    if (__child == nullptr) {
+      __node_holder __h =
+          __avm_construct_node_at(__avm_allocate_node(), std::forward<_Args>(__args)...);
+      __insert_node_at(__parent, __child, std::__static_fancy_pointer_cast<__node_base_pointer>(__h.get()));
+      __r        = __h.release();
+      __inserted = true;
+    }
+    return pair<iterator, bool>(iterator(__r), __inserted);
+  }
+
+  template <class... _Args, __enable_if_t<!__avm_key_extraction<key_type, value_type, _Args...>::value, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 pair<iterator, bool>
+  __emplace_hint_unique(const_iterator __p, _Args&&... __args) {
+    __node_holder __h =
+        __avm_construct_node_at(__avm_allocate_node(), std::forward<_Args>(__args)...);
+    __node_base_pointer __dummy;
+    auto [__parent, __child] = __find_equal(__p, __dummy, __h->__get_value());
+    __node_pointer __r       = std::__static_fancy_pointer_cast<__node_pointer>(__child);
+    bool __inserted          = false;
+    if (__child == nullptr) {
+      __insert_node_at(__parent, __child, std::__static_fancy_pointer_cast<__node_base_pointer>(__h.get()));
+      __r        = __h.release();
+      __inserted = true;
+    }
+    return pair<iterator, bool>(iterator(__r), __inserted);
+  }
+#else
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 pair<iterator, bool> __emplace_unique(_Args&&... __args) {
     return std::__try_key_extraction<key_type, value_type>(
@@ -1132,6 +1221,8 @@ public:
         },
         std::forward<_Args>(__args)...);
   }
+
+#endif // __AVM__
 
   template <class _InIter, class _Sent>
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 void __insert_range_multi(_InIter __first, _Sent __last) {
@@ -1463,8 +1554,49 @@ private:
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_base_pointer&
   __find_leaf(const_iterator __hint, __end_node_pointer& __parent, const value_type& __v);
 
+#if defined(__AVM__)
+  template <class _NodeAlloc = __node_allocator, __enable_if_t<__is_std_allocator_v<_NodeAlloc>, int> = 0>
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_pointer __avm_allocate_node() {
+    if (__builtin_is_constant_evaluated() || _LIBCPP_ALIGNOF(__node) > _LIBCPP_DEFAULT_NEW_ALIGNMENT)
+      return __node_traits::allocate(__node_alloc(), 1);
+    return std::__operator_new_wrapper<__node>(1);
+  }
+  template <class _NodeAlloc = __node_allocator, __enable_if_t<!__is_std_allocator_v<_NodeAlloc>, int> = 0>
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_pointer __avm_allocate_node() {
+    return __node_traits::allocate(__node_alloc(), 1);
+  }
+#endif
+
   template <class... _Args>
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_holder __construct_node(_Args&&... __args);
+#if defined(__AVM__)
+  template <class... _Args>
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __node_holder
+  __avm_construct_node_at(__node_pointer __p, _Args&&... __args) {
+    __node_allocator& __na = __node_alloc();
+    using _Value = typename __node::__node_value_type;
+#if _LIBCPP_STD_VER >= 17
+    if constexpr (__is_std_allocator_v<__node_allocator> && is_nothrow_constructible<_Value, _Args...>::value) {
+      if (!__builtin_is_constant_evaluated()) {
+        ::new (static_cast<void*>(std::addressof(*__p))) __node();
+        ::new (static_cast<void*>(std::addressof(__p->__get_value()))) _Value(std::forward<_Args>(__args)...);
+        return __node_holder(__p, _Dp(__na, true));
+      }
+    }
+#endif
+    if (is_nothrow_constructible<__node, __node_allocator&, _Args...>::value && !__builtin_is_constant_evaluated()) {
+      ::new (static_cast<void*>(std::addressof(*__p))) __node(__na, std::forward<_Args>(__args)...);
+      return __node_holder(__p, _Dp(__na, true));
+    }
+    __node_holder __h(__p, _Dp(__na));
+    if (__builtin_is_constant_evaluated())
+      std::__construct_at(std::addressof(*__h), __na, std::forward<_Args>(__args)...);
+    else
+      ::new (static_cast<void*>(std::addressof(*__h))) __node(__na, std::forward<_Args>(__args)...);
+    __h.get_deleter().__value_constructed = true;
+    return __h;
+  }
+#endif
 
   // TODO: Make this _LIBCPP_HIDE_FROM_ABI
   _LIBCPP_HIDDEN _LIBCPP_CONSTEXPR_SINCE_CXX26 void destroy(__node_pointer __nd) _NOEXCEPT {
@@ -2042,7 +2174,14 @@ _LIBCPP_CONSTEXPR_SINCE_CXX26 typename __tree<_Tp, _Compare, _Allocator>::__node
 __tree<_Tp, _Compare, _Allocator>::__construct_node(_Args&&... __args) {
   __node_allocator& __na = __node_alloc();
   __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+#if defined(__AVM__)
+  if (__builtin_is_constant_evaluated())
+    std::__construct_at(std::addressof(*__h), __na, std::forward<_Args>(__args)...);
+  else
+    ::new (static_cast<void*>(std::addressof(*__h))) __node(__na, std::forward<_Args>(__args)...);
+#else
   std::__construct_at(std::addressof(*__h), __na, std::forward<_Args>(__args)...);
+#endif
   __h.get_deleter().__value_constructed = true;
   return __h;
 }

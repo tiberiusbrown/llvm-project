@@ -1072,6 +1072,17 @@ template <class _Tp, class _Alloc>
 template <class... _Args>
 _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_HIDE_FROM_ABI typename vector<_Tp, _Alloc>::__emplace_back_result_t
 vector<_Tp, _Alloc>::emplace_back(_Args&&... __args) {
+#if defined(__AVM__)
+  if (size() != capacity()) {
+    __emplace_back_assume_capacity(std::forward<_Args>(__args)...);
+  } else {
+    // Construct the appended element before relocating existing elements, so
+    // arguments may alias this vector. The split buffer owns rollback state.
+    _SplitBuffer __buffer(__recommend(size() + 1), size(), __layout_.__alloc());
+    __buffer.__emplace_back_with_spare(std::forward<_Args>(__args)...);
+    __layout_.__relocate(__buffer);
+  }
+#else
   std::__if_likely_else(
       size() != capacity(),
       [](vector& __self, _Args&&... __largs) static {
@@ -1101,6 +1112,8 @@ vector<_Tp, _Alloc>::emplace_back(_Args&&... __args) {
       },
       *this,
       std::forward<_Args>(__args)...);
+
+#endif
 
 #if _LIBCPP_STD_VER >= 17
   return back();

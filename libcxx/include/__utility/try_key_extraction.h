@@ -135,7 +135,9 @@ struct __avm_key_extraction_impl< _KeyT,
                                   _IsMap,
                                   __enable_if_t<is_same<_KeyT, __remove_const_ref_t<_Arg> >::value>,
                                   _Arg> : true_type {
-  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg&& __arg) { return __arg; }
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 static const _KeyT& __get(_Arg&& __arg) {
+    return __arg;
+  }
 };
 
 template <class _KeyT, class _Arg>
@@ -145,7 +147,9 @@ struct __avm_key_extraction_impl<
     __enable_if_t<__is_pair_v<__remove_const_ref_t<_Arg> > &&
                   is_same<__remove_const_t<typename __remove_const_ref_t<_Arg>::first_type>, _KeyT>::value>,
     _Arg> : true_type {
-  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg&& __arg) { return __arg.first; }
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 static const _KeyT& __get(_Arg&& __arg) {
+    return __arg.first;
+  }
 };
 
 template <class _KeyT, class _Arg1, class _Arg2>
@@ -154,7 +158,10 @@ struct __avm_key_extraction_impl< _KeyT,
                                   __enable_if_t<is_same<_KeyT, __remove_const_ref_t<_Arg1> >::value>,
                                   _Arg1,
                                   _Arg2> : true_type {
-  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT& __get(_Arg1&& __arg1, _Arg2&&) { return __arg1; }
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 static const _KeyT&
+  __get(_Arg1&& __arg1, _Arg2&&) {
+    return __arg1;
+  }
 };
 
 #  ifndef _LIBCPP_CXX03_LANG
@@ -168,7 +175,7 @@ struct __avm_key_extraction_impl<
     _PiecewiseConstruct,
     _Tuple1,
     _Tuple2> : true_type {
-  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI static const _KeyT&
+  _LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 static const _KeyT&
   __get(_PiecewiseConstruct&&, _Tuple1&& __tuple1, _Tuple2&&) {
     return std::get<0>(__tuple1);
   }

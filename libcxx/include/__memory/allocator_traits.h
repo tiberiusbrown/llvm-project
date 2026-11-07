@@ -18,8 +18,10 @@
 #include <__memory/pointer_traits.h>
 #include <__type_traits/detected_or.h>
 #include <__type_traits/enable_if.h>
+#include <__type_traits/is_constant_evaluated.h>
 #include <__type_traits/is_constructible.h>
 #include <__type_traits/is_empty.h>
+#include <__type_traits/is_nothrow_constructible.h>
 #include <__type_traits/is_same.h>
 #include <__type_traits/make_unsigned.h>
 #include <__type_traits/remove_reference.h>
@@ -314,6 +316,9 @@ struct allocator_traits : __allocator_traits_base<_Alloc> {
   template <class _Tp>
   using rebind_traits = typename __base::template rebind_traits<_Tp>;
 
+#if defined(__AVM__)
+  _LIBCPP_ALWAYS_INLINE
+#endif
   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 static pointer
   allocate(allocator_type& __a, size_type __n) {
     return __a.allocate(__n);
@@ -358,7 +363,18 @@ struct allocator_traits : __allocator_traits_base<_Alloc> {
   }
   template <class _Tp, class... _Args, __enable_if_t<!__has_construct_v<allocator_type, _Tp*, _Args...>, int> = 0>
   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 static void
-  construct(allocator_type&, _Tp* __p, _Args&&... __args) {
+  construct(allocator_type&, _Tp* __p, _Args&&... __args)
+#if defined(__AVM__)
+      _NOEXCEPT_(is_nothrow_constructible<_Tp, _Args...>::value)
+#endif
+  {
+#if defined(__AVM__)
+    if (!__builtin_is_constant_evaluated()) {
+      _LIBCPP_ASSERT_NON_NULL(__p != nullptr, "null pointer given to construct_at");
+      ::new (static_cast<void*>(__p)) _Tp(std::forward<_Args>(__args)...);
+      return;
+    }
+#endif
     std::__construct_at(__p, std::forward<_Args>(__args)...);
   }
 
