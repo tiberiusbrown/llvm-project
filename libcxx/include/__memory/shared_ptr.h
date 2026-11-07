@@ -676,6 +676,9 @@ _LIBCPP_HIDE_FROM_ABI shared_ptr<_Tp> __allocate_shared_impl(const _Alloc& __all
 }
 
 template <class _Tp, class _Alloc, class... _Args, __enable_if_t<!is_array<_Tp>::value, int> = 0>
+#if defined(__AVM__)
+_LIBCPP_ALWAYS_INLINE
+#endif
 [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI shared_ptr<_Tp> allocate_shared(const _Alloc& __a, _Args&&... __args) {
   using _CanonicalAlloc = __allocator_traits_rebind_t<_Alloc, __remove_cv_t<_Tp> >;
   using _ControlBlock   = __shared_ptr_emplace<_Tp, _CanonicalAlloc>;
@@ -683,6 +686,9 @@ template <class _Tp, class _Alloc, class... _Args, __enable_if_t<!is_array<_Tp>:
 }
 
 template <class _Tp, class... _Args, __enable_if_t<!is_array<_Tp>::value, int> = 0>
+#if defined(__AVM__)
+_LIBCPP_ALWAYS_INLINE
+#endif
 [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI shared_ptr<_Tp> make_shared(_Args&&... __args) {
   return std::allocate_shared<_Tp>(allocator<__remove_cv_t<_Tp> >(), std::forward<_Args>(__args)...);
 }

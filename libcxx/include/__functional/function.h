@@ -21,6 +21,7 @@
 #include <__type_traits/aligned_storage.h>
 #include <__type_traits/decay.h>
 #include <__type_traits/invoke.h>
+#include <__type_traits/is_nothrow_constructible.h>
 #include <__type_traits/is_scalar.h>
 #include <__type_traits/is_trivially_constructible.h>
 #include <__type_traits/is_trivially_destructible.h>
@@ -139,7 +140,11 @@ public:
   __base(const __base&)            = delete;
   __base& operator=(const __base&) = delete;
 
-  _LIBCPP_HIDE_FROM_ABI __base() {}
+  _LIBCPP_HIDE_FROM_ABI __base()
+#if defined(__AVM__)
+      _NOEXCEPT
+#endif
+  {}
   _LIBCPP_HIDE_FROM_ABI_VIRTUAL virtual ~__base() {}
   virtual __base* __clone() const             = 0;
   virtual void __clone(__base*) const         = 0;
@@ -167,8 +172,16 @@ class __func<_Fp, _Rp(_ArgTypes...)> : public __base<_Rp(_ArgTypes...)> {
   _Fp __func_;
 
 public:
-  _LIBCPP_HIDE_FROM_ABI explicit __func(_Fp&& __f) : __func_(std::move(__f)) {}
-  _LIBCPP_HIDE_FROM_ABI explicit __func(const _Fp& __f) : __func_(__f) {}
+  _LIBCPP_HIDE_FROM_ABI explicit __func(_Fp&& __f)
+#if defined(__AVM__)
+      _NOEXCEPT_(is_nothrow_move_constructible<_Fp>::value)
+#endif
+      : __func_(std::move(__f)) {}
+  _LIBCPP_HIDE_FROM_ABI explicit __func(const _Fp& __f)
+#if defined(__AVM__)
+      _NOEXCEPT_(is_nothrow_copy_constructible<_Fp>::value)
+#endif
+      : __func_(__f) {}
 
   _LIBCPP_HIDE_FROM_ABI_VIRTUAL __base<_Rp(_ArgTypes...)>* __clone() const override { return new __func(__func_); }
 
@@ -644,6 +657,9 @@ public:
   _LIBCPP_HIDE_FROM_ABI function(const function&)      = default;
   _LIBCPP_HIDE_FROM_ABI function(function&&) _NOEXCEPT = default;
   template <class _Fp, class = _EnableIfLValueCallable<_Fp>>
+#if defined(__AVM__)
+  _LIBCPP_ALWAYS_INLINE
+#endif
   _LIBCPP_HIDE_FROM_ABI function(_Fp __f) : __f_(std::move(__f)) {}
 
 #  if _LIBCPP_STD_VER <= 14

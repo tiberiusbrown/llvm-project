@@ -49,6 +49,9 @@ struct __allocation_guard {
   using _Size _LIBCPP_NODEBUG    = typename allocator_traits<_Alloc>::size_type;
 
   template <class _AllocT> // we perform the allocator conversion inside the constructor
+#if defined(__AVM__)
+  _LIBCPP_ALWAYS_INLINE
+#endif
   _LIBCPP_CONSTEXPR_SINCE_CXX26 _LIBCPP_HIDE_FROM_ABI explicit __allocation_guard(_AllocT __alloc, _Size __n)
       : __alloc_(std::move(__alloc)),
         __n_(__n),

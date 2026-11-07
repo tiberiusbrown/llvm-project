@@ -26,6 +26,7 @@
 #include <__memory/pointer_traits.h>
 #include <__memory/swap_allocator.h>
 #include <__memory/uninitialized_algorithms.h>
+#include <__new/exceptions.h>
 #include <__type_traits/conditional.h>
 #include <__type_traits/enable_if.h>
 #include <__type_traits/integral_constant.h>
@@ -650,7 +651,13 @@ public:
       // allocate_at_least hooks still supply their actual allocation size.
 #  if _LIBCPP_STD_VER >= 17
       if constexpr (__is_std_allocator_v<allocator_type>) {
-        __set_data(__get_allocator().allocate(__cap));
+        if (__builtin_is_constant_evaluated() || _LIBCPP_ALIGNOF(value_type) > _LIBCPP_DEFAULT_NEW_ALIGNMENT) {
+          __set_data(__get_allocator().allocate(__cap));
+        } else {
+          if (__cap > size_t(-1) / sizeof(value_type))
+            std::__throw_bad_array_new_length();
+          __set_data(std::__operator_new_wrapper<value_type>(__cap));
+        }
       } else
 #  endif
       {
