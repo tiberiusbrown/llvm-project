@@ -40,6 +40,46 @@
 #include <__utility/move.h>
 #include <__utility/pair.h>
 
+#if defined(__AVM__)
+#  include <__algorithm/adjacent_find.h>
+#  include <__algorithm/all_of.h>
+#  include <__algorithm/any_of.h>
+#  include <__algorithm/copy.h>
+#  include <__algorithm/copy_n.h>
+#  include <__algorithm/count.h>
+#  include <__algorithm/count_if.h>
+#  include <__algorithm/equal.h>
+#  include <__algorithm/fill.h>
+#  include <__algorithm/fill_n.h>
+#  include <__algorithm/find.h>
+#  include <__algorithm/find_first_of.h>
+#  include <__algorithm/find_if_not.h>
+#  include <__algorithm/for_each_n.h>
+#  include <__algorithm/generate.h>
+#  include <__algorithm/generate_n.h>
+#  include <__algorithm/is_heap.h>
+#  include <__algorithm/is_partitioned.h>
+#  include <__algorithm/is_sorted.h>
+#  include <__algorithm/is_sorted_until.h>
+#  include <__algorithm/lexicographical_compare.h>
+#  include <__algorithm/max_element.h>
+#  include <__algorithm/move.h>
+#  include <__algorithm/none_of.h>
+#  include <__algorithm/replace.h>
+#  include <__algorithm/replace_copy.h>
+#  include <__algorithm/replace_copy_if.h>
+#  include <__algorithm/replace_if.h>
+#  include <__algorithm/reverse_copy.h>
+#  include <__algorithm/rotate_copy.h>
+#  include <__algorithm/sort.h>
+#  include <__memory/destroy.h>
+#  include <__numeric/adjacent_difference.h>
+#  include <__numeric/exclusive_scan.h>
+#  include <__numeric/inclusive_scan.h>
+#  include <__numeric/reduce.h>
+#  include <__numeric/transform_exclusive_scan.h>
+#endif
+
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
 #endif
@@ -51,6 +91,111 @@ _LIBCPP_PUSH_MACROS
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 namespace __pstl {
+
+#  if defined(__AVM__)
+// Serial execution is valid for every standard policy. Dispatch directly to
+// each serial algorithm so default-backend compositions do not retain nested
+// callbacks and optional results on AVM's 256-byte stack. The noexcept boundary
+// still terminates when an element-access function throws.
+#    define _LIBCPP_AVM_PSTL_VALUE(_Backend, _Algorithm)                                                               \
+      template <class _ExecutionPolicy>                                                                                \
+      struct _Backend<__serial_backend_tag, _ExecutionPolicy> {                                                        \
+        template <class _Policy, class... _Args>                                                                       \
+        _LIBCPP_HIDE_FROM_ABI auto operator()(_Policy&&, _Args&&... __args) const noexcept                             \
+            -> optional<decltype(std::_Algorithm(std::forward<_Args>(__args)...))> {                                   \
+          return std::_Algorithm(std::forward<_Args>(__args)...);                                                      \
+        }                                                                                                              \
+      }
+#    define _LIBCPP_AVM_PSTL_VOID(_Backend, _Algorithm)                                                                \
+      template <class _ExecutionPolicy>                                                                                \
+      struct _Backend<__serial_backend_tag, _ExecutionPolicy> {                                                        \
+        template <class _Policy, class... _Args>                                                                       \
+        _LIBCPP_HIDE_FROM_ABI optional<__empty> operator()(_Policy&&, _Args&&... __args) const noexcept {              \
+          (void)std::_Algorithm(std::forward<_Args>(__args)...);                                                       \
+          return __empty{};                                                                                            \
+        }                                                                                                              \
+      }
+
+_LIBCPP_AVM_PSTL_VALUE(__adjacent_difference, adjacent_difference);
+_LIBCPP_AVM_PSTL_VALUE(__adjacent_find, adjacent_find);
+_LIBCPP_AVM_PSTL_VALUE(__all_of, all_of);
+_LIBCPP_AVM_PSTL_VALUE(__any_of, any_of);
+_LIBCPP_AVM_PSTL_VALUE(__copy, copy);
+_LIBCPP_AVM_PSTL_VALUE(__copy_n, copy_n);
+_LIBCPP_AVM_PSTL_VALUE(__count, count);
+_LIBCPP_AVM_PSTL_VALUE(__count_if, count_if);
+_LIBCPP_AVM_PSTL_VALUE(__destroy_n, destroy_n);
+_LIBCPP_AVM_PSTL_VALUE(__equal, equal);
+_LIBCPP_AVM_PSTL_VALUE(__exclusive_scan, exclusive_scan);
+_LIBCPP_AVM_PSTL_VALUE(__fill_n, fill_n);
+_LIBCPP_AVM_PSTL_VALUE(__find, find);
+_LIBCPP_AVM_PSTL_VALUE(__find_end, find_end);
+_LIBCPP_AVM_PSTL_VALUE(__find_first_of, find_first_of);
+_LIBCPP_AVM_PSTL_VALUE(__find_if, find_if);
+_LIBCPP_AVM_PSTL_VALUE(__find_if_not, find_if_not);
+_LIBCPP_AVM_PSTL_VALUE(__for_each_n, for_each_n);
+_LIBCPP_AVM_PSTL_VALUE(__generate_n, generate_n);
+_LIBCPP_AVM_PSTL_VALUE(__includes, includes);
+_LIBCPP_AVM_PSTL_VALUE(__inclusive_scan, inclusive_scan);
+_LIBCPP_AVM_PSTL_VALUE(__is_heap, is_heap);
+_LIBCPP_AVM_PSTL_VALUE(__is_heap_until, is_heap_until);
+_LIBCPP_AVM_PSTL_VALUE(__is_partitioned, is_partitioned);
+_LIBCPP_AVM_PSTL_VALUE(__is_sorted, is_sorted);
+_LIBCPP_AVM_PSTL_VALUE(__is_sorted_until, is_sorted_until);
+_LIBCPP_AVM_PSTL_VALUE(__lexicographical_compare, lexicographical_compare);
+_LIBCPP_AVM_PSTL_VALUE(__max_element, max_element);
+_LIBCPP_AVM_PSTL_VALUE(__merge, merge);
+_LIBCPP_AVM_PSTL_VALUE(__min_element, min_element);
+_LIBCPP_AVM_PSTL_VALUE(__minmax_element, minmax_element);
+_LIBCPP_AVM_PSTL_VALUE(__mismatch, mismatch);
+_LIBCPP_AVM_PSTL_VALUE(__move, move);
+_LIBCPP_AVM_PSTL_VALUE(__none_of, none_of);
+_LIBCPP_AVM_PSTL_VALUE(__reduce, reduce);
+_LIBCPP_AVM_PSTL_VALUE(__reverse_copy, reverse_copy);
+_LIBCPP_AVM_PSTL_VALUE(__rotate_copy, rotate_copy);
+_LIBCPP_AVM_PSTL_VALUE(__search, search);
+_LIBCPP_AVM_PSTL_VALUE(__search_n, search_n);
+_LIBCPP_AVM_PSTL_VALUE(__set_difference, set_difference);
+_LIBCPP_AVM_PSTL_VALUE(__set_intersection, set_intersection);
+_LIBCPP_AVM_PSTL_VALUE(__set_symmetric_difference, set_symmetric_difference);
+_LIBCPP_AVM_PSTL_VALUE(__set_union, set_union);
+_LIBCPP_AVM_PSTL_VALUE(__swap_ranges, swap_ranges);
+_LIBCPP_AVM_PSTL_VALUE(__transform, transform);
+_LIBCPP_AVM_PSTL_VALUE(__transform_exclusive_scan, transform_exclusive_scan);
+_LIBCPP_AVM_PSTL_VALUE(__transform_inclusive_scan, transform_inclusive_scan);
+_LIBCPP_AVM_PSTL_VALUE(__transform_reduce, transform_reduce);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_copy, uninitialized_copy);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_copy_n, uninitialized_copy_n);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_default_construct_n, uninitialized_default_construct_n);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_fill_n, uninitialized_fill_n);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_move, uninitialized_move);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_move_n, uninitialized_move_n);
+_LIBCPP_AVM_PSTL_VALUE(__uninitialized_value_construct_n, uninitialized_value_construct_n);
+_LIBCPP_AVM_PSTL_VALUE(__mismatch_3leg, mismatch);
+_LIBCPP_AVM_PSTL_VALUE(__equal_3leg, equal);
+_LIBCPP_AVM_PSTL_VALUE(__transform_binary, transform);
+_LIBCPP_AVM_PSTL_VALUE(__transform_reduce_binary, transform_reduce);
+_LIBCPP_AVM_PSTL_VALUE(__inclusive_scan_init, inclusive_scan);
+_LIBCPP_AVM_PSTL_VALUE(__transform_inclusive_scan_init, transform_inclusive_scan);
+
+_LIBCPP_AVM_PSTL_VOID(__destroy, destroy);
+_LIBCPP_AVM_PSTL_VOID(__fill, fill);
+_LIBCPP_AVM_PSTL_VOID(__for_each, for_each);
+_LIBCPP_AVM_PSTL_VOID(__generate, generate);
+_LIBCPP_AVM_PSTL_VOID(__replace, replace);
+_LIBCPP_AVM_PSTL_VOID(__replace_copy, replace_copy);
+_LIBCPP_AVM_PSTL_VOID(__replace_copy_if, replace_copy_if);
+_LIBCPP_AVM_PSTL_VOID(__replace_if, replace_if);
+_LIBCPP_AVM_PSTL_VOID(__reverse, reverse);
+_LIBCPP_AVM_PSTL_VOID(__sort, sort);
+_LIBCPP_AVM_PSTL_VOID(__stable_sort, stable_sort);
+_LIBCPP_AVM_PSTL_VOID(__uninitialized_default_construct, uninitialized_default_construct);
+_LIBCPP_AVM_PSTL_VOID(__uninitialized_fill, uninitialized_fill);
+_LIBCPP_AVM_PSTL_VOID(__uninitialized_value_construct, uninitialized_value_construct);
+
+#    undef _LIBCPP_AVM_PSTL_VALUE
+#    undef _LIBCPP_AVM_PSTL_VOID
+#  else
 
 //
 // This partial PSTL backend runs everything serially.
@@ -443,6 +588,8 @@ struct __set_intersection<__serial_backend_tag, _ExecutionPolicy> {
         std::move(__comp));
   }
 };
+
+#  endif // defined(__AVM__)
 
 } // namespace __pstl
 _LIBCPP_END_NAMESPACE_STD

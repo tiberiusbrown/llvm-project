@@ -362,7 +362,9 @@ __cpp_lib_void_t                                        201411L <type_traits>
 # define __cpp_lib_chrono                               201611L
 # define __cpp_lib_clamp                                201603L
 # define __cpp_lib_enable_shared_from_this              201603L
-// # define __cpp_lib_execution                            201603L
+# if defined(__AVM__)
+#   define __cpp_lib_execution                          201603L
+# endif
 # if _LIBCPP_HAS_FILESYSTEM
 #   define __cpp_lib_filesystem                         201703L
 # endif
@@ -452,7 +454,9 @@ __cpp_lib_void_t                                        201411L <type_traits>
 # define __cpp_lib_endian                               201907L
 # define __cpp_lib_erase_if                             202002L
 # undef  __cpp_lib_execution
-// # define __cpp_lib_execution                            201902L
+# if defined(__AVM__)
+#   define __cpp_lib_execution                          201902L
+# endif
 # if _LIBCPP_AVAILABILITY_HAS_TO_CHARS_FLOATING_POINT
 #   define __cpp_lib_format                             202110L
 # endif

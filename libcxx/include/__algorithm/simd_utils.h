@@ -32,7 +32,9 @@ _LIBCPP_PUSH_MACROS
 #  define _LIBCPP_HAS_ALGORITHM_VECTOR_UTILS 0
 #endif
 
-#if _LIBCPP_HAS_ALGORITHM_VECTOR_UTILS && !defined(__OPTIMIZE_SIZE__)
+// AVM has scalar byte/word instructions. Scalarized vector temporaries consume
+// its small stack without providing native SIMD execution.
+#if _LIBCPP_HAS_ALGORITHM_VECTOR_UTILS && !defined(__OPTIMIZE_SIZE__) && !defined(__AVM__)
 #  define _LIBCPP_VECTORIZE_ALGORITHMS 1
 #else
 #  define _LIBCPP_VECTORIZE_ALGORITHMS 0

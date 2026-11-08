@@ -89,6 +89,18 @@ public:
     // Note: this duplicates a check in `optional` but provides a better error message.
     _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(
         __pred_.__has_value(), "Trying to call begin() on a filter_view that does not have a valid predicate.");
+#  if defined(__AVM__)
+    if constexpr (_UseCache)
+      if (__cached_begin_.__has_value())
+        return {*this, *__cached_begin_};
+    auto __first = ranges::begin(__base_);
+    auto __last  = ranges::end(__base_);
+    for (; __first != __last && !std::invoke(*__pred_, *__first); ++__first) {
+    }
+    if constexpr (_UseCache)
+      __cached_begin_.__emplace(__first);
+    return {*this, std::move(__first)};
+#  else
     if constexpr (_UseCache) {
       if (!__cached_begin_.__has_value()) {
         __cached_begin_.__emplace(ranges::find_if(__base_, std::ref(*__pred_)));
@@ -97,6 +109,7 @@ public:
     } else {
       return {*this, ranges::find_if(__base_, std::ref(*__pred_))};
     }
+#  endif
   }
 
   [[nodiscard]] _LIBCPP_HIDE_FROM_ABI constexpr auto end() {
@@ -162,8 +175,16 @@ public:
   }
 
   _LIBCPP_HIDE_FROM_ABI constexpr __iterator& operator++() {
+#  if defined(__AVM__)
+    // Avoid nested find/projection/reference-wrapper frames for each increment.
+    auto __last = ranges::end(__parent_->__base_);
+    do {
+      ++__current_;
+    } while (__current_ != __last && !std::invoke(*__parent_->__pred_, *__current_));
+#  else
     __current_ =
         ranges::find_if(std::move(++__current_), ranges::end(__parent_->__base_), std::ref(*__parent_->__pred_));
+#  endif
     return *this;
   }
   _LIBCPP_HIDE_FROM_ABI constexpr void operator++(int) { ++*this; }

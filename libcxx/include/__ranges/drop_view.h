@@ -97,7 +97,16 @@ public:
       if (__cached_begin_.__has_value())
         return *__cached_begin_;
 
+#  if defined(__AVM__)
+    // Count is nonnegative here. Advancing directly releases the generic
+    // next/advance iterator copies before calling an adapted increment.
+    auto __tmp  = ranges::begin(__base_);
+    auto __last = ranges::end(__base_);
+    for (auto __remaining = __count_; __remaining > 0 && __tmp != __last; --__remaining)
+      ++__tmp;
+#  else
     auto __tmp = ranges::next(ranges::begin(__base_), __count_, ranges::end(__base_));
+#  endif
     if constexpr (_UseCache)
       __cached_begin_.__emplace(__tmp);
     return __tmp;

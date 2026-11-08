@@ -561,7 +561,8 @@ feature_test_macros = [
             "name": "__cpp_lib_execution",
             "values": {"c++17": 201603, "c++20": 201902},
             "headers": ["execution"],
-            "unimplemented": True,
+            "test_suite_guard": "!defined(_LIBCPP_VERSION) || defined(__AVM__)",
+            "libcxx_guard": "defined(__AVM__)",
         },
         {
             "name": "__cpp_lib_expected",

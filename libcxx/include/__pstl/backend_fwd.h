@@ -53,6 +53,11 @@ struct __serial_backend_tag;
 struct __std_thread_backend_tag;
 struct __statpart_backend_tag;
 
+template <class _Backend, class _ExecutionPolicy>
+struct __exclusive_scan;
+template <class _Backend, class _ExecutionPolicy>
+struct __transform_exclusive_scan;
+
 #  if _LIBCPP_HAS_THREADS
 using __current_configuration _LIBCPP_NODEBUG =
     __backend_configuration<__statpart_backend_tag, __default_backend_tag, __serial_backend_tag>;

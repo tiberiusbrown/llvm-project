@@ -14,6 +14,12 @@ _LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
 
 template <class Comp, class RandomAccessIterator>
 void __sort(RandomAccessIterator first, RandomAccessIterator last, Comp comp) {
+#if defined(__AVM__)
+  // Select the generic AVM heap sorter explicitly. The scalar overloads of
+  // __sort_dispatch call this exported entry and would otherwise recurse.
+  ranges::less compare;
+  std::__sort_dispatch<_ClassicAlgPolicy, RandomAccessIterator, ranges::less>(first, last, compare);
+#else
   if (first == last) // log(0) is undefined, so don't try computing the depth
     return;
 
@@ -26,6 +32,7 @@ void __sort(RandomAccessIterator first, RandomAccessIterator last, Comp comp) {
                    ranges::less,
                    RandomAccessIterator,
                    __use_branchless_sort<ranges::less, RandomAccessIterator>>(first, last, ranges::less{}, depth_limit);
+#endif
 }
 
 // clang-format off

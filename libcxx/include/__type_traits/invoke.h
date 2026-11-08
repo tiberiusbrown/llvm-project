@@ -85,8 +85,11 @@ template <class... _Args>
 using __invoke_result_t _LIBCPP_NODEBUG = typename __invoke_result<_Args...>::type;
 
 template <class... _Args>
-_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR __invoke_result_t<_Args...> __invoke(_Args&&... __args)
-    _NOEXCEPT_(noexcept(__builtin_invoke(std::forward<_Args>(__args)...))) {
+#  if defined(__AVM__)
+_LIBCPP_ALWAYS_INLINE
+#  endif
+_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR __invoke_result_t<_Args...>
+__invoke(_Args&&... __args) _NOEXCEPT_(noexcept(__builtin_invoke(std::forward<_Args>(__args)...))) {
   return __builtin_invoke(std::forward<_Args>(__args)...);
 }
 

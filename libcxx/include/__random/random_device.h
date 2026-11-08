@@ -45,7 +45,7 @@ public:
 
   // generator characteristics
   static _LIBCPP_CONSTEXPR const result_type _Min = 0;
-  static _LIBCPP_CONSTEXPR const result_type _Max = 0xFFFFFFFFu;
+  static _LIBCPP_CONSTEXPR const result_type _Max = result_type(-1);
 
   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI static _LIBCPP_CONSTEXPR result_type min() { return _Min; }
   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI static _LIBCPP_CONSTEXPR result_type max() { return _Max; }

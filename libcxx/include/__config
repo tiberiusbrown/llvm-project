@@ -53,6 +53,10 @@
 
 // Libc++ supports various implementations of std::random_device.
 //
+// _LIBCPP_USING_AVM_RANDOM
+//      Sample AVM's floating ADC input and timer through its runtime service.
+//      The tokens "avm" and "/dev/urandom" select this hardware source.
+//
 // _LIBCPP_USING_DEV_RANDOM
 //      Read entropy from the given file, by default `/dev/urandom`.
 //      If a token is provided, it is assumed to be the path to a file
@@ -82,7 +86,9 @@
 //      Use rand_s(), for use on Windows.
 //      When this option is used, the token passed to `std::random_device`'s
 //      constructor *must* be "/dev/urandom" -- anything else is an error.
-#  if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) ||                     \
+#  if defined(__AVM__)
+#    define _LIBCPP_USING_AVM_RANDOM
+#  elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) ||                   \
       defined(__DragonFly__) || defined(__BIONIC__)
 #    define _LIBCPP_USING_ARC4_RANDOM
 #  elif defined(__linux__)

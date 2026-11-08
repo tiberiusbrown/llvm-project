@@ -65,6 +65,14 @@ private:
   static_assert(0 < __s, "subtract_with_carry_engine invalid parameters");
   static_assert(__s < __r, "subtract_with_carry_engine invalid parameters");
 
+#if defined(__AVM__)
+  _LIBCPP_HIDE_FROM_ABI __attribute__((__noinline__)) static uint32_t __avm_initial_seed(result_type __sd) _NOEXCEPT {
+    if (__sd == 0)
+      __sd = default_seed;
+    return static_cast<uint32_t>(__sd % uint32_t(2147483563u));
+  }
+#endif
+
 public:
   static _LIBCPP_CONSTEXPR const result_type _Min = 0;
   static _LIBCPP_CONSTEXPR const result_type _Max =
@@ -92,12 +100,22 @@ public:
   }
 
   _LIBCPP_HIDE_FROM_ABI void seed(result_type __sd = default_seed) {
+#if defined(__AVM__)
+    // The prescribed auxiliary LCG has a 31-bit modulus, even for a 64-bit
+    // result word. Normalize wide seeds before constructing that 32-bit LCG.
+    linear_congruential_engine<uint32_t, 40014u, 0u, 2147483563u> __e(__avm_initial_seed(__sd));
+#else
     linear_congruential_engine<result_type, 40014u, 0u, 2147483563u> __e(__sd == 0u ? default_seed : __sd);
+#endif
     for (size_t __i = 0; __i < __r; ++__i) {
       if _LIBCPP_CONSTEXPR ((1 + (__w - 1) / 32) == 1) {
         __x_[__i] = static_cast<result_type>(__e() & _Max);
       } else {
+#if defined(__AVM__)
+        uint32_t __e0 = __e();
+#else
         result_type __e0 = __e();
+#endif
         __x_[__i]        = static_cast<result_type>((__e0 + ((uint64_t)__e() << 32)) & _Max);
       }
     }

@@ -131,18 +131,25 @@ struct __lce_ta<__a, __c, 0ull, (unsigned long long)(-1), _LCE_Full> {
 };
 
 // 32
+// unsigned is only 16 bits on AVM; the 32-bit specializations must still
+// match the actual word type used by the standard engine aliases.
+#if defined(__AVM__)
+typedef uint32_t __lce_uint32_t;
+#else
+typedef unsigned __lce_uint32_t;
+#endif
 
 template <unsigned long long __a, unsigned long long __c, unsigned long long __m>
-struct __lce_ta<__a, __c, __m, unsigned(-1), _LCE_Promote> {
-  typedef unsigned result_type;
+struct __lce_ta<__a, __c, __m, __lce_uint32_t(-1), _LCE_Promote> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     return static_cast<result_type>(__lce_ta<__a, __c, __m, (unsigned long long)(-1)>::next(__x));
   }
 };
 
 template <unsigned long long _Ap, unsigned long long _Cp, unsigned long long _Mp>
-struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Schrage> {
-  typedef unsigned result_type;
+struct __lce_ta<_Ap, _Cp, _Mp, __lce_uint32_t(-1), _LCE_Schrage> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     const result_type __a = static_cast<result_type>(_Ap);
     const result_type __c = static_cast<result_type>(_Cp);
@@ -159,8 +166,8 @@ struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Schrage> {
 };
 
 template <unsigned long long _Ap, unsigned long long _Mp>
-struct __lce_ta<_Ap, 0ull, _Mp, unsigned(-1), _LCE_Schrage> {
-  typedef unsigned result_type;
+struct __lce_ta<_Ap, 0ull, _Mp, __lce_uint32_t(-1), _LCE_Schrage> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     const result_type __a = static_cast<result_type>(_Ap);
     const result_type __m = static_cast<result_type>(_Mp);
@@ -175,8 +182,8 @@ struct __lce_ta<_Ap, 0ull, _Mp, unsigned(-1), _LCE_Schrage> {
 };
 
 template <unsigned long long _Ap, unsigned long long _Cp, unsigned long long _Mp>
-struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Part> {
-  typedef unsigned result_type;
+struct __lce_ta<_Ap, _Cp, _Mp, __lce_uint32_t(-1), _LCE_Part> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     const result_type __a = static_cast<result_type>(_Ap);
     const result_type __c = static_cast<result_type>(_Cp);
@@ -189,8 +196,8 @@ struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Part> {
 };
 
 template <unsigned long long _Ap, unsigned long long _Cp, unsigned long long _Mp>
-struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Full> {
-  typedef unsigned result_type;
+struct __lce_ta<_Ap, _Cp, _Mp, __lce_uint32_t(-1), _LCE_Full> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     const result_type __a = static_cast<result_type>(_Ap);
     const result_type __c = static_cast<result_type>(_Cp);
@@ -200,8 +207,8 @@ struct __lce_ta<_Ap, _Cp, _Mp, unsigned(-1), _LCE_Full> {
 };
 
 template <unsigned long long _Ap, unsigned long long _Cp>
-struct __lce_ta<_Ap, _Cp, 0ull, unsigned(-1), _LCE_Full> {
-  typedef unsigned result_type;
+struct __lce_ta<_Ap, _Cp, 0ull, __lce_uint32_t(-1), _LCE_Full> {
+  typedef __lce_uint32_t result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
     const result_type __a = static_cast<result_type>(_Ap);
     const result_type __c = static_cast<result_type>(_Cp);
@@ -215,9 +222,30 @@ template <unsigned long long __a, unsigned long long __c, unsigned long long __m
 struct __lce_ta<__a, __c, __m, (unsigned short)(-1), __mode> {
   typedef unsigned short result_type;
   _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
-    return static_cast<result_type>(__lce_ta<__a, __c, __m, unsigned(-1)>::next(__x));
+    return static_cast<result_type>(__lce_ta<__a, __c, __m, __lce_uint32_t(-1)>::next(__x));
   }
 };
+
+#if defined(__AVM__)
+// Keep arithmetic in the 16-bit word when the picker proved it cannot
+// overflow (or when modulo 2^16 is the specified result).
+template <unsigned long long __a, unsigned long long __c, unsigned long long __m>
+struct __lce_ta<__a, __c, __m, (unsigned short)(-1), _LCE_Full> {
+  typedef unsigned short result_type;
+  _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
+    return static_cast<result_type>((result_type(__a) * __x + result_type(__c)) % result_type(__m));
+  }
+};
+
+template <unsigned long long __a, unsigned long long __c>
+struct __lce_ta<__a, __c, 0ull, (unsigned short)(-1), _LCE_Full> {
+  typedef unsigned short result_type;
+  _LIBCPP_HIDE_FROM_ABI static result_type next(result_type __x) {
+    return static_cast<result_type>(unsigned(__a) * __x + unsigned(__c));
+  }
+};
+
+#endif // defined(__AVM__)
 
 template <class _UIntType, _UIntType __a, _UIntType __c, _UIntType __m>
 class linear_congruential_engine;

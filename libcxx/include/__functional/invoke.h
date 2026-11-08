@@ -24,6 +24,9 @@
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 template <class _Fn, class... _Args>
+#  if defined(__AVM__)
+_LIBCPP_ALWAYS_INLINE
+#  endif
 _LIBCPP_CONSTEXPR_SINCE_CXX20 invoke_result_t<_Fn, _Args...>
 invoke(_Fn&& __f, _Args&&... __args) noexcept(is_nothrow_invocable_v<_Fn, _Args...>) {
   return std::__invoke(std::forward<_Fn>(__f), std::forward<_Args>(__args)...);

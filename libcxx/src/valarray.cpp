@@ -18,6 +18,30 @@ template _LIBCPP_EXPORTED_FROM_ABI valarray<size_t>::~valarray();
 
 template void valarray<size_t>::resize(size_t, size_t);
 
+#if defined(__AVM__)
+void gslice::__init(size_t __start) {
+  size_t __count = __size_.size() != 0;
+  for (size_t __i = 0; __i != __size_.size(); ++__i)
+    __count *= __size_[__i];
+  __1d_.resize(__count);
+  __avm_init_indices(__start);
+}
+
+void gslice::__avm_init_indices(size_t __start) {
+  // Decode each flat index as mixed-radix coordinates. This avoids a second
+  // allocation for traversal counters and keeps division locals out of EH.
+  for (size_t __k = 0; __k != __1d_.size(); ++__k) {
+    size_t __remaining = __k;
+    size_t __offset    = __start;
+    for (size_t __i = __size_.size(); __i != 0;) {
+      --__i;
+      __offset += (__remaining % __size_[__i]) * __stride_[__i];
+      __remaining /= __size_[__i];
+    }
+    __1d_[__k] = __offset;
+  }
+}
+#else
 void gslice::__init(size_t __start) {
   valarray<size_t> __indices(__size_.size());
   size_t __k = __size_.size() != 0;
@@ -45,6 +69,8 @@ void gslice::__init(size_t __start) {
     }
   }
 }
+
+#endif
 
 _LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
 _LIBCPP_END_NAMESPACE_STD

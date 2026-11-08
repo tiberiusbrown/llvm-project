@@ -286,9 +286,55 @@ _LIBCPP_CONSTEXPR_SINCE_CXX26 void __stable_sort(
   std::__inplace_merge<_AlgPolicy>(__first, __m, __last, __comp, __l2, __len - __l2, __buff, __buff_size);
 }
 
+#if defined(__AVM__)
+// Binary insertion keeps the specified O(N log N) comparison bound without
+// recursive merge frames or radix counter arrays. AVM's small RAM ranges make
+// the O(N^2) moves preferable to retaining either kind of scratch storage.
+template <class _RandomAccessIterator, class _Compare>
+_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __attribute__((__noinline__)) _RandomAccessIterator
+__avm_stable_position(_RandomAccessIterator __first, _RandomAccessIterator __current, _Compare& __comp) {
+  using _Difference   = typename iterator_traits<_RandomAccessIterator>::difference_type;
+  _Difference __count = __current - __first;
+  while (__count != 0) {
+    _Difference __half             = __count / 2;
+    _RandomAccessIterator __middle = __first + __half;
+    if (__comp(*__current, *__middle)) {
+      __count = __half;
+    } else {
+      __first = __middle + 1;
+      __count -= __half + 1;
+    }
+  }
+  return __first;
+}
+
+template <class _AlgPolicy, class _RandomAccessIterator>
+_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 __attribute__((__noinline__)) void
+__avm_stable_insert(_RandomAccessIterator __position, _RandomAccessIterator __current) {
+  using _Ops   = _IterOps<_AlgPolicy>;
+  using _Value = typename iterator_traits<_RandomAccessIterator>::value_type;
+  _Value __value(_Ops::__iter_move(__current));
+  while (__current != __position) {
+    _RandomAccessIterator __previous = __current - 1;
+    *__current                       = _Ops::__iter_move(__previous);
+    __current                        = __previous;
+  }
+  *__position = std::move(__value);
+}
+#endif
+
 template <class _AlgPolicy, class _RandomAccessIterator, class _Compare>
 _LIBCPP_CONSTEXPR_SINCE_CXX26 void
 __stable_sort_impl(_RandomAccessIterator __first, _RandomAccessIterator __last, _Compare& __comp) {
+#if defined(__AVM__)
+  if (__first == __last)
+    return;
+  for (_RandomAccessIterator __current = __first + 1; __current != __last; ++__current) {
+    _RandomAccessIterator __position = std::__avm_stable_position(__first, __current, __comp);
+    if (__position != __current)
+      std::__avm_stable_insert<_AlgPolicy>(__position, __current);
+  }
+#else
   using value_type      = typename iterator_traits<_RandomAccessIterator>::value_type;
   using difference_type = typename iterator_traits<_RandomAccessIterator>::difference_type;
 
@@ -302,6 +348,7 @@ __stable_sort_impl(_RandomAccessIterator __first, _RandomAccessIterator __last, 
   }
 
   std::__stable_sort<_AlgPolicy, __comp_ref_type<_Compare> >(__first, __last, __comp, __len, __buf.first, __buf.second);
+#endif
   std::__check_strict_weak_ordering_sorted(__first, __last, __comp);
 }
 

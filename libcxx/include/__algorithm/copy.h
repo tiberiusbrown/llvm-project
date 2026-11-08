@@ -125,7 +125,15 @@ __copy(_InIter __first, _Sent __last, _OutIter __result) {
 template <class _InputIterator, class _OutputIterator>
 _LIBCPP_CONSTEXPR_SINCE_CXX20 _OutputIterator
 copy(_InputIterator __first, _InputIterator __last, _OutputIterator __result) {
+#if defined(__AVM__)
+  // The unwrap/result adapters retain several iterator copies at O0. A direct
+  // loop also supports allocating output adaptors within the fixed stack.
+  for (; __first != __last; ++__first, (void)++__result)
+    *__result = *__first;
+  return __result;
+#else
   return std::__copy(__first, __last, __result).__out_;
+#endif
 }
 
 _LIBCPP_END_NAMESPACE_STD

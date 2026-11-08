@@ -1268,6 +1268,9 @@ public:
 
 private:
   void __init(size_t __start);
+#  if defined(__AVM__)
+  _LIBCPP_NOINLINE void __avm_init_indices(size_t __start);
+#  endif
 
   template <class>
   friend class gslice_array;
@@ -1523,6 +1526,13 @@ private:
   _LIBCPP_HIDE_FROM_ABI mask_array(const valarray<bool>& __vb, const valarray<value_type>& __v)
       : __vp_(const_cast<value_type*>(__v.__begin_)),
         __1d_(static_cast<size_t>(count(__vb.__begin_, __vb.__end_, true))) {
+#  if defined(__AVM__)
+    __avm_init_indices(__vb);
+  }
+
+  // Release traversal locals before a failed index allocation enters EH.
+  _LIBCPP_NOINLINE void __avm_init_indices(const valarray<bool>& __vb) {
+#  endif
     size_t __j = 0;
     for (size_t __i = 0; __i < __vb.size(); ++__i)
       if (__vb[__i])

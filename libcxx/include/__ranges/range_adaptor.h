@@ -71,7 +71,11 @@ template <ranges::range _Range, _RangeAdaptorClosure _Closure>
   requires invocable<_Closure, _Range>
 [[nodiscard]] _LIBCPP_HIDE_FROM_ABI constexpr decltype(auto)
 operator|(_Range&& __range, _Closure&& __closure) noexcept(is_nothrow_invocable_v<_Closure, _Range>) {
+#  if defined(__AVM__)
+  return static_cast<_Closure&&>(__closure)(static_cast<_Range&&>(__range));
+#  else
   return std::invoke(std::forward<_Closure>(__closure), std::forward<_Range>(__range));
+#  endif
 }
 
 template <_RangeAdaptorClosure _Closure, _RangeAdaptorClosure _OtherClosure>

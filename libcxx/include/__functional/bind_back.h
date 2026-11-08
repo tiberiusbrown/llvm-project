@@ -39,9 +39,15 @@ struct __bind_back_op<_NBound, index_sequence<_Ip...>> {
           -> decltype(std::invoke(std::forward<_Fn>(__f),
                                   std::forward<_Args>(__args)...,
                                   std::get<_Ip>(std::forward<_BoundArgs>(__bound_args))...)) {
+#  if defined(__AVM__) && __has_builtin(__builtin_invoke)
+    return __builtin_invoke(static_cast<_Fn&&>(__f),
+                            static_cast<_Args&&>(__args)...,
+                            std::get<_Ip>(static_cast<_BoundArgs&&>(__bound_args))...);
+#  else
     return std::invoke(std::forward<_Fn>(__f),
                        std::forward<_Args>(__args)...,
                        std::get<_Ip>(std::forward<_BoundArgs>(__bound_args))...);
+#  endif
   }
 };
 

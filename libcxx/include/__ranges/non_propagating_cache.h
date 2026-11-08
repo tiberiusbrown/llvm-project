@@ -14,6 +14,7 @@
 #include <__iterator/concepts.h>        // indirectly_readable
 #include <__iterator/iterator_traits.h> // iter_reference_t
 #include <__memory/addressof.h>
+#include <__memory/construct_at.h>
 #include <__optional/nullopt_t.h>
 #include <__optional/optional.h>
 #include <__type_traits/is_object.h>
@@ -53,7 +54,40 @@ class __non_propagating_cache {
     _Tp __t_;
   };
 
+#  if defined(__AVM__)
+  // An empty cache does not need optional's copy/move inheritance hierarchy.
+  // Keep only its active-member flag and construct the wrapper directly.
+  class __storage {
+    union {
+      char __empty_;
+      __wrapper __element_;
+    };
+    bool __engaged_ = false;
+
+  public:
+    _LIBCPP_HIDE_FROM_ABI constexpr __storage(nullopt_t) noexcept : __empty_() {}
+    _LIBCPP_HIDE_FROM_ABI constexpr ~__storage() { reset(); }
+    _LIBCPP_HIDE_FROM_ABI constexpr void reset() noexcept {
+      if (__engaged_) {
+        __element_.~__wrapper();
+        __engaged_ = false;
+      }
+    }
+    _LIBCPP_HIDE_FROM_ABI constexpr bool has_value() const { return __engaged_; }
+    _LIBCPP_HIDE_FROM_ABI constexpr __wrapper* operator->() { return std::addressof(__element_); }
+    _LIBCPP_HIDE_FROM_ABI constexpr const __wrapper* operator->() const { return std::addressof(__element_); }
+    template <class... _Args>
+    _LIBCPP_HIDE_FROM_ABI constexpr __wrapper& emplace(_Args&&... __args) {
+      reset();
+      std::construct_at(std::addressof(__element_), std::forward<_Args>(__args)...);
+      __engaged_ = true;
+      return __element_;
+    }
+  };
+  __storage __value_ = nullopt;
+#  else
   optional<__wrapper> __value_ = nullopt;
+#  endif
 
 public:
   _LIBCPP_HIDE_FROM_ABI __non_propagating_cache() = default;
@@ -94,6 +128,51 @@ public:
     return __value_.emplace(__forward_tag{}, std::forward<_Args>(__args)...).__t_;
   }
 };
+
+#  if defined(__AVM__)
+// Pointer caches need no optional construction machinery. Avoid retaining its
+// emplace, construct_at and wrapper frames below every cached view's begin().
+template <class _Tp>
+class __non_propagating_cache<_Tp*> {
+  using _Value    = _Tp*;
+  _Value __value_ = nullptr;
+  bool __engaged_ = false;
+
+public:
+  _LIBCPP_HIDE_FROM_ABI __non_propagating_cache() = default;
+  _LIBCPP_HIDE_FROM_ABI constexpr __non_propagating_cache(const __non_propagating_cache&) noexcept {}
+  _LIBCPP_HIDE_FROM_ABI constexpr __non_propagating_cache(__non_propagating_cache&& __other) noexcept {
+    __other.__engaged_ = false;
+  }
+  _LIBCPP_HIDE_FROM_ABI constexpr __non_propagating_cache& operator=(const __non_propagating_cache& __other) noexcept {
+    if (this != std::addressof(__other))
+      __engaged_ = false;
+    return *this;
+  }
+  _LIBCPP_HIDE_FROM_ABI constexpr __non_propagating_cache& operator=(__non_propagating_cache&& __other) noexcept {
+    __engaged_ = __other.__engaged_ = false;
+    return *this;
+  }
+  _LIBCPP_HIDE_FROM_ABI constexpr _Value& operator*() { return __value_; }
+  _LIBCPP_HIDE_FROM_ABI constexpr const _Value& operator*() const { return __value_; }
+  _LIBCPP_HIDE_FROM_ABI constexpr bool __has_value() const { return __engaged_; }
+
+  template <class... _Args>
+  _LIBCPP_HIDE_FROM_ABI constexpr _Value& __emplace(_Args&&... __args) {
+    __engaged_ = false;
+    __value_   = _Value(std::forward<_Args>(__args)...);
+    __engaged_ = true;
+    return __value_;
+  }
+  template <class _Fn>
+  _LIBCPP_HIDE_FROM_ABI constexpr _Value& __emplace_from(const _Fn& __f) {
+    __engaged_ = false;
+    __value_   = __f();
+    __engaged_ = true;
+    return __value_;
+  }
+};
+#  endif
 
 struct __empty_cache {};
 } // namespace ranges

@@ -133,6 +133,26 @@ _UIntType __independent_bits_engine<_Engine, _UIntType>::__eval(true_type) {
   return __sp;
 }
 
+#if defined(__AVM__)
+// Full-width generators need only a mask, not the rejection engine's counters
+// and two sets of bounds. Keep that state out of callers' O0 stack frames.
+template <class _Engine, class _UIntType>
+class __avm_mask_bits_engine {
+  typedef typename _Engine::result_type _Engine_result_type;
+  _Engine& __e_;
+  _Engine_result_type __mask_;
+
+public:
+  _LIBCPP_HIDE_FROM_ABI __avm_mask_bits_engine(_Engine& __e, size_t __w)
+      : __e_(__e),
+        __mask_(__w == 0 ? 0
+                         : _Engine_result_type(~_Engine_result_type(0)) >>
+                               (numeric_limits<_Engine_result_type>::digits - __w)) {}
+
+  _LIBCPP_HIDE_FROM_ABI _UIntType operator()() { return static_cast<_UIntType>(__e_() & __mask_); }
+};
+#endif
+
 template <class _IntType = int>
 class uniform_int_distribution {
   static_assert(__libcpp_random_is_valid_inttype<_IntType>::value, "IntType must be a supported integer type");
@@ -210,12 +230,28 @@ template <class _URNG>
 typename uniform_int_distribution<_IntType>::result_type uniform_int_distribution<_IntType>::operator()(
     _URNG& __g, const param_type& __p) _LIBCPP_DISABLE_UBSAN_UNSIGNED_INTEGER_CHECK {
   static_assert(__libcpp_random_is_valid_urng<_URNG>::value, "");
+#if defined(__AVM__)
+  // Use the result word's unsigned arithmetic, including a wrapping full range.
+  typedef __make_unsigned_t<result_type> _UIntType;
+#else
   typedef __conditional_t<sizeof(result_type) <= sizeof(uint32_t), uint32_t, __make_unsigned_t<result_type> > _UIntType;
+#endif
   const _UIntType __rp = _UIntType(__p.b()) - _UIntType(__p.a()) + _UIntType(1);
   if (__rp == 1)
     return __p.a();
   const size_t __dt = numeric_limits<_UIntType>::digits;
+#if defined(__AVM__)
+  typedef __conditional_t<sizeof(typename _URNG::result_type) <= sizeof(_UIntType),
+                          _UIntType,
+                          typename _URNG::result_type>
+      _Working;
+  typedef __conditional_t<(_Working(_URNG::max()) - _Working(_URNG::min()) + _Working(1)) == 0,
+                          __avm_mask_bits_engine<_URNG, _UIntType>,
+                          __independent_bits_engine<_URNG, _UIntType> >
+      _Eng;
+#else
   typedef __independent_bits_engine<_URNG, _UIntType> _Eng;
+#endif
   if (__rp == 0)
     return static_cast<result_type>(_Eng(__g, __dt)());
   size_t __w = __dt - std::__countl_zero(__rp) - 1;

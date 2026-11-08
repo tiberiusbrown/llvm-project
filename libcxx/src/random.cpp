@@ -13,7 +13,9 @@
 #  define _CRT_RAND_S
 #endif // defined(_LIBCPP_USING_WIN32_RANDOM)
 
-#include <__system_error/throw_system_error.h>
+#if !defined(_LIBCPP_USING_AVM_RANDOM)
+#  include <__system_error/throw_system_error.h>
+#endif
 #include <limits>
 #include <random>
 #include <string>
@@ -21,6 +23,53 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#if defined(_LIBCPP_USING_AVM_RANDOM)
+#  include <avm.h>
+#  include <exception>
+
+// A platform may replace the sampler without changing the random_device ABI.
+// Sampling does not consume or reseed the C runtime's deterministic generator.
+extern "C" __attribute__((weak)) uint16_t __avm_random_device_sample() noexcept { return avm_generate_random_seed(); }
+
+namespace {
+class __avm_random_device_error final : public std::exception {
+  const char* __message_;
+
+public:
+  explicit __avm_random_device_error(const char* __message) noexcept : __message_(__message) {}
+  const char* what() const noexcept override { return __message_; }
+};
+
+[[noreturn]] __attribute__((noinline)) void __avm_random_device_fail(const char* __message) {
+  // No message allocation is needed when entropy is unavailable.
+  throw __avm_random_device_error(__message);
+}
+
+__attribute__((noinline)) int __avm_random_bit() noexcept {
+  // Discard equal pairs to remove first-order bias. Bound retries so a stuck
+  // source reports an error rather than keeping the caller in a sampling loop.
+  for (unsigned __attempt = 0; __attempt != 64; ++__attempt) {
+    uint16_t __first  = __avm_random_device_sample();
+    uint16_t __second = __avm_random_device_sample();
+    if ((__first ^ __second) & 1)
+      return __first & 1;
+  }
+  return -1;
+}
+
+__attribute__((noinline)) bool __avm_random_word(unsigned& __value) noexcept {
+  __value = 0;
+  for (unsigned __i = 0; __i != std::numeric_limits<unsigned>::digits; ++__i) {
+    int __bit = __avm_random_bit();
+    if (__bit < 0)
+      return false;
+    __value = (__value << 1) | static_cast<unsigned>(__bit);
+  }
+  return true;
+}
+} // namespace
+#endif
 
 #if defined(_LIBCPP_USING_GETENTROPY)
 #  include <sys/random.h>
@@ -38,7 +87,24 @@
 _LIBCPP_BEGIN_NAMESPACE_STD
 _LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
 
-#if defined(_LIBCPP_USING_GETENTROPY)
+#if defined(_LIBCPP_USING_AVM_RANDOM)
+
+random_device::random_device(const string& __token) {
+  if (__token != "avm" && __token != "/dev/urandom")
+    __avm_random_device_fail("random_device: unsupported AVM source");
+}
+
+random_device::~random_device() {}
+
+unsigned random_device::operator()() {
+  result_type __value;
+  // Release all sampling frames before entering the exception matcher.
+  if (!__avm_random_word(__value))
+    __avm_random_device_fail("random_device: AVM entropy unavailable");
+  return __value;
+}
+
+#elif defined(_LIBCPP_USING_GETENTROPY)
 
 random_device::random_device(const string& __token) {
   if (__token != "/dev/urandom")
@@ -135,7 +201,10 @@ unsigned random_device::operator()() {
 #endif
 
 double random_device::entropy() const noexcept {
-#if defined(_LIBCPP_USING_DEV_RANDOM) && defined(RNDGETENTCNT)
+#if defined(_LIBCPP_USING_AVM_RANDOM)
+  // The hardware source has no calibrated entropy estimate.
+  return 0;
+#elif defined(_LIBCPP_USING_DEV_RANDOM) && defined(RNDGETENTCNT)
   int ent;
   if (::ioctl(__f_, RNDGETENTCNT, &ent) < 0)
     return 0;
