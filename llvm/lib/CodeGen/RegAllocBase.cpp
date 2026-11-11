@@ -197,6 +197,10 @@ void RegAllocBase::cleanupFailedVReg(Register FailedReg, MCRegister PhysReg,
   // usual. This avoids trying to manage illegal overlapping assignments in
   // LiveRegMatrix.
   MRI->replaceRegWith(FailedReg, PhysReg);
+  // Allocators may keep pointers to intervals, such as RAGreedy's broken hint
+  // set, so notify them before the interval is destroyed, as the other removal
+  // sites do.
+  aboutToRemoveInterval(LIS->getInterval(FailedReg));
   LIS->removeInterval(FailedReg);
 }
 
