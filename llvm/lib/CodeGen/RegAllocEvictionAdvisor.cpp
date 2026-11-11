@@ -220,6 +220,13 @@ bool DefaultEvictionAdvisor::shouldEvict(const LiveInterval &A, bool IsHint,
                                          bool BreaksHint) const {
   bool CanSplit = RA.getExtraInfo().getStage(B) < RS_Spill;
 
+  // An unspillable evictee cannot be split or spilled. When its class has no
+  // other register, evicting it for a hint leaves it nowhere to go, and the
+  // allocation fails.
+  if (!B.isSpillable() &&
+      RegClassInfo.getNumAllocatableRegs(MRI->getRegClass(B.reg())) <= 1)
+    CanSplit = false;
+
   // Be fairly aggressive about following hints as long as the evictee can be
   // split.
   if (CanSplit && IsHint && !BreaksHint)

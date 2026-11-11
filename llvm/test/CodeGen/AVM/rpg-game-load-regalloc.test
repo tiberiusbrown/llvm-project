@@ -1,0 +1,4 @@
+# Regression input from avm_rpg's game_load under LTO, which exposed a greedy
+# register allocator bug. This only checks that the backend compiles it to an
+# object; the output is not inspected.
+# RUN: llc -mtriple=avm -O2 -filetype=obj %S/rpg-game-load-regalloc.bc -o %t.o
