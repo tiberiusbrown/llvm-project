@@ -5179,9 +5179,13 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
     if (SanOpts.has(SanitizerKind::ArrayBounds))
       EmitBoundsCheck(E, E->getBase(), Idx, IdxTy, Accessed);
 
-    // Extend or truncate the index type to 32 or 64-bits.
-    if (Promote && Idx->getType() != IntPtrTy)
-      Idx = Builder.CreateIntCast(Idx, IntPtrTy, IdxSigned, "idxprom");
+    // Use the indexed object's address space, which may have wider pointers
+    // than ordinary data memory (24-bit program memory on AVM).
+    unsigned AS = getTypes().getTargetAddressSpace(E->getType());
+    llvm::Type *IndexTy = CGM.getDataLayout().getIndexType(
+        llvm::PointerType::get(getLLVMContext(), AS));
+    if (Promote && Idx->getType() != IndexTy)
+      Idx = Builder.CreateIntCast(Idx, IndexTy, IdxSigned, "idxprom");
 
     return Idx;
   };
@@ -5242,6 +5246,8 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
 
     // The element count here is the total number of non-VLA elements.
     llvm::Value *numElements = getVLASize(vla).NumElts;
+    numElements = Builder.CreateIntCast(numElements, Idx->getType(),
+                                        /*isSigned=*/false, "vla.ext");
 
     // Effectively, the multiply by the VLA size is part of the GEP.
     // GEP indexes are signed, and scaling an index isn't permitted to
@@ -5307,7 +5313,8 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
     // Propagate the alignment from the array itself to the result.
     QualType arrayType = Array->getType();
     Addr = emitArraySubscriptGEP(
-        *this, ArrayLV.getAddress(), {CGM.getSize(CharUnits::Zero()), Idx},
+        *this, ArrayLV.getAddress(),
+        {llvm::ConstantInt::get(Idx->getType(), 0), Idx},
         E->getType(), !getLangOpts().PointerOverflowDefined, SignedIndices,
         E->getExprLoc(), &arrayType, E->getBase());
     EltBaseInfo = ArrayLV.getBaseInfo();

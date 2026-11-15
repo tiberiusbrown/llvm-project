@@ -3542,10 +3542,10 @@ ASTContext::getASTRecordLayout(const RecordDecl *D) const {
 
   ASTRecordLayouts[D] = NewEntry;
 
-  // Cap at the target's size_t width (up to 60 bits) so oversized layouts on
-  // narrow targets are diagnosed instead of overflowing size_t in codegen.
+  // Permit the same layouts as array types, including AVM's 24-bit program
+  // objects. Variable declarations check the actual storage address space.
   uint64_t MaxStructSizeInBytes =
-      1ULL << std::min<unsigned>(getTypeSize(getSizeType()), 60);
+      1ULL << std::min<unsigned>(ConstantArrayType::getMaxSizeBits(*this), 60);
   CharUnits StructSize = NewEntry->getSize();
   if (static_cast<uint64_t>(StructSize.getQuantity()) >= MaxStructSizeInBytes) {
     getDiagnostics().Report(D->getLocation(), diag::err_struct_too_large)

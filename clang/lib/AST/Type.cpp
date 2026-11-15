@@ -376,6 +376,11 @@ ConstantArrayType::getNumAddressingBits(const ASTContext &Context) const {
 unsigned ConstantArrayType::getMaxSizeBits(const ASTContext &Context) {
   unsigned Bits = Context.getTypeSize(Context.getSizeType());
 
+  // AVM types may reside in 24-bit program memory even though size_t and
+  // ordinary data pointers are 16 bits. Check object placement separately.
+  if (Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm)
+    Bits = 24;
+
   // Limit the number of bits in size_t so that maximal bit size fits 64 bit
   // integer (see PR8256).  We can do this as currently there is no hardware
   // that supports full 64-bit virtual space.

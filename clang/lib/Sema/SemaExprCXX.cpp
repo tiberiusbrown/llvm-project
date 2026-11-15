@@ -2413,7 +2413,8 @@ ExprResult Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
       }
 
       if (checkArrayTooLarge(AllocType, *Value, (*ArraySize)->getBeginLoc(),
-                             (*ArraySize)->getSourceRange()))
+                             (*ArraySize)->getSourceRange(),
+                             /*IsArrayNew=*/true))
         return ExprError();
 
       KnownArraySize = Value->getZExtValue();
@@ -2715,6 +2716,15 @@ bool Sema::CheckAllocatedType(QualType AllocType, SourceLocation Loc,
         return Diag(Loc, diag::err_arc_new_array_without_ownership)
           << BaseAllocType;
     }
+  }
+
+  if (Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm) {
+    llvm::APInt MaxSize = llvm::APInt::getMaxValue(
+        Context.getTargetInfo().getPointerWidth(LangAS::Default));
+    auto Size = Context.getTypeSizeInCharsIfKnown(AllocType);
+    if (Size && static_cast<uint64_t>(Size->getQuantity()) > MaxSize.getZExtValue())
+      return Diag(Loc, diag::err_type_too_large_for_address_space)
+             << AllocType << MaxSize;
   }
 
   return false;

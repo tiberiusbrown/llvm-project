@@ -9359,7 +9359,8 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
     }
   }
 
-  if (T.hasAddressSpace() &&
+  if ((T.hasAddressSpace() ||
+       Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm) &&
       !CheckVarDeclSizeAddressSpace(NewVD, T.getAddressSpace())) {
     NewVD->setInvalidDecl();
     return;
@@ -15143,6 +15144,15 @@ void Sema::addLifetimeBoundToImplicitThis(CXXMethodDecl *MD) {
 
 void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
   if (var->isInvalidDecl()) return;
+
+  // AVM permits types larger than size_t for 24-bit program memory. Check
+  // every object's storage, including arrays whose bound was just inferred,
+  // so these types cannot also create oversized 16-bit RAM objects.
+  if (Context.getTargetInfo().getTriple().getArch() == llvm::Triple::avm &&
+      !CheckVarDeclSizeAddressSpace(var, var->getType().getAddressSpace())) {
+    var->setInvalidDecl();
+    return;
+  }
 
   CUDA().MaybeAddConstantAttr(var);
 

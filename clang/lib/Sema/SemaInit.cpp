@@ -2211,6 +2211,7 @@ void InitListChecker::CheckArrayType(const InitializedEntity &Entity,
   // Count in 64 bits so that the index cannot wrap with a narrow size_t.
   if (elementIndex.getBitWidth() < 64)
     elementIndex = elementIndex.extend(64);
+  elementIndex.setIsUnsigned(true);
 
   // We might know the maximum number of elements in advance.
   llvm::APSInt maxElements(elementIndex.getBitWidth(),
@@ -3349,7 +3350,12 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
   }
 
   if (isa<ConstantArrayType>(AT)) {
-    llvm::APSInt MaxElements(cast<ConstantArrayType>(AT)->getSize(), false);
+    llvm::APSInt MaxElements(cast<ConstantArrayType>(AT)->getSize(), true);
+    // Compare before narrowing an index to the array bound's canonical width.
+    unsigned IndexWidth = std::max({MaxElements.getBitWidth(),
+                                    DesignatedStartIndex.getBitWidth(),
+                                    DesignatedEndIndex.getBitWidth()});
+    MaxElements = MaxElements.extend(IndexWidth);
     DesignatedStartIndex
       = DesignatedStartIndex.extOrTrunc(MaxElements.getBitWidth());
     DesignatedStartIndex.setIsUnsigned(MaxElements.isUnsigned());
@@ -3366,6 +3372,21 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       return true;
     }
   } else {
+    // Keep the inferred count representable before narrowing designators.
+    llvm::APSInt NumElements = DesignatedEndIndex;
+    NumElements = NumElements.extend(NumElements.getBitWidth() + 1);
+    ++NumElements;
+    unsigned MaxSizeBits = ConstantArrayType::getMaxSizeBits(SemaRef.Context);
+    if (NumElements.getActiveBits() > MaxSizeBits ||
+        ConstantArrayType::getNumAddressingBits(
+            SemaRef.Context, AT->getElementType(), NumElements) > MaxSizeBits) {
+      if (!VerifyOnly)
+        SemaRef.checkArrayTooLarge(AT->getElementType(), NumElements,
+                                   IndexExpr->getBeginLoc(),
+                                   IndexExpr->getSourceRange());
+      ++Index;
+      return true;
+    }
     unsigned DesignatedIndexBitWidth =
       ConstantArrayType::getMaxSizeBits(SemaRef.Context);
     DesignatedStartIndex =
