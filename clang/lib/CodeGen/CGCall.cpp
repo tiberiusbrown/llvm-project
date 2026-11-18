@@ -1564,21 +1564,23 @@ static llvm::Value *CoerceIntOrPtrToIntOrPtr(llvm::Value *Val, llvm::Type *Ty,
   if (Val->getType() == Ty)
     return Val;
 
+  const llvm::DataLayout &DL = CGF.CGM.getDataLayout();
   if (isa<llvm::PointerType>(Val->getType())) {
     // If this is Pointer->Pointer avoid conversion to and from int.
     if (isa<llvm::PointerType>(Ty))
       return CGF.Builder.CreateBitCast(Val, Ty, "coerce.val");
 
-    // Convert the pointer to an integer so we can play with its width.
-    Val = CGF.Builder.CreatePtrToInt(Val, CGF.IntPtrTy, "coerce.val.pi");
+    // Convert the pointer to an integer of its own address space's width. CGF.IntPtrTy is the
+    // default address space's width, which can be narrower: a pointer in another address space,
+    // such as AVM's 24-bit flash pointers, would otherwise lose its high bits here.
+    Val = CGF.Builder.CreatePtrToInt(Val, DL.getIntPtrType(Val->getType()), "coerce.val.pi");
   }
 
   llvm::Type *DestIntTy = Ty;
   if (isa<llvm::PointerType>(DestIntTy))
-    DestIntTy = CGF.IntPtrTy;
+    DestIntTy = DL.getIntPtrType(Ty);
 
   if (Val->getType() != DestIntTy) {
-    const llvm::DataLayout &DL = CGF.CGM.getDataLayout();
     if (DL.isBigEndian()) {
       // Preserve the high bits on big-endian targets.
       // That is what memory coercion does.
