@@ -6,6 +6,9 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/ValueLatticeUtils.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/SimplifyQuery.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/BinaryFormat/AVM.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Dominators.h"
@@ -201,14 +204,91 @@ class PointerAnalysis {
           initialize(Object, Elt, Offset + I * Size);
     }
   }
-  Pointers load(const Pointers &Address, uint64_t Size) {
+  // Recognize whole-element addressing, including InstCombine's byte-array
+  // GEPs. Merely knowing the underlying object is insufficient: byte offsets
+  // and wrapped index multiplications could load across pointer cells.
+  bool elementOffsets(const Value *V, uint64_t Size, unsigned Depth = 0) {
+    if (Depth > 16)
+      return false;
+    if (isa<GlobalVariable>(V))
+      return true;
+    if (auto *G = dyn_cast<GEPOperator>(V)) {
+      unsigned Bits = DL.getIndexSizeInBits(G->getPointerAddressSpace());
+      if (Bits > 64)
+        return false;
+      SmallMapVector<Value *, APInt, 4> Terms;
+      APInt Constant(Bits, 0);
+      if (!G->collectOffset(DL, Bits, Terms, Constant) ||
+          Constant.srem(APInt(Bits, Size)) != 0)
+        return false;
+      APInt Min = Constant.sext(128), Max = Min;
+      for (auto &[Index, Scale] : Terms) {
+        if (Index->getType()->getIntegerBitWidth() > Bits ||
+            Scale.srem(APInt(Bits, Size)) != 0)
+          return false;
+        ConstantRange Range = computeConstantRange(Index, true, SimplifyQuery(DL));
+        APInt Lo = Range.getSignedMin().sextOrTrunc(Bits).sext(128);
+        APInt Hi = Range.getSignedMax().sextOrTrunc(Bits).sext(128);
+        APInt Factor = Scale.sext(128);
+        APInt A = Lo * Factor, B = Hi * Factor;
+        bool Overflow;
+        Min = Min.sadd_ov(A.slt(B) ? A : B, Overflow);
+        if (Overflow)
+          return false;
+        Max = Max.sadd_ov(A.sgt(B) ? A : B, Overflow);
+        if (Overflow)
+          return false;
+      }
+      if (!Min.isSignedIntN(Bits) || !Max.isSignedIntN(Bits))
+        return false;
+      return elementOffsets(G->getPointerOperand(), Size, Depth + 1);
+    }
+    if (auto *P = dyn_cast<PHINode>(V)) {
+      for (Value *Incoming : P->incoming_values())
+        if (!elementOffsets(Incoming, Size, Depth + 1))
+          return false;
+      return true;
+    }
+    if (auto *S = dyn_cast<SelectInst>(V))
+      return elementOffsets(S->getTrueValue(), Size, Depth + 1) &&
+             elementOffsets(S->getFalseValue(), Size, Depth + 1);
+    if (auto *C = dyn_cast<CastInst>(V))
+      if (C->getOperand(0)->getType()->isPointerTy())
+        return elementOffsets(C->getOperand(0), Size, Depth + 1);
+    return false;
+  }
+  bool pointerElements(Type *T, uint64_t Size) {
+    if (T->isPointerTy())
+      return DL.getTypeAllocSize(T) == Size;
+    if (auto *A = dyn_cast<ArrayType>(T))
+      return pointerElements(A->getElementType(), Size);
+    if (auto *S = dyn_cast<StructType>(T)) {
+      const StructLayout *Layout = DL.getStructLayout(S);
+      if (Layout->hasPadding())
+        return false;
+      for (Type *Element : S->elements())
+        if (!pointerElements(Element, Size))
+          return false;
+      return true;
+    }
+    return false;
+  }
+  Pointers load(const Pointers &Address, uint64_t Size, const Value *Source) {
     Pointers Result;
     if (Address.Unknown || !Address.Functions.empty())
       Result = Pointers::unknown(Address.Limited);
     for (Location L : Address.Locations) {
-      if (L.second == AnyOffset)
-        Result.merge(Pointers::unknown());
-      else
+      if (L.second == AnyOffset) {
+        auto *G = dyn_cast<GlobalVariable>(L.first);
+        if (G && G->isConstant() && G->hasDefinitiveInitializer() &&
+            pointerElements(G->getValueType(), Size) && elementOffsets(Source, Size)) {
+          for (auto &[Location, C] : Memory)
+            if (Location.first == G)
+              Result.merge(C.Value);
+        } else {
+          Result.merge(Pointers::unknown());
+        }
+      } else
         Result.merge(cell(L, Size).Value);
     }
     return Result;
@@ -393,7 +473,8 @@ class PointerAnalysis {
         P = offset(value(G->getPointerOperand()), *cast<GEPOperator>(G));
       } else if (auto *L = dyn_cast<LoadInst>(&I)) {
         P = load(value(L->getPointerOperand()),
-                 DL.getTypeStoreSize(L->getType()).getFixedValue());
+                 DL.getTypeStoreSize(L->getType()).getFixedValue(),
+                 L->getPointerOperand());
         if (L->isVolatile() || L->isAtomic())
           P.merge(Pointers::unknown());
       } else if (auto *Phi = dyn_cast<PHINode>(&I)) {
