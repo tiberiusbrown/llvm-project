@@ -467,11 +467,12 @@ void AggExprEmitter::VisitCXXStdInitializerListExpr(
   assert(Field != Record->field_end() &&
          "Expected std::initializer_list to have two fields");
 
-  llvm::Value *Size = Builder.getInt(ArrayType->getSize());
   LValue EndOrLength = CGF.EmitLValueForFieldInitialization(DestLV, *Field);
   if (Ctx.hasSameType(Field->getType(), Ctx.getSizeType())) {
-    // Length.
-    CGF.EmitStoreThroughLValue(RValue::get(Size), EndOrLength);
+    // The stored array bound can have a different width from size_t.
+    llvm::Value *Length =
+        llvm::ConstantInt::get(CGF.SizeTy, ArrayType->getSize().getZExtValue());
+    CGF.EmitStoreThroughLValue(RValue::get(Length), EndOrLength);
 
   } else {
     // End pointer.
@@ -480,6 +481,7 @@ void AggExprEmitter::VisitCXXStdInitializerListExpr(
                            ArrayType->getElementType()) &&
            "Expected std::initializer_list second field to be const E *");
     llvm::Value *Zero = llvm::ConstantInt::get(CGF.PtrDiffTy, 0);
+    llvm::Value *Size = Builder.getInt(ArrayType->getSize());
     llvm::Value *IdxEnd[] = {Zero, Size};
     llvm::Value *ArrayEnd = Builder.CreateInBoundsGEP(
         ArrayPtr.getElementType(), ArrayPtr.emitRawPointer(CGF), IdxEnd,

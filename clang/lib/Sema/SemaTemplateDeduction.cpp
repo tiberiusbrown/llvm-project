@@ -2024,8 +2024,16 @@ static TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
              "saw non-type template parameter with wrong depth");
       if (const auto *CAA = dyn_cast<ConstantArrayType>(AA)) {
         llvm::APSInt Size(CAA->getSize());
+        QualType SizeType = S.Context.getSizeType();
+        // ConstantArrayType can store bounds at a different width than size_t.
+        // Use a wider unsigned type for bounds that only fit in program
+        // memory on targets such as AVM.
+        if (Size.getActiveBits() > S.Context.getIntWidth(SizeType))
+          SizeType = S.Context.getLeastIntTypeForBitwidth(
+              Size.getActiveBits(), /*Signed=*/false);
+        Size = Size.extOrTrunc(S.Context.getIntWidth(SizeType));
         return DeduceNonTypeTemplateArgument(
-            S, TemplateParams, NTTP, Size, S.Context.getSizeType(),
+            S, TemplateParams, NTTP, Size, SizeType,
             /*ArrayBound=*/true, Info, POK != PartialOrderingKind::None,
             Deduced, HasDeducedAnyParam);
       }
