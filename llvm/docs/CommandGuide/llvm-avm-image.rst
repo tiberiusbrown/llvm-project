@@ -32,9 +32,10 @@ status and no committed output file.
 When the output name ends in ``.arduboy``, the tool writes a ZIP archive with
 ``info.json``, the SDK's bundled ``interp.hex``, the flat image as
 ``fxdata.bin``, and, when the ELF has saved bytes, a 4 KiB erased
-``fxsave.bin``. The interpreter is found at
-``bin/avm/interp.hex`` relative to the tool. Use ``--interpreter`` to select a
-different HEX file. The ``--development`` option applies only to raw images.
+``fxsave.bin``. All entries use ZIP DEFLATE compression. The interpreter is
+found at ``bin/avm/interp.hex`` relative to the tool. Use ``--interpreter`` to
+select a different HEX file. The ``--development`` option applies only to raw
+images.
 
 Unlike ``llvm-objcopy -O binary``, this tool understands AVM data and program
 address spaces and creates the AVM runtime header, padding, CRC, and tail.

@@ -22,6 +22,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/WithColor.h"
+#include <zlib.h>
 #include <algorithm>
 #include <optional>
 
@@ -135,26 +136,65 @@ struct ZipEntry {
   ArrayRef<uint8_t> Data;
 };
 
-// .arduboy is a ZIP archive. Stored entries avoid a compression dependency
-// and let tools extract the flash image byte for byte.
-static SmallVector<uint8_t, 0> makeZip(ArrayRef<ZipEntry> Entries) {
+static Error bad(const Twine &Message);
+
+static Expected<SmallVector<uint8_t, 0>> deflateZipEntry(
+    ArrayRef<uint8_t> Data) {
+  z_stream Stream = {};
+  int Result = deflateInit2(&Stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                            -MAX_WBITS, 8, Z_DEFAULT_STRATEGY);
+  if (Result != Z_OK)
+    return bad("could not initialize ZIP DEFLATE compressor");
+
+  SmallVector<uint8_t, 0> Compressed;
+  Compressed.resize_for_overwrite(deflateBound(&Stream, Data.size()));
+  Stream.next_in = const_cast<Bytef *>(Data.data());
+  Stream.avail_in = Data.size();
+  Stream.next_out = Compressed.data();
+  Stream.avail_out = Compressed.size();
+  Result = deflate(&Stream, Z_FINISH);
+  if (Result != Z_STREAM_END) {
+    deflateEnd(&Stream);
+    return bad("could not DEFLATE ZIP entry");
+  }
+  Compressed.resize(Stream.total_out);
+  Result = deflateEnd(&Stream);
+  if (Result != Z_OK)
+    return bad("could not finish ZIP DEFLATE compressor");
+  return Compressed;
+}
+
+// .arduboy is a ZIP archive. ZIP method 8 uses raw DEFLATE streams, without
+// the zlib header and checksum, and retains CRC-32 over the original bytes.
+static Expected<SmallVector<uint8_t, 0>> makeZip(
+    ArrayRef<ZipEntry> Entries) {
+  SmallVector<SmallVector<uint8_t, 0>, 4> CompressedEntries;
+  for (const ZipEntry &Entry : Entries) {
+    Expected<SmallVector<uint8_t, 0>> Compressed = deflateZipEntry(Entry.Data);
+    if (!Compressed)
+      return Compressed.takeError();
+    CompressedEntries.push_back(std::move(*Compressed));
+  }
+
   SmallVector<uint8_t, 0> Out;
   SmallVector<uint32_t, 4> Offsets;
-  for (const ZipEntry &Entry : Entries) {
+  for (size_t I = 0; I < Entries.size(); ++I) {
+    const ZipEntry &Entry = Entries[I];
+    ArrayRef<uint8_t> Compressed = CompressedEntries[I];
     Offsets.push_back(Out.size());
     append32(Out, 0x04034b50);
     append16(Out, 20); // Version needed.
     append16(Out, 0);  // Flags.
-    append16(Out, 0);  // Stored.
+    append16(Out, 8);  // Deflated.
     append16(Out, 0);  // DOS time.
     append16(Out, 0);  // DOS date.
     append32(Out, crc32(Entry.Data));
-    append32(Out, Entry.Data.size());
+    append32(Out, Compressed.size());
     append32(Out, Entry.Data.size());
     append16(Out, Entry.Name.size());
     append16(Out, 0); // Extra length.
     llvm::append_range(Out, Entry.Name.bytes());
-    llvm::append_range(Out, Entry.Data);
+    llvm::append_range(Out, Compressed);
   }
   uint32_t CentralOffset = Out.size();
   for (size_t I = 0; I < Entries.size(); ++I) {
@@ -163,11 +203,11 @@ static SmallVector<uint8_t, 0> makeZip(ArrayRef<ZipEntry> Entries) {
     append16(Out, 20); // Version made by.
     append16(Out, 20); // Version needed.
     append16(Out, 0);  // Flags.
-    append16(Out, 0);  // Stored.
+    append16(Out, 8);  // Deflated.
     append16(Out, 0);  // DOS time.
     append16(Out, 0);  // DOS date.
     append32(Out, crc32(Entry.Data));
-    append32(Out, Entry.Data.size());
+    append32(Out, CompressedEntries[I].size());
     append32(Out, Entry.Data.size());
     append16(Out, Entry.Name.size());
     append16(Out, 0); // Extra length.
@@ -1843,7 +1883,10 @@ static Error packageELF(StringRef InputName, StringRef DefaultInterpreter) {
     };
     if (SaveSize)
       Entries.push_back({"fxsave.bin", Save});
-    Image = makeZip(Entries);
+    Expected<SmallVector<uint8_t, 0>> Archive = makeZip(Entries);
+    if (!Archive)
+      return Archive.takeError();
+    Image = std::move(*Archive);
   } else {
     if (!Interpreter.empty() || !Title.empty() || !Description.empty() ||
         !Genre.empty() || Author.getNumOccurrences() ||

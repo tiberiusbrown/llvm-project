@@ -10,6 +10,10 @@ with zipfile.ZipFile(archive_path) as archive:
         expected.add("fxsave.bin")
     assert set(archive.namelist()) == expected
     assert archive.testzip() is None
+    assert all(
+        entry.compress_type == zipfile.ZIP_DEFLATED
+        for entry in archive.infolist()
+    )
     info = json.loads(archive.read("info.json"))
     assert info["schemaVersion"] == 3
     if has_save:
@@ -32,5 +36,8 @@ with zipfile.ZipFile(archive_path) as archive:
     assert info["binaries"] == [binary]
     assert archive.read("interp.hex") == open(hex_path, "rb").read()
     assert archive.read("fxdata.bin") == open(image_path, "rb").read()
+    assert archive.getinfo("fxdata.bin").compress_size < len(
+        archive.read("fxdata.bin")
+    )
     if has_save:
         assert archive.read("fxsave.bin") == b"\xff" * 4096
